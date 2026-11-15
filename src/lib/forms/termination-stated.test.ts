@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { statesTermination } from "./termination-stated";
 
@@ -155,65 +155,5 @@ describe("TERMINATION_STATED_TICKS_ENABLED: the Action Plan's closing", () => {
     expect(correctiveActionPlan({ ...input, termination: false }).endsWith(CA_ACTION_PLAN_CLOSING)).toBe(true);
     expect(withTerminationPlan(`Management will review the Attendance policy with Briony. ${CA_ACTION_PLAN_CLOSING}`, true)).toBe(terminated);
     expect(withTerminationPlan(`x. ${CA_ACTION_PLAN_CLOSING}`, false)).toBe(`x. ${CA_ACTION_PLAN_CLOSING}`);
-  });
-});
-
-/* Batch G (G9/G19; Pau's standing approval, 15 Nov 2026, QA's list): the widened statements, and what must stay false. */
-describe("the widened termination statements", () => {
-  afterEach(() => vi.unstubAllEnvs());
-  const reads = async (text: string) => {
-    vi.stubEnv("TERMINATION_STATED_TICKS_ENABLED", "true");
-    return (await import("./termination-stated")).statesTermination(text);
-  };
-  it.each([
-    "Action Plan: Violation of Company policy has resulted in immediate termination of employment.",
-    "Violation of Company policy has resulted in termination.",
-    "Her employment has been terminated.",
-    "Employment is terminated as of today.",
-    "We fired her for the no call no show.",
-    "I'm firing him today.",
-    "Fire her, she stole from the register.",
-    "create a termination for Tamsin Lune",
-    "she is terminated, make the CA",
-    "write a CA, termination, for Tamsin Lune",
-    "my DM approved her termination, write up the CA",
-    "I need a term CA for Tamsin Lune",
-    "the DM said to terminate her",
-    // QA's review of batch G (15 Nov 2026): edit_form now reads only this reader, on the current message.
-    "make it a termination",
-    "make this a termination, she walked out",
-    "this is a termination",
-    "Violation of Company policy resulted in immediate termination of employment.",
-  ])("reads %s as stated", async (text) => {
-    expect(await reads(text)).toBe(true);
-  });
-  it.each([
-    "she was fired from her last job",
-    "if this happens again it will result in termination",
-    "future violations may result in termination of employment",
-    "Future policy violations may result in additional corrective action up to and including termination of employment.",
-    "should I fire her?",
-    "she was terminated before and rehired",
-    "let her go home early",
-    "let her go, she no call no showed",
-    "we might fire her if this continues",
-    "thinking about firing her",
-    "once the DM approves, write a termination CA",
-    "waiting on approval for her termination CA",
-    // QA's review of batch G (15 Nov 2026): history, intent, future, modal and negated forms (invented names none needed).
-    "He has been terminated at his previous job",
-    "Previously she has been terminated and rehired",
-    "They fired him at his old salon",
-    "she got fired her first week at Target",
-    "I told her we'd fire her",
-    "I need to fire her",
-    "I'd like to fire her",
-    "Any further violations will result in termination.",
-    "I don't think it should be a termination",
-    "this is not a termination",
-    "don't make it a termination",
-    "it will be a termination next time",
-  ])("never reads %s as stated", async (text) => {
-    expect(await reads(text)).toBe(false);
   });
 });

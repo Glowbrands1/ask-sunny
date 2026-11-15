@@ -1,0 +1,190 @@
+import { expect, vi } from "vitest";
+
+import { KEARNEY, STAFF, type ReplayCase, type ReplayContext } from "./cases";
+import { lastResult, loopStandIn, type LoopDecision, type LoopView } from "./loop-stand-in";
+
+/**
+ * ============================================================================
+ * THE MODEL DECIDES A TERMINATION; CODE ONLY LOCKS IT (QA's design, 15 Nov 2026; Pau's standing approval)
+ * ============================================================================
+ *
+ * QA's two reviews of batch G found that reading intent with patterns breaks either way ("After two prior written
+ * warnings, we are terminating her." read as history; "we fired her sister" read as this form's termination). So in the
+ * agent loop the MODEL decides, taught by the rules book's examples, and code only locks it: a termination level (and an
+ * exit's "termination") is kept only when the manager's own words carry a termination word, and Create checks that
+ * word again, server-side. Every input from both reviews is here, with the stand-in model's decision as the rules book
+ * teaches it, and the lock refusing a termination where the words carry none. Invented names only (Remy Calder).
+ */
+
+const FLAG = "AGENT_LOOP_ENABLED";
+const REPORT = "QA's reviews of batch G (15 Nov 2026) and QA's design for terminations in the loop";
+const ACCOUNT = "She was a no call no show on 11/12.";
+const HEDGE = "You'll tick Termination on the form yourself; it needs DM/HR approval before it's finalized.";
+const offline = process.env.AGENT_LOOP_LIVE !== "1";
+const toolResults = (views: readonly LoopView[], tool: string) => views.flatMap((view) => view.results.filter((result) => result.tool === tool)).map((result) => JSON.stringify(result.output));
+
+/** The manager's message: their words, naming the person when they do not already, then the account. */
+const said = (words: string) => `${/remy calder/i.test(words) ? words.replace(/<A>/g, "Remy Calder") : `ca for remy calder. ${words}`} ${ACCOUNT}`;
+
+/** A Corrective Action card for Remy Calder, where the stand-in model decides `termination` or not. */
+async function card(t: ReplayContext, words: string, termination: boolean) {
+  vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
+  t.directory([...STAFF]);
+  t.as("salon_director", KEARNEY);
+  const model = loopStandIn((view): LoopDecision => {
+    const result = lastResult(view, "propose_form") as { facts?: { termination_stated?: { approval: string; plan_closing: string } } } | null;
+    if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
+    if (!result) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: ACCOUNT, incident_date: "2026-11-12", ...(termination ? { warning_level: "termination" } : {}) } };
+    const stated = result.facts?.termination_stated;
+    return {
+      text: stated
+        ? `Here's the Corrective Action Form for **Remy Calder**.\n\n**Type of Warning:** Termination, as you said — I'll tick it on the form. Tell me if that should change.\n${stated.approval}\n\n**Observation of Offense:** ${ACCOUNT}`
+        : `Here's the Corrective Action Form for **Remy Calder**.\n\n${HEDGE}\n\n**Observation of Offense:** ${ACCOUNT}`,
+    };
+  });
+  t.loopModel!(model);
+  const thread = t.thread();
+  const reply = await thread.say(said(words));
+  return { thread, reply, model };
+}
+
+/* The model reads these as this form's termination (the rules book's IS list, and QA's regressions that must stay true). */
+const IS_TERMINATION = [
+  "we're terminating her",
+  "termination CA for <A>",
+  "create a termination for <A>",
+  "we fired her today",
+  "my DM approved her termination",
+  "after two prior warnings we are terminating her",
+  "After two prior written warnings, we are terminating her.",
+  "She has prior warnings, terminate her.",
+  "termination CA, she was previously warned twice",
+  "she no call no showed her first day, terminate her",
+  "I would like a termination CA for <A>",
+];
+
+/* The model reads these as NOT this form's termination: a warning, history, another person, intent, a question. */
+const NOT_TERMINATION = [
+  "if this happens again it will result in termination",
+  "future violations may result in termination of employment",
+  "Any further violations will result in termination.",
+  "I don't think it should be a termination",
+  "she was fired from her last job",
+  "she has been terminated at Target",
+  "she was terminated at Target years ago",
+  "He has been terminated at his previous job",
+  "Previously she has been terminated and rehired",
+  "They fired him at his old salon",
+  "they fired him at Walmart",
+  "she got fired her first week at Target",
+  "we fired her sister",
+  "I told her we'd fire her",
+  "I need to fire her",
+  "I'd like to fire her",
+  "we will fire her",
+  "if this continues we will terminate her",
+  "HR wants us to fire her",
+  "should I terminate her?",
+];
+
+/* The words carry no termination word: the lock refuses a termination the model asked for. */
+const NO_WORD = ["write her up, she has two prior warnings", "final written for <A>, last chance", "let her go home early today"];
+
+/** A short, stable id part for one input. */
+const slug = (words: string) => words.toLowerCase().replace(/<a>/g, "a").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 48);
+
+export const NOV15_AGENT_LOOP_TERMINATION_DECISION_CASES: ReplayCase[] = [
+  ...IS_TERMINATION.map((words): ReplayCase => ({
+    id: `nov15-termination-decision-is-${slug(words)}`,
+    title: `QA's design: "${words}" — the model decides this form is a termination: the card says Termination, as you said, with the DM/HR approval line, and Create ticks it`,
+    report: REPORT,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      const { thread, reply } = await card(t, words, true);
+      expect(reply.content, `"${words}" is not carded as a termination:\n${reply.content}`).toMatch(/\*\*Type of Warning:\*\* Termination, as you said/);
+      expect(reply.content).toContain("Termination needs your DM/HR approval before you finalize.");
+      const id = await thread.create();
+      expect(t.checked(id).warning_type, `Create did not tick Termination for "${words}"`).toEqual(["termination"]);
+    },
+  })),
+  ...NOT_TERMINATION.map((words): ReplayCase => ({
+    id: `nov15-termination-decision-not-${slug(words)}`,
+    title: `QA's design: "${words}" — the model decides this is NOT this form's termination: the hedge line, and Create ticks nothing`,
+    report: REPORT,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      const { thread, reply } = await card(t, words, false);
+      expect(reply.content, `"${words}" was carded as a termination`).not.toMatch(/Termination, as you said/);
+      expect(reply.content).toContain(HEDGE);
+      const id = await thread.create();
+      expect(t.checked(id).warning_type ?? [], `Create ticked Termination for "${words}"`).not.toContain("termination");
+    },
+  })),
+  {
+    id: "nov15-termination-decision-lock-refuses-no-word",
+    title: "QA's design, the lock: a termination the model asks for where the manager's words carry no termination word is not kept (not_kept), and Create ticks nothing; a card forged with loopTermination is refused at Create too",
+    report: REPORT,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      for (const words of NO_WORD) {
+        const { thread, reply, model } = await card(t, words, true);
+        expect(reply.content, `"${words}" was carded as a termination`).not.toMatch(/Termination, as you said/);
+        if (offline) expect(toolResults(model.views, "propose_form")[0] ?? "", `the lock kept a termination for "${words}"`).toMatch(/"not_kept":\[[^\]]*"warning_level"/);
+        expect((thread.proposal as { loopTermination?: true } | null)?.loopTermination, "the card carries a termination").toBeUndefined();
+        const id = await thread.create();
+        expect(t.checked(id).warning_type ?? [], `Create ticked Termination for "${words}"`).not.toContain("termination");
+      }
+      // Create's own server-side check: a card that says termination, from a chat with no termination word.
+      const { thread } = await card(t, NO_WORD[0]!, false);
+      (thread as unknown as { proposal: Record<string, unknown> }).proposal = { ...thread.proposal!, loopTermination: true };
+      const id = await thread.create();
+      expect(t.checked(id).warning_type ?? [], "Create accepted a termination with no termination word in the chat").not.toContain("termination");
+    },
+  },
+  {
+    id: "nov15-termination-decision-exit",
+    title: "QA's design, exits: the model decides resignation (\"…last day 11/28. Not a termination.\", \"resigned in lieu of termination\", \"terminated at her last salon\", …) and the stated last day is the card's date; a termination exit without a termination word is not kept",
+    report: REPORT,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-15T18:00:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", KEARNEY);
+      const exit = async (words: string, termination: boolean) => {
+        const model = loopStandIn((view): LoopDecision => {
+          if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
+          if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "stc-exit", employee_id: "e-2", incident_date: "2026-11-28", exit_type: termination ? "termination" : "resignation" } };
+          return { text: "Here's the Employee Exit Form for **Remy Calder**." };
+        });
+        t.loopModel!(model);
+        const thread = t.thread();
+        await thread.say(words);
+        return { thread, model };
+      };
+      for (const words of [
+        "exit form for remy calder, she gave notice, last day 11/28. Not a termination.",
+        "exit form for remy calder. She quit, last day 11/28. She was fired from her last job btw",
+        "exit form for remy calder, she resigned, last day 11/28, let her go home early today",
+        "exit form for remy calder, she resigned in lieu of termination, last day 11/28",
+        "exit form for remy calder, she quit after we talked about termination, last day 11/28",
+        "exit form for remy calder, she resigned, last day 11/28, she was terminated at her last salon",
+      ]) {
+        const { thread, model } = await exit(words, false);
+        expect(thread.proposal?.formDate, `the stated last day was replaced after "${words}"`).toBe("2026-11-28");
+        if (offline) expect(toolResults(model.views, "propose_form")[0] ?? "", `"${words}" was filed as a termination`).not.toMatch(/exit_termination/);
+      }
+      // The lock: a termination the model asks for where the words carry no termination word.
+      const { thread, model } = await exit("exit form for remy calder, she quit, last day 11/28", true);
+      expect(thread.proposal?.formDate).toBe("2026-11-28");
+      if (offline) expect(toolResults(model.views, "propose_form")[0] ?? "", "the lock kept a termination exit with no termination word").toMatch(/"not_kept":\[[^\]]*"exit_type"/);
+    },
+  },
+];

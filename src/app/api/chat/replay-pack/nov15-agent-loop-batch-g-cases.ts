@@ -377,7 +377,8 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       t.as("salon_director", KEARNEY);
       t.loopModel!(loopStandIn((view): LoopDecision => {
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
-        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "stc-exit", employee_id: "e-2", incident_date: "2026-11-20" } };
+        // QA's design (15 Nov 2026): the model decides the exit is a termination; the tool locks it on the word.
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "stc-exit", employee_id: "e-2", incident_date: "2026-11-20", exit_type: "termination" } };
         return { text: "Here's the Employee Exit Form for **Remy Calder**: a termination, effective 11/20/2026, as you said. Not eligible for rehire; reason: no call no show for 3 shifts." };
       }));
       const thread = t.thread();
@@ -555,7 +556,8 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
         const result = lastResult(view, "propose_form") as { card?: { policy?: string | null }; facts?: { exit_termination?: { effective: string; dated_today?: boolean }; exit_dates?: string[] } } | null;
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
         // A model that reaches for the CA's Attendance policy: an exit cites none.
-        if (!result) return { tool: "propose_form", input: { template_key: "stc-exit", employee_id: "e-2", policy: "Attendance", incident_date: "2026-11-10" } };
+        // QA's design (15 Nov 2026): the model decides the exit is a termination; the tool locks it on the word.
+        if (!result) return { tool: "propose_form", input: { template_key: "stc-exit", employee_id: "e-2", policy: "Attendance", incident_date: "2026-11-10", exit_type: "termination" } };
         const exit = result.facts?.exit_termination;
         return {
           text: [

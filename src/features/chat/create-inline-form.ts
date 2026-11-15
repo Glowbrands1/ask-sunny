@@ -159,7 +159,7 @@ export async function createInlineForm({
        * Omitted otherwise, so the box starts empty. Revalidated by the route
        * against the pinned version.
        */
-      ...(proposal.warningLevel ? { warningLevel: proposal.warningLevel } : {}),
+      ...(proposal.warningLevel ? { warningLevel: proposal.warningLevel } : proposal.loopTermination ? { warningLevel: "termination" } : {}),
       locationId: proposal.locationId,
       source: "ask_sunny",
       /* The card's own id: a second press of it returns the draft it already made. */

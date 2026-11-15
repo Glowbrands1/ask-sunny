@@ -165,22 +165,19 @@ export function exactWarningLevel(value: string): "verbal" | "written" | "termin
 }
 
 /**
- * Batch G (G11, QA's review): the message names the form's own date ("change date of document to …", "form date",
- * "date on the form", "date this form", or a message that is only "change the date to 12/20/2026": E12's wording, with
- * no incident in it), not an incident's ("wrong date, she was late on 11/20").
+ * Batch G (G8; QA's design, 15 Nov 2026): the model passes action_plan; code LOCKS it. The current message must mark
+ * an Action Plan ("action plan" followed within 40 characters by ":" or "to", so "leave the action plan alone" is not
+ * one), and the model's text must appear in the message after that marker, word for word (case and spacing aside).
+ * What is saved is that stretch of the message, in the manager's own capitals; the model sets its bounds, so "Also make
+ * it a written…" after it stays out. Null when either check fails.
  */
-export const FORM_DATE_NAMED = /\b(?:form|document)['’]?s?\s+date\b|\bdate\s+(?:of|on)\s+(?:the\s+|this\s+)?(?:form|document)\b|\bdate\s+(?:this|the)\s+(?:form|document)\b|^\s*(?:please\s+)?(?:change|set|update|make)\s+the\s+date\s+(?:to|as)\s+[\d/.-]+\s*\.?\s*$/i;
-
-/**
- * Batch G (G8, QA's review): where the manager's own Action Plan text starts in this message: after an "Action Plan:"
- * label (or "the action plan section … needs to reflect the following verbage:"), or after "change / make / set the
- * action plan to …". Null when the message does not mark one; the text is the manager's, never the model's string.
- */
-export function dictatedActionPlan(message: string): string | null {
-  const marked = /\baction\s+plan\b[^.:\n]{0,80}:\s*/i.exec(message) ?? /\b(?:change|make|set|update)\s+(?:the\s+)?action\s+plan(?:\s+section)?\s+to\s+(?:say\s+|read\s+)?/i.exec(message);
-  if (!marked) return null;
-  const text = message.slice(marked.index + marked[0].length).trim().replace(/^["“'‘]+|["”'’]+$/g, "").trim();
-  return text.length > 10 ? text : null;
+export function dictatedActionPlan(message: string, modelText: string): string | null {
+  const marker = /\baction\s+plan\b[^\n]{0,40}?(?::|\bto\b)/i.exec(message);
+  const words = (modelText ?? "").trim().split(/\s+/).filter(Boolean);
+  if (!marker || words.join(" ").length <= 10) return null;
+  const pattern = new RegExp(words.map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("\\s+"), "i");
+  const found = pattern.exec(message.slice(marker.index + marker[0].length));
+  return found ? found[0] : null;
 }
 
 /** Batch G (G4): the app's own question when several forms on file fit (find_past_forms gives it; the rules book ends the reply with it). */
@@ -300,30 +297,6 @@ function staffRow(person: RosterEmployee) {
  * An exit card's dates read back in the form's own labels and words (EXIT_DATE_LINE_AGREES; the live re-run's
  * no-notice-no-date-resigned: "the resignation date is lost"), read by today's exit reader from the manager's words.
  */
-/**
- * Batch G (G7a; QA's review, 15 Nov 2026): an exit the manager states as a termination, read by the same reader as a
- * Corrective Action's (`statesTermination`: its flag, hedges, negations and history; never "let her go"), or an
- * "involuntary" separation said plainly. "…last day 11/28. Not a termination.", "She quit. She was fired from her last
- * job btw" and "let her go home early today" are not.
- */
-export async function exitIsTermination(words: string): Promise<boolean> {
-  const { statesTermination } = await import("@/lib/forms/termination-stated");
-  if (statesTermination(words)) return true;
-  if (!(await import("@/lib/config/chat-quality-flags")).terminationStatedTicksEnabled()) return false;
-  /*
-   * An exit's own wording, clause by clause ("terminate remy calder, 3 no call no shows …", "termination effective
-   * 11/20, not eligible for rehire"): the clause names the termination and carries no negation, hedge, history or
-   * question of its own. "no call no show" is the absence, never a negation.
-   */
-  return words.split(/(?<=[.!?;])\s+|\n+/).some((sentence) => !sentence.trim().endsWith("?") && sentence
-    .replace(/\bno[\s-]?call\s*[,/&-]?\s*(?:and\s+)?no[\s-]?show(?:s|ed)?\b|\bncns\b/gi, " ")
-    .split(/[,;:–—]|\s-\s/)
-    .some((clause) => /\bterminat(?:e|ed|ing|ion)\b|\binvoluntary\b/i.test(clause) && !EXIT_NOT_TERMINATION.test(clause)));
-}
-
-/** A clause that names a termination without stating one for this exit: negated, hedged, history or intent. */
-const EXIT_NOT_TERMINATION = /\b(?:not|no|never|without|if|maybe|might|may|could|would|should|consider(?:ing)?|thinking|unless|before|previous(?:ly)?|prior|former|old|last\s+job|rather|instead|avoid)\b|n['’]t\b|\b(?:need|like|want|plan)(?:s|ed)?\s+to\b/i;
-
 /** A date right after "effective" ("effective 11/20", "effective as of Nov 20"); null when none. */
 function terminationEffectiveDateOf(words: string, today: string): string | null {
   const effective = /\beffective(?:\s+(?:on|as of|date))?\s+([^,\n]{3,25})/i.exec(words)?.[1];
@@ -1138,6 +1111,7 @@ export async function proposeForm(
     what_happened?: unknown;
     incident_date?: unknown;
     warning_level?: unknown;
+    exit_type?: unknown;
     payroll_deduct?: unknown;
     payroll_amount?: unknown;
     prior_actions?: unknown;
@@ -1433,7 +1407,15 @@ export async function proposeForm(
     : null;
   const askedLevel = input.warning_level === "verbal" || input.warning_level === "written" ? input.warning_level : null;
   const level = askedLevel && (askedLevel === "verbal" ? /\bverbal\b/i : /\bwritten\b|\bwrite[- ]?up\b/i).test(managerWords) ? askedLevel : null;
-  const dropped = [askedLevel && !level ? "warning_level" : null, askedPayroll && !payroll ? "payroll_deduct" : null, typedAmount && !amount ? "payroll_amount" : null].filter(Boolean);
+  /*
+   * Batch G (QA's design, 15 Nov 2026; Pau's standing approval): the MODEL decides this Corrective Action is a
+   * termination (warning_level "termination", taught by the rules book's examples); code only LOCKS it. It is kept only
+   * when the manager's own words for this request carry a termination word (`saysTerminationWord`), else refused
+   * (not_kept). Create checks the word again, server-side.
+   */
+  const askedTermination = input.warning_level === "termination" && template.key === "dpoa";
+  const loopTermination = askedTermination && !level && (await import("@/lib/config/chat-quality-flags")).terminationStatedTicksEnabled() && (await import("@/lib/forms/termination-word")).saysTerminationWord(requestWords);
+  const dropped = [(askedLevel && !level) || (askedTermination && !loopTermination) ? "warning_level" : null, askedPayroll && !payroll ? "payroll_deduct" : null, typedAmount && !amount ? "payroll_amount" : null].filter(Boolean);
   /*
    * Prior actions as today reads them from the manager's own words (`statedPriorActions`: "Verbal corrective action —
    * signed 09/02/2026", a corrected date replacing the first; the live re-run's second-request-prior-step-correction
@@ -1489,8 +1471,13 @@ export async function proposeForm(
    * form's "Immediate involuntary separation", dated the stated effective date, else today (said in one line). The
    * no-show dates are the reason, never the form's date.
    */
-  /* QA's review: the request's own turns only; a stated effective date, else the stated last day, else today. */
-  const exitTermination = template.key === "stc-exit" && (await exitIsTermination(requestWords))
+  /*
+   * QA's design (15 Nov 2026): the MODEL decides an exit is a termination (exit_type "termination", the rules book's
+   * Exit lines); code only LOCKS it on a termination word in the request's own turns. The stated effective date, else
+   * the stated last day, is always kept; today only when no date was stated.
+   */
+  const askedExitTermination = template.key === "stc-exit" && input.exit_type === "termination";
+  const exitTermination = askedExitTermination && (await import("@/lib/forms/termination-word")).saysTerminationWord(requestWords)
     ? await (async () => {
         const effective = terminationEffectiveDateOf(requestWords, today);
         const lastDay = effective ? null : (await import("@/lib/forms/exit-facts")).readExitFacts(requestWords, today).lastDayWorked;
@@ -1533,7 +1520,7 @@ export async function proposeForm(
     ...proposal,
     sourceMessageIds: sourceIds,
     formDate: exitTermination ? exitTermination.date : datesAsked.length > 0 || futureDate ? null : date ?? proposal.formDate ?? null,
-    ...(level ? { warningLevel: level } : {}),
+    ...(level ? { warningLevel: level } : loopTermination ? { loopTermination: true as const } : {}),
     ...(whatHappened ? { issue: whatHappened } : {}),
     ...(payroll ? { payrollDeduct: payroll } : {}),
     ...(payroll === "yes" && amount ? { payrollDeductAmount: amount } : {}),
@@ -1594,12 +1581,11 @@ export async function proposeForm(
   const corrective = template.key === "dpoa";
   /*
    * TERMINATION_STATED_TICKS (batch H12; Pau's P15 ruling): a termination the manager stated is the level, ticked at
-   * Create (`api/forms/instances`, unchanged); the card says so with the DM/HR approval line, and never asks the level.
-   * Batch G (G19) reads it with the widened reader (`statesTermination`, the one Create ticks with), so the card and
-   * the saved form agree; a hedge states nothing.
+   * Create (`api/forms/instances`); the card says so with the DM/HR approval line, and never asks the level. Batch G:
+   * the model's own decision, locked above (`loopTermination`), gives the same fact, so the card and the form agree.
    */
   const stated = await import("@/lib/forms/termination-stated");
-  const terminationStated = corrective && !level && (await import("@/lib/config/chat-quality-flags")).terminationStatedTicksEnabled() && stated.statesTermination(requestWords);
+  const terminationStated = loopTermination || (corrective && !level && (await import("@/lib/config/chat-quality-flags")).terminationStatedTicksEnabled() && stated.statesTermination(requestWords));
   const unset = corrective && !awaiting ? [...(payroll ? [] : ["payroll_deduct"]), ...(level || terminationStated ? [] : ["warning_level"])] : [];
   const salonNames = (ids: readonly string[] | undefined) => (ids ?? []).map((id) => ({ id, name: rosterSalonName(id) ?? id }));
   const facts = {
@@ -1655,7 +1641,7 @@ export async function proposeForm(
     ...((await import("@/lib/ai/carried-person-notice")).carriedFromEarlier(template.key, card.employeeName, { history: context.history as ChatMessage[], question: context.question }) ? { person_from_earlier: card.employeeName } : {}),
     ...(underPerformance ? { under_performance: true } : {}),
     ...(didYouMean ? { confirm_policy: didYouMean } : {}),
-    ...(dropped.length > 0 ? { not_kept: dropped } : {}),
+    ...(dropped.length > 0 || (askedExitTermination && !exitTermination) ? { not_kept: [...dropped, ...(askedExitTermination && !exitTermination ? ["exit_type"] : [])] } : {}),
     ...((await outsideScopeSalon(context)) ?? (card.namedLocationOutOfScope ? { salon_outside_scope: card.namedLocationOutOfScope } : {})),
   };
   return {
@@ -1798,14 +1784,14 @@ export async function editForm(
        * TERMINATION_STATED_TICKS reads it; "I can't select Termination" alone is a question about the form.
        */
       /*
-       * Batch G (QA's review, 15 Nov 2026): Termination only when THIS message states it (`statesTermination`, with its
-       * hedge, negation and history checks); never from earlier turns about another person or form, never from a
-       * future or modal "will result in termination".
+       * Batch G (QA's design, 15 Nov 2026): the model decides this form is a termination; code only LOCKS it. The
+       * CURRENT message must carry a termination word and not be a question (`statesTerminationWordNow`); earlier turns,
+       * about another person or form, never unlock it.
        */
       const kind = exactWarningLevel(value);
       if (kind === null) continue; // refused below: not a warning level on this form
       if (kind === "termination") {
-        if (!(await import("@/lib/forms/termination-stated")).statesTermination(context.question)) unstated.push(field);
+        if (!(await import("@/lib/forms/termination-word")).statesTerminationWordNow(context.question)) unstated.push(field);
         continue;
       }
       const level = kind === "written" ? /\bwritten\b|\bwrite[- ]?up\b/i : /\bverbal\b/i;
@@ -1854,15 +1840,16 @@ export async function editForm(
      * never after today.
      */
     const typedDates = readDates(context.question);
-    /* QA's review: an incident date after today is always refused; only the form's own date, named as such and typed in this message, is exempt. */
+    /*
+     * QA's design (15 Nov 2026): on an incident form (CA, coaching), form_date and incident_date after today are always
+     * refused, with one question, however the message names them. Only the follow-up date and an exit's last day or
+     * effective date may be after today (G6).
+     */
     const later = ACCOUNT_FORMS.has(loaded.instance.templateKey)
       ? Object.entries(values).filter(([field, value]) => {
           if (field !== "form_date" && field !== "incident_date") return false;
           const iso = isoDate(value, editToday);
-          if (!iso || iso <= editToday) return false;
-          if (field === "incident_date" || !FORM_DATE_NAMED.test(context.question)) return true;
-          const [year, month, day] = iso.split("-").map(Number) as [number, number, number];
-          return !typedDates.some((typed) => sameDate(typed, { month, day, year }));
+          return Boolean(iso && iso > editToday);
         })
       : [];
     if (later.length > 0) {
@@ -2052,7 +2039,7 @@ export async function editForm(
      * stated fact). Any other form_date value stays with the assistant's writer, which never drafts the Date.
      */
     let documentDate: string | null = null;
-    if (values.form_date && FORM_DATE_NAMED.test(context.question)) {
+    if (values.form_date) {
       const iso = isoDate(values.form_date, editToday);
       const [year, month, day] = (iso ?? "").split("-").map(Number) as [number, number, number];
       if (iso && typedDates.some((typed) => sameDate(typed, { month, day, year }))) {
@@ -2071,7 +2058,7 @@ export async function editForm(
     ];
     /* Batch G (G8): a dictated Action Plan is saved after the level (below), so its closing reads the form's Termination. */
     /* QA's review: only a plan the message marks, saved as the manager typed it (from the message, never the model's string). */
-    const planToSave = values.action_plan ? dictatedActionPlan(context.question) : null;
+    const planToSave = values.action_plan ? dictatedActionPlan(context.question, values.action_plan) : null;
     if (planToSave !== null) delete values.action_plan;
     // The revision's writer, as chat-revision.ts saves: the one writer with FORM_EDIT_SINGLE_WRITER_ENABLED, else the old one.
     const written = formEditSingleWriterEnabled()
@@ -2120,7 +2107,6 @@ export async function editForm(
       ...rewordFacts,
       ...addFacts,
       ...(rewordAsked ? { reword_paused: true } : {}),
-      ...(dateWritten && documentDate! > editToday ? { date_after_today_as_asked: documentDate } : {}),
       ...(checked.warning_type?.[0] === "termination" && updated.includes("warning_type") ? { termination_approval_line: (await import("@/lib/forms/termination-stated")).TERMINATION_APPROVAL_LINE } : {}),
       ...(answerAlsoWrote.length > 0 ? { level_or_payroll_answer_also_wrote: answerAlsoWrote } : {}),
       ...(rewordFacts.reword_lost || rewordFacts.reword_touched_fixed_fields || rewordFacts.reword_added_link || addFacts.add_changed_sentences || addFacts.add_not_at_end_of_observed || answerAlsoWrote.length > 0

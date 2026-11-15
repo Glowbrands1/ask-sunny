@@ -130,7 +130,7 @@ export const NOV15_AGENT_LOOP_SILENT_FAILURE_CASES: ReplayCase[] = [
   },
   {
     id: "nov15-silent-g11-document-date-the-manager-sets",
-    title: "G11: \"change date of document to 11-15-2026\" sent at 7:35 PM CT on 11/13 dates the draft 11/15/2026 and says it is after today, as asked",
+    title: "G11: \"change date of document to 11-15-2026\" sent at 7:35 PM CT on 11/13 is refused (after today, on a Corrective Action) with one question; the same message with a date not after today sets the document's date",
     report: `${REPORT}: t10, a document date the manager set after today`,
     status: "fixed",
     fixFlags: [FLAG],
@@ -138,16 +138,23 @@ export const NOV15_AGENT_LOOP_SILENT_FAILURE_CASES: ReplayCase[] = [
       if (!t.loopOn?.()) return;
       const { thread, id } = await wrensDraft(t);
       vi.setSystemTime(new Date("2026-11-14T01:35:00Z")); // 7:35 PM Central on 11/13
-      const model = loopStandIn((view): LoopDecision => {
-        const edit = lastResult(view, "edit_form") as { date_after_today_as_asked?: string; error?: string } | null;
-        if (!edit) return { tool: "edit_form", input: { instance_id: id, values: { form_date: "2026-11-15" } } };
-        return { text: edit.date_after_today_as_asked ? "Dated 11/15/2026 (after today), as you asked." : edit.error ?? "Done." };
+      const before = t.values(id).form_date ?? "";
+      const model = (date: string) => loopStandIn((view): LoopDecision => {
+        const edit = lastResult(view, "edit_form") as { error?: string } | null;
+        if (!edit) return { tool: "edit_form", input: { instance_id: id, values: { form_date: date } } };
+        return { text: edit.error ? "11/15/2026 is after today, so I didn't change the date. Which day should it be?" : "Dated 11/12/2026, as you asked." };
       });
-      t.loopModel!(model);
+      /*
+       * Changed on purpose (QA's design, 15 Nov 2026, item D): on a Corrective Action or Coaching form, form_date after
+       * today is always refused with one question, however the message names it.
+       */
+      t.loopModel!(model("2026-11-15"));
       const reply = await thread.say(T10);
-      expect(t.values(id).form_date ?? "", `the document date was not set:\n${reply.content}`).toBe("2026-11-15");
-      expect(reply.content).toMatch(/Dated 11\/15\/2026 \(after today\), as you asked\./);
-      if (offline) expect(toolResults(model.views, "edit_form")[0], "the date the manager set was not a fact").toMatch(/"date_after_today_as_asked":"2026-11-15"/);
+      expect(t.values(id).form_date ?? "", `a document date after today was written:\n${reply.content}`).toBe(before);
+      expect(reply.content).toMatch(/after today.*Which day/);
+      t.loopModel!(model("2026-11-12"));
+      await thread.say("change date of document to 11-12-2026");
+      expect(t.values(id).form_date ?? "", "the manager's own document date was not written").toBe("2026-11-12");
     },
   },
   {
@@ -197,7 +204,8 @@ export const NOV15_AGENT_LOOP_SILENT_FAILURE_CASES: ReplayCase[] = [
       const model = loopStandIn((view): LoopDecision => {
         const result = lastResult(view, "propose_form") as { facts?: { termination_stated?: { approval: string; plan_closing: string } } } | null;
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "Wren Halloway" } };
-        if (!result) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: WREN.id, what_happened: "Wren Halloway was a no call no show." } };
+        // QA's design (15 Nov 2026): the model decides this form is a termination (not a hedge); the tool locks it on the word.
+        if (!result) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: WREN.id, what_happened: "Wren Halloway was a no call no show.", ...(/might terminate/.test(latest(view)) ? {} : { warning_level: "termination" }) } };
         const stated = result.facts?.termination_stated;
         return {
           text: stated
@@ -236,7 +244,8 @@ export const NOV15_AGENT_LOOP_SILENT_FAILURE_CASES: ReplayCase[] = [
       const model = loopStandIn((view): LoopDecision => {
         const result = lastResult(view, "propose_form") as { facts?: { termination_stated?: { approval: string; plan_closing: string } } } | null;
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "Wren Halloway" } };
-        if (!result) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: WREN.id, what_happened: "Wren Halloway was a no call no show on 11/12.", incident_date: "2026-11-12" } };
+        // QA's design (15 Nov 2026): the model decides this form is a termination; the tool locks it on the word.
+        if (!result) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: WREN.id, what_happened: "Wren Halloway was a no call no show on 11/12.", incident_date: "2026-11-12", warning_level: "termination" } };
         const stated = result.facts?.termination_stated;
         return {
           text: stated
@@ -266,8 +275,9 @@ export const NOV15_AGENT_LOOP_SILENT_FAILURE_CASES: ReplayCase[] = [
     async run(t) {
       if (!t.loopOn?.()) return;
       const { thread, id } = await wrensDraft(t);
+      /* QA's design (15 Nov 2026): the model decides; this one reads a future warning as no termination, then a bare "tick it" as one, which the lock refuses. */
       const ticker = loopStandIn((view): LoopDecision => {
-        if (/I'll do his form later/.test(latest(view))) return { text: "Noted." };
+        if (/I'll do his form later|will result in termination/.test(latest(view))) return { text: "You'll tick Termination on the form yourself; it needs DM/HR approval before it's finalized." };
         if (!lastResult(view, "edit_form")) return { tool: "edit_form", input: { instance_id: id, values: { warning_type: "termination" } } };
         return { text: "Done." };
       });
@@ -277,6 +287,7 @@ export const NOV15_AGENT_LOOP_SILENT_FAILURE_CASES: ReplayCase[] = [
       await thread.say("Remy Calder has been terminated, I'll do his form later");
       await thread.say("ok tick the warning box on this one");
       expect(t.checked(id).warning_type ?? [], "a termination said about another person unlocked this form").not.toContain("termination");
+      if (offline) expect(toolResults(ticker.views, "edit_form").at(-1) ?? "", "the lock did not refuse a message with no termination word").toMatch(/must come from the manager's own words/);
     },
   },
   {
@@ -324,7 +335,7 @@ export const NOV15_AGENT_LOOP_SILENT_FAILURE_CASES: ReplayCase[] = [
       if (!t.loopOn?.()) return;
       const { thread, id } = await wrensDraft(t);
       t.loopModel!(loopStandIn((view): LoopDecision => {
-        if (!lastResult(view, "edit_form")) return { tool: "edit_form", input: { instance_id: id, values: { action_plan: "Wren will complete the daily cleaning checklist every shift." } } };
+        if (!lastResult(view, "edit_form")) return { tool: "edit_form", input: { instance_id: id, values: { action_plan: "wren will complete the daily cleaning checklist every shift and initial it" } } };
         return { text: "Updated the Action Plan." };
       }));
       await thread.say("Action Plan: Wren Will complete the Daily Cleaning Checklist every shift and initial it");
