@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, cx, inputClass } from "@/features/l10/ui/ui";
 import { MentionField, useMentionPlain } from "@/features/l10/ui/Mentions";
 import { StatusBadge } from "@/features/l10/ui/StatusBadge";
+import { initials, mmddyyyy } from "@/features/l10/lib/bloom";
 import { milestoneState, rockState } from "@/features/l10/lib/dueStatus";
 import { duplicateRock, newItemId, ROCK_STATUS_LABEL, ROCK_STATUS_ORDER, rockSections } from "@/features/l10/lib/doc";
 import type { Milestone, Rock, RockStatus } from "@/features/l10/lib/types";
@@ -13,7 +14,42 @@ const ownerInitials = (name: string) => name.split(" ").map((n) => n[0]).filter(
 
 const STATUS_TONE: Record<RockStatus, string> = { "on-track": "bg-ok text-ink", "off-track": "bg-warn text-warn-ink", done: "border border-[#1b5e2a] bg-[#e1f1e4] text-[#154a21] print:border-black print:bg-white print:text-black" };
 
-function RockRow({ rock, today, open, onOpen, onChange }: { rock: Rock; today: string; open: boolean; onOpen: () => void; onChange: (r: Rock) => void }) {
+/**
+ * Bloom-style milestone bar under a rock's title: one segment per milestone, green when done, red when overdue, grey
+ * otherwise. Its words are for screen readers.
+ */
+function MilestoneBar({ rock, today }: { rock: Rock; today: string }) {
+  if (rock.milestones.length === 0) return null;
+  const states = rock.milestones.map((m) => (m.done ? "done" : milestoneState(m, today) === "overdue" ? "overdue" : "open"));
+  const count = (k: string) => states.filter((x) => x === k).length;
+  return (
+    <span role="img" aria-label={`Milestones: ${count("done")} done, ${count("overdue")} overdue, ${count("open")} to do`} data-testid="milestone-bar" className="mt-1 flex h-1.5 w-full max-w-64 gap-0.5">
+      {states.map((st, i) => (
+        <span key={i} data-state={st} className={cx("h-full flex-1 rounded-full", st === "done" ? "bg-[#2f8a43]" : st === "overdue" ? "bg-[#b42323]" : "bg-line")} />
+      ))}
+    </span>
+  );
+}
+
+function RockRow({
+  rock,
+  today,
+  open,
+  onOpen,
+  onChange,
+  bloom = false,
+  expanded = false,
+  onToggleMilestones,
+}: {
+  rock: Rock;
+  today: string;
+  open: boolean;
+  onOpen: () => void;
+  onChange: (r: Rock) => void;
+  bloom?: boolean;
+  expanded?: boolean;
+  onToggleMilestones?: () => void;
+}) {
   const done = rock.milestones.filter((m) => m.done).length;
   const patch = (p: Partial<Rock>) => onChange({ ...rock, ...p });
   const rState = rockState(rock, today);
@@ -29,11 +65,14 @@ function RockRow({ rock, today, open, onOpen, onChange }: { rock: Rock; today: s
           onClick={onOpen}
           className="flex min-w-0 flex-1 items-start gap-2 text-left"
         >
-          <span aria-hidden className={cx("mt-0.5 text-xs text-muted", open && "text-bronze-deep")}>
-            ›
-          </span>
-          <span className="min-w-0">
+          {!bloom && (
+            <span aria-hidden className={cx("mt-0.5 text-xs text-muted", open && "text-bronze-deep")}>
+              ›
+            </span>
+          )}
+          <span className="min-w-0 flex-1">
             <span className="block text-sm font-semibold">{rock.title}</span>
+            {bloom && <MilestoneBar rock={rock} today={today} />}
             <span className="block text-xs text-muted">
               {rock.milestones.length > 0 && `${done}/${rock.milestones.length} milestones`}
               {rock.dueDate && <span className={cx(rState === "overdue" && "font-bold text-[#7a1717]")}>{rock.milestones.length > 0 ? " · " : ""}due {rock.dueDate}</span>}
@@ -41,6 +80,13 @@ function RockRow({ rock, today, open, onOpen, onChange }: { rock: Rock; today: s
             </span>
           </span>
         </button>
+        {bloom && rock.milestones.length > 0 && (
+          <button type="button" aria-expanded={expanded} aria-label={`${expanded ? "Hide" : "Show"} milestones of ${rock.title}`} onClick={onToggleMilestones} className="inline-flex size-9 flex-none items-center justify-center rounded-lg text-muted hover:bg-cream hover:text-ink">
+            <span aria-hidden className={cx("text-xs transition-transform", expanded && "rotate-90")}>
+              ▶
+            </span>
+          </button>
+        )}
         {(rState === "overdue" || rState === "soon") && <StatusBadge state={rState} />}
         <button
           type="button"
@@ -52,6 +98,22 @@ function RockRow({ rock, today, open, onOpen, onChange }: { rock: Rock; today: s
           {ROCK_STATUS_LABEL[rock.status]}
         </button>
       </div>
+      {bloom && expanded && rock.milestones.length > 0 && (
+        <ul aria-label={`Milestones of ${rock.title}`} className="m-0 flex list-none flex-col gap-1 px-3 pb-2.5 pl-6 text-sm">
+          {rock.milestones.map((m) => {
+            const st = milestoneState(m, today);
+            return (
+              <li key={m.id} className="flex items-center gap-2">
+                <span aria-hidden className={cx("flex size-4 flex-none items-center justify-center rounded-full text-[10px]", m.done ? "bg-[#2f8a43] text-white" : st === "overdue" ? "border border-[#b42323]" : "border border-line")}>
+                  {m.done ? "✓" : ""}
+                </span>
+                <span className={cx("min-w-0 flex-1", m.done && "text-muted line-through")}>{m.text}</span>
+                {m.dueDate && <span className={cx("font-mono text-xs", st === "overdue" ? "font-bold text-[#7a1717]" : "text-muted")}>{mmddyyyy(m.dueDate)}</span>}
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </div>
   );
 }
@@ -193,8 +255,31 @@ function RockPanel({ rock, owners, today, saveStatus, onChange, onDuplicate, onD
   );
 }
 
-export function Rocks({ rocks, onChange, people, today, saveStatus }: { rocks: Rock[]; onChange: (next: Rock[]) => void; people: string[]; today: string; /** The meeting's save status in words, shown quietly in the rock panel's footer. */ saveStatus?: string }) {
+export function Rocks({
+  rocks,
+  onChange,
+  people,
+  today,
+  saveStatus,
+  bloom = false,
+}: {
+  rocks: Rock[];
+  onChange: (next: Rock[]) => void;
+  people: string[];
+  today: string;
+  /** The meeting's save status in words, shown quietly in the rock panel's footer. */
+  saveStatus?: string;
+  /** Laid out like Bloom Growth's Rocks page (the DM L10s). */
+  bloom?: boolean;
+}) {
   const [showArchived, setShowArchived] = useState(false);
+  // Bloom-style list: milestones shown under every rock, or per rock; owners A–Z or in the usual order.
+  const [expandAll, setExpandAll] = useState(false);
+  const [expandedIds, setExpandedIds] = useState<ReadonlySet<string>>(new Set());
+  const [ownerAz, setOwnerAz] = useState(false);
+  const sections = rockSections(rocks, people, showArchived);
+  const shownSections = bloom && ownerAz ? [...sections].sort(([a], [b]) => a.localeCompare(b)) : sections;
+  const activeCount = rocks.filter((r) => !r.archived).length;
   // One rock open at a time, in the panel on the right.
   const [openId, setOpenId] = useState<string | null>(null);
   const opened = openId ? rocks.find((r) => r.id === openId) : undefined;
@@ -221,7 +306,7 @@ export function Rocks({ rocks, onChange, people, today, saveStatus }: { rocks: R
       <div className="rounded-[10px] border border-dashed border-line bg-cream/60 p-3 print:hidden">
         <div className="mb-2 text-xs font-bold text-muted">Add new rock</div>
         <div className="flex flex-wrap items-center gap-2">
-          <input aria-label="New rock title" value={title} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} placeholder="Rock title…" className={cx(inputClass, "min-w-[220px] flex-1")} />
+          <input aria-label="New rock title" value={title} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} placeholder={bloom ? "New rock… press Enter to add" : "Rock title…"} className={cx(inputClass, "min-w-[220px] flex-1")} />
           <select aria-label="New rock owner" value={owner} onChange={(e) => setOwner(e.target.value)} className={cx(inputClass, "w-48")}>
             {owners.map((o) => (
               <option key={o}>{o}</option>
@@ -233,10 +318,30 @@ export function Rocks({ rocks, onChange, people, today, saveStatus }: { rocks: R
           </Button>
         </div>
       </div>
-      {rockSections(rocks, people, showArchived).map(([who, list]) => (
+      {bloom && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-line print:hidden">
+          <div role="tablist" aria-label="Rock lists" className="-mb-px flex flex-1 gap-1">
+            <button type="button" role="tab" aria-selected className="min-h-11 border-b-2 border-bronze px-3 text-sm font-semibold">
+              All rocks ({activeCount})
+            </button>
+          </div>
+          <Button variant="outline" aria-pressed={expandAll} onClick={() => setExpandAll((v) => !v)}>
+            Expand milestones
+          </Button>
+          <Button variant="outline" aria-pressed={ownerAz} onClick={() => setOwnerAz((v) => !v)}>
+            Owner: A–Z
+          </Button>
+        </div>
+      )}
+      {shownSections.map(([who, list]) => (
         <section key={who} aria-label={who === "Company" ? "Company Rocks" : `${who}'s Rocks`} className="overflow-hidden rounded-[10px] border border-line bg-white shadow-card">
-          <div className="flex items-baseline gap-2 border-b border-line bg-cream px-3 py-2">
-            <h3 className="m-0 text-base font-bold">{who === "Company" ? "Company Rocks" : `${who}'s Rocks`}</h3>
+          <div className="flex items-center gap-2 border-b border-line bg-cream px-3 py-2">
+            {bloom && (
+              <span aria-hidden title={who} className="flex size-8 flex-none items-center justify-center rounded-full bg-white text-[11px] font-bold ring-1 ring-line">
+                {initials(who)}
+              </span>
+            )}
+            <h3 className="m-0 text-base font-bold">{bloom ? who : who === "Company" ? "Company Rocks" : `${who}'s Rocks`}</h3>
             <span className="text-xs text-muted">
               {list.length} rock{list.length === 1 ? "" : "s"}
             </span>
@@ -245,7 +350,24 @@ export function Rocks({ rocks, onChange, people, today, saveStatus }: { rocks: R
             <div className="px-3 py-3 text-sm text-muted">{who === "Company" ? "No company rocks yet. Add one above with owner “Company”." : `No rocks for ${who} yet. Add one above, or duplicate a company rock here.`}</div>
           ) : (
             list.map((r) => (
-              <RockRow key={r.id} rock={r} today={today} open={r.id === openId} onOpen={() => setOpenId(r.id)} onChange={(next) => onChange(rocks.map((x) => (x.id === r.id ? next : x)))} />
+              <RockRow
+                key={r.id}
+                rock={r}
+                today={today}
+                open={r.id === openId}
+                onOpen={() => setOpenId(r.id)}
+                onChange={(next) => onChange(rocks.map((x) => (x.id === r.id ? next : x)))}
+                bloom={bloom}
+                expanded={expandAll || expandedIds.has(r.id)}
+                onToggleMilestones={() => {
+                  // With every rock expanded, hiding one turns the others into individual choices.
+                  const next = new Set(expandAll ? rocks.map((x) => x.id) : expandedIds);
+                  if (next.has(r.id)) next.delete(r.id);
+                  else next.add(r.id);
+                  setExpandAll(false);
+                  setExpandedIds(next);
+                }}
+              />
             ))
           )}
         </section>
