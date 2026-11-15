@@ -134,42 +134,54 @@ NOV16_AGENT_LOOP_DID_YOU_MEAN_CONFIRM_CASES.push(
 
 /*
  * HANDOFF section 7, item 6: "c124: a bare first name answering 'Who is it for?' gets no find_staff call; c165: a first
- * name read as an acronym." The stand-in replies as those models did, without a lookup; code hands the turn back once
- * ([app check]) and the second pass looks the name up and cards the person.
+ * name read as an acronym." QA's design (review of #1051): propose_form with nobody named returns ask_exactly and the
+ * turn records person_asked; the next turn's system facts say answering_who_question, up front, with no extra model call.
+ * The stand-in looks the answer up only when that fact is there, and otherwise replies as c124's and c165's models did.
+ * The asking turn may paraphrase ask_exactly: the record, not the reply, carries it.
  */
 NOV16_AGENT_LOOP_DID_YOU_MEAN_CONFIRM_CASES.push(
   ...([
-    ["c124", "rowan", "Rowan Kestrel", "Who is this Coaching Form for?"],
-    ["c165", "juno", "Juno Paxton", "What does JUNO stand for?"],
-  ] as const).map(([tag, answer, person, firstReply]): ReplayCase => ({
+    ["c124", "rowan", "Rowan Kestrel", "Who is this Coaching Form for?", false],
+    ["c165", "juno", "Juno Paxton", "What does JUNO stand for?", false],
+    ["c124-paraphrased-question", "rowan", "Rowan Kestrel", "Who is this Coaching Form for?", true],
+  ] as const).map(([tag, answer, person, withoutFact, paraphrase]): ReplayCase => ({
     id: `nov16-item6-first-name-answer-is-looked-up-${tag}`,
-    title: `Item 6 (${tag}'s shape): "I need a coaching form" asks "Who is this Coaching Form for?"; the bare answer "${answer}" got a reply with no find_staff ("${firstReply}"); code hands it back once and the card is ${person}'s`,
-    report: `QA's targeted re-run (16 Nov 2026), ${tag}, from the Runner's masked set; HANDOFF section 7 item 6`,
+    title: `Item 6 (${tag}'s shape): "I need a coaching form" asks who it is for through propose_form (ask_exactly${paraphrase ? ", paraphrased as \"Who's this one for?\"" : ""}); the next turn is told answering_who_question up front, so the bare answer "${answer}" is looked up and the card is ${person}'s (without the fact, the model replied "${withoutFact}")`,
+    report: `QA's targeted re-run (16 Nov 2026), ${tag.replace(/-.*/, "")}, from the Runner's masked set; HANDOFF section 7 item 6`,
     status: "fixed",
     fixFlags: [FLAG],
     async run(t) {
       if (!t.loopOn?.()) return;
       await salon(t);
-      const notes: string[] = [];
-      t.loopModel!(loopStandIn((view): LoopDecision => {
-        const said = latest(view);
-        const managerSaid = view.turns.filter((turn) => turn.role === "user" && !turn.text.startsWith("[app check]")).map((turn) => turn.text);
-        if (managerSaid.length === 1) return { text: "Who is this Coaching Form for?" };
-        if (!said.startsWith("[app check]")) return { text: firstReply };
-        if (!notes.includes(said)) notes.push(said);
+      const facts: boolean[] = [];
+      // The fact itself (the rules book also names answering_who_question, so the word alone proves nothing).
+      const told = (view: LoopView) => view.system.includes("answering_who_question: your last reply asked who the Coaching Form is for");
+      const model = loopStandIn((view): LoopDecision => {
+        const managerTurns = view.turns.filter((turn) => turn.role === "user");
+        const card = lastResult(view, "propose_form") as { ask_exactly?: string; card?: unknown } | null;
+        if (managerTurns.length === 1) {
+          if (!card) return { tool: "propose_form", input: { template_key: "coaching" } };
+          return { text: paraphrase ? "Who's this one for?" : card.ask_exactly ?? "" };
+        }
+        if (view.step === 0) facts.push(told(view));
+        if (!told(view)) return { text: withoutFact };
         const staff = lastResult(view, "find_staff") as StaffResult;
-        const words = managerSaid.at(-1)!;
-        if (!staff) return { tool: "find_staff", input: { name: words, person_evidence: { message_id: view.turns.filter((turn) => turn.role === "user").at(-2)?.messageIds?.[0] ?? "", quote: words } } };
+        const words = latest(view);
+        if (!staff) return { tool: "find_staff", input: { name: words, person_evidence: { message_id: managerTurns.at(-1)?.messageIds?.[0] ?? "", quote: words } } };
         const match = staff.matches?.[0];
-        if (match && !lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "coaching", employee_id: match.employee_id } };
+        if (match && !card) return { tool: "propose_form", input: { template_key: "coaching", employee_id: match.employee_id } };
         return { text: `Here's the Coaching Form for **${match?.name ?? ""}**. What happened?` };
-      }));
+      });
+      t.loopModel!(model);
       const thread = t.thread();
-      await thread.say("I need a coaching form");
+      const ask = await thread.say("I need a coaching form");
+      expect(ask.content).toMatch(paraphrase ? /Who's this one for\?/ : /Who is this Coaching Form for\?/);
+      const callsBefore = model.calls;
       const reply = await thread.say(answer);
-      expect(notes, "the turn was not handed back for a lookup").toHaveLength(1);
-      expect(notes[0]).toMatch(/no find_staff ran this turn/);
+      expect(facts, "the answering turn was not told answering_who_question up front").toEqual([true]);
       expect(thread.proposal?.employeeName, `the first name was never looked up:\n${reply.content}`).toBe(person);
+      // No hand-back: find_staff, propose_form and the reply, nothing more.
+      expect(model.calls - callsBefore, "the answering turn cost an extra model call").toBe(3);
     },
   })),
 );

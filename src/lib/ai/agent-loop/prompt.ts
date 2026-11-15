@@ -52,6 +52,8 @@ export function agentLoopSystem(input: {
   readonly openFormId: string | null;
   /** The last reply showed a card not yet created: it is still on the manager's screen. */
   readonly cardOpen?: boolean;
+  /** Fix batch item 6: the last reply's propose_form asked who this form is for (the server's record); its name. */
+  readonly answeringWhoQuestion?: string | null;
 }): string {
   const config = appConfig();
   const place = config.locationWord;
@@ -69,6 +71,9 @@ export function agentLoopSystem(input: {
       : "The JBA Policy Manual could not be read; propose a form without a policy and say so.",
     input.openFormId ? `The form open on the manager's screen: instance_id ${input.openFormId} (read_form shows it).` : "",
     input.cardOpen ? "A card is open: your last reply showed a card the manager has not created yet; it is still on their screen." : "",
+    input.answeringWhoQuestion
+      ? `answering_who_question: your last reply asked who the ${input.answeringWhoQuestion} is for, and this message answers it. Look the name up with find_staff (person_evidence: the manager's words) before anything else; a first name alone is a name, never an acronym, a topic or a product.`
+      : "",
   ];
   return lines.filter(Boolean).join("\n\n");
 }

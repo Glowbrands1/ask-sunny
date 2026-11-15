@@ -420,6 +420,8 @@ export interface ToolEffects {
   formUpdate: { instanceId: string; updated: string[]; saved?: SavedChange[]; putBack?: string[] } | null;
   /** Roster ids find_staff chose from a close spelling or a lone first name this turn (the card's name_from_staff_list fact). */
   nameLines?: Record<string, string>;
+  /** Fix batch item 6: propose_form asked who this form is for (no person yet), for the record. */
+  personAsked?: { templateKey: string };
   /** Fix batch items 4 and 3: this turn's last "Did you mean" (the roster ids offered, the name typed), for the record. */
   nameQuestion?: { offeredIds: string[]; typed: string };
   /** Batch G (G4), by the rebuild plan's PR 1b: find_past_forms found forms on file to open (open: true) for this person. */
@@ -1228,6 +1230,17 @@ export function incidentDates(managerWords: string, priorActions: string | null)
   return [...seen.values()];
 }
 
+/**
+ * Fix batch item 6 (c124, c165; QA's review of #1051): nobody is named for the form. The question is always ask_exactly
+ * (with the policy when one was named: batch G18), and the turn records that it asked (`person_asked`), so the next
+ * turn is told up front that the manager's message answers it (`answering_who_question`), never by reading the reply.
+ */
+async function askWhoFor(context: ToolContext, template: { key: string; name: string }, effects: ToolEffects): Promise<ToolResult> {
+  const ask = (await policyQuestion(context, template.name)) ?? `Who is this ${template.name} for?`;
+  effects.personAsked = { templateKey: template.key };
+  return { reason_code: "missing_input", error: "Nobody is named for this form yet. End your reply with ask_exactly, exactly, once.", ask_exactly: ask };
+}
+
 /** The manager accepted the off-roster offer for this name ("use <name>", or yes right after the offer). */
 function offRosterConfirmed(context: Pick<ToolContext, "question" | "history">, typed: string): boolean {
   const offered = context.history.some((message) => message.role === "assistant" && message.content.toLowerCase().includes(`reply **use ${typed.toLowerCase()}**`));
@@ -1507,15 +1520,14 @@ export async function proposeForm(
        * Form for?" without the policy): no person yet, and the manager named a policy in this chat; the question to ask
        * names it with its heading and page.
        */
-      const ask = typed || id ? null : await policyQuestion(context, template.name);
+      if (!typed && !id) return askWhoFor(context, template, effects);
       return {
         reason_code: "not_on_roster", error: "Give the employee_id find_staff returned for this person (call find_staff first). A name not on the roster goes on a form only after the manager answers the \"reply **use <name>**\" offer.",
-        ...(ask ? { ask_exactly: ask } : {}),
       };
     }
   } else {
     const typedName = typeof input.employee_name === "string" ? tidyTypedName(input.employee_name) : "";
-    if (!typedName) return { reason_code: "missing_input", error: "Give the employee's name as the manager typed it." };
+    if (!typedName) return askWhoFor(context, template, effects);
     employee = { name: typedName, salonIds: [] };
   }
   /*

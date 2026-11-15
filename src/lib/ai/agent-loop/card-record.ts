@@ -59,11 +59,27 @@ function isNameQuestionSlot(value: unknown): value is NameQuestionSlot {
   return Boolean(row) && Array.isArray(row!.offeredKeys) && row!.offeredKeys.every((key) => typeof key === "string") && typeof row!.typedKey === "string";
 }
 
-type TraceRow = { message_id: string | null; slots: { agent_loop?: { card?: unknown; name_question?: unknown } } | null };
+/*
+ * THE PERSON ASKED RECORD (fix batch item 6; QA's review of #1051): a turn whose propose_form asked who the form is for
+ * (no person yet) writes `slots.agent_loop.person_asked = { templateKey }`. The next turn is then told up front that the
+ * manager's message answers it (`answering_who_question`), never by reading the reply. No names.
+ */
+export interface PersonAskedSlot {
+  readonly templateKey: string;
+}
+
+export interface PersonAskedRecord extends PersonAskedSlot {
+  readonly messageId: string | null;
+}
+
+type TraceRow = { message_id: string | null; slots: { agent_loop?: { card?: unknown; name_question?: unknown; person_asked?: unknown } } | null };
+
+type LoopRecords = { cards: CardRecord[]; nameQuestions: NameQuestionRecord[]; personAsked: PersonAskedRecord[] };
+const NO_RECORDS = (): LoopRecords => ({ cards: [], nameQuestions: [], personAsked: [] });
 
 /** This user's loop records in this conversation, oldest first, from one read. Empty without a conversation id, or if the read fails. */
-export async function readLoopRecords(conversationId: string | undefined, userId: string): Promise<{ cards: CardRecord[]; nameQuestions: NameQuestionRecord[] }> {
-  if (!conversationId) return { cards: [], nameQuestions: [] };
+export async function readLoopRecords(conversationId: string | undefined, userId: string): Promise<LoopRecords> {
+  if (!conversationId) return NO_RECORDS();
   try {
     const { data, error } = await getSupabaseAdmin()
       .from("chat_traces")
@@ -71,7 +87,7 @@ export async function readLoopRecords(conversationId: string | undefined, userId
       .eq("conversation_id", conversationId)
       .eq("user_id", userId)
       .order("created_at", { ascending: true });
-    if (error) return { cards: [], nameQuestions: [] };
+    if (error) return NO_RECORDS();
     const rows = (data ?? []) as TraceRow[];
     return {
       cards: rows.flatMap((row) => {
@@ -84,9 +100,13 @@ export async function readLoopRecords(conversationId: string | undefined, userId
         const asked = row.slots?.agent_loop?.name_question;
         return isNameQuestionSlot(asked) ? [{ offeredKeys: [...asked.offeredKeys], typedKey: asked.typedKey, messageId: row.message_id }] : [];
       }),
+      personAsked: rows.flatMap((row) => {
+        const asked = row.slots?.agent_loop?.person_asked as Partial<PersonAskedSlot> | undefined;
+        return asked && typeof asked.templateKey === "string" ? [{ templateKey: asked.templateKey, messageId: row.message_id }] : [];
+      }),
     };
   } catch {
-    return { cards: [], nameQuestions: [] };
+    return NO_RECORDS();
   }
 }
 

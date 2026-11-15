@@ -16,7 +16,7 @@ Swap Sunny's invented people and the salon/store wording; there is no word list 
 pasted account about <B>) is not a yes; propose_form refuses <A> with `right_person` and the model asks or looks up
 <B> (`answerNamesSomeoneElse` in the same file). Port it with item 4.
 
-**Item 6 (same PR, also Sunny-only):** when the manager's message answers the loop's own "Who is this <form> for?"
-and the reply came with no find_staff, card or staff list (a bare first name not looked up, or read as an acronym),
-run.ts hands the turn back once with an [app check] to look the name up (`answersWhoQuestion`, trace `who_review`).
-Port it with the loop.
+**Item 6 (same PR, also Sunny-only):** with nobody named, propose_form returns ask_exactly and the turn records
+`slots.agent_loop.person_asked = { templateKey }`; the next turn's system facts say `answering_who_question` up front
+(look the answer up with find_staff; a first name is a name, never an acronym). No reply text is read and no extra
+model call is made on the answering turn. Port it with the loop.
