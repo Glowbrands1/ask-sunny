@@ -240,13 +240,17 @@ export function rosterMatches(typed: string, roster: readonly RosterEmployee[]):
   });
 }
 
-/** The salon's name as the manager knows it (never only its id). */
-function salonLabel(id: string): string {
-  return rosterSalonName(id) ?? id;
+/**
+ * The salon's name as the manager knows it, never its id (F7, batch F: the past-forms list showed "(loc-0468)"). A
+ * stored name is the fallback; an id on no list is said as such, never shown raw.
+ */
+export function salonLabel(id: string | null | undefined, storedName?: string | null): string | null {
+  if (!id && !storedName?.trim()) return null;
+  return (id ? rosterSalonName(id) : null) ?? (storedName?.trim() || "a salon not on the app's salon list");
 }
 
 function staffRow(person: RosterEmployee) {
-  return { employee_id: person.id, name: displayName(person), salons: person.salonIds.map(salonLabel) };
+  return { employee_id: person.id, name: displayName(person), salons: person.salonIds.map((id) => salonLabel(id)!) };
 }
 
 /**
@@ -461,7 +465,8 @@ export async function findPastForms(context: ToolContext, input: { employee_name
   const nameWords = candidateNameWords(typed);
   if (nameWords.length === 0) return { forms: [] };
   try {
-    const rows = visibleInstances(actor, await listInstances("all", 50, { ...instanceListFilterFor(actor), employeeNameWords: nameWords }));
+    /* 200, not 50 (F7): any name word matches, so other people's forms could push this person's older ones off the read. */
+    const rows = visibleInstances(actor, await listInstances("all", 200, { ...instanceListFilterFor(actor), employeeNameWords: nameWords }));
     const forms = rows
       .filter((row) => samePerson(row.employeeName, typed) || words(row.employeeName).join(" ").includes(words(typed).join(" ")))
       .slice(0, 20)
@@ -472,7 +477,7 @@ export async function findPastForms(context: ToolContext, input: { employee_name
         employee: row.employeeName,
         status: row.status,
         form_date: row.formDate,
-        salon: row.locationId,
+        salon: salonLabel(row.locationId, row.locationName),
       }));
     /* "Draw me up a coaching document … she already has one" (the live re-run's sun-late-date): none on file is no reason to stop. */
     if (forms.length === 0) return { forms, note: "None on file. If the manager asked you to create or draw up a form, propose it now with their account and date, and say no earlier form was found on file." };
@@ -1176,7 +1181,7 @@ export async function proposeForm(
       form: card.templateName,
       employee: card.employeeName,
       status: card.status,
-      salon: card.locationId ? rosterSalonName(card.locationId) ?? card.locationId : null,
+      salon: salonLabel(card.locationId),
       ...(card.status === "needs_location" ? { choose_salon_from: salonNames(card.authorizedLocationIds) } : {}),
       form_date: card.formDate ?? null,
       observation: card.issue ?? null,

@@ -5,7 +5,6 @@ import { MissingConfigurationError, requireEnv } from "@/lib/config/server-env";
 import { mainAnswerTimeoutMs, streamGapTimeoutMs } from "@/lib/config/ai-timeouts";
 import { chatTraceEnabled } from "@/lib/config/chat-quality-flags";
 import { authorizedSalonIds } from "@/lib/forms/location-scope";
-import { rosterSalonName } from "@/lib/forms/salon-mention";
 import type { ChatFormProposal, ChatMessage } from "@/types";
 import { cardPolicyHeading } from "@/lib/forms/card-policy";
 
@@ -36,6 +35,7 @@ import {
   proposeForm,
   readForm,
   readPolicy,
+  salonLabel,
   templateChoices,
   type ToolContext,
   type ToolEffects,
@@ -206,7 +206,7 @@ function cardFacts(card: ChatFormProposal | null): Record<string, unknown> {
     form: card.templateName,
     employee: card.employeeName,
     form_date: card.formDate ?? null,
-    salon: card.locationId ? rosterSalonName(card.locationId) ?? card.locationId : null,
+    salon: salonLabel(card.locationId),
     policy: card.policyLine ?? null,
     warning_level: card.warningLevel ?? null,
     payroll_deduct: card.payrollDeduct ?? null,
@@ -419,7 +419,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     cardOpen: cardOpenAtStart,
     managerName: input.actor.displayName,
     role: input.actor.role,
-    salons: authorizedSalonIds(input.actor.scope).map((id) => rosterSalonName(id) ?? id),
+    salons: authorizedSalonIds(input.actor.scope).map((id) => salonLabel(id)!),
     today: input.today,
     templates,
     headings: manual?.headings ?? [],

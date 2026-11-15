@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { doneThisTurn, partialReply, STEP_LIMIT_REPLY, stepLimitReply } from "./run";
 import { agentLoopSkipReason, loopCarriedOnly } from "./switch";
+import { salonLabel } from "./tools";
 
 /* Batch F (QA, 15 Nov 2026): the facts a reply that stops early is built from (F1, F2), and which turns the loop skips (F5). */
 
@@ -50,5 +51,14 @@ describe("turns the loop does not take yet (F5)", () => {
   it("the card's continuation key is only noted: the browser sends it on nearly every turn after a card", () => {
     expect(agentLoopSkipReason({ mode: "standard" })).toBeNull();
     expect(loopCarriedOnly({ continueProposalTemplateKey: "dpoa" })).toEqual(["continue_proposal"]);
+  });
+});
+
+describe("a salon by its name, never its id (F7)", () => {
+  it("the app's salon list names it; a stored name is the fallback; an unknown id is never shown raw", () => {
+    expect(salonLabel("loc-0309")).toBe("NE Kearney");
+    expect(salonLabel("loc-9999", "Stored Salon Name")).toBe("Stored Salon Name");
+    expect(salonLabel("loc-9999")).toBe("a salon not on the app's salon list");
+    expect(salonLabel(null)).toBeNull();
   });
 });
