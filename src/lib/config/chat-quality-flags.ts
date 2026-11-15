@@ -4916,6 +4916,15 @@ export function modelWarningLevelDiscardedEnabled(): boolean {
 }
 
 /**
+ * TERMINATION_REQUEST_IS_CA_ENABLED (QA, 15 Nov 2026; default off; same flag in both apps): "create a termination for
+ * <A>, …" is a Corrective Action request (`forms/template-intent.ts` canonicalFormWording): a filing verb, "a
+ * termination", "for <someone>". Off, as before (a policy answer, no card).
+ */
+export function terminationRequestIsCaEnabled(): boolean {
+  return envFlag("TERMINATION_REQUEST_IS_CA_ENABLED");
+}
+
+/**
  * TERMINATION_TICK_NOTE_ENABLED (QA, 15 Nov 2026; default off; same flag in both apps): a Corrective Action card whose
  * manager mentioned termination, with no level ticked, adds "If this form is a termination, tick Termination on the form
  * yourself; it needs DM/HR approval before it's finalized." beside the verbal/written line, never replacing it
