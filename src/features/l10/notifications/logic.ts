@@ -1,4 +1,5 @@
 // Copied from the Leadership Hub (src/lib/notifications/logic.ts); keep in step with it. See src/features/l10/README.md.
+import { formatBusinessDay } from "@/lib/business-date";
 import { PREF_KINDS, type AppNotification, type NotificationKind, type NotificationPrefs, type PrefKind } from "./types";
 
 /** Other screens tell the bell to refresh at once (for example after "mark all read"). Here, not in the bell, so the
@@ -72,7 +73,7 @@ export function timeAgo(iso: string, now: number): string {
   if (s < 3600) return `${Math.floor(s / 60)} min ago`;
   if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
   if (s < 7 * 86400) return `${Math.floor(s / 86400)} d ago`;
-  return new Date(t).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return formatBusinessDay(new Date(t)) ?? "";
 }
 
 /** The number on the bell: nothing at 0, "99+" above 99. */
