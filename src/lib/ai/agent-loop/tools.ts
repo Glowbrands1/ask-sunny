@@ -230,6 +230,9 @@ export function dictatedActionPlan(message: string, modelText: string): string |
 /** Batch G (G4): the app's own question when several forms on file fit (find_past_forms gives it; the rules book ends the reply with it). */
 export const WHICH_FORM_QUESTION = "Which one should I open?";
 
+/** G4 follow-up: the fact beside which_form_question; the rules book's Open lines say the same. */
+export const SINGLE_OUT_NOTE = "Compare these forms with the manager's words in this request. If their words fit exactly one (its salon, \"no salon\", its status, its date or its form), open_form that one now and say which in one line; ask which_form_question only when several still fit.";
+
 /** Batch G (G4): "open / edit / pull up / show me <a form on file>" never makes a new card. */
 export const OPEN_REQUEST = new RegExp(String.raw`\b(?:open|reopen|edit|pull up|bring up|show me|view)\b[^.?!\n]{0,40}?\b${FORM}\b`, "i");
 
@@ -764,7 +767,8 @@ export async function findPastForms(context: ToolContext, input: { employee_name
         employee: row.employeeName,
         status: row.status,
         form_date: row.formDate,
-        salon: salonLabel(row.locationId, row.locationName),
+        /* G4 follow-up (QA, 15 Nov 2026): "no salon" in words, so the manager's "the one with no salon" can single it out. */
+        salon: salonLabel(row.locationId, row.locationName) ?? "no salon",
       }));
     /* "Draw me up a coaching document … she already has one" (the live re-run's sun-late-date): none on file is no reason to stop. */
     if (forms.length === 0) return { forms, note: "None on file. If the manager asked you to create or draw up a form, propose it now with their account and date, and say no earlier form was found on file." };
@@ -772,7 +776,12 @@ export async function findPastForms(context: ToolContext, input: { employee_name
       forms,
       ...(closeSpelling ? { close_spelling_of: { typed: untrusted(typed), on_file: closeSpelling } } : {}),
       ...(forms.length === 1 && (described || closeSpelling) ? { best_match: forms[0]!.instance_id, note: "One form fits what the manager described. If they asked to open, edit or see it, open it now with open_form." } : {}),
-      ...(forms.length > 1 && OPEN_REQUEST.test(context.question) ? { which_form_question: WHICH_FORM_QUESTION } : {}),
+      /*
+       * G4 follow-up (QA, 15 Nov 2026; the model decides, code only informs): several forms fit an open request, so the
+       * model is told to compare them with the manager's description ("the one with no salon", "the draft") and to open
+       * the one it singles out, asking WHICH_FORM_QUESTION only when the words still fit more than one.
+       */
+      ...(forms.length > 1 && OPEN_REQUEST.test(context.question) ? { which_form_question: WHICH_FORM_QUESTION, single_out: SINGLE_OUT_NOTE } : {}),
     };
   } catch {
     return { error: "Form Monitoring could not be read just now. Say so; do not say there are no forms." };
