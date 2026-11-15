@@ -268,6 +268,7 @@ Rules-book lines and facts first. The refusals and the narrow write paths below 
 | 4, prior actions | Kept only with dates the manager typed, never this incident's date, and with a stated count (`prior_actions_not_kept`). | "Written warning (2), dates not given" |
 | 5, updated_at | Every manager save (`saveInstanceValues`, so the dictated plan too) moves updated_at under F8's flag; a failed touch is a warning. instances.ts is protected: Pau's standing approval, 15 Nov 2026; hunk in `docs/patches/g2-save-touches-updated-at.patch`. | — |
 | 6, a future form date | The refusal carries `asked_date` and `form_date_kept`. | "<asked> is after today, so I left the form's date as <kept>. Which day did you mean?" |
+| 7, an answer with no tool | With a draft open, a reply that states the level or says "nothing changed / still shows / nothing to undo" with no edit_form or read_form this turn is checked against the saved form. A level it does not hold, or "nothing changed" when a change was asked, goes back once with `saved_level` (`level_review` in the trace), under the step budget. | (item 1's saved_level line) |
 
 
 Replay cases use QA's exact texts T1, T3, T4, T6–T9, T11 and T13 (invented name Remy Calder). G7a now expects the CA with Termination plus the exit offer (QA's ruling); its exit checks moved to `nov15-agent-loop-g7a-exit-paperwork-asked` ("terminate <A>, effective 11/20, exit paperwork please").

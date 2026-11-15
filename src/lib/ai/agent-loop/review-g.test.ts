@@ -79,3 +79,19 @@ describe("the prior-actions lock", () => {
     expect(priorActionsProblem("Termination warning — March", "she got a termination warning in March. Now she was late again, make a CA", "2026-11-14")).toBeNull();
   });
 });
+
+/* Batch G2 item 7: the level a tool-less reply states, and its "nothing changed" words. */
+describe("statedLevel and SAYS_NOTHING_CHANGED (batch G2 item 7)", async () => {
+  const { statedLevel, SAYS_NOTHING_CHANGED } = await import("./run");
+  it("reads the level a reply states, Termination included", () => {
+    expect(statedLevel("The form still shows Written Warning — nothing was changed.")).toBe("written");
+    expect(statedLevel("**Type of Warning:** Termination, as you said")).toBe("termination");
+    expect(statedLevel("It's a Termination on the draft.")).toBe("termination");
+    expect(statedLevel("I changed it back to a verbal.")).toBe("verbal");
+    expect(statedLevel("Here's the Corrective Action Form for **Remy Calder**.")).toBeNull();
+  });
+  it("reads the nothing-changed words", () => {
+    for (const reply of ["nothing was changed", "There's nothing to undo", "The draft still shows Termination", "No changes were made."]) expect(SAYS_NOTHING_CHANGED.test(reply), reply).toBe(true);
+    expect(SAYS_NOTHING_CHANGED.test("The form now shows **Written**.")).toBe(false);
+  });
+});
