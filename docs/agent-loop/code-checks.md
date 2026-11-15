@@ -232,3 +232,25 @@ Rules-book lines and facts only; no reply patches. Each item has an outcome case
 **E12 is a refusal** (approved: code may refuse): batch C made a date after today a fact only, so the card kept it when the model did not propose again. The date field is now refused and the fact stays.
 
 **E6 in code:** the card self-review compares the reply's **Policy:** line with the card's whole policy line (letters and digits only), not just the heading. A shortened line is handed back once, like any other mismatch (batch D's hand-back). Nothing new is written into the reply.
+
+## Batch G (the loop with a form open; this morning's silent-failure scan; the tester's batch E re-test)
+
+Rules-book lines and facts first. The refusals and the narrow write paths below are approved by QA (and Pau, where noted). Cases: `nov15-agent-loop-batch-g-cases.ts` and `nov15-agent-loop-silent-failures-cases.ts` (the managers' words, invented names).
+
+| Item | Code | Rules book |
+|---|---|---|
+| G0, rewording paused (Pau) | A reword request that would reword existing text writes nothing (`reword_paused`, edit_form and a same-card propose_form). New facts sent with it are still added when every old sentence stays (G13). | Editing: "Rewording isn't available yet…" |
+| G3, an added fact | `add_changed_sentences`, `add_not_at_end_of_observed` (edit_form, `addPlacement`) | Editing: at the end of Observed; other sentences word for word |
+| G4, open a form on file | propose_form refuses an open request. find_past_forms takes `form`/`date`/`about` and returns `best_match`. REOPEN_CLOSE_SPELLING returns `close_spelling_of`/`close_names`. The past-forms gate opens for the answer to the app's own `WHICH_FORM_QUESTION` (the last two turns only). | Which form |
+| G5, payroll on a draft (QA approved) | `writeRevisionEdits({ managerStated })`: payroll deduct and its amount are written as the manager's, only after edit_form's stated guard. The default is unchanged. | Editing |
+| G6, future dates | The after-today rule covers only the incident date on incident forms. Exit and follow-up dates are never refused. | Exit forms; Dates |
+| G8, an Action Plan the manager dictates | Saved word for word as the manager's own edit (`saveInstanceValues`). The required closing still follows it; the `required-closing.ts` change is pending Pau. | Editing |
+| G9, "I can't select Termination" | Termination only when the manager stated one (`TERMINATION_SAID`, `statesTermination`), written as stated, with `termination_approval_line`. | Editing |
+| G10, the account sent again | — | Editing: "That's already on the form" |
+| G11, a document date the manager sets | Written as their statement (`correctionWrite`), after today or not, with `date_after_today_as_asked`. Only a date read from the account is never after today. | Editing |
+| G14, "Filed at" honesty | propose_form files at Woven's salon itself (`salon_from_woven`). The self-review hands back a salon the card doesn't hold. | Card replies |
+| G15, who did it | `account_subject_changed` | What happened |
+| G16, which date | `dates_asked_before` | Dates: ask once |
+| G17/G18, policy named with its page | `ask_exactly` (no person yet, a policy named earlier in the chat) | Which form |
+
+**Exit forms** (Pau: coaching, exit and CA first): there's a new rules-book section covering resignation vs termination, a future last day said in one line, rehire and reason only as said, and no incident questions. Batch I (the other 14 templates) is deferred.
