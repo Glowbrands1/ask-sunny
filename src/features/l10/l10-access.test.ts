@@ -221,6 +221,9 @@ describe("saving, ending and the bell go to the same Hub record", () => {
     expect(await endMeeting("stc-dm", recap)).toEqual({ ok: true, created: true });
     expect((hub.calls.at(-1)!.args as { recap: { notes?: string } }).recap.notes).toBe("Talked about the schedule");
     expect(buildRecap(readDoc({}), [], "pending", "s3", 60)).not.toHaveProperty("notes");
+    // To-do counts and solved issues' owners travel the same way (the Hub's 20261205120000).
+    const counted = buildRecap(readDoc({ todos: [{ id: "t1", text: "a", owner: "x", done: true, due: "Next wk" }, { id: "t2", text: "b", owner: "x", done: false, due: "Next wk" }], issues: [{ id: "i1", title: "Door", notes: "", resolved: true, resolvedSession: "pending", owner: "Bo Lark" }] }), [], "pending", "s4", 60);
+    expect([counted.todosDone, counted.todosTotal, counted.resolvedIssues]).toEqual([1, 2, [{ title: "Door", owner: "Bo Lark" }]]);
   });
 
   it("the bell reads and marks the person's own notes in the Hub (same read state as the Hub's bell)", async () => {
@@ -296,6 +299,10 @@ describe("Server Functions check their inputs before anything reaches the Hub", 
     // Meeting notes (15 Nov 2026) are optional text of at most 64 KB.
     expect(await endMeetingAction("stc-dm", { sessionId: "s", cascade: "", ratingAvg: null, durationSeconds: 0, attendees: [], openTodos: [], resolvedIssues: [], notes: "x".repeat(65_537) })).toMatchObject({ ok: false, kind: "invalid" });
     expect(await endMeetingAction("stc-dm", { sessionId: "s", cascade: "", ratingAvg: null, durationSeconds: 0, attendees: [], openTodos: [], resolvedIssues: [], notes: 5 as unknown as string })).toMatchObject({ ok: false, kind: "invalid" });
+    // To-do counts: both or neither, 0 <= done <= total.
+    for (const [todosDone, todosTotal] of [[1, undefined], [3, 2], [-1, 2], [1.5, 2]] as [number | undefined, number | undefined][]) {
+      expect(await endMeetingAction("stc-dm", { sessionId: "s", cascade: "", ratingAvg: null, durationSeconds: 0, attendees: [], openTodos: [], resolvedIssues: [], todosDone, todosTotal })).toMatchObject({ ok: false, kind: "invalid" });
+    }
     expect(await loadMeetingAction("nope")).toMatchObject({ ok: false });
     expect(hub.calls).toEqual([]);
   });

@@ -35,6 +35,10 @@ export async function endMeetingAction(key: string, input: RecapInput): Promise<
   if (typeof input.durationSeconds !== "number" || input.durationSeconds < 0) return { ok: false, kind: "invalid", message: "Invalid duration." };
   // The meeting notes are optional; the Hub takes up to 64 KB of them.
   if (input.notes !== undefined && (typeof input.notes !== "string" || input.notes.length > 65_536)) return { ok: false, kind: "invalid", message: "Invalid notes." };
+  // The to-do counts are optional, both or neither, whole numbers with 0 <= done <= total.
+  const count = (n: unknown) => typeof n === "number" && Number.isInteger(n) && n >= 0 && n <= 100_000;
+  if ((input.todosDone === undefined) !== (input.todosTotal === undefined)) return { ok: false, kind: "invalid", message: "Invalid to-do counts." };
+  if (input.todosDone !== undefined && (!count(input.todosDone) || !count(input.todosTotal) || input.todosDone > input.todosTotal!)) return { ok: false, kind: "invalid", message: "Invalid to-do counts." };
   return endMeeting(key, input);
 }
 
