@@ -20,3 +20,15 @@ export function cardChangeFinalizedEnabled(): boolean {
   const raw = process.env.NEXT_PUBLIC_CARD_CHANGE_FINALIZED_ENABLED;
   return typeof raw === "string" && ["1", "true", "yes", "on"].includes(raw.trim().toLowerCase());
 }
+
+/**
+ * NEXT_PUBLIC_FINALIZED_CHANGE_EVERY_WARNING_ENABLED (QA, 15 Nov 2026; same flag in both apps). A salon manager: "under
+ * the type of warning drop down box I can't select Termination." The finalized form's "Change something" listed only
+ * Verbal and Written. With this flag its Type of warning lists the template's own options (Termination and Demotion
+ * too), so a manager acting on a leadership decision picks it by hand, as the form page already lets them. The
+ * assistant still never picks one (`escalation-guard.ts`). Read at build time; default off.
+ */
+export function finalizedChangeEveryWarningEnabled(): boolean {
+  const raw = process.env.NEXT_PUBLIC_FINALIZED_CHANGE_EVERY_WARNING_ENABLED;
+  return typeof raw === "string" && ["1", "true", "yes", "on"].includes(raw.trim().toLowerCase());
+}

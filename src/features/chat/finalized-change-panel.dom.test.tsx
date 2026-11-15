@@ -59,6 +59,8 @@ const CA_DOCUMENT = {
       options: [
         { key: "verbal", label: "Verbal Warning" },
         { key: "written", label: "Written Warning" },
+        { key: "termination", label: "Termination" },
+        { key: "demotion", label: "Demotion" },
       ],
       responsibility: "ai" as const,
     },
@@ -123,6 +125,7 @@ beforeEach(() => {
   session.demoMode = false;
   process.env[FLAG] = "true";
   delete process.env.NEXT_PUBLIC_FORM_REVISIONS_ENABLED;
+  delete process.env.NEXT_PUBLIC_FINALIZED_CHANGE_EVERY_WARNING_ENABLED;
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init: RequestInit = {}) => {
@@ -438,3 +441,36 @@ describe("the Payroll deduction amount box (CARD_CHANGE_PLAN_REBUILD_ENABLED)", 
   });
 });
 
+
+/*
+ * QA, 15 Nov 2026, from a salon manager on a revision of a finalized Corrective Action Form: "under the type of warning
+ * drop down box I can't select Termination." The panel listed Verbal and Written only. A manager acting on a leadership
+ * decision ticks a final action by hand (`escalation-guard.ts`); only the assistant never does.
+ */
+describe("\"under the type of warning drop down box I can't select Termination\" (NEXT_PUBLIC_FINALIZED_CHANGE_EVERY_WARNING_ENABLED)", () => {
+  const options = () => within(panel().getByLabelText("Type of warning")).getAllByRole("option").map((option) => option.textContent);
+
+  it("flag off: Verbal and Written only, as before", async () => {
+    instances[ORIGINAL] = loaded(ORIGINAL, "finalized");
+    render(<Card instanceId={ORIGINAL} onReplaced={vi.fn()} />);
+    await openPanel();
+    expect(options()).toEqual(["Not set", "Verbal Warning", "Written Warning"]);
+  });
+
+  it("flag on: the form's own options, Termination among them, and picking it saves it on the revision draft", async () => {
+    process.env.NEXT_PUBLIC_FINALIZED_CHANGE_EVERY_WARNING_ENABLED = "true";
+    instances[ORIGINAL] = loaded(ORIGINAL, "finalized");
+    instances[REVISION] = loaded(REVISION, "draft");
+    const onReplaced = vi.fn();
+    render(<Card instanceId={ORIGINAL} onReplaced={onReplaced} />);
+    await openPanel();
+    expect(options()).toEqual(["Not set", "Verbal Warning", "Written Warning", "Termination", "Demotion"]);
+    fireEvent.change(panel().getByLabelText("Type of warning"), { target: { value: "termination" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send change" }));
+    await waitFor(() => expect(onReplaced).toHaveBeenCalledWith(expect.objectContaining({ instanceId: REVISION })));
+    expect(writes()).toEqual([
+      { url: `/api/forms/instances/${ORIGINAL}`, method: "POST", body: { action: "revise" } },
+      { url: `/api/forms/instances/${REVISION}`, method: "PATCH", body: { values: {}, checked: { warning_type: ["termination"] }, source: "card-change" } },
+    ]);
+  });
+});
