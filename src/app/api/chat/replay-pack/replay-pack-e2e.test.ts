@@ -635,7 +635,7 @@ class Thread {
   // A well-formed client id, so the route keeps the intake state between turns (`isClientConversationId`).
   private readonly conversationId = createId("conv");
 
-  async say(question: string, reading: Record<string, unknown> = {}): Promise<Answer> {
+  async say(question: string, reading: Record<string, unknown> = {}, extra: Record<string, unknown> = {}): Promise<Answer> {
     state.reading = reading;
     const history = this.messages.map(({ id, role, content, formProposal }) => ({ id, role, content, ...(formProposal ? { formProposal } : {}) }));
     const id = `m${(this.sequence += 1)}`;
@@ -656,6 +656,8 @@ class Thread {
           ...(this.instanceId ? { activeFormInstanceId: this.instanceId } : {}),
           // As the browser does (`ClaudeProvider`): the copy the last answer offered (SAME_FORM_COPY_NEW_PERSON_ENABLED).
           ...(pendingCopy ? { pendingCopyFromInstanceId: pendingCopy } : {}),
+          // Batch F5: other fields the browser can send (attachments, report context, answer mode), for one case each.
+          ...extra,
         }),
       }),
     );

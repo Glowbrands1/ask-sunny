@@ -1,3 +1,5 @@
+import { formatBusinessTime } from "@/lib/business-date";
+
 import type { BedSpaPeriod } from "./types";
 
 /**
@@ -62,26 +64,14 @@ export function formatBedSpaDate(iso: string): string {
 }
 
 /**
- * `Sep 8, 2026 10:24 UTC`, from the STORED ingestion timestamp.
+ * `Sep 8, 2026, 5:24 AM CT`, from the STORED ingestion timestamp, in the business zone (Pau, 15 Nov 2026: the whole
+ * app and chat are in CT; was UTC).
  *
  * Never the render clock: a "loaded" time that moves when the page is refreshed
  * is not a provenance claim.
  */
 export function formatLoadedAt(iso: string | null): string {
-  if (!iso) return "load time not recorded";
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "load time not recorded";
-  return `${date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    timeZone: "UTC",
-  })} ${date.toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-    timeZone: "UTC",
-  })} UTC`;
+  return formatBusinessTime(iso, { year: true }) ?? "load time not recorded";
 }
 
 /**

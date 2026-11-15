@@ -133,6 +133,17 @@ const SPELLED_OUT: Readonly<Record<string, string>> = {
   FTTC: "Full-Time Tanning Consultant",
 };
 
+/** A title shortcut as the directory writes it ("ASD" → "Assistant Salon Director"); others unchanged. Off, unchanged. */
+export function spelledOutTitle(role: string): string {
+  const full = titleSpelledOutEnabled() ? SPELLED_OUT[role.trim()] : undefined;
+  return full ?? role;
+}
+
+/** JOB_TITLE_CASE: a title typed in lower case only is written as the title list writes one. Off, unchanged. */
+export function titleCaseIfLower(role: string): string {
+  return jobTitleCaseEnabled() && role === role.toLowerCase() ? titleCase(role.trim()) : role;
+}
+
 export function withSpelledOutTitle(response: AskResponse): AskResponse {
   const role = response.formProposal?.employeeRole?.trim();
   const full = role && titleSpelledOutEnabled() ? SPELLED_OUT[role] : undefined;
@@ -143,3 +154,5 @@ export function withSpelledOutTitle(response: AskResponse): AskResponse {
   return { ...response, content, formProposal: { ...response.formProposal!, employeeRole: full } };
 }
 
+
+export { jobTitleFromWordsEnabled };

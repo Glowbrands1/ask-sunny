@@ -4917,10 +4917,22 @@ export function modelWarningLevelDiscardedEnabled(): boolean {
 
 /**
  * TERMINATION_TICK_NOTE_ENABLED (QA, 15 Nov 2026; default off; same flag in both apps): a Corrective Action card whose
- * manager mentioned termination, with no level ticked, says "You'll tick Termination on the form yourself; it needs
- * DM/HR approval before it's finalized." instead of the verbal/written line (`ai/termination-tick-note.ts`). Off, as
- * built.
+ * manager mentioned termination, with no level ticked, adds "If this form is a termination, tick Termination on the form
+ * yourself; it needs DM/HR approval before it's finalized." beside the verbal/written line, never replacing it
+ * (`ai/termination-tick-note.ts`). Off, as built.
  */
 export function terminationTickNoteEnabled(): boolean {
   return envFlag("TERMINATION_TICK_NOTE_ENABLED");
+}
+
+/**
+ * FORM_EDIT_TOUCHES_UPDATED_AT_ENABLED (coding 5, 15 Nov 2026; default off; QA's batch F8, from the first live test with
+ * a form open). Three chat edits to a draft's Observation, Action Plan and Type of Warning (its events grew 4 → 7) left
+ * form_instances.updated_at unchanged: the touch trigger fires on the instance row, and a value edit writes only
+ * form_instance_values; only a form_date edit moved it. Form Monitoring and any "recently changed" sort missed them. On:
+ * the one writer (`forms/form-write.ts` writeFormEdits) touches the instance's updated_at whenever it writes a value, a
+ * checked group, a clear or the plan. Off, as before.
+ */
+export function formEditTouchesUpdatedAtEnabled(): boolean {
+  return envFlag("FORM_EDIT_TOUCHES_UPDATED_AT_ENABLED");
 }

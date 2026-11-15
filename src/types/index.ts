@@ -663,6 +663,14 @@ export interface ChatFormProposal {
    */
   warningLevel?: "verbal" | "written" | null;
   /**
+   * The agent loop only (QA's design, 15 Nov 2026): its model decided this Corrective Action is a termination and the
+   * manager's words carry a termination word. Create is sent `warningLevel: "termination"` and ticks it only when the
+   * conversation's user turns carry that word again, checked server-side (`lib/forms/termination-word.ts`).
+   */
+  loopTermination?: true;
+  /** The agent loop's card (QA's third review): Create never runs today's termination reader for it. */
+  fromAgentLoop?: true;
+  /**
    * The Corrective Action Form's prior-actions line, in the manager's words
    * ("prior = manual ack 9/01"). Optional so older proposals still read.
    */

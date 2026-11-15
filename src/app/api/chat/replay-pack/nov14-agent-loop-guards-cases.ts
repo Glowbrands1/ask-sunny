@@ -581,19 +581,17 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       await thread.say(messy);
       await thread.say("make it professional");
       expect(tries).toBe(1);
-      // Changed on purpose (Pau 14 Nov: code may refuse or inform, never rewrite; code-check audit batch C): a fact, not a refusal; the model fixes the card.
-      expect(toolResults(card.views, "propose_form").some((result) => /"account_words_missing":\[[^\]]*10:40/.test(result)), "a reword dropping the time is not a fact").toBe(true);
+      // Changed on purpose (Pau 15 Nov, batch G0: rewording paused): a reword of the card is refused, and the card on screen is unchanged.
+      expect(toolResults(card.views, "propose_form").some((result) => /"reword_paused":true/.test(result)), "a reword of the card was not paused").toBe(true);
       expect(thread.proposal?.issue ?? "").toMatch(/10:40am on 11\/10/);
       expect(thread.proposal?.issue ?? "").toMatch(/\$15/);
 
-      // On a created draft: targeted edit of the Observation only; a dropped amount and a level are refused.
+      // On a created draft: every reword is refused while rewording is paused (G0).
       const id = await thread.create();
       t.typeOnForm(id, { observation: "Observed:\nShe came in 40 min late at 10:40am on 11/10 and didnt clock the $15 drawer short." });
       const before = { ...t.values(id) };
-      let step = 0;
       const editor = loopStandIn((view) => {
         if (view.step > 2) return { text: "Done." };
-        step = view.step;
         const reworded = [
           { observation: "Observed:\nTamsin Orwell arrived 40 minutes late at 10:40am on 11/10 and did not report a drawer shortage." },
           { observation: "Observed:\nTamsin Orwell arrived 40 minutes late at 10:40am on 11/10 and did not report a $15 drawer shortage.", warning_type: "written" },
@@ -604,13 +602,13 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       t.loopModel!(editor);
       await thread.say("can you clean it up");
       const results = toolResults(editor.views, "edit_form");
-      // Changed on purpose (Pau 14 Nov: code may refuse or inform, never rewrite; code-check audit batch C): a fact, not a refusal; the model fixes the card.
-      expect(results.some((result) => /"reword_lost":\{"observation":\[[^\]]*\$15/.test(result)), "a reword dropping the $15 is not a fact").toBe(true);
-      expect(results.some((result) => /changes only the free-text fields|must come from the manager's own words/.test(result)), "a reword touching the level was written").toBe(true);
-      expect(step).toBeGreaterThanOrEqual(2);
+      // Changed on purpose (Pau 15 Nov, batch G0: rewording paused): every reword of the draft is refused, and nothing on it changes.
+      expect(results.length).toBeGreaterThanOrEqual(1);
+      expect(results.some((result) => /"reword_paused":true/.test(result)), "a reword of the draft was not paused").toBe(true);
+      // The reword that also sets a level is refused by the level guard first; either way nothing is written.
+      expect(results.every((result) => /"reword_paused":true|must come from the manager's own words/.test(result)), "a reword of the draft was written").toBe(true);
       const after = t.values(id);
-      expect(after.observation).toMatch(/\$15 drawer shortage/);
-      for (const [key, value] of Object.entries(before)) if (key !== "observation") expect(after[key], `${key} changed`).toBe(value);
+      for (const [key, value] of Object.entries(before)) expect(after[key], `${key} changed`).toBe(value);
       expect(t.checked(id).warning_type ?? []).toEqual([]);
     },
   },
@@ -1248,7 +1246,8 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       const rewriter = loopStandIn((view) => (lastResult(view, "edit_form") ? { text: "Reworded." } : { tool: "edit_form", input: { instance_id: id, values: { employee_name: "Corbin Ashdown", coaching_details: "The employee did not complete the spray booth check on 11/12." } } }));
       t.loopModel!(rewriter);
       await thread.say("make it professional");
-      expect(toolResults(rewriter.views, "edit_form")[0], "a reword changing the person was not refused").toMatch(/A reword never changes who the form is about: employee_name/);
+      // Changed on purpose (Pau 15 Nov, batch G0: rewording is paused): the reword is refused before the right-person check, and nothing is written either way.
+      expect(toolResults(rewriter.views, "edit_form")[0], "a reword changing the person was not refused").toMatch(/"reword_paused":true/);
       expect(JSON.stringify(t.values(id)), "the draft changed").toBe(before);
     },
   },
