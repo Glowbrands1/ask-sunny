@@ -1663,6 +1663,9 @@ export async function proposeForm(
   /*
    * QA's ruling 5: a new request (new_form_evidence) starts from this turn, and earlier turns of this person's request
    * the model cites still count (the account is never dropped). Termination still reads only the person's own turns.
+   * QA's ruling for fix batch item 5 (16 Nov 2026): a cited turn unlocks the termination only when the manager confirmed
+   * its name as this person in this chat's own Did-you-mean (the name question record): that turn is then one of the
+   * person's own turns (`sameAsThisPerson` above). A citation alone, or a turn naming another roster person, never does.
    */
   const ownSourceIds = sourceIds;
   const requestIds = [...new Set([...sourceIds, ...citedRequestIds])];
