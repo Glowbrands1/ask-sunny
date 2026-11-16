@@ -25,6 +25,8 @@ export interface CardRecord {
   readonly templateName: string | null;
   /** The manager's message the card's turn answered (the trace's message_id). */
   readonly messageId: string | null;
+  /** QA (16 Nov 2026, production): a one-way key of the manager's message, to find it when the history's id does not match. */
+  readonly questionKey?: string | null;
   /**
    * Fix batch item 7 (16 Nov 2026): the CA-only fields the card's reply asks about ("payroll_deduct", "warning_level"):
    * both after "Payroll deduct and warning level aren't set", payroll alone after a bare answer to that line. Field names
@@ -82,6 +84,8 @@ export interface NameQuestionSlot {
 export interface NameQuestionRecord extends NameQuestionSlot {
   /** The manager's message the question's turn answered (the trace's message_id). */
   readonly messageId: string | null;
+  /** QA (16 Nov 2026, production): a one-way key of the manager's message, to find it when the history's id does not match. */
+  readonly questionKey?: string | null;
 }
 
 function isNameQuestionSlot(value: unknown): value is NameQuestionSlot {
@@ -100,9 +104,14 @@ export interface PersonAskedSlot {
 
 export interface PersonAskedRecord extends PersonAskedSlot {
   readonly messageId: string | null;
+  /** QA (16 Nov 2026, production): a one-way key of the manager's message, to find it when the history's id does not match. */
+  readonly questionKey?: string | null;
 }
 
-type TraceRow = { message_id: string | null; slots: { agent_loop?: { card?: unknown; name_question?: unknown; person_asked?: unknown; steps?: unknown } } | null };
+type TraceRow = { message_id: string | null; slots: { agent_loop?: { card?: unknown; name_question?: unknown; person_asked?: unknown; steps?: unknown; question_key?: unknown } } | null };
+
+/** The turn's one-way key of the manager's message (`question_key`), to find that message when its id does not match. */
+const questionKeyOf = (row: TraceRow): string | null => (typeof row.slots?.agent_loop?.question_key === "string" ? row.slots.agent_loop.question_key : null);
 
 /**
  * QA's review of #1062 (16 Nov 2026): what each loop turn finished, from its own trace (never the reply's text): whether
@@ -112,6 +121,8 @@ type TraceRow = { message_id: string | null; slots: { agent_loop?: { card?: unkn
 export interface TurnRecord {
   /** The manager's message the turn answered (the trace's message_id). */
   readonly messageId: string | null;
+  /** QA (16 Nov 2026, production): a one-way key of the manager's message, to find it when the history's id does not match. */
+  readonly questionKey?: string | null;
   readonly saved: boolean;
   readonly card: boolean;
 }
@@ -135,24 +146,24 @@ export async function readLoopRecords(conversationId: string | undefined, userId
       cards: rows.flatMap((row) => {
         const card = row.slots?.agent_loop?.card;
         return isCardSlot(card)
-          ? [{ proposalId: card.proposalId, employeeKey: card.employeeKey ?? null, nameKey: card.nameKey ?? null, templateKey: card.templateKey, templateName: card.templateName ?? null, messageId: row.message_id, asked: Array.isArray(card.asked) ? card.asked.filter((field): field is string => typeof field === "string") : [], level: card.level === "verbal" || card.level === "written" ? card.level : null, policyLine: typeof card.policyLine === "string" ? card.policyLine : null, payroll: card.payroll === "yes" || card.payroll === "no" ? card.payroll : null, payrollAmount: typeof card.payrollAmount === "string" && /^\d+(?:\.\d+)?$/.test(card.payrollAmount) ? card.payrollAmount : null }]
+          ? [{ proposalId: card.proposalId, employeeKey: card.employeeKey ?? null, nameKey: card.nameKey ?? null, templateKey: card.templateKey, templateName: card.templateName ?? null, messageId: row.message_id, questionKey: questionKeyOf(row), asked: Array.isArray(card.asked) ? card.asked.filter((field): field is string => typeof field === "string") : [], level: card.level === "verbal" || card.level === "written" ? card.level : null, policyLine: typeof card.policyLine === "string" ? card.policyLine : null, payroll: card.payroll === "yes" || card.payroll === "no" ? card.payroll : null, payrollAmount: typeof card.payrollAmount === "string" && /^\d+(?:\.\d+)?$/.test(card.payrollAmount) ? card.payrollAmount : null }]
           : [];
       }),
       nameQuestions: rows.flatMap((row) => {
         const asked = row.slots?.agent_loop?.name_question;
         return isNameQuestionSlot(asked)
-          ? [{ offeredKeys: [...asked.offeredKeys], typedKey: asked.typedKey, ...(Array.isArray(asked.offeredNameKeys) ? { offeredNameKeys: asked.offeredNameKeys.filter((key): key is string => typeof key === "string") } : {}), ...(asked.asksFullName === true ? { asksFullName: true } : {}), messageId: row.message_id }]
+          ? [{ offeredKeys: [...asked.offeredKeys], typedKey: asked.typedKey, ...(Array.isArray(asked.offeredNameKeys) ? { offeredNameKeys: asked.offeredNameKeys.filter((key): key is string => typeof key === "string") } : {}), ...(asked.asksFullName === true ? { asksFullName: true } : {}), messageId: row.message_id, questionKey: questionKeyOf(row) }]
           : [];
       }),
       turns: rows.flatMap((row) => {
         const loop = row.slots?.agent_loop;
         if (!loop) return [];
         const steps = Array.isArray(loop.steps) ? (loop.steps as { saved_fields?: unknown }[]) : [];
-        return [{ messageId: row.message_id, saved: steps.some((step) => Array.isArray(step.saved_fields) && step.saved_fields.length > 0), card: isCardSlot(loop.card) }];
+        return [{ messageId: row.message_id, questionKey: questionKeyOf(row), saved: steps.some((step) => Array.isArray(step.saved_fields) && step.saved_fields.length > 0), card: isCardSlot(loop.card) }];
       }),
       personAsked: rows.flatMap((row) => {
         const asked = row.slots?.agent_loop?.person_asked as Partial<PersonAskedSlot> | undefined;
-        return asked && typeof asked.templateKey === "string" ? [{ templateKey: asked.templateKey, messageId: row.message_id }] : [];
+        return asked && typeof asked.templateKey === "string" ? [{ templateKey: asked.templateKey, messageId: row.message_id, questionKey: questionKeyOf(row) }] : [];
       }),
     };
   } catch {
@@ -174,12 +185,26 @@ export function cardTurns(history: readonly ChatMessage[], records: readonly Car
 }
 
 /** The history's assistant replies a record's turn wrote: the reply right after the manager's message that turn answered. */
-export function replyTurns<T extends { readonly messageId: string | null }>(history: readonly ChatMessage[], records: readonly T[]): Map<number, T> {
+export function replyTurns<T extends { readonly messageId: string | null; readonly questionKey?: string | null }>(history: readonly ChatMessage[], records: readonly T[]): Map<number, T> {
   const byMessage = new Map(records.filter((record) => record.messageId).map((record) => [record.messageId!, record]));
+  /*
+   * QA (16 Nov 2026, keep-as-typed on production: the manager's "no" was asked again on every turn although each turn's
+   * record was written): a history whose message ids do not match the trace's message_id never found its records. A
+   * record not found by id is found by its question_key (a one-way key of the manager's message), each record once, in
+   * order, so a repeated message ("no", "no") takes the next record, never an earlier one twice.
+   */
+  const byId = new Set(history.filter((message) => message.role === "user" && byMessage.has(message.id)).map((message) => message.id));
+  const unmatched = records.filter((record) => !(record.messageId && byId.has(record.messageId)) && record.questionKey);
+  const used = new Set<T>();
   const shown = new Map<number, T>();
   history.forEach((message, index) => {
     if (message.role !== "user") return;
-    const record = byMessage.get(message.id);
+    const record = byMessage.get(message.id) ?? (() => {
+      const key = personKey(String(message.content ?? ""));
+      const next = unmatched.find((candidate) => !used.has(candidate) && candidate.questionKey === key);
+      if (next) used.add(next);
+      return next;
+    })();
     if (!record) return;
     const reply = history.findIndex((later, at) => at > index && later.role === "assistant");
     const nextUser = history.findIndex((later, at) => at > index && later.role === "user");
