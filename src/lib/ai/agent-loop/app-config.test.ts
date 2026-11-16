@@ -46,7 +46,7 @@ import { rulesBookText } from "./rules-book";
  * says <first name> instead of <them>. Then (QA, after the live runs): "never the full name in your words (the card shows
  * it)", the full name only when two people share a first name; the card reply's first line names the employee in bold by
  * first name (it said **<employee>**, which contradicted the rule), and the lines that say which person it is keep the full
- * name.
+ * name. Then (QA and Pau): both lines say <reply_name>, which code decides (propose_form / edit_form's reply_name).
  */
 
 const fixture = (name: string): string => readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), "utf8");

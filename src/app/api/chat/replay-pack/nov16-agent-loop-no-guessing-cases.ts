@@ -24,7 +24,7 @@ import { fullNameUsed, personPronoun } from "./reply-checks";
 
 const FLAG = "AGENT_LOOP_ENABLED";
 const REPORT = "The Runner's c219 detail (16 Nov 2026): T1 promised a termination Corrective Action from a pasted script; T2 guessed \"he/his\"";
-const FIRST_NAME_RULE = "call each employee by their FIRST name every time";
+const FIRST_NAME_RULE = "call the card's person exactly <reply_name>";
 const PASTED_RULE = "When the manager has not said what they want made";
 /* Pau (16 Nov 2026): the employee by first name every time; no pronoun for them (`reply-checks.ts`, QA's checker). */
 const offline = process.env.AGENT_LOOP_LIVE !== "1";
@@ -84,6 +84,8 @@ export const NOV16_AGENT_LOOP_NO_GUESSING_CASES: ReplayCase[] = [
       // QA (16 Nov 2026): never the full name in the reply's words (the card shows it).
       expect(fullNameUsed(reply.content, "Rowan Kestrel"), `the full name in the reply's words:\n${reply.content}`).toBeNull();
       expect(thread.proposal?.employeeName, "the card's name is no longer the full name").toBe("Rowan Kestrel");
+      const named = standIn.views.flatMap((view) => view.results).find((result) => result.tool === "propose_form")?.output as { reply_name?: string } | undefined;
+      expect(named?.reply_name, "propose_form did not say what to call the person").toBe("Rowan");
     },
   },
   {
@@ -105,10 +107,39 @@ export const NOV16_AGENT_LOOP_NO_GUESSING_CASES: ReplayCase[] = [
       t.loopModel!(standIn);
       const thread = t.thread();
       const reply = await thread.say("exit form for rowan kestrel, last day 11/28, rowan pike will cover the shift");
-      expect(shownRules(standIn.views), "the model is not taught the shared-first-name exception").toContain("share a first name, use the full name for both");
+      expect(shownRules(standIn.views), "the model is not taught the shared-first-name exception").toContain(FIRST_NAME_RULE);
       const plain = reply.content.replace(/\*\*/g, "");
       expect(plain, `a bare "Rowan" where two Rowans are in the conversation:\n${reply.content}`).not.toMatch(/\bRowan\b(?!['’]?s?\s+(?:Kestrel|Pike)|\s+(?:Kestrel|Pike))/);
       expect(plain).toMatch(/Rowan Kestrel/);
+      const named = standIn.views.flatMap((view) => view.results).find((result) => result.tool === "propose_form")?.output as { reply_name?: string } | undefined;
+      expect(named?.reply_name, "two Rowans, and reply_name is not the full name").toBe("Rowan Kestrel");
+      expect(personPronoun(reply.content), `a pronoun for the employee:\n${reply.content}`).toBeNull();
+    },
+  },
+  {
+    id: "nov16-no-guessing-a-namesake-on-the-staff-list-only-gets-full-names",
+    title: "reply_name (QA and Pau): Rowan Pike is on the staff list but never mentioned; \"exit form for rowan kestrel, last day 11/28\" still gets reply_name \"Rowan Kestrel\", and the reply never says a bare \"Rowan\" (a manager with two Rowans would not know which)",
+    report: `${REPORT}; QA: the roster and the records decide the name, not the model's reading of a rule`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-15T22:40:00Z"));
+      t.directory([...STAFF, { id: "e-8", firstName: "Rowan", lastName: "Pike", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" }]);
+      t.as("salon_director", KEARNEY);
+      const standIn = loopStandIn((view): LoopDecision => {
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "rowan kestrel" } };
+        const card = lastResult(view, "propose_form") as { reply_name?: string } | null;
+        if (!card) return { tool: "propose_form", input: { template_key: "stc-exit", employee_id: "e-4", exit_type: "resignation", effective_date: "11/28", exit_evidence: { ...evidenceFrom(view, "exit form for rowan kestrel"), kind: "asks_for_exit_form" } } };
+        return { text: `Here's the Resignation/Exit Form for **${card.reply_name}**. ${card.reply_name}'s last day worked: November 28, 2026.` };
+      });
+      t.loopModel!(standIn);
+      const thread = t.thread();
+      const reply = await thread.say("exit form for rowan kestrel, last day 11/28");
+      const named = standIn.views.flatMap((view) => view.results).find((result) => result.tool === "propose_form")?.output as { reply_name?: string } | undefined;
+      expect(named?.reply_name, "a namesake on the staff list, and reply_name is the bare first name").toBe("Rowan Kestrel");
+      const plain = reply.content.replace(/\*\*/g, "");
+      expect(plain, `a bare "Rowan" with another Rowan on the staff list:\n${reply.content}`).not.toMatch(/\bRowan\b(?!['’]?s?\s+Kestrel|\s+Kestrel)/);
       expect(personPronoun(reply.content), `a pronoun for the employee:\n${reply.content}`).toBeNull();
     },
   },

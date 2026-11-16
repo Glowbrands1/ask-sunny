@@ -676,7 +676,11 @@ async function rosterPrimarySalon(scope: AccessScope, id: string): Promise<strin
   }
 }
 
-/** The name the manager just said no to, after this chat's own "Did you mean **<A>**?" / "Is this for **<A>**?". */
+/**
+ * The name the manager just said no to, after this chat's own "Did you mean **<A>**?" / "Is this for **<A>**?". It reads
+ * the name back from the reply, so those questions keep the full name (the rules book's first-name line says so); never
+ * shorten them to a first name or reply_name.
+ */
 function turnedDownName(context: Pick<ToolContext, "question" | "history">): string | null {
   if (!/^\s*(?:no|nope|nah|not\s+(?:her|him|them|that))\b/i.test(context.question)) return null;
   const last = [...context.history].reverse().find((turn) => turn.role === "assistant");
@@ -1459,6 +1463,36 @@ export function fullNamesOf(person: Pick<RosterEmployee, "firstName" | "lastName
   const last = person.lastName?.trim() ?? "";
   const names = [person.preferredFirstName?.trim(), person.firstName?.trim()].filter((first): first is string => !!first).map((first) => `${first} ${last}`.trim());
   return [...new Set(names)];
+}
+
+/**
+ * reply_name (QA and Pau, 16 Nov 2026): what the reply calls the card's person, decided by code, not by the model's
+ * reading of a rule. The first word of the card's name, unless someone else shares that first name: another person on
+ * the manager's staff list (the roster the tool read, the person's own roster row aside), or another full name the
+ * manager typed in this conversation. Then the full name. The roster and the conversation decide; no word list.
+ */
+export function replyNameFor(name: string, roster: readonly RosterEmployee[], mentioned: readonly string[], ownId?: string | null): string {
+  const full = name.replace(/\s+/g, " ").trim();
+  const words = full.split(" ");
+  if (words.length < 2) return full;
+  const first = words[0]!.toLowerCase();
+  const firstOf = (other: string) => other.trim().split(/\s+/)[0]!.toLowerCase();
+  const onRoster = roster.filter((row) => row.id !== ownId).flatMap(fullNamesOf).filter((other) => !samePerson(other, full));
+  const typed = mentioned.filter((other) => other.trim().split(/\s+/).length > 1 && !samePerson(other, full));
+  return [...onRoster, ...typed].some((other) => firstOf(other) === first) ? full : words[0]!;
+}
+
+/** edit_form's results name the form's person too: reply_name for the form that was written (`replyNameFor`). */
+export async function withEditReplyName(context: ToolContext, effects: ToolEffects, result: ToolResult): Promise<ToolResult> {
+  const record = result as { error?: unknown; revision_draft?: { id?: unknown } };
+  const id = typeof record.revision_draft?.id === "string" ? record.revision_draft.id : effects.formUpdate?.instanceId;
+  if (typeof record.error === "string" || !id) return result;
+  const person = await authorizeInstance(context.request, id, "view").then(({ loaded }) => loaded.instance.employeeName).catch(() => null);
+  if (!person) return result;
+  const read = await rosterFor(context.actor.scope);
+  const roster = read.kind === "read" ? read.roster : [];
+  const own = roster.find((row) => fullNamesOf(row).some((other) => samePerson(other, person)));
+  return { ...result, reply_name: replyNameFor(person, roster, extractEmployeeNames(managerTurns(context)), own?.id) };
 }
 
 /**
@@ -2399,6 +2433,8 @@ export async function proposeForm(
     ...(askedPayroll && !payroll && payrollCheck && !payrollCheck.ok ? { payroll_evidence: payrollCheck.reason } : {}),
     ...(payrollAnswerUnclear ? { ...(askedLevel && !level ? {} : { reason_code: "payroll_not_stated" }), payroll_evidence: "answer_to_two_questions" } : {}),
     ...(notOnCard.length > 0 ? { not_on_card: notOnCard } : {}),
+    /* QA and Pau (16 Nov 2026): what the reply calls this person (the first name unless someone else shares it). */
+    reply_name: replyNameFor(card.employeeName ?? employee.name, read.kind === "read" ? read.roster : [], extractEmployeeNames(managerTurns(context)), employee.id ?? null),
     card: {
       form: card.templateName,
       employee: card.employeeName,
