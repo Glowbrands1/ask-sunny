@@ -274,4 +274,37 @@ export const NOV16_LEVEL_CARRY_CASES: ReplayCase[] = [
       expect(levelOf(thread), "the earlier incident's level went on a new incident's card").toBeNull();
     },
   },
+  {
+    id: "nov16-level-carry-c019-make-it-a-ca-instead-is-the-same-request",
+    title: "c019 (QA): \"make it a corrective action instead\" after a Coaching Form for the same person and incident is the same request: the rules book says so, a model that follows it passes no new_form_evidence, and the CA card has the Verbal stated for this request (a model not taught it would pass new_form_evidence and lose the level)",
+    report: "QA's 266-chat re-run (16 Nov 2026), c019: \"Create a <form> from this conversation\" read as a new request",
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.() || !offline) return;
+      start(t);
+      let taught = false;
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        const text = said(view);
+        const late = { template_key: "dpoa", employee_id: "e-2", what_happened: "She was late to her shift on 11/14.", incident_date: "2026-11-14" };
+        if (/^ca for remy/i.test(text)) {
+          if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
+          return lastResult(view, "propose_form") ? { text: "Here's the card." } : { tool: "propose_form", input: late };
+        }
+        if (/^verbal$/i.test(text)) return lastResult(view, "propose_form") ? { text: "Verbal it is." } : { tool: "propose_form", input: { ...late, warning_level: "verbal", level_evidence: evidenceFrom(view, "verbal") } };
+        if (/coaching form/i.test(text)) return lastResult(view, "propose_form") ? { text: "Here's the Coaching Form." } : { tool: "propose_form", input: { template_key: "coaching", employee_id: "e-2", what_happened: "She was late to her shift on 11/14." } };
+        // The model's choice, as the prompt teaches it: the same person and incident is the same request.
+        taught = view.system.includes("for the same person and the same incident is the SAME request");
+        return lastResult(view, "propose_form") ? { text: "Here's the Corrective Action Form." } : { tool: "propose_form", input: { ...late, ...(taught ? {} : { new_form_evidence: evidenceFrom(view, "make it a corrective action instead") }) } };
+      }));
+      const thread = t.thread();
+      await thread.say("ca for remy calder, she was late to her shift on 11/14");
+      await thread.say("verbal");
+      await thread.say("Create a Coaching Form from this conversation");
+      await thread.say("make it a corrective action instead");
+      expect(taught, "the system prompt does not teach that \"make it a <form> instead\" is the same request").toBe(true);
+      expect(thread.proposal?.templateKey).toBe("dpoa");
+      expect(levelOf(thread), "the same request's level was lost").toBe("verbal");
+    },
+  },
 ];
