@@ -24,7 +24,7 @@ import { evidenceFrom, lastResult, loopStandIn, type LoopDecision, type LoopView
 const FLAG = "AGENT_LOOP_ENABLED";
 const REPORT = "The Runner's c219 detail (16 Nov 2026): T1 promised a termination Corrective Action from a pasted script; T2 guessed \"he/his\"";
 const PRONOUN_RULE = "Never guess a pronoun for an employee";
-const PASTED_RULE = "Text the manager pasted with no ask of their own";
+const PASTED_RULE = "When the manager has not said what they want made";
 const GUESSED = /\b(?:he|him|his|she|her|hers)\b/i;
 const SCRIPT =
   "Lysa, this meeting is about the text you sent your salon director Juno Paxton on 11/3. It was disrespectful. Your employment with us is terminated, effective 11/5. Please return your keys; your final paycheck will be mailed.";
@@ -47,11 +47,8 @@ export const NOV16_AGENT_LOOP_NO_GUESSING_CASES: ReplayCase[] = [
     async run(t) {
       if (!t.loopOn?.()) return;
       start(t);
-      const standIn = loopStandIn((view): LoopDecision => {
-        const staff = lastResult(view, "find_staff") as { ask_exactly?: string } | null;
-        if (!staff) return { tool: "find_staff", input: { name: "Lysa", person_evidence: evidenceFrom(view, "Lysa") } };
-        return { text: `This is a termination meeting script for Lysa. Do you want the Employee Exit Form, or a Corrective Action? ${staff.ask_exactly ?? ""}`.trim() };
-      });
+      // Offline the stand-in follows the rule (no lookup before a form is chosen); live, the real model answers.
+      const standIn = loopStandIn((): LoopDecision => ({ text: "This is a termination meeting script for Lysa. Do you want the Employee Exit Form, or a Corrective Action?" }));
       t.loopModel!(standIn);
       const thread = t.thread();
       const reply = await thread.say(SCRIPT);
@@ -81,6 +78,37 @@ export const NOV16_AGENT_LOOP_NO_GUESSING_CASES: ReplayCase[] = [
       expect(shownRules(standIn.views), "the model is not taught never to guess a pronoun").toContain(PRONOUN_RULE);
       expect(reply.content, `a pronoun the manager never used:\n${reply.content}`).not.toMatch(GUESSED);
       expect(reply.content).toContain("Rowan Kestrel");
+    },
+  },
+  {
+    id: "nov16-no-guessing-no-name-question-before-a-form-is-chosen",
+    title: "No name question before there is a form (QA, the live check: in 4 of 12 runs the name offer was the reply's only question): find_staff for \"Lysa\" (nobody) with no form chosen gives form_not_chosen and no ask_exactly; once propose_form runs for a form this turn, its refusal and a later find_staff carry \"Reply **use Lysa**\"",
+    report: `${REPORT}; the Runner's live check (16 Nov 2026): the ask-one-question half passed 7 of 12`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      start(t);
+      const USE_LYSA = "I can't find **Lysa** on your staff list. Reply **use Lysa** to put the name on the form as you typed it, or give me the full name.";
+      const steps = [
+        { tool: "find_staff", input: { name: "Lysa" } },
+        { tool: "propose_form", input: { template_key: "stc-exit", employee_name: "Lysa", exit_type: "termination", effective_date: "11/5" } },
+        { tool: "find_staff", input: { name: "Lysa" } },
+      ] as const;
+      const standIn = loopStandIn((view): LoopDecision => {
+        const next = steps[view.results.length];
+        if (!next) return { text: "done" };
+        return { tool: next.tool, input: { ...next.input, ...(next.tool === "find_staff" ? { person_evidence: evidenceFrom(view, "Lysa") } : {}) } };
+      });
+      t.loopModel!(standIn);
+      await t.thread().say(SCRIPT);
+      const results = standIn.views.reduce<{ tool: string; output: unknown }[]>((most, view) => (view.results.length > most.length ? [...view.results] : most), []);
+      const [before, propose, after] = results.map((result) => result.output as { reason_code?: string; ask_exactly?: string; form_not_chosen?: boolean });
+      expect(before, "find_staff asked the name before a form was chosen").toMatchObject({ reason_code: "not_on_roster", form_not_chosen: true });
+      expect(before?.ask_exactly).toBeUndefined();
+      expect(propose).toMatchObject({ reason_code: "not_on_roster", ask_exactly: USE_LYSA });
+      expect(after).toMatchObject({ reason_code: "not_on_roster", ask_exactly: USE_LYSA });
+      expect(after?.form_not_chosen).toBeUndefined();
     },
   },
 ];

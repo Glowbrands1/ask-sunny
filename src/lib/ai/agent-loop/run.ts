@@ -575,6 +575,8 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     openFormId: input.openFormId,
     cardOnScreen,
     earlierCard: records.at(-1) ?? null,
+    /* QA (16 Nov 2026): no name question before there is a form (find_staff's off-roster offer). */
+    formChosen: Boolean(input.openFormId) || records.length > 0 || whoAsked !== null,
     nameQuestions,
   };
   const effects: ToolEffects = { proposal: null, formUpdate: null };

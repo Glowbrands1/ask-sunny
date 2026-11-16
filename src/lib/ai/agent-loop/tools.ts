@@ -112,6 +112,11 @@ export interface ToolContext {
   readonly earlierCard?: CardRecord | null;
   /** Fix batch items 4 and 3: the "Did you mean" questions this chat's find_staff gave, from the server's record. */
   readonly nameQuestions?: readonly NameQuestionRecord[];
+  /**
+   * QA (16 Nov 2026, the live check of the pasted-script rule): a form is chosen in this conversation before this turn
+   * (a card was made, a form is open, or the app asked who a form is for). No name question is asked before there is a form.
+   */
+  readonly formChosen?: boolean;
 }
 
 /** The recorded name questions and the roster, for `confirmed-spelling.ts`. */
@@ -506,6 +511,8 @@ export interface ToolEffects {
   staffLookedUp?: boolean;
   /** Fix batch items 4 and 3: this turn's last "Did you mean" (the roster ids offered, the name typed), for the record. */
   nameQuestion?: { offeredIds: string[]; typed: string; offeredNames?: string[]; asksFullName?: boolean };
+  /** QA (16 Nov 2026): propose_form ran for a form this turn, so a form is chosen (find_staff may ask the name). */
+  formChosen?: boolean;
   /** Batch G (G4), by the rebuild plan's PR 1b: find_past_forms found forms on file to open (open: true) for this person. */
   openRequested?: string;
   /** PR 2: the roster id of the card's person (the card record); null for a team card or a name not on the roster. */
@@ -785,6 +792,15 @@ export async function findStaff(context: ToolContext, input: { name?: unknown; p
          * The answer bridge (QA's ruling, 16 Nov 2026; Pau: every answer is used): this offer asks for the full name, so it
          * is recorded like a Did-you-mean, and a full name given in the next message confirms <shown> as that person.
          */
+        /*
+         * No name question before there is a form (QA, 16 Nov 2026: the live check of the pasted-script rule; in 4 of 12 runs
+         * this offer became the reply's only question and the manager was never asked what to make). Until a form is chosen
+         * (before this turn, or by propose_form this turn) the result says so and carries no question; propose_form's own
+         * refusal asks the name once the form is chosen.
+         */
+        if (!context.formChosen && !effects?.formChosen) {
+          return { reason_code: "not_on_roster", matches: [], not_on_roster: shown, form_not_chosen: true, note: `Not on the ${staffSystem()} staff list. No form is chosen yet: if the manager has not said what they want made, your one question is that (ending with "?"). Ask about the name only once a form is chosen (propose_form will give the question).` };
+        }
         if (effects) effects.nameQuestion = { offeredIds: [], typed: shown, asksFullName: true };
         return { reason_code: "not_on_roster", matches: [], not_on_roster: shown, ask_exactly: offRosterNameQuestion(shown), note: `Not on the ${staffSystem()} staff list. Ask the manager, in these words: ${offRosterNameQuestion(shown)}` };
       }
@@ -1567,6 +1583,7 @@ export async function proposeForm(
   if (!templates) return { reason_code: "read_failed", error: "The forms library could not be read just now." };
   const template = templates.find((row) => row.key === key);
   if (!template) return { reason_code: "scope", error: "This manager cannot create that form. Use one of these template keys.", templates: templates.map((row) => ({ key: row.key, name: row.name })) };
+  effects.formChosen = true;
 
   /* The person: a roster id from find_staff, or (district / region logins only) the name as typed. */
   const read = await rosterFor(context.actor.scope);
@@ -1617,6 +1634,8 @@ export async function proposeForm(
        * the refusal says what to ask (find_staff's own use-<name> line), so the model asks instead of retrying.
        */
       const shown = typed.replace(/\s+/g, " ").trim();
+      /* The answer bridge: this refusal asks for the full name, so it is recorded (the next message's full name confirms it). */
+      if (shown) effects.nameQuestion = { offeredIds: [], typed: shown, asksFullName: true };
       return {
         reason_code: "not_on_roster", error: "Give the employee_id find_staff returned for this person (call find_staff first). A name not on the roster goes on a form only after the manager answers the \"reply **use <name>**\" offer.",
         ...(shown ? { not_on_roster: shown, ask_exactly: offRosterNameQuestion(shown) } : {}),
