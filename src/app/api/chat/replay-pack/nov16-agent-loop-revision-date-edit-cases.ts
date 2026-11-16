@@ -96,4 +96,34 @@ export const NOV16_REVISION_DATE_EDIT_CASES: ReplayCase[] = [
       expect((t.forms() as { id: string; form_date?: string | null }[]).find((row) => row.id === revision!.id)?.form_date).toBe("2026-11-09");
     },
   },
+  {
+    id: "nov16-revision-date-edit-finished-request-date-not-settable",
+    title: "Control (QA's review of #1062): a date from an earlier, FINISHED request (\"change the date on test testy's 11/12 ca to 11/3\", saved) is never settable on the next request (\"open test testy's ca, the 11/10 one\"): date_not_stated, and the 11/10 form never gets 11/3",
+    report: "QA's review of #1062 (16 Nov 2026): the previous turn's dates count only when that request was left open (its turn saved nothing and made no card)",
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.() || !offline) return;
+      const tenth = await twoFinalized(t);
+      const twelfth = (t.forms() as { id: string; form_date?: string | null; status?: string }[]).find((row) => row.form_date === "2026-11-12" && row.status === "finalized")!.id;
+      const standIn = loopStandIn((view): LoopDecision => {
+        const text = said(view);
+        const target = /11\/12 ca/.test(text) ? twelfth : tenth;
+        const ask = /11\/12 ca/.test(text) ? "change the date on test testy's 11/12 ca" : "open test testy's ca";
+        if (!lastResult(view, "open_form")) return { tool: "open_form", input: { instance_id: target, forms_on_file_evidence: evidenceFrom(view, ask) } };
+        if (!lastResult(view, "edit_form")) return { tool: "edit_form", input: { instance_id: target, values: { form_date: "11/03/2026" } } };
+        return { text: "Done." };
+      });
+      t.loopModel!(standIn);
+      const thread = t.thread();
+      await thread.say("change the date on test testy's 11/12 ca to 11/3");
+      const first = results(standIn.views, "edit_form")[0] as { saved?: { field: string }[] };
+      expect(first.saved?.map((row) => row.field), "the finished request's date was not saved (the case proves nothing)").toContain("form_date");
+      await thread.say("open test testy's ca, the 11/10 one");
+      const second = results(standIn.views, "edit_form").at(-1) as { reason_code?: string; refused_reason_code?: string };
+      expect([second.reason_code, second.refused_reason_code], JSON.stringify(second)).toContain("date_not_stated");
+      const onTenth = (t.forms() as { id: string; revises_instance_id?: string | null; form_date?: string | null }[]).filter((row) => row.id === tenth || row.revises_instance_id === tenth);
+      expect(onTenth.map((row) => row.form_date), "the earlier request's date went on the next request's form").not.toContain("2026-11-03");
+    },
+  },
 ];

@@ -562,7 +562,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
    * showed a card not yet created. A fact for the model (batch A); the rules book says what the reply says about it.
    */
   /* PR 2: which earlier replies showed a card, and whose, from the server's card record (never the reply's text). */
-  const { cards: records, nameQuestions, personAsked } = await readLoopRecords(input.conversationId, input.actor.subject);
+  const { cards: records, nameQuestions, personAsked, turns: turnRecords } = await readLoopRecords(input.conversationId, input.actor.subject);
   const cards = cardTurns(input.history, records);
   const lastReplyIndex = input.history.findLastIndex((turn) => turn.role === "assistant" && !turn.error);
   const cardOnScreen = !input.openFormId && lastReplyIndex >= 0 ? (cards.get(lastReplyIndex) ?? null) : null;
@@ -585,6 +585,8 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     /* QA (16 Nov 2026; c158, c208): every card and "who is it for?" this chat's loop gave, for where THIS request started. */
     cardRecords: records,
     personAskedRecords: personAsked,
+    /* QA's review of #1062: what each earlier loop turn finished (saved fields, a card), for a request left open. */
+    turnRecords,
   };
   const effects: ToolEffects = { proposal: null, formUpdate: null };
   /* The open form as saved before the turn, for the no-false-"updated" guard below (FORM_EDIT_NOOP_GUARD's snapshot). */

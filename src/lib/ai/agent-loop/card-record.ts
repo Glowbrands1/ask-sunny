@@ -90,10 +90,22 @@ export interface PersonAskedRecord extends PersonAskedSlot {
   readonly messageId: string | null;
 }
 
-type TraceRow = { message_id: string | null; slots: { agent_loop?: { card?: unknown; name_question?: unknown; person_asked?: unknown } } | null };
+type TraceRow = { message_id: string | null; slots: { agent_loop?: { card?: unknown; name_question?: unknown; person_asked?: unknown; steps?: unknown } } | null };
 
-type LoopRecords = { cards: CardRecord[]; nameQuestions: NameQuestionRecord[]; personAsked: PersonAskedRecord[] };
-const NO_RECORDS = (): LoopRecords => ({ cards: [], nameQuestions: [], personAsked: [] });
+/**
+ * QA's review of #1062 (16 Nov 2026): what each loop turn finished, from its own trace (never the reply's text): whether
+ * any step saved a field (`saved_fields`) and whether it made a card. A turn that did neither left its request open
+ * (it asked "Which one?", "Who is it for?"…), so the manager's next message continues that request.
+ */
+export interface TurnRecord {
+  /** The manager's message the turn answered (the trace's message_id). */
+  readonly messageId: string | null;
+  readonly saved: boolean;
+  readonly card: boolean;
+}
+
+type LoopRecords = { cards: CardRecord[]; nameQuestions: NameQuestionRecord[]; personAsked: PersonAskedRecord[]; turns: TurnRecord[] };
+const NO_RECORDS = (): LoopRecords => ({ cards: [], nameQuestions: [], personAsked: [], turns: [] });
 
 /** This user's loop records in this conversation, oldest first, from one read. Empty without a conversation id, or if the read fails. */
 export async function readLoopRecords(conversationId: string | undefined, userId: string): Promise<LoopRecords> {
@@ -119,6 +131,12 @@ export async function readLoopRecords(conversationId: string | undefined, userId
         return isNameQuestionSlot(asked)
           ? [{ offeredKeys: [...asked.offeredKeys], typedKey: asked.typedKey, ...(Array.isArray(asked.offeredNameKeys) ? { offeredNameKeys: asked.offeredNameKeys.filter((key): key is string => typeof key === "string") } : {}), ...(asked.asksFullName === true ? { asksFullName: true } : {}), messageId: row.message_id }]
           : [];
+      }),
+      turns: rows.flatMap((row) => {
+        const loop = row.slots?.agent_loop;
+        if (!loop) return [];
+        const steps = Array.isArray(loop.steps) ? (loop.steps as { saved_fields?: unknown }[]) : [];
+        return [{ messageId: row.message_id, saved: steps.some((step) => Array.isArray(step.saved_fields) && step.saved_fields.length > 0), card: isCardSlot(loop.card) }];
       }),
       personAsked: rows.flatMap((row) => {
         const asked = row.slots?.agent_loop?.person_asked as Partial<PersonAskedSlot> | undefined;

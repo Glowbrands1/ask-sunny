@@ -54,7 +54,7 @@ import { redactSensitiveDefaults } from "@/lib/ai/sensitive-defaults";
 import { expandPolicyQuery } from "@/lib/knowledge/policy-retrieval";
 import type { SourceCitation } from "@/types";
 import type { AccessScope, ChatFormProposal, ChatMessage, Role } from "@/types";
-import { personKey, type CardRecord, type NameQuestionRecord, type PersonAskedRecord } from "@/lib/ai/agent-loop/card-record";
+import { personKey, type CardRecord, type NameQuestionRecord, type PersonAskedRecord, type TurnRecord } from "@/lib/ai/agent-loop/card-record";
 
 /**
  * ============================================================================
@@ -117,6 +117,8 @@ export interface ToolContext {
   /** QA (16 Nov 2026; c158, c208): every card this chat's loop made, and every "who is it for?" it asked, oldest first. */
   readonly cardRecords?: readonly CardRecord[];
   readonly personAskedRecords?: readonly PersonAskedRecord[];
+  /** QA's review of #1062: each earlier loop turn's record (saved fields, a card), oldest first. */
+  readonly turnRecords?: readonly TurnRecord[];
 }
 
 /** The recorded name questions and the roster, for `confirmed-spelling.ts`. */
@@ -2758,7 +2760,14 @@ export async function editForm(
      * the manager typed for THIS request is in the message before the answer. A date typed in the message being answered
      * or in the manager message right before it is theirs to set; the model's own date never is (the date parser only).
      */
-    const previousManagerTurn = [...(context.history as ChatMessage[])].reverse().find((turn) => turn.role === "user");
+    const lastManagerTurn = [...(context.history as ChatMessage[])].reverse().find((turn) => turn.role === "user");
+    /*
+     * QA's review of #1062: only when that request was left OPEN. The loop's turn that answered it saved no field and made
+     * no card (its trace record; a "Which one?" or "Who is it for?" turn). A finished request's date ("…dated 11/3" on
+     * another form) is never settable on the next request; with no record, only this message counts.
+     */
+    const leftOpen = lastManagerTurn?.id ? (context.turnRecords ?? []).some((turn) => turn.messageId === lastManagerTurn.id && !turn.saved && !turn.card) : false;
+    const previousManagerTurn = leftOpen ? lastManagerTurn : undefined;
     const typedDates = [...readDates(context.question), ...readDates(String(previousManagerTurn?.content ?? ""))];
     /*
      * QA's design (15 Nov 2026): on an incident form (CA, coaching), form_date and incident_date after today are always
