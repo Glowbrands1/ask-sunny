@@ -63,19 +63,23 @@ async function lookupBothWays(t: ReplayContext, message: string, name: string, q
   return { staff, proposed, reply };
 }
 
-/** propose_form's result without its own keys: what is left must be find_staff's result, unchanged. */
-function asFindStaff(proposed: Record<string, unknown>): Record<string, unknown> {
+/**
+ * propose_form's result without its own keys: what is left must be find_staff's result, unchanged. Its reason_code is
+ * find_staff's own; only when find_staff gave none does propose_form add person_unclear (every refusal has a code).
+ */
+function asFindStaff(proposed: Record<string, unknown>, staff: Record<string, unknown>): Record<string, unknown> {
   const { card, looked_up_by, error, ...rest } = proposed;
   void card;
   void looked_up_by;
   void error;
+  if (!("reason_code" in staff) && rest.reason_code === "person_unclear") delete rest.reason_code;
   return rest;
 }
 
 async function expectSameAsFindStaff(t: ReplayContext, message: string, name: string, quote: string, check: (staff: Record<string, unknown>) => void) {
   const { staff, proposed, reply } = await lookupBothWays(t, message, name, quote);
   check(staff);
-  expect(asFindStaff(proposed), `propose_form changed find_staff's answer:\nfind_staff ${JSON.stringify(staff)}\npropose_form ${JSON.stringify(proposed)}`).toEqual(staff);
+  expect(asFindStaff(proposed, staff), `propose_form changed find_staff's answer:\nfind_staff ${JSON.stringify(staff)}\npropose_form ${JSON.stringify(proposed)}`).toEqual(staff);
   expect(proposed.card, "a card was made").toBeNull();
   expect(proposed.looked_up_by).toBe("propose_form");
   expect(typeof proposed.error, "no card, yet no refusal").toBe("string");
@@ -168,7 +172,7 @@ export const NOV16_AGENT_LOOP_PR6_SPEED_CASES: ReplayCase[] = [
   },
   {
     id: "nov16-pr6-manual-read-once-per-turn",
-    title: "PR 6 item 2: the policy manual is read once per turn (the system prompt, read_policy and propose_form share it) and again on the next turn, never kept until the server restarts",
+    title: "PR 6 item 2: the policy manual's sections are read once per turn (the system prompt, read_policy and propose_form share it); the next turn checks the manual's version and reuses the sections only when nothing changed; a new version (a sync) is read on the very next turn, never kept until the server restarts",
     report: REPORT,
     status: "fixed",
     fixFlags: [FLAG],
@@ -182,12 +186,27 @@ export const NOV16_AGENT_LOOP_PR6_SPEED_CASES: ReplayCase[] = [
       });
       t.loopModel!(model);
       const thread = t.thread();
-      const before = t.manualReads!();
+      const reads = t.manualReads!();
+      const checks = t.manualVersionChecks!();
       await thread.say("ca for remy calder, she was 20 minutes late on 11/12");
-      expect(t.manualReads!() - before, "the manual was read more than once in one turn").toBe(1);
-      t.loopModel!(loopStandIn((view): LoopDecision => (lastResult(view, "read_policy") ? { text: "Attendance, p.14." } : { tool: "read_policy", input: { heading: "Attendance" } })));
+      expect(t.manualReads!() - reads, "the manual's sections were read more than once in one turn").toBe(1);
+      expect(t.manualVersionChecks!() - checks, "the manual's version was not checked once this turn").toBe(1);
+
+      // The next turn, nothing changed: one version check, the sections reused.
+      const askPolicy = (heading: string) => loopStandIn((view): LoopDecision => (lastResult(view, "read_policy") ? { text: "Read." } : { tool: "read_policy", input: { heading } }));
+      t.loopModel!(askPolicy("Attendance"));
       await thread.say("what page is the attendance policy on?");
-      expect(t.manualReads!() - before, "the next turn did not read the manual again").toBe(2);
+      expect(t.manualReads!() - reads, "an unchanged manual was read again").toBe(1);
+      expect(t.manualVersionChecks!() - checks).toBe(2);
+
+      // A sync writes a new version with a new section: the very next turn reads it.
+      t.manualAlsoHas!([{ chunkIndex: 900, chunkId: "jba-900", locator: "Page 70 — Fragrance Free Workplace", page: 71, content: "Fragrance Free Workplace\nTeam members do not wear strong scents on shift.", section: "Fragrance Free Workplace", printedPage: 70, sections: [] }]);
+      const fresh = askPolicy("Fragrance Free Workplace");
+      t.loopModel!(fresh);
+      await thread.say("what does the fragrance free workplace policy say?");
+      expect(t.manualReads!() - reads, "a new version of the manual was not read").toBe(2);
+      const read = firstResult(fresh.views, "read_policy") as { error?: string; heading?: string } | null;
+      expect(read?.error, `the new section was not found: ${JSON.stringify(read)}`).toBeUndefined();
     },
   },
   {

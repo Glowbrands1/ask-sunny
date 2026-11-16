@@ -63,6 +63,8 @@ export interface ReplayContext {
   fullManualLoads?(): void;
   /** PR 6 item 2: how many times the official policy manual was read this case (the agent loop reads it once per turn). */
   manualReads?(): number;
+  /** PR 6: how many times the agent loop checked which document is the manual and its version (once per turn). */
+  manualVersionChecks?(): number;
   /** The grounding block the answering model was given on its last answer. */
   lastGrounding?(): string;
   /** What the revision model writes on the next revision. */

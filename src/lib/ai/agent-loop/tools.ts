@@ -119,6 +119,8 @@ export interface ToolContext {
 /** PR 6: reads held for one turn only (the policy manual), never past it. */
 export interface TurnReads {
   manual?: Promise<ManualRead>;
+  /** The manual read's time and whether its sections were reused (same document and version), for the trace: numbers only. */
+  manualRead?: { ms: number; cached: boolean };
 }
 
 /** The recorded name questions and the roster, for `confirmed-spelling.ts`. */
@@ -1182,21 +1184,39 @@ type ManualRead = {
   readonly document?: { readonly id: string; readonly title: string; readonly category: string };
 } | null;
 /**
- * THE POLICY MANUAL IS READ ONCE PER TURN (rebuild plan PR 6; bug 6 of the plan's status list: the cache lived until the
- * server restarted, so a manual re-synced in Woven was not read until a redeploy). Each call reads it fresh; a turn
- * holds its own copy (`turnManual`), so the system prompt, read_policy and propose_form share one read, and the next
- * turn reads again. A failed read is null for that turn only.
+ * THE POLICY MANUAL IS READ ONCE PER TURN, AND NEVER STALE (rebuild plan PR 6; bug 6 of the plan's status list: the old
+ * cache lived until the server restarted, so a manual re-synced from Woven was cited from its old copy until a redeploy).
+ * Each turn asks which document is the manual and its version (the small document list, `officialPolicyManualVersion`);
+ * the manual's sections (the large read) are reused only for that same document and version, and read again the moment
+ * either changes. A turn holds its one read (`turnManual`), so the system prompt, read_policy and propose_form share it.
+ * A failed read is null for that turn only and is never kept.
  */
-export function manualFor(scopeId: string): Promise<ManualRead> {
+const manualByVersion = new Map<string, { readonly key: string; readonly read: NonNullable<ManualRead> }>();
+
+export function manualFor(scopeId: string, meta?: TurnReads): Promise<ManualRead> {
   return (async (): Promise<ManualRead> => {
+    const started = performance.now();
+    const provider = new SupabaseKnowledgeProvider();
     try {
-      const manual = await new SupabaseKnowledgeProvider().fetchOfficialPolicyManual(scopeId);
+      const current = await provider.officialPolicyManualVersion(scopeId).catch(() => null);
+      const key = current ? `${current.documentId}@${current.version}` : null;
+      const kept = manualByVersion.get(scopeId);
+      if (key && kept?.key === key) {
+        if (meta) meta.manualRead = { ms: Math.round(performance.now() - started), cached: true };
+        return kept.read;
+      }
+      const manual = await provider.fetchOfficialPolicyManual(scopeId);
       if (!manual.ok) return null;
-      return {
+      const read = {
         chunks: manual.chunks,
         headings: manualSectionHeadings(manual.chunks),
         document: { id: manual.documentId, title: manual.documentTitle, category: manual.documentCategory ?? "policy" },
       };
+      /* Kept only under the version this read is known to be (the same document the version check named). */
+      if (key && current!.documentId === manual.documentId) manualByVersion.set(scopeId, { key, read });
+      else manualByVersion.delete(scopeId);
+      if (meta) meta.manualRead = { ms: Math.round(performance.now() - started), cached: false };
+      return read;
     } catch {
       return null;
     }
@@ -1206,12 +1226,14 @@ export function manualFor(scopeId: string): Promise<ManualRead> {
 /** This turn's one read of the manual (PR 6); outside a turn (a tool's unit test), a fresh read. */
 export function turnManual(context: Pick<ToolContext, "scopeId" | "turn">): Promise<ManualRead> {
   if (!context.turn) return manualFor(context.scopeId);
-  context.turn.manual ??= manualFor(context.scopeId);
+  context.turn.manual ??= manualFor(context.scopeId, context.turn);
   return context.turn.manual;
 }
 
-/** Tests only. Nothing outlives a turn any more (PR 6), so there is nothing to forget; kept for the replay pack's reset. */
-export function forgetAgentLoopManualForTests(): void {}
+/** Tests only: forget the manual kept under its version. */
+export function forgetAgentLoopManualForTests(): void {
+  manualByVersion.clear();
+}
 
 /** A heading as words: case, punctuation and the word "policy" set aside. */
 function headingKey(text: string): string {
@@ -1598,7 +1620,8 @@ async function lookUpForCard(context: ToolContext, effects: ToolEffects, typed: 
   if (record.reason_code === "missing_input") return { kind: "none" };
   /* find_staff's result as it is (reason code, facts, note), plus propose_form's own refusal: no card was made. */
   const ask = typeof record.note === "string" ? record.note : "Ask the manager who the form is for.";
-  return { kind: "ask", result: { ...found, card: null, looked_up_by: "propose_form", ...("error" in record ? {} : { error: `No card was made: the name was looked up as find_staff does. ${ask}` }) } };
+  /* find_staff's own reason_code when it gave one; otherwise propose_form's person_unclear (every refusal carries a code). */
+  return { kind: "ask", result: { ...found, card: null, looked_up_by: "propose_form", reason_code: typeof record.reason_code === "string" ? record.reason_code : "person_unclear", ...("error" in record ? {} : { error: `No card was made: the name was looked up as find_staff does. ${ask}` }) } };
 }
 
 export async function proposeForm(

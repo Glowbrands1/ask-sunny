@@ -83,6 +83,8 @@ const state = vi.hoisted(() => ({
   fullManualLoads: false,
   /** PR 6 item 2: reads of the official policy manual this case (once per loop turn). */
   manualReads: 0,
+  /** PR 6: the agent loop's per-turn check of the manual's document and version. */
+  manualVersionChecks: 0,
   /** The grounding block the answering model was last given (`lastGrounding`). */
   lastGrounding: "",
   /** What the slot model (record_intent_slots) reads this turn, when a case sets it — as a production trace shows. */
@@ -491,6 +493,11 @@ vi.mock("@/lib/knowledge/providers/supabase", () => ({
         },
       };
     }
+    /* PR 6: the manual's document and version; the version changes whenever a case adds sections (`t.manualAlsoHas`), as a sync writes a new one. */
+    async officialPolicyManualVersion() {
+      state.manualVersionChecks += 1;
+      return { documentId: "doc-manual", version: `v-${JSON.stringify(state.manualExtra).length}` };
+    }
     async fetchOfficialPolicyManual() {
       state.manualReads += 1;
       return {
@@ -790,6 +797,7 @@ beforeEach(async () => {
   state.normalizerIntent = null;
   state.fullManualLoads = false;
   state.manualReads = 0;
+  state.manualVersionChecks = 0;
   state.lastGrounding = "";
   state.readerEmployee = null;
   state.slotsOnlyIfSaid = false;
@@ -974,6 +982,7 @@ function context(): ReplayContext {
       state.normalizerIntent = intent;
     },
     manualReads: () => state.manualReads,
+    manualVersionChecks: () => state.manualVersionChecks,
     fullManualLoads: () => {
       state.fullManualLoads = true;
     },

@@ -20,6 +20,8 @@ const KNOWN = new Set([
   "unknown_tool", "tool_threw",
   // PR 6 item 3: an edit_form with no values refused when the turn has no room for the reviser and a reply.
   "step_budget",
+  // PR 6 item 1: propose_form's own name lookup found no one person and find_staff gave no code (a word that is no person).
+  "person_unclear",
   // The rebuild plan's PR 1a (evidence args; QA's review of #1026): the privacy, exit and name-correction refusals.
   "privacy_not_this_person", "exit_not_stated", "name_evidence_missing", "name_correction_other_fields", "name_correction_no_name",
   "name_not_in_evidence", "name_correction_other_person", "name_correction_did_you_mean", "name_correction_needs_evidence",
