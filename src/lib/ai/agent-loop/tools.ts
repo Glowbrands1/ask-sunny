@@ -54,7 +54,7 @@ import { redactSensitiveDefaults } from "@/lib/ai/sensitive-defaults";
 import { expandPolicyQuery } from "@/lib/knowledge/policy-retrieval";
 import type { SourceCitation } from "@/types";
 import type { AccessScope, ChatFormProposal, ChatMessage, Role } from "@/types";
-import { personKey, type CardRecord, type NameQuestionRecord, type PersonAskedRecord, type TurnRecord } from "@/lib/ai/agent-loop/card-record";
+import { personKey, replyTurns, type CardRecord, type NameQuestionRecord, type PersonAskedRecord, type TurnRecord } from "@/lib/ai/agent-loop/card-record";
 
 /**
  * ============================================================================
@@ -395,12 +395,20 @@ function otherPersonNamed(said: string, person: EvidencePerson): boolean {
  * count; with no records, there is none (only this message, as before).
  */
 export function openRequestTurns(context: Pick<ToolContext, "history" | "turnRecords">): ChatMessage[] {
-  const managerTurns = (context.history as ChatMessage[]).filter((turn) => turn.role === "user");
+  const history = context.history as ChatMessage[];
+  /*
+   * A turn's record is found the way every loop record is (`replyTurns`: by the trace's message id, and by whatever else
+   * the record lookup matches on), keyed by the reply that turn wrote; never by comparing ids here.
+   */
+  const byReply = replyTurns(history, context.turnRecords ?? []);
   const open: ChatMessage[] = [];
-  for (let at = managerTurns.length - 1; at >= 0; at -= 1) {
-    const turn = managerTurns[at]!;
-    const leftOpen = turn.id ? (context.turnRecords ?? []).some((record) => record.messageId === turn.id && !record.saved && !record.card) : false;
-    if (!leftOpen) break;
+  for (let at = history.length - 1; at >= 0; at -= 1) {
+    const turn = history[at]!;
+    if (turn.role !== "user") continue;
+    const reply = history.findIndex((later, index) => index > at && later.role === "assistant");
+    const nextUser = history.findIndex((later, index) => index > at && later.role === "user");
+    const record = reply > at && (nextUser < 0 || reply < nextUser) ? byReply.get(reply) : undefined;
+    if (!record || record.saved || record.card) break;
     open.unshift(turn);
   }
   return open;
@@ -3322,7 +3330,8 @@ export async function editForm(
      * no card (its trace record; a "Which one?" or "Who is it for?" turn). A finished request's date ("…dated 11/3" on
      * another form) is never settable on the next request; with no record, only this message counts.
      */
-    const leftOpen = lastManagerTurn?.id ? (context.turnRecords ?? []).some((turn) => turn.messageId === lastManagerTurn.id && !turn.saved && !turn.card) : false;
+    /* The same record lookup as the open request's (`openRequestTurns`, through `replyTurns`). */
+    const leftOpen = lastManagerTurn ? openRequestTurns(context).includes(lastManagerTurn) : false;
     const previousManagerTurn = leftOpen ? lastManagerTurn : undefined;
     /*
      * QA (16 Nov 2026, dateedit): a request can take more than one answer to finish ("the 11/10 one", then "the finalized
