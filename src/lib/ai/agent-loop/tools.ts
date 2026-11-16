@@ -2007,6 +2007,21 @@ export async function cardPersonReplyName(context: ToolContext): Promise<string 
 }
 
 /**
+ * Who may report for the card's person in a reply (Pau's ruling as QA narrowed it, 17 Nov 2026; `reply-pronouns.ts`): the
+ * signed-in manager, and the roster people whose job title leads others (`appConfig().leadershipTitle`, read from the
+ * roster's title), by full and first name. The card's person themself is added by the pronoun pass.
+ */
+export async function trustedReporters(context: ToolContext): Promise<string[]> {
+  const facts = await appConfig().roster.readDirectoryFacts(context.actor.scope).catch(() => []);
+  const leaders = facts.filter((row) => typeof row.title === "string" && appConfig().leadershipTitle.test(row.title));
+  const manager = context.actor.displayName?.trim() ?? "";
+  return [...new Set([
+    ...(manager ? [manager, manager.split(/\s+/)[0]!] : []),
+    ...leaders.flatMap((row) => [displayName(row), ...fullNamesOf(row), row.firstName, row.preferredFirstName ?? ""]),
+  ].filter((name) => name && name.trim().length > 1))];
+}
+
+/**
  * The other people named around this reply, for the pronoun pass's sentence rule (`reply-pronouns.ts`): roster people the
  * reply or the manager's message names (full or first name), and the names the app's name reader reads in the manager's
  * message, other than the person the reply is about.
@@ -2238,6 +2253,31 @@ async function lookUpForCard(context: ToolContext, effects: ToolEffects, typed: 
   return { kind: "ask", result: { ...found, card: null, looked_up_by: "propose_form", reason_code: typeof record.reason_code === "string" ? record.reason_code : "name_to_confirm", ...("error" in record ? {} : { error: `No card was made: the name was looked up as find_staff does. ${ask}` }) } };
 }
 
+/**
+ * c019 (QA, 17 Nov 2026): the manual heading `heading` typed in the manager's words, as they typed it, and whether it is
+ * typed as the policy itself ("the Attendance policy", "Late Opening section") rather than as what the employee did ("for
+ * Late Opening"). The heading's own words, in order, from the manual; null when they are not in the words.
+ */
+export function headingTypedIn(words: string, heading: string): { typed: string; asPolicy: boolean } | null {
+  const own = headingKey(heading).split(" ").filter(Boolean);
+  while (own.length > 1 && /^polic(?:y|ies)$/.test(own.at(-1)!)) own.pop();
+  if (own.length === 0 || (own.length === 1 && own[0]!.length < 4)) return null;
+  const escaped = own.map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const found = new RegExp(`(?<![\\p{L}\\p{N}])${escaped.join("[\\s-]+")}(?![\\p{L}\\p{N}])`, "iu").exec(words);
+  if (!found) return null;
+  const after = words.slice(found.index + found[0].length);
+  return { typed: found[0], asPolicy: /^\s+(?:polic(?:y|ies)|section|guidelines?)\b/i.test(after) };
+}
+
+/** The week's day names, from the calendar (Intl), never typed out: 2023-01-01 was a Sunday. */
+const CALENDAR_WEEKDAYS = new Set(
+  Array.from({ length: 7 }, (_unused, day) => new Intl.DateTimeFormat("en-US", { weekday: "long", timeZone: "UTC" }).format(new Date(Date.UTC(2023, 0, 1 + day))).toLowerCase()),
+);
+/** A name holding a weekday ("Both Sundays", "Last Monday"): one of its words is a day of the week, singular or plural. */
+export function holdsWeekday(name: string): boolean {
+  return name.toLowerCase().split(/[^\p{L}]+/u).some((word) => CALENDAR_WEEKDAYS.has(word) || (word.endsWith("s") && CALENDAR_WEEKDAYS.has(word.slice(0, -1))));
+}
+
 export async function proposeForm(
   context: ToolContext,
   effects: ToolEffects,
@@ -2457,7 +2497,7 @@ export async function proposeForm(
     return { reason_code: "right_person", error: "That is the signed-in manager's own name, not an employee. Ask who the form is about." };
   }
 
-  const whatHappened = typeof input.what_happened === "string" ? input.what_happened.trim().slice(0, 2_000) : "";
+  let whatHappened = typeof input.what_happened === "string" ? input.what_happened.trim().slice(0, 2_000) : "";
   /* The incident's own words (this person's turns, read below) are checked against the account once they are known. */
   const asked = managerContext(context.history as ChatMessage[], { id: context.questionMessageId, content: context.question });
   /* THIS request's turns (QA, 14 Nov 2026; THIS_PERSONS_TURNS behaviour): an earlier incident in the chat never feeds this card. */
@@ -2673,6 +2713,21 @@ export async function proposeForm(
     if (lateOpening && saysLateOpening && headingKey(policyHeading) === headingKey("Attendance") && !lateOpen.describesAttendanceToo(requestWords)) {
       return { reason_code: "wrong_heading", error: `The manager's words ("late to open", a failure to open) are the manual's ${lateOpening} section, not Attendance. Propose the card again with policy "${lateOpening}".` };
     }
+  }
+  /*
+   * THE OFFENSE THE MANAGER NAMED IS THE ACCOUNT, AND THE POLICY HINT (QA, 17 Nov 2026; the 266 re-run on train 3, c019:
+   * "create corrective action for <P> for Late Opening from the policy manual. It is a verbal warning" got policy Late
+   * Opening and no account, policy_named_by_manager false, and "What happened?" on every turn after). The card's heading,
+   * as the manual prints it, typed in this request's words: the manager named that policy. Typed as what the employee
+   * did ("for Late Opening"), not as the policy itself ("the Attendance policy"), it is also the account when the model
+   * gave none, in the manager's own words, as the rules book reads "for late open". An account the model gave is never
+   * replaced. The heading is read from the manual, never from a word list.
+   */
+  const typedHeading = policyHeading ? headingTypedIn(requestWords, policyHeading) : null;
+  let accountFromNamedOffense: string | null = null;
+  if (!whatHappened && ACCOUNT_FORMS.has(template.key) && typedHeading && !typedHeading.asPolicy) {
+    whatHappened = `${typedHeading.typed.charAt(0).toUpperCase()}${typedHeading.typed.slice(1)}.`;
+    accountFromNamedOffense = whatHappened;
   }
   /*
    * CLOSE_SPELLING (the manual's own reader): a policy the manager named with a misspelling that is not one confident
@@ -3011,7 +3066,7 @@ export async function proposeForm(
   /* No account yet: the card shows, and Create waits for what happened (as WHAT_HAPPENED_NO_CREATE does today). */
   const awaiting = whatHappened === "" && ACCOUNT_FORMS.has(template.key);
   /* NO_ACCOUNT_NO_APP_POLICY as a fact (batch B, code-check #21; r3 639: an MSB or topic request counts as naming it). */
-  const policyNamedByManager = namedPolicies(requestWords).length > 0 || topicFits !== null || /\bmsb\b|must see behaviou?rs?/i.test(requestWords);
+  const policyNamedByManager = namedPolicies(requestWords).length > 0 || typedHeading !== null || topicFits !== null || /\bmsb\b|must see behaviou?rs?/i.test(requestWords);
   /*
    * Act and state the assumption (Pau, 14 Nov 2026): no date in the manager's words, so the card is dated today, and
    * the reply says so in one line the manager can correct.
@@ -3150,6 +3205,8 @@ export async function proposeForm(
     .flatMap((sentence) => sentence.split(/[,;]\s+/).flatMap((clause) => extractEmployeeNames(clause)).map((name) => ({ name, sentence })))
     .filter(({ name }, index, all) => all.findIndex((other) => other.name.toLowerCase() === name.toLowerCase()) === index)
     .filter(({ name }) => words(name).length >= 2 && !samePerson(name, employee.name) && !(context.actor.displayName && samePerson(name, context.actor.displayName)))
+    /* c200 (QA, 17 Nov 2026): "Both Sundays" holds a weekday, as the calendar names it: a day, never another person. */
+    .filter(({ name }) => !holdsWeekday(name))
     .slice(0, 3)
     .map(({ name, sentence }) => ({ name: untrusted(name), sentence: untrusted(sentence) }));
   const facts = {
@@ -3194,6 +3251,8 @@ export async function proposeForm(
      */
     ...(template.key === appConfig().formKeys.corrective && !awaiting && !askedPolicyWhole ? { policy_not_given: { note: "This card has no policy. Propose it again with policy: the one JBA Policy Manual heading that fits what happened (the headings are listed in your instructions). \"Other — <short topic>\" only for Must See Behaviors, a cleaning duty left undone, or when no section fits; then say so in your reply." } } : {}),
     ...(accountGiven ? { request_words: untrusted(accountGiven) } : {}),
+    /* c019: the account is the offense the manager named (see headingTypedIn); the reply says so, never "What happened?" about it. */
+    ...(accountFromNamedOffense ? { account_from_named_offense: { account: untrusted(accountFromNamedOffense), note: "The manager named the offense, and their words for it are the card's account. Say so in one short line (they can add more before Create); never ask what happened about it." } } : {}),
     ...(figuresNotSaid.length > 0 ? { figures_not_said: figuresNotSaid } : {}),
     ...(formatFigures.length > 0 ? { format_figures: formatFigures } : {}),
     ...(fitsHeadings ? { fits_headings: fitsHeadings } : {}),
