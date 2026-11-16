@@ -2428,7 +2428,15 @@ export async function proposeForm(
    * inside this request's turns still holds the level, so it returns. A new request (new_form_evidence) starts fresh.
    */
   const inRequest = (record: CardRecord) => Boolean(record.messageId && requestTurnIds.includes(record.messageId));
-  const carriedRecord = [...(context.cardRecords ?? [])].reverse().find((record) => isThisCard(record) && inRequest(record) && record.level) ?? [context.cardOnScreen, context.earlierCard].find(isThisCard) ?? null;
+  /*
+   * QA (16 Nov 2026, with #1070's payroll carry): only while a card for THIS person is on screen (this card, or their card
+   * on another form: c019's switch away and back). After a reply with no card ("verbal", "thanks", "another ca for
+   * <name>"), the level an earlier card held never reaches the next card; the manager states it again.
+   */
+  const samePersonOnScreen = Boolean(context.cardOnScreen && (employee.id ? context.cardOnScreen.employeeKey === personKey(employee.id) : !context.cardOnScreen.employeeKey && context.cardOnScreen.nameKey === personKey(employee.name)));
+  const carriedRecord = samePersonOnScreen
+    ? ([...(context.cardRecords ?? [])].reverse().find((record) => isThisCard(record) && inRequest(record) && record.level) ?? (isThisCard(context.cardOnScreen) ? context.cardOnScreen : null))
+    : null;
   const carriedLevel = caOnlyFields && !asksNewForm ? (carriedRecord?.level ?? null) : null;
   const level = askedLevel && levelCheck?.ok ? askedLevel : carriedLevel;
   /*

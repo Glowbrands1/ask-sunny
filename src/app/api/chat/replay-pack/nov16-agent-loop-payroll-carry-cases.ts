@@ -128,4 +128,29 @@ export const NOV16_PAYROLL_CARRY_CASES: ReplayCase[] = [
       expect(card(thread.proposal)?.payrollDeduct ?? null, "Remy's payroll answer reached Juno's card").toBeNull();
     },
   },
+  {
+    id: "nov16-level-carry-guard-after-a-reply-with-no-card",
+    title: "Guard (QA, with the payroll carry): Verbal on Remy Calder's card, then \"thanks\" (a reply with no card), then \"another ca for remy calder, she was rude to a guest on 11/14\" with no new_form_evidence and no level from the model: the new card does not inherit Verbal",
+    report: "QA (16 Nov 2026): a level carries only while a card for this person is on screen",
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.() || !offline) return;
+      start(t);
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        const text = said(view);
+        if (/^thanks$/i.test(text)) return { text: "You're welcome." };
+        if (lastResult(view, "propose_form")) return { text: "Here's the card." };
+        if (/^verbal ca/i.test(text)) return lastResult(view, "find_staff") ? { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: "She was late on 11/13.", incident_date: "2026-11-13", warning_level: "verbal", level_evidence: evidenceFrom(view, "verbal ca for remy calder") } } : { tool: "find_staff", input: { name: "remy calder" } };
+        return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: "She was rude to a guest on 11/14.", incident_date: "2026-11-14" } };
+      }));
+      const thread = t.thread();
+      await thread.say("verbal ca for remy calder, she was late on 11/13");
+      expect(card(thread.proposal)?.warningLevel).toBe("verbal");
+      await thread.say("thanks");
+      await thread.say("another ca for remy calder, she was rude to a guest on 11/14");
+      expect(thread.proposal?.employeeName).toBe("Remy Calder");
+      expect(card(thread.proposal)?.warningLevel ?? null, "a second CA after a reply with no card inherited the earlier card's level").toBeNull();
+    },
+  },
 ];
