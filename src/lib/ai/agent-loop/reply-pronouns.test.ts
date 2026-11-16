@@ -133,6 +133,16 @@ describe("withoutPersonPronouns", () => {
     expect(withoutPersonPronouns(close, "Tamsin", [], "exit form for tamsin orwell, she sent her immediate resignation to the management team").text)
       .toBe('You said Tamsin "sent her immediate resignation to management".');
   });
+  /*
+   * QA (16 Nov 2026; the pack's three-saved-edits case on train 4): the reviser's saved Observation as the reply echoes it,
+   * and the control where the reporter pronoun is kept (another person named first). Invented names.
+   */
+  it("names the person in the saved Observation's reported speech; a kept reporter pronoun keeps its own (train 4)", () => {
+    expect(withoutPersonPronouns("Observed:\nRemy was 20 minutes late on 11/12.\nShe said her car broke down.", "Remy").text)
+      .toBe("Observed:\nRemy was 20 minutes late on 11/12.\nRemy said Remy's car broke down.");
+    const kept = "When Juno Paxton asked whether Tamsin was done, she said her checklist was finished.";
+    expect(withoutPersonPronouns(kept, "Tamsin", ["Juno Paxton"])).toEqual({ text: kept, replaced: 0 });
+  });
   it("leaves a reply with no pronoun alone", () => {
     const plain = "Here's the Corrective Action Form for **Tamsin**. Tamsin's shift was on 11/14.";
     expect(withoutPersonPronouns(plain, "Tamsin")).toEqual({ text: plain, replaced: 0 });
