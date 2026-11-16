@@ -37,6 +37,10 @@ async function salon(t: ReplayContext) {
 }
 
 /** Asks only what a tool told it to ask; otherwise makes or keeps the card. */
+/** The last card result this turn's stand-in saw (its facts carry off_roster_name when the name is not on the staff list). */
+const lastCardFacts = (views: readonly LoopView[]) =>
+  (views.flatMap((view) => view.results).filter((result) => result.tool === "propose_form" && (result.output as { card?: unknown }).card).at(-1)?.output as { facts?: { off_roster_name?: string } } | undefined)?.facts;
+
 const said = (result: Result, card: Result) => result?.ask_exactly ?? (card?.card ? `Here's the card for **${card.card.employee}**.` : `REFUSED ${card?.reason_code ?? result?.reason_code ?? ""}`);
 
 export const NOV16_AGENT_LOOP_TYPED_NAME_TAKEN_CASES: ReplayCase[] = [
@@ -49,7 +53,7 @@ export const NOV16_AGENT_LOOP_TYPED_NAME_TAKEN_CASES: ReplayCase[] = [
     async run(t) {
       if (!t.loopOn?.()) return;
       await salon(t);
-      t.loopModel!(loopStandIn((view): LoopDecision => {
+      const c220 = loopStandIn((view): LoopDecision => {
         const card = lastResult(view, "propose_form") as Result;
         if (managerTurns(view) === 1) {
           if (!card) return { tool: "propose_form", input: { template_key: "dpoa", employee_name: "Odessa Vantreight", person_evidence: evidenceFrom(view, "TC Odessa Vantreight"), what_happened: "She refused to clean the restroom.", incident_date: "2026-11-05" } };
@@ -61,13 +65,16 @@ export const NOV16_AGENT_LOOP_TYPED_NAME_TAKEN_CASES: ReplayCase[] = [
         if (staff.ask_exactly) return { text: staff.ask_exactly };
         if (!card) return { tool: "propose_form", input: { template_key: "dpoa", employee_name: "TC Odessa Vantreight", person_evidence: evidenceFrom(view, "TC Odessa Vantreight"), what_happened: "She refused to clean the restroom.", incident_date: "2026-11-05" } };
         return { text: said(staff, card) };
-      }));
+      });
+      t.loopModel!(c220);
       const thread = t.thread();
       await thread.say("I need a verbal warning for TC Odessa Vantreight. For insubordination on 11/5/2026.");
       expect(thread.proposal?.employeeName).toBe("Odessa Vantreight");
       const reply = await thread.say("TC Odessa Vantreight");
       expect(reply.content, "the name already on the card was offered as \"use TC …\"").not.toMatch(/Reply \*\*use/);
       expect(thread.proposal?.employeeName, "the title went onto the card's name").toBe("Odessa Vantreight");
+      // Pau's s10 ruling (QA, 16 Nov 2026): a name taken as typed that is not on the staff list is said so on the card.
+      expect(lastCardFacts(c220.views)?.off_roster_name, "the card does not say the name is not on the staff list").toBe("Odessa Vantreight");
     },
   },
   {
@@ -79,7 +86,7 @@ export const NOV16_AGENT_LOOP_TYPED_NAME_TAKEN_CASES: ReplayCase[] = [
     async run(t) {
       if (!t.loopOn?.()) return;
       await salon(t);
-      t.loopModel!(loopStandIn((view): LoopDecision => {
+      const c224 = loopStandIn((view): LoopDecision => {
         const card = lastResult(view, "propose_form") as Result;
         const first = managerTurns(view) === 1;
         if (!card) {
@@ -96,7 +103,8 @@ export const NOV16_AGENT_LOOP_TYPED_NAME_TAKEN_CASES: ReplayCase[] = [
           };
         }
         return { text: said(null, card) };
-      }));
+      });
+      t.loopModel!(c224);
       const thread = t.thread();
       await thread.say("I need a exit for for Quillon Ashgrove TC. Quit without notice. not fulfilling a 2 weeks notice. store items were returned.");
       expect(thread.proposal?.employeeName).toBe("Quillon Ashgrove");
@@ -104,6 +112,8 @@ export const NOV16_AGENT_LOOP_TYPED_NAME_TAKEN_CASES: ReplayCase[] = [
       expect(reply.content, "the manager's own respelling was refused").not.toMatch(/Reply \*\*use|REFUSED/);
       expect(thread.proposal?.employeeName).toBe("Quillon Ashbrove");
       expect(thread.proposal?.templateKey).toBe("stc-exit");
+      // Pau's s10 ruling (QA, 16 Nov 2026): the respelled name is not on the staff list, and the card says so.
+      expect(lastCardFacts(c224.views)?.off_roster_name, "the card does not say the name is not on the staff list").toBe("Quillon Ashbrove");
     },
   },
   {

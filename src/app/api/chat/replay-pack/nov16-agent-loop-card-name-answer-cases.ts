@@ -34,7 +34,7 @@ type CardOut = {
   reply_name?: string;
   ask_exactly?: string;
   not_on_card?: { field: string; reason_code: string }[];
-  facts?: { name_corrected?: { from: string; to: string }; exit_termination?: { form_label: string; effective: string } };
+  facts?: { name_corrected?: { from: string; to: string }; exit_termination?: { form_label: string; effective: string }; off_roster_name?: string };
 } | null;
 const lastCardOut = (views: readonly LoopView[]) => views.flatMap((view) => view.results).filter((result) => result.tool === "propose_form").at(-1)?.output as CardOut;
 
@@ -88,6 +88,8 @@ export const NOV16_AGENT_LOOP_CARD_NAME_ANSWER_CASES: ReplayCase[] = [
       expect(t3.content, `T3 offered "use" for a full name close to nobody:\n${t3.content}`).not.toContain(`Reply **use ${name}**`);
       expect(thread.proposal?.templateKey).toBe("stc-exit");
       expect(thread.proposal?.employeeName, "the answer did not correct the existing exit card").toBe(name);
+      // Pau's s10 ruling, as QA confirmed for this change: a name not on the staff list is never silent; the card says so.
+      expect(lastCardOut(standIn.views)?.facts?.off_roster_name, "the card does not say the name is not on the staff list").toBe(name);
     },
   })),
   {
