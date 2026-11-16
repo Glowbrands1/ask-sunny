@@ -9,7 +9,7 @@ import { businessToday } from "@/lib/business-date";
 import { appConfig } from "./app-config";
 import { isoDate, monthDayToIso, readDates, sameDate, withoutDates } from "./dates";
 import { candidateNameWords, chatFormsActor } from "@/lib/forms/chat-form-records";
-import { holdsPhrase, identifiedTurns, verifyEvidence, withoutMessageIdTags, type IdentifiedTurn } from "./evidence";
+import { CURRENT_MESSAGE_ID, holdsPhrase, identifiedTurns, verifyEvidence, withoutMessageIdTags, type IdentifiedTurn } from "./evidence";
 import { answeredNameQuestions, answerNamesSomeoneElse, everKeptOrUsedTyped, isConfirmedSpelling, latestTurnAnswersFor, latestTurnConfirms, latestTurnKeepsOrUsesTyped, latestTurnKeepsTyped, spellingKeysConfirmedFor, spellingKeysConfirmedForName, type NameQuestionView } from "./confirmed-spelling";
 import { AFFIRMATIVE, displayName, editDistance, matchEmployeeName, nameConfirmationQuestion, readNameConfirmation, type RosterEmployee } from "@/lib/forms/employee-match";
 import { offRosterTyped } from "@/lib/forms/roster-only-names";
@@ -254,6 +254,27 @@ export function levelOptionIsTheLevel(text: string, level: "verbal" | "written",
     const bare = next.replace(/[-']+$/g, "");
     return own.has(bare) || bare.length <= 3;
   });
+}
+
+/**
+ * QA (live c_pay r1, 16 Nov 2026): the level code sets itself, with no model call. Stricter than `levelOptionIsTheLevel`,
+ * because no model weighs it: the option word as typed, directly followed by one of the form's own words ("written CA",
+ * "verbal warning", "Written Corrective Action"). Returns those two words exactly as typed (the evidence quote), or null.
+ * "written up before", "the written closing checklist" and "verbal abuse" never qualify.
+ */
+export function levelPhraseNamingTheForm(text: string, level: "verbal" | "written", formWords: readonly string[]): string | null {
+  const own = new Set(formWords.map((word) => word.toLowerCase()));
+  const words = [...text.matchAll(/[\p{L}][\p{L}'-]*/gu)];
+  for (let index = 0; index + 1 < words.length; index += 1) {
+    const word = words[index]![0].toLowerCase();
+    const isOption = word === level || (word.length >= 4 && editDistance(word, level) === 1);
+    if (!isOption) continue;
+    const next = words[index + 1]!;
+    const between = text.slice(words[index]!.index! + words[index]![0].length, next.index!);
+    if (!/^\s+$/.test(between) || !own.has(next[0].toLowerCase().replace(/[-']+$/g, ""))) continue;
+    return text.slice(words[index]!.index!, next.index! + next[0].length);
+  }
+  return null;
 }
 
 /** The form's own words for `levelOptionIsTheLevel`: its name's words and initials, and the option labels' "warning". */
@@ -2745,12 +2766,31 @@ export async function proposeForm(
   const lastYear = incidentForm && date && !dateAfterToday && date.slice(0, 4) < today.slice(0, 4)
     ? incidentDates(requestWords, null).find((given) => monthDayToIso(given, today) === date) ?? null
     : null;
-  const askedLevel = input.warning_level === "verbal" || input.warning_level === "written" ? input.warning_level : null;
-  const levelAnswer = caOnlyFields && askedLevel ? notTheOfferAnswer(answerEvidence(context, input.level_evidence, "request", evidencePerson, { requestTurnIds }), context) : null;
+  const modelLevel = input.warning_level === "verbal" || input.warning_level === "written" ? input.warning_level : null;
+  /*
+   * QA (live c_pay r1, 16 Nov 2026: "written CA for <A>, late 11/14, payroll deduct $20"): propose_form returned
+   * level_not_given and the model stopped without proposing again, 1 run in 2. So the level said with THIS message is set
+   * by code: a Corrective Action card, no level from the model, no termination asked or said, and exactly one Type of
+   * Warning option written right before one of the form's own words in this message ("written CA", "verbal warning";
+   * `levelPhraseNamingTheForm`). Those words, as typed, are its evidence, and it passes the same checks as the model's
+   * (verifyEvidence, the person guard, the offer guard). "written up before", "the written closing checklist" and a
+   * termination stay unset.
+   */
+  const thisMessage = withoutMessageIdTags(context.question);
+  const impliedLevels = caOnlyFields && !modelLevel && input.warning_level !== "termination" && !(await import("@/lib/forms/termination-word")).saysTerminationWord(thisMessage)
+    ? (["verbal", "written"] as const).flatMap((option) => {
+        const phrase = levelPhraseNamingTheForm(thisMessage, option, levelFormWords(template.name));
+        return phrase ? [{ option, phrase }] : [];
+      })
+    : [];
+  const impliedLevel = impliedLevels.length === 1 ? impliedLevels[0]! : null;
+  const askedLevel = modelLevel ?? impliedLevel?.option ?? null;
+  const levelEvidence = modelLevel ? input.level_evidence : impliedLevel ? { message_id: context.questionMessageId || CURRENT_MESSAGE_ID, quote: impliedLevel.phrase } : undefined;
+  const levelAnswer = caOnlyFields && askedLevel ? notTheOfferAnswer(answerEvidence(context, levelEvidence, "request", evidencePerson, { requestTurnIds }), context) : null;
   /* Fix batch item 2: the quote must name the option ("final warning" names none: level_not_in_evidence, and ask which). */
   /* QA (#1079's control): and the option word in the quote is the form's level, not a word describing something else. */
-  const levelQuote = input.level_evidence && typeof input.level_evidence === "object" ? String((input.level_evidence as { quote?: unknown }).quote ?? "") : "";
-  const levelUnnamed = Boolean(levelAnswer?.ok && askedLevel && (!levelNamedInEvidence(input.level_evidence, askedLevel) || !levelOptionIsTheLevel(levelQuote, askedLevel, levelFormWords(template.name))));
+  const levelQuote = levelEvidence && typeof levelEvidence === "object" ? String((levelEvidence as { quote?: unknown }).quote ?? "") : "";
+  const levelUnnamed = Boolean(levelAnswer?.ok && askedLevel && (!levelNamedInEvidence(levelEvidence, askedLevel) || !levelOptionIsTheLevel(levelQuote, askedLevel, levelFormWords(template.name))));
   const levelCheck: AnswerEvidence | null = levelUnnamed ? { ok: false, reason: "level_not_in_evidence" } : levelAnswer;
   /*
    * The carry (c208: "redo the outline" rebuilt the card with no level, and it stayed unset): the card on screen, or this
@@ -3157,7 +3197,7 @@ export async function proposeForm(
    */
   const notOnCard: { field: string; reason_code: string }[] = [
     ...(dateFromAnotherRequest ? [{ field: "incident_date", reason_code: "date_from_another_request" }] : []),
-    ...((askedLevel && level !== askedLevel) ? [{ field: "warning_level", reason_code: caOnlyFields ? "level_not_stated" : "not_on_this_form" }] : []),
+    ...((modelLevel && level !== modelLevel) ? [{ field: "warning_level", reason_code: caOnlyFields ? "level_not_stated" : "not_on_this_form" }] : []),
     ...((askedTermination && !loopTermination) ? [{ field: "warning_level", reason_code: "termination_not_stated" }] : []),
     ...((askedPayroll && !payroll) ? [{ field: "payroll_deduct", reason_code: caOnlyFields ? "payroll_not_stated" : "not_on_this_form" }] : []),
     ...((typedAmount && !amount) ? [{ field: "payroll_amount", reason_code: caOnlyFields ? "amount_not_stated" : "not_on_this_form" }] : []),
@@ -3167,9 +3207,9 @@ export async function proposeForm(
     ...(datesAsked.length > 0 ? [{ field: "form_date", reason_code: "several_dates_not_chosen" }] : []),
   ];
   return {
-    ...(askedLevel && level !== askedLevel && levelCheck && !levelCheck.ok ? { reason_code: "level_not_stated", level_evidence: levelCheck.reason } : askedPayroll && !payroll && payrollCheck && !payrollCheck.ok ? { reason_code: "payroll_not_stated" } : {}),
+    ...(modelLevel && level !== modelLevel && levelCheck && !levelCheck.ok ? { reason_code: "level_not_stated", level_evidence: levelCheck.reason } : askedPayroll && !payroll && payrollCheck && !payrollCheck.ok ? { reason_code: "payroll_not_stated" } : {}),
     ...(askedPayroll && !payroll && payrollCheck && !payrollCheck.ok ? { payroll_evidence: payrollCheck.reason } : {}),
-    ...(payrollAnswerUnclear ? { ...(askedLevel && !level ? {} : { reason_code: "payroll_not_stated" }), payroll_evidence: "answer_to_two_questions" } : {}),
+    ...(payrollAnswerUnclear ? { ...(modelLevel && !level ? {} : { reason_code: "payroll_not_stated" }), payroll_evidence: "answer_to_two_questions" } : {}),
     ...(notOnCard.length > 0 ? { not_on_card: notOnCard } : {}),
     /* PR 6 item 1: find_staff's facts from propose_form's own lookup (name_from_staff_list, confirmed_by_manager, longer_names_on_roster, …). */
     ...(lookedUp.kind === "person" ? { ...lookedUp.facts, looked_up_by: "propose_form" } : {}),
