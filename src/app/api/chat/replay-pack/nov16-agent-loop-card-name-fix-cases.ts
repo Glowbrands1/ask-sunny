@@ -1,0 +1,269 @@
+import { expect, vi } from "vitest";
+
+import { KEARNEY, STAFF, type DirectoryRow, type ReplayCase, type ReplayContext, type ReplayThread } from "./cases";
+import { evidenceFrom, lastResult, loopStandIn, type LoopDecision } from "./loop-stand-in";
+
+/**
+ * ============================================================================
+ * fix-name, LIVE s10: "FIX HER LAST NAME" ON A CARD NOT YET CREATED (Pau's ruling, 16 Nov 2026, via QA)
+ * ============================================================================
+ *
+ * QA's live re-test (16 Nov, s10): on a card not yet created, "fix her last name" changed the card's name with no
+ * roster check (the typed name went on as an off-roster name). Pau's ruling: it may change the card's name, but only
+ * through the same roster check as a new name: an exact roster match is used; a close spelling asks "Did you mean
+ * <name>?" with keep-as-typed (ruling A); no match says so and the card keeps its name.
+ *
+ * The live chat (loop6 s10, the tester's read-only copy; the test name swapped for an invented one, Quill Fenwick):
+ * "coaching for <A> on recomending lotions at checkout, and payroll deduct $10 for the bottle she broke" gave a Coaching
+ * card for <A> as typed (not on the staff list); "fix her last name, its <changed>" then put the changed name on the
+ * card, again as typed, with no roster check.
+ *
+ * The mocked model does what a model reading "fix her last name, its <X>" does: proposes the same form again with
+ * the corrected name typed, no employee_id. Asserted on the card and the tool's structured result, never on wording.
+ * Invented names only (Remy Calder is the card's person; Remy Callow is another invented roster person).
+ */
+
+const FLAG = "AGENT_LOOP_ENABLED";
+const REPORT = "QA's live re-test s10 (16 Nov 2026): \"fix her last name\" on an uncreated card changed the name with no roster check";
+const ACCOUNT = "She was late to her shift on 11/14.";
+/** The manager's words in the live chat (s10), with the invented name. */
+const S10_REQUEST = "coaching for quill fenwick on recomending lotions at checkout, and payroll deduct $10 for the bottle she broke";
+const S10_FIX = "fix her last name, its fenwyck";
+const S10_ACCOUNT = "On recommending lotions at checkout. She broke a bottle.";
+/** Quill Hartwell on the roster: the card was made under another surname the roster does not hold. */
+const HARTWELL: DirectoryRow = { id: "e-10", firstName: "Quill", lastName: "Hartwell", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" };
+const CALLOW: DirectoryRow = { id: "e-9", firstName: "Remy", lastName: "Callow", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" };
+
+/** Remy Calder's Corrective Action card, shown and not created. */
+async function remysCard(t: ReplayContext, extra: DirectoryRow[] = []): Promise<ReplayThread> {
+  vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
+  t.directory([...STAFF, ...extra]);
+  t.as("salon_director", KEARNEY);
+  t.loopModel!(loopStandIn((view): LoopDecision => {
+    if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: ACCOUNT } };
+    return { text: "Here's the Corrective Action Form for **Remy Calder**." };
+  }));
+  const thread = t.thread();
+  await thread.say("CA for Remy Calder, she was late to her shift on 11/14");
+  expect(thread.proposal?.employeeName).toBe("Remy Calder");
+  return thread;
+}
+
+/** Live s10: the Coaching card for Quill Fenwick, a name not on the staff list, as typed; shown and not created. */
+async function s10Card(t: ReplayContext, extra: DirectoryRow[] = []): Promise<ReplayThread> {
+  vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
+  t.directory([...STAFF, ...extra]);
+  t.as("salon_director", KEARNEY);
+  t.loopModel!(loopStandIn((view): LoopDecision => {
+    if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "coaching", employee_name: "Quill Fenwick", what_happened: S10_ACCOUNT } };
+    return { text: "Here's the Coaching Form for **Quill Fenwick**." };
+  }));
+  const thread = t.thread();
+  await thread.say(S10_REQUEST);
+  expect(thread.proposal?.employeeName, "the s10 card for a name not on the staff list was not shown (the case proves nothing)").toBe("Quill Fenwick");
+  return thread;
+}
+
+/** The model re-proposes the card with the corrected name typed; its reply is the question the refusal hands back, if any. */
+function fixer(name: string, template = "dpoa", account = ACCOUNT, cardName = "Remy Calder") {
+  return loopStandIn((view): LoopDecision => {
+    const result = lastResult(view, "propose_form") as { reason_code?: string; error?: string } | null;
+    if (!result) return { tool: "propose_form", input: { template_key: template, employee_name: name, what_happened: account } };
+    if (result.reason_code === "name_correction_did_you_mean") return { text: result.error!.split("in these words: ")[1]! };
+    if (result.reason_code === "name_correction_not_on_roster") return { text: `I couldn't find **${name}** on the staff list, so the card is still for ${cardName}. To put it on as typed, reply **use ${name}**.` };
+    return { text: "Done." };
+  });
+}
+
+const proposed = (model: ReturnType<typeof fixer>) => model.views.flatMap((view) => view.results).find((entry) => entry.tool === "propose_form")?.output as { reason_code?: string; facts?: { name_corrected?: unknown; earlier_card?: unknown } } | undefined;
+const code = (model: ReturnType<typeof fixer>) => (model.views.flatMap((view) => view.results).find((entry) => entry.tool === "propose_form")?.output as { reason_code?: string } | undefined)?.reason_code;
+
+export const NOV16_CARD_NAME_FIX_CASES: ReplayCase[] = [
+  {
+    id: "nov16-s10-card-name-fix-exact-roster-match",
+    title: "fix-name s10: \"fix her last name, it's Callow\" on Remy Calder's uncreated card, and Remy Callow is on the roster: the card is Remy Callow's (the exact roster match is used)",
+    report: REPORT,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      const thread = await remysCard(t, [CALLOW]);
+      const model = fixer("Remy Callow");
+      t.loopModel!(model);
+      await thread.say("fix her last name, its callow");
+      expect(code(model), "the roster match was refused").toBeUndefined();
+      expect(thread.proposal?.employeeName).toBe("Remy Callow");
+      // QA's review: the card moves to that exact roster person, and the result names both, so the reply can say "changed from <A> to <B>".
+      expect(proposed(model)?.facts?.name_corrected, "the result does not name the old and the new person").toEqual({ from: "Remy Calder", to: "Remy Callow" });
+      expect(proposed(model)?.facts?.earlier_card, "the corrected card was offered beside the old one instead of replacing it").toBeUndefined();
+    },
+  },
+  {
+    id: "nov16-s10-card-name-fix-close-spelling-asks",
+    title: "fix-name s10: \"fix her last name, it's Kalder\" on Remy Calder's uncreated card asks \"Did you mean Remy Calder?\" and changes nothing; \"no\" keeps Remy Kalder as typed (ruling A)",
+    report: REPORT,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      const thread = await remysCard(t);
+      // After #1051 (QA): the question is recorded (name_question) and the answer is read from the record, so a reply
+      // that paraphrases the question is answered the same way. The stand-in paraphrases on purpose.
+      const asking = loopStandIn((view): LoopDecision => (lastResult(view, "propose_form") ? { text: "I can't find Remy Kalder on your staff list. Is it Remy Calder, or should I keep Remy Kalder as you typed it?" } : { tool: "propose_form", input: { template_key: "dpoa", employee_name: "Remy Kalder", what_happened: ACCOUNT } }));
+      t.loopModel!(asking);
+      const reply = await thread.say("fix her last name, its kalder");
+      expect(code(asking as ReturnType<typeof fixer>), "a close spelling was seated without asking").toBe("name_correction_did_you_mean");
+      expect(reply.formProposal ?? null, "a card was shown with the near miss").toBeNull();
+      const recorded = (t.rows?.("chat_traces") ?? []).map((row) => (row.slots as { agent_loop?: { name_question?: { offeredKeys: string[]; typedKey: string } } } | undefined)?.agent_loop?.name_question).filter(Boolean);
+      expect(recorded, "the Did-you-mean was not recorded like find_staff's").toHaveLength(1);
+      expect(recorded[0]!.offeredKeys).toHaveLength(1);
+      const keep = fixer("Remy Kalder");
+      t.loopModel!(keep);
+      await thread.say("no");
+      expect(code(keep), "keep-as-typed was refused after the manager's no").toBeUndefined();
+      expect(thread.proposal?.employeeName).toBe("Remy Kalder");
+      expect(proposed(keep)?.facts?.name_corrected).toEqual({ from: "Remy Calder", to: "Remy Kalder" });
+    },
+  },
+  {
+    id: "nov16-s10-card-name-fix-close-spelling-yes",
+    title: "fix-name s10 (after #1051): \"fix her last name, its kalder\" on Remy Calder's uncreated card, then \"Remy Callow\" typed back in answer to \"Did you mean Remy Callow?\" (the recorded question): the card is Remy Callow's, and the result names both",
+    report: REPORT,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      const thread = await remysCard(t, [CALLOW]);
+      const asking = fixer("Remy Callw");
+      t.loopModel!(asking);
+      await thread.say("fix her last name, its callw");
+      expect(code(asking)).toBe("name_correction_did_you_mean");
+      const answer = fixer("Remy Callow");
+      t.loopModel!(answer);
+      await thread.say("Remy Callow");
+      expect(code(answer), "the confirmed name was refused").toBeUndefined();
+      expect(thread.proposal?.employeeName).toBe("Remy Callow");
+      expect(proposed(answer)?.facts?.name_corrected).toEqual({ from: "Remy Calder", to: "Remy Callow" });
+    },
+  },
+  {
+    id: "nov16-s10-card-name-fix-no-match-says-so",
+    title: "fix-name s10: \"fix her last name, it's Voss\" on Remy Calder's uncreated card: Remy Voss is on nobody's roster, so it is refused (name_correction_not_on_roster) and no card carries Remy Voss; \"use Remy Voss\" after the offer puts it on as typed",
+    report: REPORT,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      const thread = await remysCard(t);
+      const model = fixer("Remy Voss");
+      t.loopModel!(model);
+      const reply = await thread.say("fix her last name, its voss");
+      expect(code(model), "a name on nobody's roster went on the card with no check").toBe("name_correction_not_on_roster");
+      expect(reply.formProposal ?? null, "a card was shown with the unchecked name").toBeNull();
+      const use = fixer("Remy Voss");
+      t.loopModel!(use);
+      await thread.say("use Remy Voss");
+      expect(code(use)).toBeUndefined();
+      expect(thread.proposal?.employeeName).toBe("Remy Voss");
+    },
+  },
+  {
+    id: "nov16-s10-live-wording-off-roster-card-no-match",
+    title: "fix-name s10, the live chat's words: \"fix her last name, its fenwyck\" on Quill Fenwick's Coaching card (not on the staff list, not created): Quill Fenwyck is on nobody's roster, so it is refused (name_correction_not_on_roster), no card carries it, and \"use Quill Fenwyck\" after the offer puts it on as typed",
+    report: REPORT,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      const thread = await s10Card(t);
+      const model = fixer("Quill Fenwyck", "coaching", S10_ACCOUNT, "Quill Fenwick");
+      t.loopModel!(model);
+      const reply = await thread.say(S10_FIX);
+      expect(code(model), "the live s10 bug: the corrected name went on the card with no roster check").toBe("name_correction_not_on_roster");
+      expect(reply.formProposal ?? null, "a card was shown with the unchecked name").toBeNull();
+      const use = fixer("Quill Fenwyck", "coaching", S10_ACCOUNT, "Quill Fenwick");
+      t.loopModel!(use);
+      await thread.say("use Quill Fenwyck");
+      expect(code(use)).toBeUndefined();
+      expect(thread.proposal?.employeeName).toBe("Quill Fenwyck");
+      expect(proposed(use)?.facts?.name_corrected).toEqual({ from: "Quill Fenwick", to: "Quill Fenwyck" });
+      expect(thread.proposal?.templateKey, "the correction changed the form").toBe("coaching");
+    },
+  },
+  {
+    id: "nov16-s10-live-wording-off-roster-card-roster-match",
+    title: "fix-name s10, the live chat's wording: when the corrected name is on the roster (Quill Hartwell), \"fix her last name, its hartwell\" puts that roster person on Quill Fenwick's Coaching card (the exact match is used)",
+    report: REPORT,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      const thread = await s10Card(t, [HARTWELL]);
+      const model = fixer("Quill Hartwell", "coaching", S10_ACCOUNT, "Quill Fenwick");
+      t.loopModel!(model);
+      await thread.say("fix her last name, its hartwell");
+      expect(code(model), "the roster match was refused").toBeUndefined();
+      expect(thread.proposal?.employeeName).toBe("Quill Hartwell");
+      expect(proposed(model)?.facts?.name_corrected).toEqual({ from: "Quill Fenwick", to: "Quill Hartwell" });
+      expect(thread.proposal?.templateKey, "the correction changed the form").toBe("coaching");
+    },
+  },
+  {
+    id: "nov16-s10-card-name-fix-other-form-falls-through",
+    title: "fix-name s10 (QA's review): a typed name for ANOTHER form than the card's (a Coaching Form while Remy Calder's Corrective Action card is shown) is not a correction of that card: no name_correction code, no name_corrected fact; the old path decides",
+    report: REPORT,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      const thread = await remysCard(t);
+      const model = fixer("Remy Voss", "coaching");
+      t.loopModel!(model);
+      await thread.say("coaching for remy voss, she was late to her shift on 11/14");
+      expect(code(model) ?? "", "another form's name was treated as a correction of the card").not.toMatch(/^name_correction/);
+      expect(proposed(model)?.facts?.name_corrected).toBeUndefined();
+    },
+  },
+  ...([
+    ["saves", "the card's manager"],
+    ["never-reached-without-edit-access", "a director of another salon"],
+  ] as const).map(([what, who]): ReplayCase => ({
+    id: `nov16-fix-name-fallback-${what}`,
+    title: `fix-name with FORM_EDIT_SINGLE_WRITER off (QA's review): \"fix her last name, it is Calder-Voss\" on Remy Calder's saved draft by ${who}: ${what === "saves" ? "the manager's save writes employee_name, the form's subject follows, nothing else changes" : "authorizeInstance(edit) refuses first (form_not_visible); the name and the form's subject are untouched"}`,
+    report: "QA's review of the fix-name PR (16 Nov 2026): the fallback writes form_instances.employee_name with the admin client",
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", KEARNEY);
+      t.loopModel!(loopStandIn((view): LoopDecision => (lastResult(view, "propose_form") ? { text: "Here's the card." } : { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: ACCOUNT } })));
+      const thread = t.thread();
+      await thread.say("CA for Remy Calder, she was late to her shift on 11/14");
+      const id = await thread.create();
+      delete process.env.FORM_EDIT_SINGLE_WRITER_ENABLED; // the harness restores it after the case
+      const before = t.values(id);
+      const subject = () => t.forms().find((row) => row.id === id)?.employee_name;
+      const editor = loopStandIn((view): LoopDecision => (lastResult(view, "edit_form") ? { text: "Done." } : { tool: "edit_form", input: { instance_id: id, intent: "correct_name", values: { employee_name: "Remy Calder-Voss" }, name_evidence: evidenceFrom(view, "Calder-Voss"), forms_on_file_evidence: evidenceFrom(view, "remy calder's ca") } }));
+      if (what === "saves") {
+        t.loopModel!(editor);
+        await thread.say("fix her last name, it is Calder-Voss");
+        const result = editor.views.at(-1)!.results.find((entry) => entry.tool === "edit_form")?.output as { reason_code?: string; saved?: { field: string; after: string }[] };
+        expect(result.reason_code, JSON.stringify(result)).toBeUndefined();
+        expect(result.saved?.map((row) => [row.field, row.after])).toEqual([["employee_name", "Remy Calder-Voss"]]);
+        expect(t.values(id)).toEqual({ ...before, employee_name: "Remy Calder-Voss" });
+        expect(subject()).toBe("Remy Calder-Voss");
+        return;
+      }
+      t.as("salon_director", { level: "salon", primaryAreaId: "loc-0410", alsoCoversAreaIds: [] }, "another-salon-director");
+      t.loopModel!(editor);
+      const other = t.thread();
+      await other.say("fix remy calder's ca, her last name is Calder-Voss");
+      const result = editor.views.at(-1)!.results.find((entry) => entry.tool === "edit_form")?.output as { reason_code?: string };
+      expect(result.reason_code, JSON.stringify(result)).toBe("form_not_visible");
+      expect(t.values(id), "another salon's director changed the form").toEqual(before);
+      expect(subject(), "the form's subject moved without edit access").toBe("Remy Calder");
+    },
+  })),
+];

@@ -1,4 +1,4 @@
-import { AFFIRMATIVE, displayName, type RosterEmployee } from "@/lib/forms/employee-match";
+import { AFFIRMATIVE, displayName, saysNo, type RosterEmployee } from "@/lib/forms/employee-match";
 import { notAPerson } from "@/lib/forms/person-guard";
 import { extractEmployeeNames, samePerson } from "@/lib/forms/proposal";
 import type { ChatMessage } from "@/types";
@@ -123,4 +123,18 @@ export function answerNamesSomeoneElse(view: NameQuestionView, employeeId: strin
   const onRoster = view.roster.flatMap(fullNames).filter((name) => holdsPhrase(asked.answer, name));
   const others = [...new Set([...onRoster, ...read])].filter((name) => !isOffered(name));
   return others.length > 0 ? { others } : null;
+}
+
+/**
+ * fix-name, live s10: the message being answered now answers a recorded name question for THIS typed name (the record's
+ * typedKey), confirming nobody, with today's "no" / "keep it as typed" (ruling A: the name goes on as typed). The question
+ * comes from the server's record, never from the reply's text.
+ */
+export function latestTurnKeepsTyped(view: NameQuestionView, typed: string): boolean {
+  return answeredNameQuestions(view).some((asked) => asked.latest && !asked.confirmed && asked.record.typedKey === personKey(typed) && saysNo(asked.answer));
+}
+
+/** The message being answered now answers a recorded name question for this typed name (whatever it says). */
+export function latestTurnAnswersFor(view: NameQuestionView, typed: string): boolean {
+  return answeredNameQuestions(view).some((asked) => asked.latest && asked.record.typedKey === personKey(typed));
 }
