@@ -198,6 +198,22 @@ export const NOV16_AGENT_LOOP_CLOSE_SPELLING_SETTLED_CASES: ReplayCase[] = [
       expect(after?.card_on_screen, "find_past_forms did not say the card on screen is this person's").toEqual({ form: "Corrective Action Form", created: false });
       expect((after as { ask_exactly?: string } | undefined)?.ask_exactly, "the offer is not code's question").toBe("Want me to change the Corrective Action Form card for Tamsin? Tell me what to change.");
       expect(yes.content, `the reply did not offer to change the card on screen:\n${yes.content}`).toContain("Want me to change the Corrective Action Form card for Tamsin? Tell me what to change.");
+      // Only the turn whose find_past_forms set it: the next turn's reply gets no offer appended.
+      t.loopModel!(loopStandIn((): LoopDecision => ({ text: "Noted." })));
+      const next = await thread.say("thanks");
+      expect(next.content, "the offer was appended in a later turn").toBe("Noted.");
+      // A reply that already asks for a change in its own words gets no second question.
+      const own = t.thread();
+      t.loopModel!(model());
+      await own.say("ca for tamsin orwell, she was late to her shift on 11/14");
+      t.loopModel!(live);
+      await own.say("edit tamsen orwel ca");
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        if (!lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { employee_name: "Tamsin Orwell", form: "CA", open: true, forms_on_file_evidence: evidenceFrom(view, "edit tamsen orwel ca", 1) } };
+        return { text: "That card on screen isn't created yet. What would you like to change on it?" };
+      }));
+      const worded = await own.say("yes");
+      expect(worded.content, "a second question was appended to a reply that already asks").toBe("That card on screen isn't created yet. What would you like to change on it?");
     },
   },
 ];
