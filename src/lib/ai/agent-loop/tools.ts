@@ -3983,6 +3983,16 @@ export async function editForm(
       }
     }
     /*
+     * ALREADY SET (QA's live re-test, dateedit r2, 16 Nov 2026): what this write asks each field to hold, after the guards
+     * above (a level or payroll tick, a text value, the document's date as ISO). A field the draft held that way before the
+     * write is reported as already_set below, never as unchanged ("didn't update … confirm the date again").
+     */
+    const requested = new Map<string, string>([
+      ...Object.entries(checked).map(([field, boxes]) => [field, [...boxes].sort().join(", ")] as const),
+      ...Object.entries(values).filter(([, value]) => typeof value === "string").map(([field, value]) => [field, String(value).trim()] as const),
+      ...(documentDate !== null ? [["form_date", documentDate] as const] : []),
+    ]);
+    /*
      * Only the keys this write carries that the manager stated, after the guards above passed: payroll (G5), a
      * termination level (G9), and an Action Plan that is the manager's own text in this message, word for word (G8).
      */
@@ -4036,8 +4046,23 @@ export async function editForm(
     /* PR 3: claimed = what the writers accepted; the saved list is what the form shows after the write. */
     const claimed = [...Object.keys(written.accepted.values ?? {}), ...Object.keys(written.accepted.checked ?? {}), ...(documentDate !== null ? ["form_date"] : []), ...(dictatedPlan !== null ? ["action_plan"] : []), ...written.rejected.map((row) => row.key)];
     const reasons = new Map(written.rejected.map((row) => [row.key, row.reason] as const));
-    const { saved: savedChanges, refused, unchanged, now: saved } = await recordSaved(claimed, reasons);
+    const { saved: savedChanges, refused: refusedAll, unchanged: unchangedAll, now: saved } = await recordSaved(claimed, reasons);
     const updated = savedChanges.map((change) => change.field);
+    /* The value the draft already held equals the one asked for (an amount by its figure; any field). */
+    const sameAsAsked = (field: string, asked: string, held: string) =>
+      held !== "" && (field === PAYROLL_AMOUNT_KEY ? Number(asked.replace(/[^\d.]/g, "")) === Number(held.replace(/[^\d.]/g, "")) : asked.toLowerCase() === held.toLowerCase());
+    const shownValue = (field: string, held: string) => {
+      const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(held);
+      if (field === "form_date" && iso) return `${iso[2]}/${iso[3]}/${iso[1]}`;
+      if (field === PAYROLL_AMOUNT_KEY) return `$${held.replace(/^\$/, "")}`;
+      return held.split(", ").every((box) => /^[a-z]+$/.test(box)) ? held.split(", ").map((box) => box[0]!.toUpperCase() + box.slice(1)).join(", ") : held;
+    };
+    const alreadySet = [...requested]
+      .filter(([field, asked]) => asked !== "" && !updated.includes(field) && sameAsAsked(field, asked, beforeStates.get(field) ?? ""))
+      .map(([field]) => ({ field, value: shownValue(field, beforeStates.get(field) ?? "") }));
+    const alreadyFields = new Set(alreadySet.map((row) => row.field));
+    const refused = refusedAll.filter((row) => !alreadyFields.has(row.field));
+    const unchanged = unchangedAll.filter((field) => !alreadyFields.has(field));
     /* Batch G2 (item 1, EDIT_SEES_SAVED_FORM): the level the saved form holds now, read back, so the reply never claims it from the card or history. */
     const savedLevel = saved.values.find((row) => row.fieldKey === "warning_type")?.checked ?? [];
     const levelLabel: Record<string, string> = { verbal: "Verbal", written: "Written", termination: "Termination" };
@@ -4061,6 +4086,7 @@ export async function editForm(
       /* QA's live finding: a field the writer refused carries the fix (the keys a direct edit takes, and the date's key). */
       ...(refused.length > 0 ? directEditFix(loaded, fieldKeys) : {}),
       ...(unchanged.length > 0 ? { unchanged } : {}),
+      ...(alreadySet.length > 0 ? { already_set: alreadySet } : {}),
       ...(loaded.instance.templateKey === appConfig().formKeys.corrective ? { saved_level: savedLevel.length > 0 ? savedLevel.map((key) => levelLabel[key] ?? key).join(", ") : null } : {}),
       ...rewordFacts,
       ...addFacts,
