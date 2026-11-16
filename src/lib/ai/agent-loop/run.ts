@@ -579,6 +579,9 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     /* QA (16 Nov 2026): no name question before there is a form (find_staff's off-roster offer). */
     formChosen: Boolean(input.openFormId) || records.length > 0 || whoAsked !== null,
     nameQuestions,
+    /* QA (16 Nov 2026; c158, c208): every card and "who is it for?" this chat's loop gave, for where THIS request started. */
+    cardRecords: records,
+    personAskedRecords: personAsked,
   };
   const effects: ToolEffects = { proposal: null, formUpdate: null };
   /* The open form as saved before the turn, for the no-false-"updated" guard below (FORM_EDIT_NOOP_GUARD's snapshot). */
@@ -942,7 +945,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   const trace = chatTraceDraft();
   /* PR 2: the card this turn made, for later turns' card record (`card-record.ts`). */
   const cardSlot: CardSlot | null = effects.proposal
-    ? { proposalId: effects.proposal.proposalId, employeeKey: effects.proposalEmployeeId ? personKey(effects.proposalEmployeeId) : null, nameKey: effects.proposal.employeeName ? personKey(effects.proposal.employeeName) : null, templateKey: effects.proposal.templateKey, templateName: effects.proposal.templateName ?? null, ...(effects.proposalAsked?.length ? { asked: effects.proposalAsked } : {}) }
+    ? { proposalId: effects.proposal.proposalId, employeeKey: effects.proposalEmployeeId ? personKey(effects.proposalEmployeeId) : null, nameKey: effects.proposal.employeeName ? personKey(effects.proposal.employeeName) : null, templateKey: effects.proposal.templateKey, templateName: effects.proposal.templateName ?? null, ...(effects.proposalAsked?.length ? { asked: effects.proposalAsked } : {}), ...(effects.proposalLevel ? { level: effects.proposalLevel } : {}) }
     : null;
   /* Fix batch items 4 and 3: this turn's "Did you mean", for the next turn's name question record (one-way keys only). */
   const nameQuestionSlot: NameQuestionSlot | null = effects.nameQuestion && stoppedAt === "reply"

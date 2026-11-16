@@ -47,6 +47,10 @@ import { rulesBookText } from "./rules-book";
  * it)", the full name only when two people share a first name; the card reply's first line names the employee in bold by
  * first name (it said **<employee>**, which contradicted the rule), and the lines that say which person it is keep the full
  * name. Then (QA and Pau): both lines say <reply_name>, which code decides (propose_form / edit_form's reply_name).
+ *
+ * Re-taken on purpose on 16 Nov 2026 (QA, c019 in #1056): one line in "Which form" teaches that "Create a <form> from this
+ * conversation" / "make it a <form> instead" for the same person and incident is the same request, not
+ * new_form_evidence. It names no app, place, staff system or form key; nothing else changed.
  */
 
 const fixture = (name: string): string => readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), "utf8");
