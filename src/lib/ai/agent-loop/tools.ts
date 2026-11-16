@@ -13,6 +13,8 @@ import { holdsPhrase, identifiedTurns, verifyEvidence, withoutMessageIdTags, typ
 import { answerNamesSomeoneElse, isConfirmedSpelling, latestTurnAnswersFor, latestTurnConfirms, latestTurnKeepsTyped, spellingKeysConfirmedFor, spellingKeysConfirmedForName, type NameQuestionView } from "./confirmed-spelling";
 import { displayName, editDistance, matchEmployeeName, nameConfirmationQuestion, readNameConfirmation, type RosterEmployee } from "@/lib/forms/employee-match";
 import { offRosterTyped } from "@/lib/forms/roster-only-names";
+import { parseFormDocument } from "@/lib/forms/document";
+import { draftableCheckboxGroups, draftableFields } from "@/lib/forms/responsibility";
 import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
 import type { DirectoryRosterRow } from "@/lib/forms/employee-roster";
 import { inlineDraftVariantKey, supportsInlineDraft } from "@/lib/forms/inline-draft";
@@ -52,7 +54,7 @@ import { redactSensitiveDefaults } from "@/lib/ai/sensitive-defaults";
 import { expandPolicyQuery } from "@/lib/knowledge/policy-retrieval";
 import type { SourceCitation } from "@/types";
 import type { AccessScope, ChatFormProposal, ChatMessage, Role } from "@/types";
-import { personKey, type CardRecord, type NameQuestionRecord, type PersonAskedRecord } from "@/lib/ai/agent-loop/card-record";
+import { personKey, type CardRecord, type NameQuestionRecord, type PersonAskedRecord, type TurnRecord } from "@/lib/ai/agent-loop/card-record";
 
 /**
  * ============================================================================
@@ -120,6 +122,8 @@ export interface ToolContext {
   /** QA (16 Nov 2026; c158, c208): every card this chat's loop made, and every "who is it for?" it asked, oldest first. */
   readonly cardRecords?: readonly CardRecord[];
   readonly personAskedRecords?: readonly PersonAskedRecord[];
+  /** QA's review of #1062: each earlier loop turn's record (saved fields, a card), oldest first. */
+  readonly turnRecords?: readonly TurnRecord[];
 }
 
 /** The recorded name questions and the roster, for `confirmed-spelling.ts`. */
@@ -2650,7 +2654,13 @@ export async function editForm(
     fromShownCard = true;
   }
   /* Rebuild plan, PR 1 (bug 2: edit_form had no privacy gate): a form that is not the one open on screen, nor the card on screen once created, is a form on file. */
-  if (id !== context.openFormId && !fromShownCard) {
+  /*
+   * QA's live finding (16 Nov 2026, "the 11/10 one"): a form THIS turn already put on the manager's screen (open_form,
+   * after its own privacy check, or the revision draft edit_form opened) is the open form, not a form on file: editing it
+   * is never privacy_not_asked. The record of what this turn opened, never the words.
+   */
+  const openedThisTurn = effects.formOpened?.instanceId ?? null;
+  if (id !== context.openFormId && id !== openedThisTurn && !fromShownCard) {
     const refused = await formOnFileRefusal(context, id, input.forms_on_file_evidence);
     if (refused) return refused;
   }
@@ -2801,7 +2811,20 @@ export async function editForm(
      * for the document is theirs to set, after today or not (the reply says so). Only a date read from the account is
      * never after today.
      */
-    const typedDates = readDates(context.question);
+    /*
+     * QA's live finding (16 Nov 2026): "…, change the date to 11/9", the app asked "Which one?", "the 11/10 one": the date
+     * the manager typed for THIS request is in the message before the answer. A date typed in the message being answered
+     * or in the manager message right before it is theirs to set; the model's own date never is (the date parser only).
+     */
+    const lastManagerTurn = [...(context.history as ChatMessage[])].reverse().find((turn) => turn.role === "user");
+    /*
+     * QA's review of #1062: only when that request was left OPEN. The loop's turn that answered it saved no field and made
+     * no card (its trace record; a "Which one?" or "Who is it for?" turn). A finished request's date ("…dated 11/3" on
+     * another form) is never settable on the next request; with no record, only this message counts.
+     */
+    const leftOpen = lastManagerTurn?.id ? (context.turnRecords ?? []).some((turn) => turn.messageId === lastManagerTurn.id && !turn.saved && !turn.card) : false;
+    const previousManagerTurn = leftOpen ? lastManagerTurn : undefined;
+    const typedDates = [...readDates(context.question), ...readDates(String(previousManagerTurn?.content ?? ""))];
     /*
      * QA's design (15 Nov 2026): on an incident form (CA, coaching), form_date and incident_date after today are always
      * refused, with one question, however the message names them. Only the follow-up date and an exit's last day or
@@ -2973,7 +2996,7 @@ export async function editForm(
     /* Batch B (code-check #27): no field is renamed for the model; an unknown one is refused with the form's own keys. */
     const unknown = Object.keys(values).filter((field) => !fieldKeys.has(field) && field !== "warning_type" && field !== "employee_name");
     if (unknown.length > 0) {
-      return { reason_code: "unknown_field", error: `${unknown.join(", ")} ${unknown.length === 1 ? "is not a field" : "are not fields"} of this form; nothing was written. Its fields: ${[...fieldKeys].join(", ")}.${accountField ? ` The account goes in ${accountField}.` : ""}` };
+      return { reason_code: "unknown_field", error: `${unknown.join(", ")} ${unknown.length === 1 ? "is not a field" : "are not fields"} of this form; nothing was written. Its fields: ${[...fieldKeys].join(", ")}.${accountField ? ` The account goes in ${accountField}.` : ""}`, ...directEditFix(loaded, fieldKeys) };
     }
     /* HARD GUARD, NEVER AN EMPTY ACCOUNT (QA, 16:17Z): the account field is never cleared by an edit. */
     if (accountField && accountField in values && values[accountField]!.trim() === "") {
@@ -3075,12 +3098,18 @@ export async function editForm(
      * stated fact). Any other form_date value stays with the assistant's writer, which never drafts the Date.
      */
     let documentDate: string | null = null;
+    /* The manager's message the date was typed in (this one, or the one before it): the correction's reader checks the date there. */
+    let documentDateSaid = context.question;
     if (values.form_date) {
       const iso = isoDate(values.form_date, editToday);
       const [year, month, day] = (iso ?? "").split("-").map(Number) as [number, number, number];
       if (iso && typedDates.some((typed) => sameDate(typed, { month, day, year }))) {
         documentDate = iso;
+        if (!readDates(context.question).some((typed) => sameDate(typed, { month, day, year }))) documentDateSaid = String(previousManagerTurn?.content ?? context.question);
         delete values.form_date;
+      } else {
+        /* QA's live finding: never handed to the drafting writer ("system fields are not drafted"); said plainly, with the fix. */
+        return { reason_code: "date_not_stated", error: `${values.form_date} is not a date the manager typed for this request (this message or the one before it). Nothing was written. Ask which date, then write it with values form_date.`, ...directEditFix(loaded, fieldKeys) };
       }
     }
     /*
@@ -3120,7 +3149,7 @@ export async function editForm(
     if (documentDate !== null && written.rejected.length === 0) {
       const fresh = (await authorizeInstance(context.request, id, "edit")).loaded;
       if (formEditSingleWriterEnabled()) {
-        await (await import("@/lib/forms/form-write")).correctionWrite({ instanceId: id, loaded: fresh, stated: { values: { form_date: documentDate }, checked: {} }, actorId: context.actor.subject, said: context.question, today: editToday });
+        await (await import("@/lib/forms/form-write")).correctionWrite({ instanceId: id, loaded: fresh, stated: { values: { form_date: documentDate }, checked: {} }, actorId: context.actor.subject, said: documentDateSaid, today: editToday });
       } else {
         await (await import("@/lib/forms/instances")).applyStatedFacts(id, { values: { form_date: documentDate }, checked: {} }, context.actor.subject, new Set(["form_date"]));
       }
@@ -3146,6 +3175,8 @@ export async function editForm(
       updated,
       saved: savedChanges,
       refused,
+      /* QA's live finding: a field the writer refused carries the fix (the keys a direct edit takes, and the date's key). */
+      ...(refused.length > 0 ? directEditFix(loaded, fieldKeys) : {}),
       ...(unchanged.length > 0 ? { unchanged } : {}),
       ...(loaded.instance.templateKey === appConfig().formKeys.corrective ? { saved_level: savedLevel.length > 0 ? savedLevel.map((key) => levelLabel[key] ?? key).join(", ") : null } : {}),
       ...rewordFacts,
@@ -3340,6 +3371,22 @@ const REWORD_PAUSED = { updated: [], reword_paused: true, note: "Rewording is pa
 export const REWORD_REQUEST = /\b(?:make (?:it|this|that)(?: sound)? (?:more )?(?:professional|better|cleaner)|re-?word|re-?phrase|clean (?:it|this|that) up|sound (?:more )?(?:professional|better)|professional(?:ly)? word|(?:a )?(?:more )?professional tone)/i;
 /** Fields a reword never touches. */
 const REWORD_KEEPS = new Set(["warning_type", "payroll_deduct", "payroll_deduct_amount", "form_date", "employee_name", "job_title", "policy_violated", "direct_policy"]);
+
+/**
+ * QA's live finding (16 Nov 2026: four edit_form calls on one date, each refused for another reason): every refusal about
+ * a field carries the fix, so the model never guesses a key. The keys this form takes in a direct value edit (keys only,
+ * from its template: the fields and tick boxes the assistant may write, and the manager-stated ones it has), and where
+ * the form's date goes.
+ */
+function directEditFix(loaded: { readonly version: { readonly document: unknown }; readonly instance: { readonly variantKey: string | null } }, fieldKeys: ReadonlySet<string>): { editable_fields: string[]; form_date_field: string } {
+  const document = parseFormDocument(loaded.version.document);
+  const draftable = [...draftableFields(document, loaded.instance.variantKey).map((field) => field.key), ...draftableCheckboxGroups(document, loaded.instance.variantKey).map((group) => group.key)];
+  const stated = ["form_date", "warning_type", "payroll_deduct", PAYROLL_AMOUNT_KEY].filter((key) => fieldKeys.has(key));
+  return {
+    editable_fields: [...new Set([...draftable, ...stated])],
+    form_date_field: "The form's date is the field form_date: edit_form with values { form_date: \"MM/DD/YYYY\" }, the date the manager typed (never the reviser).",
+  };
+}
 
 /** The form's own field keys, from its template document. */
 function documentFieldKeys(document: unknown): Set<string> {
