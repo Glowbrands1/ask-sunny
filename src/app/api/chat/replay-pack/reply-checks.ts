@@ -26,7 +26,7 @@ function sentences(text: string): string[] {
 }
 
 /** The sentence that uses a pronoun for the person, or null when there is none. */
-export function personPronoun(reply: string, _names: readonly string[] = []): string | null {
+export function personPronoun(reply: string): string | null {
   for (const sentence of sentences(reply)) {
     if (ALWAYS.test(sentence) || THEIR_PERSON.test(sentence)) return sentence;
     const they = THEY_PERSON.exec(sentence);
