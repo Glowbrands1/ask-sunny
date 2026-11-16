@@ -37,7 +37,7 @@ import { fieldStates, mergeSaved, refusedFields, savedDiff, type SavedChange } f
 import { turnsFromThisPersonsRequest } from "@/lib/forms/this-persons-turns";
 import { closeHeadingReading, closePolicyQuestion, namedPolicies, namesHeading } from "@/lib/forms/named-policy-section";
 import { payrollAmountFromConversation } from "@/lib/forms/payroll-deduct";
-import { PAYROLL_AMOUNT_KEY } from "@/lib/forms/payroll-amount-field";
+import { PAYROLL_AMOUNT_KEY, PAYROLL_AMOUNT_QUESTION } from "@/lib/forms/payroll-amount-field";
 import { withoutPayrollClauses } from "@/lib/ai/payroll-clause-not-account";
 import { listTemplateSummaries, type TemplateSummary } from "@/lib/forms/repository";
 import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
@@ -3044,12 +3044,21 @@ export async function editForm(
     /* Batch G2 (item 1, EDIT_SEES_SAVED_FORM): the level the saved form holds now, read back, so the reply never claims it from the card or history. */
     const savedLevel = saved.values.find((row) => row.fieldKey === "warning_type")?.checked ?? [];
     const levelLabel: Record<string, string> = { verbal: "Verbal", written: "Written", termination: "Termination" };
+    /*
+     * QA's live finding (16 Nov 2026, case B): "tick payroll deduct" saved Payroll = Yes and the reply never asked the
+     * amount. Read from the saved form: payroll Yes, the form has an amount field, and it is still empty (and the manager
+     * did not say they don't know it): a fact, so the reply asks the amount in one question.
+     */
+    const savedPayroll = saved.values.find((row) => row.fieldKey === "payroll_deduct")?.checked ?? [];
+    const savedAmount = String(saved.values.find((row) => row.fieldKey === PAYROLL_AMOUNT_KEY)?.value ?? "").trim();
+    const amountMissing = savedPayroll.includes("yes") && documentFieldKeys(saved.version.document).has(PAYROLL_AMOUNT_KEY) && savedAmount === "" && !saysAmountUnknown(context.question, context.history, { amountOpen: true });
     return {
       updated,
       saved: savedChanges,
       refused,
       /* QA's live finding (16 Nov 2026): what the change was saved on, so the reply never says "press Create" on a saved draft. */
       form_state: "saved_draft",
+      ...(amountMissing ? { payroll_amount_missing: { ask_exactly: PAYROLL_AMOUNT_QUESTION } } : {}),
       ...(unchanged.length > 0 ? { unchanged } : {}),
       ...(loaded.instance.templateKey === appConfig().formKeys.corrective ? { saved_level: savedLevel.length > 0 ? savedLevel.map((key) => levelLabel[key] ?? key).join(", ") : null } : {}),
       ...rewordFacts,

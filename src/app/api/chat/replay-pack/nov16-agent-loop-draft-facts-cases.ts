@@ -17,7 +17,7 @@ import { evidenceFrom, lastResult, loopStandIn, type LoopDecision, type LoopView
 const FLAG = "AGENT_LOOP_ENABLED";
 const REPORT = "QA's live findings, 16 Nov 2026 (production, main e2e92554): the reply must match what the code did";
 
-type EditResult = { form_state?: string; revision_draft?: { id?: string; from_id?: string; reused?: boolean }; error?: string } | null;
+type EditResult = { form_state?: string; revision_draft?: { id?: string; from_id?: string; reused?: boolean }; payroll_amount_missing?: { ask_exactly?: string }; error?: string } | null;
 
 async function remyDraft(t: ReplayContext) {
   vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
@@ -89,3 +89,40 @@ export const NOV16_AGENT_LOOP_DRAFT_FACTS_CASES: ReplayCase[] = [
     },
   },
 ];
+
+/*
+ * QA's live finding (16 Nov 2026, case B): "tick payroll deduct" saved Payroll = Yes, and the reply said "Is payroll
+ * deduct applicable? Yes, as you said." without asking the amount. edit_form now says payroll_amount_missing (read from
+ * the saved form) with the one question to ask; with the amount given, no such fact.
+ */
+NOV16_AGENT_LOOP_DRAFT_FACTS_CASES.push(
+  ...([
+    ["no-amount", "tick payroll deduct", { payroll_deduct: "yes" }, true],
+    ["with-amount", "tick payroll deduct, $15", { payroll_deduct: "yes", payroll_deduct_amount: "15" }, false],
+  ] as const).map(([tag, words, values, missing]): ReplayCase => ({
+    id: `nov16-draft-facts-payroll-yes-asks-the-amount-${tag}`,
+    title: `"${words}" on a saved CA draft: payroll is saved as Yes, and edit_form ${missing ? "says payroll_amount_missing, so the reply asks the amount in one question" : "says nothing is missing (the amount was given)"}`,
+    report: REPORT,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      const { thread, id } = await remyDraft(t);
+      const seen: EditResult[] = [];
+      t.loopModel!(loopStandIn((view: LoopView): LoopDecision => {
+        const result = lastResult(view, "edit_form") as EditResult;
+        if (!result) return { tool: "edit_form", input: { instance_id: id, values, payroll_evidence: evidenceFrom(view, words) } };
+        seen.push(result);
+        return { text: ["**Is payroll deduct applicable?** Yes, as you said.", result.payroll_amount_missing?.ask_exactly].filter(Boolean).join("\n\n") };
+      }));
+      const reply = await thread.say(words);
+      expect(t.checked(id).payroll_deduct, JSON.stringify(seen.at(-1))).toEqual(["yes"]);
+      if (missing) {
+        expect(seen.at(-1)?.payroll_amount_missing?.ask_exactly, JSON.stringify(seen.at(-1))).toMatch(/Payroll deduction amount/);
+        expect(reply.content).toMatch(/Payroll deduction amount\*\*\?/);
+      } else {
+        expect(seen.at(-1)?.payroll_amount_missing, JSON.stringify(seen.at(-1))).toBeUndefined();
+      }
+    },
+  })),
+);

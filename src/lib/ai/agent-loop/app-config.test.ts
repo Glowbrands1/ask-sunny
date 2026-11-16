@@ -41,7 +41,8 @@ import { rulesBookText } from "./rules-book";
  *
  * Updated on purpose on 16 Nov 2026 (QA's live findings: the reply says what the code did): the finalized-form line
  * words the reply from revision_draft.reused (a reused revision draft is never called new), and a new line teaches
- * edit_form's form_state ("It's saved on the draft", never "press Create"). No app, place, staff system or form key.
+ * edit_form's form_state ("It's saved on the draft", never "press Create"); the payroll line adds edit_form's
+ * payroll_amount_missing (ask the amount in one question). No app, place, staff system or form key.
  */
 
 const fixture = (name: string): string => readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), "utf8");
