@@ -741,6 +741,25 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
         }
       }
     }
+    /*
+     * QA (16 Nov 2026; Runner 2's c163 T3): a "Did you mean <A>?" this turn (close_spelling_not_confirmed or
+     * name_correction_did_you_mean) is recorded with the roster ids it offers, and its question ends the reply. A card the
+     * turn already made for an offered person (a parallel call by the staff-list name) is withdrawn: it waits for the
+     * manager's answer, never a guess.
+     */
+    const asksName = result as { reason_code?: unknown; ask_exactly?: unknown; error?: unknown };
+    if (asksName.reason_code === "close_spelling_not_confirmed" || asksName.reason_code === "name_correction_did_you_mean") {
+      const ask = typeof asksName.ask_exactly === "string" ? asksName.ask_exactly : typeof asksName.error === "string" ? (/in these words: ([\s\S]+)$/.exec(asksName.error)?.[1] ?? "").trim() : "";
+      const offered = effects.nameQuestion?.offeredIds ?? [];
+      if (ask && offered.length > 0) {
+        effects.nameNotConfirmed = { offeredIds: [...new Set([...(effects.nameNotConfirmed?.offeredIds ?? []), ...offered])], ask };
+        effects.replyMustAsk = ask;
+        if (effects.proposal && effects.proposalEmployeeId && offered.includes(effects.proposalEmployeeId)) {
+          effects.proposal = null;
+          effects.proposalEmployeeId = null;
+        }
+      }
+    }
     /* What the reply calls each person this turn's tools named (reply_name, by replyNameFor): the pronoun check's name. */
     const shownName = (result as { reply_name?: unknown }).reply_name;
     if (typeof shownName === "string" && shownName.trim()) replyNames.add(shownName.trim());

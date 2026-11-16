@@ -98,4 +98,40 @@ export const NOV16_AGENT_LOOP_OPEN_CARD_KEEPS_PAYROLL_CASES: ReplayCase[] = [
       expect(payrollOf(thread.proposal), "a new incident's card inherited the earlier card's payroll").toBeNull();
     },
   },
+  {
+    id: "nov16-name-question-not-swallowed-c163",
+    title: "c163 T3/T4 (QA's items 1 and 2): the manager typed \"Remy Calderon\" (the card holds the staff list's Remy Calder); at T3 the model calls propose_form with the typed name (Did you mean) and, in the same step, with the staff-list name: no card is made for the guessed name, and the reply ends with the Did-you-mean; at T4 \"yes\" confirms the name and is never also payroll Yes",
+    report: `${REPORT}; QA's items 1 and 2 on c163: the Did-you-mean was swallowed at T3, and one "yes" was used as the name answer and payroll Yes`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      start(t);
+      const typed = "Remy Calderon";
+      const results: Array<Record<string, unknown>> = [];
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        const turn = nth(view);
+        const done = view.results.filter((result) => result.tool === "propose_form").map((result) => result.output);
+        const base = { template_key: "dpoa", what_happened: ACCOUNT, policy: "Other — Must See Behaviors", person_evidence: quoted(view, typed) };
+        if (done.length > 0) {
+          results.push(...done);
+          const ask = done.map((result) => result.ask_exactly).find((question): question is string => typeof question === "string");
+          return { text: done.some((result) => !result.reason_code) ? CARD_REPLY : `Set the level to Verbal.${ask ? `\n\n${ask}` : ""}` };
+        }
+        if (turn === 1) return { tool: "propose_form", input: { ...base, employee_id: "e-2" } };
+        if (turn === 2) return { tools: [
+          { tool: "propose_form", input: { ...base, employee_name: typed, ...verbal(view) } },
+          { tool: "propose_form", input: { ...base, employee_name: "Remy Calder", ...verbal(view) } },
+        ] };
+        return { tool: "propose_form", input: { ...base, employee_name: "Remy Calder", ...verbal(view), payroll_deduct: "yes", payroll_evidence: quoted(view, "yes") } };
+      }));
+      const thread = t.thread();
+      await thread.say(`${typed} ${ACCOUNT.charAt(0).toLowerCase()}${ACCOUNT.slice(1)}, a CA for must see behaviors`);
+      const asked = await thread.say("can you make a verbal warning Ca");
+      expect(asked.content, `T3 did not ask the Did-you-mean: ${asked.content}`).toMatch(/Did you mean \*\*Remy Calder\*\*\?/);
+      expect(asked.formProposal ?? null, "a card was made for the guessed name before the manager answered").toBeNull();
+      const confirmed = await thread.say("yes");
+      expect(payrollOf(confirmed.formProposal ?? thread.proposal), `the "yes" to the name question was also taken as payroll Yes: ${JSON.stringify(results.at(-1))}`).toBeNull();
+    },
+  },
 ];

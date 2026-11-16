@@ -304,9 +304,17 @@ function answersNextPersonOffer(context: ToolContext): boolean {
   return Boolean(lastReply && NEXT_PERSON_OFFER.test(String(lastReply.content ?? "").trim()) && oneWord(withoutMessageIdTags(context.question)));
 }
 
-/** An answer whose quote is the whole one-word reply to the next-person offer is refused (`answersNextPersonOffer`). */
-function notTheOfferAnswer(check: AnswerEvidence, context: ToolContext): AnswerEvidence {
-  return check.ok && check.wholeMessage && answersNextPersonOffer(context) ? { ok: false, reason: "answer_to_offer" } : check;
+/**
+ * An answer whose quote is the whole one-word reply to the next-person offer is refused (`answersNextPersonOffer`). QA
+ * (16 Nov 2026; Runner 2's c163 T4): so is one that answers this chat's recorded name question ("Did you mean <A>?"): the
+ * bare "yes" confirmed the name AND was taken as payroll Yes. One word answers one question: the name.
+ */
+function notTheOfferAnswer(check: AnswerEvidence, context: ToolContext, roster?: readonly RosterEmployee[]): AnswerEvidence {
+  if (!check.ok || !check.wholeMessage) return check;
+  if (answersNextPersonOffer(context)) return { ok: false, reason: "answer_to_offer" };
+  const current = check.turnId === (context.questionMessageId || CURRENT_MESSAGE_ID);
+  if (current && roster && answeredNameQuestions(nameQuestionView(context, roster)).some((asked) => asked.latest)) return { ok: false, reason: "answer_to_name_question" };
+  return check;
 }
 
 /** A message of one word (punctuation aside): a format check, never a reading of which word (fix batch item 7). */
@@ -662,6 +670,12 @@ export interface ToolEffects {
    * card_on_screen offer). run.ts adds it when the model's reply left it out.
    */
   replyMustAsk?: string;
+  /**
+   * QA (16 Nov 2026; Runner 2's c163 T3): this turn asked the manager "Did you mean <A>?" (close_spelling_not_confirmed or
+   * name_correction_did_you_mean): the roster ids offered and the question. A card for an offered person waits for the
+   * manager's answer in a later turn (run.ts records it; propose_form refuses it where the card is set).
+   */
+  nameNotConfirmed?: { offeredIds: readonly string[]; ask: string };
   /** `saved`: each field that really changed on the form written, read back from the database (PR 3; `saved-diff.ts`). */
   formUpdate: { instanceId: string; updated: string[]; saved?: SavedChange[]; putBack?: string[] } | null;
   /** Roster ids find_staff chose from a close spelling or a lone first name this turn (the card's name_from_staff_list fact). */
@@ -2837,9 +2851,9 @@ export async function proposeForm(
    */
   const payrollCheck = caOnlyFields && askedPayroll
     ? (() => {
-        const byCard = notTheOfferAnswer(answerEvidence(context, input.payroll_evidence, { card: employee.name, aliases }, evidencePerson), context);
+        const byCard = notTheOfferAnswer(answerEvidence(context, input.payroll_evidence, { card: employee.name, aliases }, evidencePerson), context, evidencePerson.roster);
         if (byCard.ok || !requestStart) return byCard;
-        const byRequest = notTheOfferAnswer(answerEvidence(context, input.payroll_evidence, "request", evidencePerson, { requestTurnIds: [requestStart.id] }), context);
+        const byRequest = notTheOfferAnswer(answerEvidence(context, input.payroll_evidence, "request", evidencePerson, { requestTurnIds: [requestStart.id] }), context, evidencePerson.roster);
         return byRequest.ok && byRequest.turnId === requestStart.id ? byRequest : byCard;
       })()
     : null;
@@ -2923,7 +2937,7 @@ export async function proposeForm(
   const impliedLevel = impliedLevels.length === 1 ? impliedLevels[0]! : null;
   const askedLevel = modelLevel ?? impliedLevel?.option ?? null;
   const levelEvidence = modelLevel ? input.level_evidence : impliedLevel ? { message_id: context.questionMessageId || CURRENT_MESSAGE_ID, quote: impliedLevel.phrase } : undefined;
-  const levelAnswer = caOnlyFields && askedLevel ? notTheOfferAnswer(answerEvidence(context, levelEvidence, "request", evidencePerson, { requestTurnIds }), context) : null;
+  const levelAnswer = caOnlyFields && askedLevel ? notTheOfferAnswer(answerEvidence(context, levelEvidence, "request", evidencePerson, { requestTurnIds }), context, evidencePerson.roster) : null;
   /* Fix batch item 2: the quote must name the option ("final warning" names none: level_not_in_evidence, and ask which). */
   /* QA (#1079's control): and the option word in the quote is the form's level, not a word describing something else. */
   const levelQuote = levelEvidence && typeof levelEvidence === "object" ? String((levelEvidence as { quote?: unknown }).quote ?? "") : "";
@@ -3204,6 +3218,11 @@ export async function proposeForm(
    * builds the next card; it is never that card's payroll or level answer (the evidence rule takes those only after a
    * reply showing that person's own card).
    */
+  /* QA (c163 T3): this turn asked whether the manager meant this person; the card waits for their answer (no guessing). */
+  if (effects.nameNotConfirmed && employee.id && effects.nameNotConfirmed.offeredIds.includes(employee.id)) {
+    effects.replyMustAsk = effects.nameNotConfirmed.ask;
+    return { reason_code: "close_spelling_not_confirmed", error: `This turn already asked the manager whether they meant ${employee.name}; the card waits for their answer in a later turn. Do not propose it again now. End your reply with ask_exactly, exactly.`, ask_exactly: effects.nameNotConfirmed.ask };
+  }
   const refused = anotherCard(card.employeeName);
   if (refused) {
     const next = (card.employeeName ?? "").split(/\s+/)[0] || "the next person";

@@ -12,3 +12,11 @@ Runner 2's 266 on train 4 (d7042447):
   this card's account (`policy_not_for_this_card`).
 
 Port with the rest of the loop when Ask Bubbles gets it.
+
+QA then ordered c163's three items, and two more are fixed here:
+
+- **(1)** A "Did you mean <A>?" returned in a turn is recorded with the people it offers. A card for an offered person waits
+  for the manager's answer in a later turn: it is refused in propose_form, or withdrawn if a parallel call already made it,
+  and the question ends the reply.
+- **(2)** A one-word message that answers the chat's recorded name question is never also payroll or level evidence
+  (`answer_to_name_question`).
