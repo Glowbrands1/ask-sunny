@@ -10,8 +10,8 @@ import { appConfig } from "./app-config";
 import { isoDate, monthDayToIso, readDates, sameDate, withoutDates } from "./dates";
 import { candidateNameWords, chatFormsActor } from "@/lib/forms/chat-form-records";
 import { holdsPhrase, identifiedTurns, verifyEvidence, withoutMessageIdTags, type IdentifiedTurn } from "./evidence";
-import { answerNamesSomeoneElse, isConfirmedSpelling, latestTurnAnswersFor, latestTurnConfirms, latestTurnKeepsOrUsesTyped, latestTurnKeepsTyped, spellingKeysConfirmedFor, spellingKeysConfirmedForName, type NameQuestionView } from "./confirmed-spelling";
-import { displayName, editDistance, matchEmployeeName, nameConfirmationQuestion, readNameConfirmation, type RosterEmployee } from "@/lib/forms/employee-match";
+import { answeredNameQuestions, answerNamesSomeoneElse, isConfirmedSpelling, latestTurnAnswersFor, latestTurnConfirms, latestTurnKeepsOrUsesTyped, latestTurnKeepsTyped, spellingKeysConfirmedFor, spellingKeysConfirmedForName, type NameQuestionView } from "./confirmed-spelling";
+import { AFFIRMATIVE, displayName, editDistance, matchEmployeeName, nameConfirmationQuestion, readNameConfirmation, type RosterEmployee } from "@/lib/forms/employee-match";
 import { offRosterTyped } from "@/lib/forms/roster-only-names";
 import { parseFormDocument } from "@/lib/forms/document";
 import { draftableCheckboxGroups, draftableFields } from "@/lib/forms/responsibility";
@@ -1563,7 +1563,13 @@ function closeSpellingNotSettled(
     ? [String((evidence as { quote: string }).quote)]
     : turns.filter((turn) => turn.role === "user").map((turn) => withoutMessageIdTags(turn.content)).reverse();
   const exactNames = [...fullNamesOf(row), row.firstName, row.preferredFirstName ?? ""].map((name) => name.trim()).filter(Boolean);
-  const confirmed = spellingKeysConfirmedFor(nameQuestionView(context as ToolContext, roster), row.id);
+  const view = nameQuestionView(context as ToolContext, roster);
+  const confirmed = spellingKeysConfirmedFor(view, row.id);
+  const askedAbout = answeredNameQuestions(view).filter((asked) => asked.offered.some((person) => person.id === row.id));
+  /* This message answers a recorded question that offered this person: the answer's own checks decide (yes, no, someone else). */
+  if (askedAbout.some((asked) => asked.latest)) return null;
+  /* An earlier question for this spelling answered with a yes (a bare yes, or a yes going on with the account: K12b). */
+  const saidYes = (key: string) => askedAbout.some((asked) => asked.record.typedKey === key && AFFIRMATIVE.test(asked.answer.split(/[,.;!\n]/)[0] ?? ""));
   for (const text of texts) {
     if (exactNames.some((name) => holdsPhrase(text, name))) return null;
     /* The name reader's names, then each two-word window of the words (it reads "edit tamsen orwel ca" as no name). */
@@ -1573,7 +1579,7 @@ function closeSpellingNotSettled(
       const match = matchEmployeeName(name, [row]);
       return match.kind === "confirm" && match.candidates.some((candidate) => candidate.employee.id === row.id);
     });
-    if (close) return confirmed.includes(personKey(close)) ? null : close;
+    if (close) return confirmed.includes(personKey(close)) || saidYes(personKey(close)) ? null : close;
   }
   return null;
 }
