@@ -191,6 +191,25 @@ const count = (value: unknown): number => (typeof value === "number" && Number.i
  * (and the history's own card data is the browser's, so it is not read: `parseHistory`), so a reply that reads as a
  * card's (its Policy line or its account line) gets an app-written note.
  */
+/**
+ * The model's final text written as a response object instead of a reply: `{"content": "<reply>", ...}`, bare or in a
+ * ```json fence (or the streamed `{"status", "body": {"content"}}` shape). Returns the reply string; null for any other
+ * text, including a reply that merely contains braces.
+ */
+export function unwrapReplyEnvelope(text: string): string | null {
+  const bare = text.trim().replace(/^```(?:json)?\s*\n?([\s\S]*?)\n?```$/i, "$1").trim();
+  if (!bare.startsWith("{") || !bare.endsWith("}")) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(bare);
+  } catch {
+    return null;
+  }
+  const record = parsed && typeof parsed === "object" ? (parsed as { content?: unknown; body?: { content?: unknown } }) : null;
+  const content = typeof record?.content === "string" ? record.content : typeof record?.body?.content === "string" ? record.body.content : null;
+  return content !== null && content.trim() !== "" ? content.trim() : null;
+}
+
 export const CARD_NOTE = "[app note: this reply showed a card built with propose_form]";
 
 /**
@@ -703,6 +722,14 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   const started = performance.now();
   let firstTokenMs: number | null = null;
   let text = "";
+  /* Never JSON to a manager (`unwrapReplyEnvelope`): set when the model's text was a response object, for the trace. */
+  let replyUnwrapped = false;
+  const unwrapReply = (said: string): string => {
+    const reply = unwrapReplyEnvelope(said);
+    if (reply === null) return said;
+    replyUnwrapped = true;
+    return reply;
+  };
   let stoppedAt = "step_limit" as "reply" | "step_limit" | "timeout" | "error";
   const usage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
   let modelCalls = 0;
@@ -860,6 +887,8 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
         if (!finished) effects.proposal = proposalBefore;
         return finished;
       };
+      /* Unwrapped before the reply is checked against the card, so the checks read the reply, not the envelope. */
+      text = unwrapReply(text);
       /*
        * QA (16 Nov 2026, c219 live): the card check, and its "That change isn't on the card yet" hand-back, run only with a
        * card on screen this turn: the card proposed this turn, else the last reply's card (by the server's record). With no
@@ -963,6 +992,12 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     if (stoppedAt === "error") logAiFailure("agent_loop", performance.now() - started, error);
   }
 
+  /*
+   * NEVER JSON TO A MANAGER (QA's live finding, 16 Nov 2026, conv_mwin8fc82kk8c7i): the reply was the response envelope
+   * {"content": "...", "citations": [], ...} as text. A format check, not a word list: a final text that is wholly one
+   * JSON object (bare, or in a ```json fence) with a string "content" is that string; the trace says reply_unwrapped.
+   */
+  text = unwrapReply(text);
   const latencyMs = Math.round(performance.now() - started);
   noteModelCall({
     model: CLAUDE_MODEL,
@@ -988,7 +1023,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     trace.firstTokenMs = firstTokenMs;
     trace.slots = {
       ...(trace.slots ?? {}),
-      agent_loop: { ...(cardSlot ? { card: cardSlot } : {}), ...(nameQuestionSlot ? { name_question: nameQuestionSlot } : {}), ...(personAskedSlot ? { person_asked: personAskedSlot } : {}), steps, model_steps: modelSteps, model_calls: modelCalls, step_limit: limit, steps_used: stepNumber - 1, stopped: stoppedAt, ms: latencyMs, first_token_ms: firstTokenMs, ...(selfReview ? { self_review: selfReview } : {}), ...(draftReview ? { draft_review: draftReview } : {}), ...(levelReview ? { level_review: levelReview } : {}), ...(retriesBlocked > 0 ? { stop_retrying: retriesBlocked } : {}) },
+      agent_loop: { ...(cardSlot ? { card: cardSlot } : {}), ...(nameQuestionSlot ? { name_question: nameQuestionSlot } : {}), ...(personAskedSlot ? { person_asked: personAskedSlot } : {}), steps, model_steps: modelSteps, model_calls: modelCalls, step_limit: limit, steps_used: stepNumber - 1, stopped: stoppedAt, ms: latencyMs, first_token_ms: firstTokenMs, ...(selfReview ? { self_review: selfReview } : {}), ...(draftReview ? { draft_review: draftReview } : {}), ...(levelReview ? { level_review: levelReview } : {}), ...(replyUnwrapped ? { reply_unwrapped: true } : {}), ...(retriesBlocked > 0 ? { stop_retrying: retriesBlocked } : {}) },
     };
   }
 

@@ -39,7 +39,7 @@ import { fieldStates, mergeSaved, refusedFields, savedDiff, type SavedChange } f
 import { turnsFromThisPersonsRequest } from "@/lib/forms/this-persons-turns";
 import { closeHeadingReading, closePolicyQuestion, namedPolicies, namesHeading } from "@/lib/forms/named-policy-section";
 import { payrollAmountFromConversation } from "@/lib/forms/payroll-deduct";
-import { PAYROLL_AMOUNT_KEY } from "@/lib/forms/payroll-amount-field";
+import { PAYROLL_AMOUNT_KEY, PAYROLL_AMOUNT_QUESTION } from "@/lib/forms/payroll-amount-field";
 import { withoutPayrollClauses } from "@/lib/ai/payroll-clause-not-account";
 import { listTemplateSummaries, type TemplateSummary } from "@/lib/forms/repository";
 import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
@@ -1526,6 +1526,9 @@ function answeredByFullName(view: NameQuestionView, typed: string): boolean {
  * question record (`latestTurnKeepsOrUsesTyped`), never from the reply's text (QA's review of #1064, 16 Nov 2026).
  */
 
+/** The edited fields an edit_form result lists as stated by this message (stated_this_turn). */
+const STATED_EDIT_FIELDS: ReadonlySet<string> = new Set(["warning_type", "payroll_deduct", PAYROLL_AMOUNT_KEY]);
+
 /**
  * The text names this person: their full name as words, and not as the start of a longer roster name ("Test Employee"
  * inside "Test Employee Two" is Test Employee Two).
@@ -2350,6 +2353,12 @@ export async function proposeForm(
     !(answersThisMessage(levelCheck) && level !== null);
   if (payrollAnswerUnclear) payroll = null;
   const payrollQuestion = `Is payroll deduct applicable for **${employee.name}**? Yes or no.`;
+  const amountInThisMessage = (digits: string | null) => Boolean(digits && context.question.replace(/[^\d.]/g, " ").split(/\s+/).some((n) => n !== "" && Number(n) === Number(digits)));
+  const statedThisTurn = [
+    ...(level && answersThisMessage(levelCheck) ? ["warning_level"] : []),
+    ...(payroll && answersThisMessage(payrollCheck) ? ["payroll_deduct"] : []),
+    ...(payroll === "yes" && amountInThisMessage(amount) ? ["payroll_amount"] : []),
+  ];
   /*
    * Batch G (QA's design, 15 Nov 2026; Pau's standing approval): the MODEL decides this Corrective Action is a
    * termination (warning_level "termination", taught by the rules book's examples); code only LOCKS it. It is kept only
@@ -2589,6 +2598,12 @@ export async function proposeForm(
     ...(level || payroll || priorActions
       ? { stated: { ...(level ? { warning_level: level } : {}), ...(payroll ? { payroll_deduct: payroll } : {}), ...(payroll === "yes" && amount ? { payroll_amount: `$${amount.replace(/^\$/, "")}` } : {}), ...(priorActions ? { prior_actions: priorActions } : {}) } }
       : {}),
+    /*
+     * QA's live finding (16 Nov 2026): "as you said" only for what THIS message stated. The level and payroll whose
+     * evidence is the message being answered now, and an amount whose digits are in it; one stated earlier in the
+     * request is read back without "as you said".
+     */
+    ...(statedThisTurn.length > 0 ? { stated_this_turn: statedThisTurn } : {}),
     /* AMOUNT_UNKNOWN_ACK (batch H1): "I don't know the amount" leaves it blank for the manager, said once, never asked again. */
     ...(corrective && payroll === "yes" && !amount ? (saysAmountUnknown(context.question, context.history, { amountOpen: true }) ? { payroll_amount_unknown: true } : { payroll_amount_unset: true }) : {}),
     ...(datesGiven.length > 1 ? { dates_given: datesGiven, ...(date ? { date_chosen: date } : {}) } : {}),
@@ -3099,7 +3114,8 @@ export async function editForm(
           note: "Nothing was written and no new draft was opened. Say what was refused and why.",
         };
       }
-      return { ...revisedEdit, revision_draft: { id: draft.instanceId, from_id: id, form: draft.templateName, employee: draft.employeeName }, original_unchanged: true, note: "Say it is a new draft revising the finalized form, as the rules book's Editing lines teach." };
+      /* QA's live finding (16 Nov 2026): a revision draft already open is reused (opened false), never said to be new. */
+      return { ...revisedEdit, form_state: "revision_draft", revision_draft: { id: draft.instanceId, from_id: id, form: draft.templateName, employee: draft.employeeName, reused: !draft.opened }, original_unchanged: true, note: "Say it is a new draft revising the finalized form, as the rules book's Editing lines teach." };
     }
     /*
      * HARD GUARD, A REWORD KEEPS EVERY FACT (Pau via QA, 14 Nov 2026: "make it professional", "reword it", "clean it
@@ -3355,10 +3371,23 @@ export async function editForm(
     /* Batch G2 (item 1, EDIT_SEES_SAVED_FORM): the level the saved form holds now, read back, so the reply never claims it from the card or history. */
     const savedLevel = saved.values.find((row) => row.fieldKey === "warning_type")?.checked ?? [];
     const levelLabel: Record<string, string> = { verbal: "Verbal", written: "Written", termination: "Termination" };
+    /*
+     * QA's live finding (16 Nov 2026, case B): "tick payroll deduct" saved Payroll = Yes and the reply never asked the
+     * amount. Read from the saved form: payroll Yes, the form has an amount field, and it is still empty (and the manager
+     * did not say they don't know it): a fact, so the reply asks the amount in one question.
+     */
+    const savedPayroll = saved.values.find((row) => row.fieldKey === "payroll_deduct")?.checked ?? [];
+    const savedAmount = String(saved.values.find((row) => row.fieldKey === PAYROLL_AMOUNT_KEY)?.value ?? "").trim();
+    const amountMissing = savedPayroll.includes("yes") && documentFieldKeys(saved.version.document).has(PAYROLL_AMOUNT_KEY) && savedAmount === "" && !saysAmountUnknown(context.question, context.history, { amountOpen: true });
     return {
       updated,
       saved: savedChanges,
       refused,
+      /* QA's live finding (16 Nov 2026): what the change was saved on, so the reply never says "press Create" on a saved draft. */
+      form_state: "saved_draft",
+      /* "as you said" only for what this message stated (QA, 16 Nov 2026): an edit's level and payroll are this message's own. */
+      ...(updated.some((field) => STATED_EDIT_FIELDS.has(field)) ? { stated_this_turn: updated.filter((field) => STATED_EDIT_FIELDS.has(field)) } : {}),
+      ...(amountMissing ? { payroll_amount_missing: { ask_exactly: PAYROLL_AMOUNT_QUESTION } } : {}),
       /* QA's live finding: a field the writer refused carries the fix (the keys a direct edit takes, and the date's key). */
       ...(refused.length > 0 ? directEditFix(loaded, fieldKeys) : {}),
       ...(unchanged.length > 0 ? { unchanged } : {}),
