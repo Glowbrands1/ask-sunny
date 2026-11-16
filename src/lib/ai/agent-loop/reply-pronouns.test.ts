@@ -48,6 +48,32 @@ describe("withoutPersonPronouns", () => {
     expect(withoutPersonPronouns("**Observation of Offense:** She completed onboarding with new hire Juno Paxton on 9-28-26.", "Tamsin", ["Juno Paxton"]).text)
       .toBe("**Observation of Offense:** Tamsin completed onboarding with new hire Juno Paxton on 9-28-26.");
   });
+  /*
+   * Pau's ruling (QA, 16 Nov 2026): a pronoun in the other person's reported question or statement is the card's person's
+   * when the card's person is named in the same sentence. Runner 2's c090 T5 and c091 T2 in shape; invented names.
+   */
+  it("names the person inside another person's reported question when the person is named in the sentence (c090 T5, c091 T2)", () => {
+    expect(withoutPersonPronouns("When Juno Paxton asked whether she had completed her 10-minute sanitization, Tamsin said yes.", "Tamsin", ["Juno Paxton"]).text)
+      .toBe("When Juno Paxton asked whether Tamsin had completed Tamsin's 10-minute sanitization, Tamsin said yes.");
+    expect(withoutPersonPronouns("**Observation of Offense:** When **Juno Paxton** asked if she had finished her closing checklist, **Tamsin Orwell** said yes.", "Tamsin", ["Juno Paxton"]).text)
+      .toBe("**Observation of Offense:** When **Juno Paxton** asked if Tamsin had finished Tamsin's closing checklist, **Tamsin Orwell** said yes.");
+    expect(withoutPersonPronouns("Juno Paxton reminded Tamsin to clean her beds after each guest.", "Tamsin", ["Juno Paxton"]).text)
+      .toBe("Juno Paxton reminded Tamsin to clean Tamsin's beds after each guest.");
+  });
+  it("keeps the other person's own pronoun: no reported question, or the person not named in the sentence (c210 T2, c097)", () => {
+    // c210 T2: the other person's possessive.
+    const figures = "Those edits name **Juno Paxton** and her figures (24 tans), so none of that is on Tamsin's card.";
+    expect(withoutPersonPronouns(figures, "Tamsin", ["Juno Paxton"])).toEqual({ text: figures, replaced: 0 });
+    // c097: the new hire is the subject; her onboarding is the new hire's.
+    const onboarding = "New hire Juno Paxton was left alone during her onboarding with Tamsin on 9-28-26.";
+    expect(withoutPersonPronouns(onboarding, "Tamsin", ["Juno Paxton"])).toEqual({ text: onboarding, replaced: 0 });
+    // A reported question, but the card's person is not named in the sentence: whose it is stays open, so it stays.
+    const unnamed = "Juno Paxton asked whether she could swap shifts.";
+    expect(withoutPersonPronouns(unnamed, "Tamsin", ["Juno Paxton"])).toEqual({ text: unnamed, replaced: 0 });
+    // After the clause's comma, the other person's own words are theirs again.
+    const after = "When Juno Paxton asked whether Tamsin was done, she said her checklist was finished.";
+    expect(withoutPersonPronouns(after, "Tamsin", ["Juno Paxton"])).toEqual({ text: after, replaced: 0 });
+  });
   it("names the person inside a quote the manager did not type (Runner 2's c020 T6), not inside the manager's own", () => {
     const sunny = 'The card says "She completed onboarding with new hire Juno Paxton on 9-28-26."';
     expect(withoutPersonPronouns(sunny, "Tamsin", [], "ca for tamsin orwell, onboarding not done").text)
