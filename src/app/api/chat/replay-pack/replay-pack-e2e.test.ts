@@ -166,7 +166,7 @@ vi.mock("@/lib/forms/form-patch-call", () => ({
  * `t.failSavesOf` (QA, 9 Nov 2026): a save of the form's values that includes the named field returns an error, as a
  * failed database write would, so a case can make a turn throw part-way.
  */
-const faults = vi.hoisted(() => ({ field: null as string | null, strayDraftField: null as string | null }));
+const faults = vi.hoisted(() => ({ field: null as string | null, strayDraftField: null as string | null, deleteTable: null as string | null }));
 /** AGENT_LOOP_ENABLED: the case's stand-in (`t.loopModel`) and the roster fault (`t.rosterFails`). */
 const loop = vi.hoisted(() => ({ standIn: null as import("./loop-stand-in").LoopStandIn | null, rosterFails: false, users: undefined as string | undefined, listed: false }));
 /** `t.summaryWrites`: what the long-context summary model returns; none by default (the summary call fails, as unscripted). */
@@ -196,6 +196,17 @@ function withFaults<T>(client: T): T {
       if (prop !== "from" || typeof value !== "function") return value;
       return (table: string) => {
         const builder = (value as (name: string) => Record<string, unknown>).call(target, table);
+        /* `t.failDeletesOf` (PR 4, the owner's additions): a delete of this table's rows returns an error, as a failed database delete would. */
+        if (faults.deleteTable === table) {
+          return new Proxy(builder, {
+            get(inner, key, innerReceiver) {
+              if (key !== "delete") return Reflect.get(inner, key, innerReceiver);
+              const failed = { data: null, error: { message: "replay fault" } };
+              const chain: Record<string, unknown> = { eq: () => chain, in: () => chain, match: () => chain, then: (resolve: (value: typeof failed) => unknown) => Promise.resolve(failed).then(resolve) };
+              return () => chain;
+            },
+          });
+        }
         if (table !== "form_instance_values" || !faults.field) return builder;
         const upsert = builder.upsert as ((rows: unknown, options?: unknown) => unknown) | undefined;
         if (typeof upsert !== "function") return builder;
@@ -780,6 +791,7 @@ beforeEach(async () => {
   patchScript.cards = [];
   patchScript.cardCalls = 0;
   faults.field = null;
+  faults.deleteTable = null;
   summaries.reply = null;
   faults.strayDraftField = null;
   draftReplies.length = 0;
@@ -996,6 +1008,9 @@ function context(): ReplayContext {
     cardCheckCalls: () => patchScript.cardCalls,
     failSavesOf: (field) => {
       faults.field = field;
+    },
+    failDeletesOf: (table) => {
+      faults.deleteTable = table;
     },
     summaryWrites: (summary) => {
       summaries.reply = summary;
