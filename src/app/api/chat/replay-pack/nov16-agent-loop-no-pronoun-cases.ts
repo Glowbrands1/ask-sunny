@@ -154,4 +154,34 @@ export const NOV16_AGENT_LOOP_NO_PRONOUN_CASES: ReplayCase[] = [
       expect(later.content).toBe("At NE Kearney, Tamsin was late again on 11/14.");
     },
   },
+  {
+    id: "nov16-no-pronoun-reported-question-c090",
+    title: "Runner 2's c090 T5 / c091 T2 (Pau's ruling): a card turn whose reply says \"When Juno Paxton asked whether she had completed her 10-minute sanitization, Tamsin said yes.\" names Tamsin inside Juno's question (the c210 / c097 controls are pinned in reply-pronouns.test.ts)",
+    report: `${REPORT}; Pau's ruling via QA (16 Nov 2026): a pronoun in another person's reported question is the card person's when the card person is named in the sentence`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      start(t);
+      /* A card turn for Tamsin (find_staff names her for the reply), whose reply carries the given sentence. */
+      const cardWith = (account: string, reply: string) => loopStandIn((view): LoopDecision => {
+        const staff = lastResult(view, "find_staff") as { matches?: { employee_id: string }[] } | null;
+        if (!staff) return { tool: "find_staff", input: { name: "Tamsin Orwell", person_evidence: evidenceFrom(view, "Tamsin Orwell") } };
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "coaching", employee_id: staff.matches?.[0]?.employee_id, what_happened: account } };
+        return { text: reply };
+      });
+      t.loopModel!(cardWith(
+        "When Juno Paxton asked whether Tamsin had completed the 10-minute sanitization, Tamsin said yes, but the beds were not done.",
+        "Here's the Coaching Form for **Tamsin**.\n**Coaching Details:** When Juno Paxton asked whether she had completed her 10-minute sanitization, Tamsin said yes.",
+      ));
+      const asked = await t.thread().say("coaching for Tamsin Orwell, when juno paxton asked if she did her 10 minute sanitization she said yes but the beds weren't done");
+      expect(asked.content).toContain("**Coaching Details:** When Juno Paxton asked whether Tamsin had completed Tamsin's 10-minute sanitization, Tamsin said yes.");
+      /*
+       * The controls (c210 T2: "<M> and her figures"; c097: "<M> … during her onboarding") are pinned in
+       * `agent-loop/reply-pronouns.test.ts`, and c210 T2 also by nov16-no-pronoun-another-employees-figures-keep-her-c210.
+       * A c097-shaped card turn can't run here: the pack's every-card-reply check reads another person only from a
+       * "for <name>" phrase in the manager's message, so it would judge the new hire's own "her" as the card person's.
+       */
+    },
+  },
 ];

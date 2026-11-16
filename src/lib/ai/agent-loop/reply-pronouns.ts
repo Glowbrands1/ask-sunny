@@ -96,9 +96,28 @@ export function withoutPersonPronouns(reply: string, name: string, others: reado
    * with new hire <M>") is still replaced.
    */
   const otherKeys = others.map((other) => other.trim().toLowerCase()).filter((other) => other && other !== display.toLowerCase());
+  const nameRe = (key: string, flags = "u") => new RegExp(`(?<![\\p{L}'-])${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}-])`, flags);
   const namesAnother = (at: number) => {
     const before = sentenceBefore(reply, at).toLowerCase();
-    return otherKeys.some((other) => new RegExp(`(?<![\\p{L}'-])${other.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}-])`, "u").test(before));
+    if (!otherKeys.some((other) => nameRe(other).test(before))) return false;
+    return !reportedForThePerson(at, before);
+  };
+  /*
+   * Pau's ruling (QA, 16 Nov 2026; Runner 2's c090 T5, c091 T2): "When <M> asked whether she had completed her 10-minute
+   * sanitization, <P> said yes." When the card's person is ALSO named in the same sentence, a pronoun inside the clause the
+   * other person's reporting verb opens ("<M> asked / told / said / reminded … whether / if / that / to …", up to the
+   * clause's comma or semicolon) is the card's person's, and is replaced. Anything else after the other person's name stays
+   * as written: "<M> and her figures" (c210 T2), "<M> … during her onboarding" (c097).
+   */
+  const reportedForThePerson = (at: number, before: string): boolean => {
+    const sentenceEnd = /[.?!](?!\d)|\n/.exec(reply.slice(at));
+    const sentence = before + reply.slice(at, sentenceEnd ? at + sentenceEnd.index : reply.length).toLowerCase();
+    if (!nameRe(display.toLowerCase()).test(sentence)) return false;
+    return otherKeys.some((other) => {
+      const key = other.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const opener = new RegExp(`(?<![\\p{L}'-])${key}(?![\\p{L}-])[*_]*\\s+(?:asked|told|said|reminded|wanted\\s+to\\s+know)\\b(?:\\s+[\\p{L}'-]+){0,3}?\\s+(?:whether|if|that|to)\\b([^,;:]*)$`, "u");
+      return opener.test(before);
+    });
   };
   const inQuote = (at: number) => quoted.some(([from, to]) => at >= from && at < to) || namesAnother(at);
   const edits: Array<{ from: number; to: number; text: string }> = [];
