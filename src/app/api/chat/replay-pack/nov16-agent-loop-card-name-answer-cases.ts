@@ -235,4 +235,34 @@ export const NOV16_AGENT_LOOP_CARD_NAME_ANSWER_CASES: ReplayCase[] = [
       expect(t3.content).toContain("Here's the Resignation/Exit Form for Remy");
     },
   },
+  {
+    id: "nov16-card-name-answer-by-id-ca-keeps-the-stated-level-c219-live",
+    title: "c219 live on 1a53042, Corrective Action variant: a written CA card for \"Test Testi\" (not on the staff list); the model looks \"For Remy Calder\" up and proposes the CA by employee_id. The answer to the card's name check corrects that card by id (name_corrected) and the written level stated under Test Testi stays",
+    report: `${REPORT}; the Runner's live set on 1a53042 (16 Nov 2026): the c219 CA stated level lost 6/6 (card corrected, level lost)`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      start(t);
+      const SAID = "Test Testi was disrespectful to a client at the front desk on 11/3. I need a written CA.";
+      const standIn = loopStandIn((view): LoopDecision => {
+        const said = lastSaid(view);
+        const card = lastResult(view, "propose_form") as CardOut;
+        if (card) return { text: card.ask_exactly ?? card.reason_code ?? "Here's the Corrective Action Form." };
+        const base = { template_key: "dpoa", what_happened: "Disrespectful to a client at the front desk on 11/3.", incident_date: "2026-11-03", warning_level: "written" };
+        if (!said.startsWith("For ")) return { tool: "propose_form", input: { ...base, employee_name: "Test Testi", level_evidence: evidenceFrom(view, "I need a written CA") } };
+        const staff = lastResult(view, "find_staff") as { matches?: { employee_id: string }[] } | null;
+        if (!staff) return { tool: "find_staff", input: { name: "Remy Calder", person_evidence: evidenceFrom(view, "Remy Calder") } };
+        return { tool: "propose_form", input: { ...base, employee_id: staff.matches?.[0]?.employee_id, level_evidence: evidenceFrom(view, "I need a written CA", 1), request_evidence: [evidenceFrom(view, "was disrespectful", 1)] } };
+      });
+      t.loopModel!(standIn);
+      const thread = t.thread();
+      await thread.say(SAID);
+      expect(thread.proposal?.employeeName).toBe("Test Testi");
+      const t2 = await thread.say("For Remy Calder");
+      expect(thread.proposal?.employeeName, `the card was not corrected:\n${t2.content}`).toBe("Remy Calder");
+      expect(lastCardOut(standIn.views)?.facts?.name_corrected, "the correction by employee_id was not recorded").toEqual({ from: "Test Testi", to: "Remy Calder" });
+      expect((thread.proposal as { warningLevel?: string | null } | null)?.warningLevel ?? null, `the stated level was dropped:\n${t2.content}`).toBe("written");
+    },
+  },
 ];

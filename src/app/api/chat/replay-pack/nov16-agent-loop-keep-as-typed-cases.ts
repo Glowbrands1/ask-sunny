@@ -86,6 +86,11 @@ NOV16_AGENT_LOOP_KEEP_AS_TYPED_CASES.push({
   fixFlags: [FLAG, NEAR_MISS],
   async run(t) {
     if (!t.loopOn?.()) return;
+    /*
+     * Offline only (the Runner's live set on 1a53042): the "chat from before the deploy" is forced by the stand-in's T1
+     * reply written without a tool; the real model calls the tool, so live always has the record this case is about.
+     */
+    if (process.env.AGENT_LOOP_LIVE === "1") return;
     start(t);
     const USE = "I can't find **Wrenna** on your staff list. Reply **use Wrenna** to put the name on the form as you typed it, or give me the full name.";
     t.loopModel!(loopStandIn((view): LoopDecision => {
