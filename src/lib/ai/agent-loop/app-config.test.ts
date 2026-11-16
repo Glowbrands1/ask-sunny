@@ -42,6 +42,10 @@ import { rulesBookText } from "./rules-book";
  * Re-taken on purpose on 16 Nov 2026 (QA, c019 in #1056): one line in "Which form" teaches that "Create a <form> from this
  * conversation" / "make it a <form> instead" for the same person and incident is the same request, not
  * new_form_evidence. It names no app, place, staff system or form key; nothing else changed.
+ *
+ * Updated on purpose on 16 Nov 2026 (Pau's MSB ruling): the conduct line is split; a guest complaint stays the Standards
+ * of Conduct, and "MSB" / "must see behaviors" is "Other — Must See Behaviors". One line; it names no app, place, staff
+ * system or form key.
  */
 
 const fixture = (name: string): string => readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), "utf8");

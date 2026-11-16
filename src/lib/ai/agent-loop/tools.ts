@@ -1755,7 +1755,8 @@ export async function proposeForm(
     if (open && open.status === "draft" && open.templateKey === key && samePerson(open.employeeName, employee.name)) {
       return {
         reason_code: "draft_open", error: `The ${open.templateName} draft for ${open.employeeName} is open on screen: put this on that draft with edit_form (instance_id ${open.id}). Propose a new card only if the manager asks for another or a new one.`,
-        ...(mustSeeNotConduct ? { must_see_behaviors: "Must See Behaviors is part of the Standards of Conduct policy (the JBA Policy Manual has no Must See Behaviors section), so the form keeps that policy." } : {}),
+        /* Pau's ruling (16 Nov 2026): MSB / must see behaviors is Other — Must See Behaviors, not the Standards of Conduct. */
+        ...(mustSeeNotConduct ? { must_see_behaviors: "Must See Behaviors is recorded as \"Other — Must See Behaviors\", not the Standards of Conduct (Pau's ruling, 16 Nov 2026): put that policy on the draft with edit_form." } : {}),
       };
     }
   }
