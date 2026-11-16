@@ -11,8 +11,9 @@ import { evidenceFrom, lastResult, loopStandIn, type LoopDecision } from "./loop
  * #1077 named the card's person inside another person's reported question only when the card's person was named in the
  * same sentence. Runner 2's c090 T5 and c091 T5 (the manager calls the card's person by another first name in the
  * account, so the card's name is not in the sentence) and c247 T1 (the card's person messages another person "stating
- * she quit") kept she/her. The general rule: a pronoun in a clause a named person reports (asked, told, said, stating,
- * messaged …) is the card person's; a reporter who is a pronoun keeps it. Exact wording, invented names (Runner 2's
+ * she quit") kept she/her. The general rule (QA's narrowing): a pronoun in a clause a named person reports (asked, told,
+ * said, stating, messaged …) is the card person's when that reporter is the card's person, the signed-in manager or a
+ * roster leader (a manager, director, lead or supervisor by job title); a peer, a guest or a pronoun keeps it. Exact wording, invented names (Runner 2's
  * masking); the controls are pinned in `agent-loop/reply-pronouns.test.ts`.
  */
 
@@ -80,6 +81,27 @@ export const NOV17_REPORTED_SPEECH_PRONOUN_CASES: ReplayCase[] = [
       }));
       const reply = await t.thread().say(said);
       expect(reply.content).toContain("via Woven stating Arlo quit effective immediately.");
+    },
+  },
+  {
+    id: "nov17-pronoun-reported-by-a-peer-or-guest-stays",
+    title: "Controls (QA, 17 Nov 2026): a coaching card for Tamsin Orwell whose reply says \"Rowan Kestrel asked whether she could swap shifts.\" (a Tanning Consultant, a peer) and \"Mia Lane, a guest, said she wanted a refund.\": both pronouns stay as written",
+    report: REPORT,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.() || !offline) return;
+      start(t);
+      t.directory([...STAFF, BRISA, { id: "e-tamsin-orwell", firstName: "Tamsin", lastName: "Orwell", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" }]);
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        const staff = lastResult(view, "find_staff") as { matches?: { employee_id: string }[] } | null;
+        if (!staff) return { tool: "find_staff", input: { name: "Tamsin Orwell", person_evidence: evidenceFrom(view, "Tamsin Orwell") } };
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "coaching", employee_id: staff.matches?.[0]?.employee_id, what_happened: "Tamsin left the front desk during a refund request on 11/14." } };
+        return { text: "Here's the Coaching Form for **Tamsin**.\nRowan Kestrel asked whether she could swap shifts. Mia Lane, a guest, said she wanted a refund." };
+      }));
+      const reply = await t.thread().say("coaching for Tamsin Orwell, she left the front desk during a refund request on 11/14. Mia Lane, a guest, said she wanted a refund");
+      expect(reply.content).toContain("Rowan Kestrel asked whether she could swap shifts.");
+      expect(reply.content).toContain("Mia Lane, a guest, said she wanted a refund.");
     },
   },
 ];

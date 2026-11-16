@@ -88,7 +88,14 @@ function singularAfterThey(rest: string): string {
  * The reply with every pronoun for the person replaced by `name`, and how many were replaced. `name` is the turn's one
  * reply_name; with none or several, the caller does not call this.
  */
-export function withoutPersonPronouns(reply: string, name: string, others: readonly string[] = [], managerWords?: string): { text: string; replaced: number } {
+export function withoutPersonPronouns(
+  reply: string,
+  name: string,
+  others: readonly string[] = [],
+  managerWords?: string,
+  /** Who may report for the card's person besides the person themself: the signed-in manager and roster leaders (QA, 17 Nov 2026). */
+  reporters: readonly string[] = [],
+): { text: string; replaced: number } {
   const display = name.trim();
   if (!display) return { text: reply, replaced: 0 };
   const quoted = quotedSpans(reply, managerWords);
@@ -101,25 +108,50 @@ export function withoutPersonPronouns(reply: string, name: string, others: reado
   const nameRe = (key: string, flags = "u") => new RegExp(`(?<![\\p{L}'-])${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}-])`, flags);
   const namesAnother = (at: number) => {
     const before = sentenceBefore(reply, at).toLowerCase();
-    if (!otherKeys.some((other) => nameRe(other).test(before))) return false;
-    return !reportedForThePerson(at, before);
+    return otherKeys.some((other) => nameRe(other).test(before));
   };
   /*
-   * Pau's ruling (QA, 16 Nov 2026; Runner 2's c090 T5, c091 T2), extended 17 Nov 2026 (c090 T5, c091 T5, c247 T1 on train
-   * 3): a pronoun inside a clause a named person reports is the card's person's, and is replaced, whether or not the card's
-   * person is named in the sentence (they are the card's person): "When <M> asked whether she had completed her
-   * 10-minute sanitization", "<P> messaged <M> via Woven stating she quit". The clause is the text since the sentence's
-   * last comma, semicolon or colon, with a reporting verb in it (REPORTING) before the pronoun. A reporter who is a
-   * pronoun ("she said her checklist …") keeps it: it may be the speaker's own. Anything else after the other person's
-   * name stays as written: "<M> and her figures" (c210 T2), "<M> … during her onboarding" (c097).
+   * Pau's ruling (QA, 16 Nov 2026; Runner 2's c090 T5, c091 T2), as QA narrowed it on 17 Nov 2026 (c090 T5, c091 T5, c247 T1
+   * on train 3): a pronoun inside a clause a named person reports ("asked whether she …", "stating she quit") is the card
+   * person's, and is replaced, only when that reporter is the card's person themself (c247: "<P> messaged <SD> via Woven
+   * stating she quit"), the signed-in manager, or someone the roster titles a leader (c090/c091: the salon's manager asks
+   * the consultant). A peer or a guest who asks or says something keeps the pronoun: "Juno asked whether she could swap
+   * shifts" is Juno asking about herself. The clause is the text since the sentence's last comma, semicolon or colon, with
+   * a reporting verb (REPORTING) in it; its reporter is the named person nearest before a finite verb ("<M> asked"), and the
+   * sentence's first named person for a participle ("<P> messaged <SD> … stating"). A reporter who is a pronoun keeps it.
+   * Anything else after another person's name stays as written: "<M> and her figures" (c210 T2), "<M> … during her
+   * onboarding" (c097).
    */
-  const reportedForThePerson = (_at: number, before: string): boolean => {
+  const reporterKeys = new Set([display.toLowerCase(), ...reporters.map((reporter) => reporter.trim().toLowerCase()).filter(Boolean)]);
+  const knownKeys = [...new Set([display.toLowerCase(), ...otherKeys, ...reporterKeys])];
+  /** For a pronoun in a reported clause: "trusted" (replace it), "untrusted" (keep it); null when it is not in one. */
+  const reportedBy = (at: number): "trusted" | "untrusted" | null => {
+    const before = sentenceBefore(reply, at).toLowerCase();
     const clause = before.split(/[,;:]/).at(-1) ?? before;
     const verb = REPORTING.exec(clause);
-    if (!verb) return false;
-    return !/\b(?:he|she|they|him|her|them|his|their)\b/.test(clause.slice(0, verb.index));
+    if (!verb) return null;
+    // A reporter who is a pronoun ("she said her checklist …"): it may be the speaker's own.
+    if (/\b(?:he|she|they|him|her|them|his|their)\b/.test(clause.slice(0, verb.index))) return "untrusted";
+    const verbAt = before.length - clause.length + verb.index;
+    const upToVerb = before.slice(0, verbAt);
+    const hits = knownKeys.flatMap((key) => [...upToVerb.matchAll(nameRe(key, "gu"))].map((match) => ({ key, from: match.index!, to: match.index! + match[0].length })));
+    if (/ing$/.test(verb[0])) {
+      // A participle reports for the sentence's subject: its first named person ("<P> messaged <SD> … stating").
+      if (hits.length === 0) return "untrusted";
+      const first = Math.min(...hits.map((hit) => hit.from));
+      return hits.some((hit) => hit.from === first && reporterKeys.has(hit.key)) ? "trusted" : "untrusted";
+    }
+    // A finite verb's reporter is the name right before it (markdown, or an appositive between commas, may sit between).
+    const adjacent = hits.filter((hit) => /^[\s*_]*(?:,[^,]*,[\s*_]*)?$/.test(upToVerb.slice(hit.to)));
+    if (adjacent.length > 0) return adjacent.some((hit) => reporterKeys.has(hit.key)) ? "trusted" : "untrusted";
+    // "You said she …", "I asked whether she …": the manager or Sunny asking about the card's person.
+    return /\b(?:you|i|we)[\s*_]*$/.test(upToVerb) ? "trusted" : "untrusted";
   };
-  const inQuote = (at: number) => quoted.some(([from, to]) => at >= from && at < to) || namesAnother(at);
+  const keepsOwn = (at: number) => {
+    const reported = reportedBy(at);
+    return reported !== null ? reported === "untrusted" : namesAnother(at);
+  };
+  const inQuote = (at: number) => quoted.some(([from, to]) => at >= from && at < to) || keepsOwn(at);
   const edits: Array<{ from: number; to: number; text: string }> = [];
 
   for (const match of reply.matchAll(ALWAYS)) {

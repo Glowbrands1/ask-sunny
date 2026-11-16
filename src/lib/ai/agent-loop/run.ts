@@ -39,6 +39,7 @@ import {
   findPastForms,
   cardPersonReplyName,
   otherPeopleNamed,
+  trustedReporters,
   withLookupReplyName,
   findStaff,
   manualFor,
@@ -1083,7 +1084,8 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   if (pronounName && text) {
     const others = await otherPeopleNamed(context, text, pronounName).catch(() => [] as string[]);
     const managerWords = [...input.history.filter((turn) => turn.role === "user").map((turn) => String(turn.content ?? "")), input.question].join("\n");
-    const named = withoutPersonPronouns(text, pronounName, others, managerWords);
+    const reporters = await trustedReporters(context).catch(() => [] as string[]);
+    const named = withoutPersonPronouns(text, pronounName, others, managerWords, reporters);
     text = named.text;
     pronounsReplaced = named.replaced;
   }

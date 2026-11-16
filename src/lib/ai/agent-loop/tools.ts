@@ -1951,6 +1951,21 @@ export async function cardPersonReplyName(context: ToolContext): Promise<string 
 }
 
 /**
+ * Who may report for the card's person in a reply (Pau's ruling as QA narrowed it, 17 Nov 2026; `reply-pronouns.ts`): the
+ * signed-in manager, and the roster people whose job title leads others (`appConfig().leadershipTitle`, read from the
+ * roster's title), by full and first name. The card's person themself is added by the pronoun pass.
+ */
+export async function trustedReporters(context: ToolContext): Promise<string[]> {
+  const facts = await appConfig().roster.readDirectoryFacts(context.actor.scope).catch(() => []);
+  const leaders = facts.filter((row) => typeof row.title === "string" && appConfig().leadershipTitle.test(row.title));
+  const manager = context.actor.displayName?.trim() ?? "";
+  return [...new Set([
+    ...(manager ? [manager, manager.split(/\s+/)[0]!] : []),
+    ...leaders.flatMap((row) => [displayName(row), ...fullNamesOf(row), row.firstName, row.preferredFirstName ?? ""]),
+  ].filter((name) => name && name.trim().length > 1))];
+}
+
+/**
  * The other people named around this reply, for the pronoun pass's sentence rule (`reply-pronouns.ts`): roster people the
  * reply or the manager's message names (full or first name), and the names the app's name reader reads in the manager's
  * message, other than the person the reply is about.
@@ -2196,6 +2211,15 @@ export function headingTypedIn(words: string, heading: string): { typed: string;
   if (!found) return null;
   const after = words.slice(found.index + found[0].length);
   return { typed: found[0], asPolicy: /^\s+(?:polic(?:y|ies)|section|guidelines?)\b/i.test(after) };
+}
+
+/** The week's day names, from the calendar (Intl), never typed out: 2023-01-01 was a Sunday. */
+const CALENDAR_WEEKDAYS = new Set(
+  Array.from({ length: 7 }, (_unused, day) => new Intl.DateTimeFormat("en-US", { weekday: "long", timeZone: "UTC" }).format(new Date(Date.UTC(2023, 0, 1 + day))).toLowerCase()),
+);
+/** A name holding a weekday ("Both Sundays", "Last Monday"): one of its words is a day of the week, singular or plural. */
+export function holdsWeekday(name: string): boolean {
+  return name.toLowerCase().split(/[^\p{L}]+/u).some((word) => CALENDAR_WEEKDAYS.has(word) || (word.endsWith("s") && CALENDAR_WEEKDAYS.has(word.slice(0, -1))));
 }
 
 export async function proposeForm(
@@ -3089,6 +3113,8 @@ export async function proposeForm(
     .flatMap((sentence) => sentence.split(/[,;]\s+/).flatMap((clause) => extractEmployeeNames(clause)).map((name) => ({ name, sentence })))
     .filter(({ name }, index, all) => all.findIndex((other) => other.name.toLowerCase() === name.toLowerCase()) === index)
     .filter(({ name }) => words(name).length >= 2 && !samePerson(name, employee.name) && !(context.actor.displayName && samePerson(name, context.actor.displayName)))
+    /* c200 (QA, 17 Nov 2026): "Both Sundays" holds a weekday, as the calendar names it: a day, never another person. */
+    .filter(({ name }) => !holdsWeekday(name))
     .slice(0, 3)
     .map(({ name, sentence }) => ({ name: untrusted(name), sentence: untrusted(sentence) }));
   const facts = {

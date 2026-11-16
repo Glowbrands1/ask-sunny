@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import { withoutPersonPronouns } from "./reply-pronouns";
 
 /* QA (16 Nov 2026; Pau's first-name rule): the reply calls the person by name, never a pronoun. Invented names. */
+const LEADER_JUNO = ["Juno Paxton", "Juno"];
+
 describe("withoutPersonPronouns", () => {
   it("replaces the live reply's pronoun (the Runner's re-run of #1067)", () => {
     expect(withoutPersonPronouns("Got it. The Corrective Action Form is the card on screen, so nothing is on file for her.", "Tamsin").text)
@@ -52,12 +54,13 @@ describe("withoutPersonPronouns", () => {
    * Pau's ruling (QA, 16 Nov 2026): a pronoun in the other person's reported question or statement is the card's person's
    * when the card's person is named in the same sentence. Runner 2's c090 T5 and c091 T2 in shape; invented names.
    */
-  it("names the person inside another person's reported question when the person is named in the sentence (c090 T5, c091 T2)", () => {
-    expect(withoutPersonPronouns("When Juno Paxton asked whether she had completed her 10-minute sanitization, Tamsin said yes.", "Tamsin", ["Juno Paxton"]).text)
+  /* Since QA's narrowing (17 Nov 2026) the reporter must be a leader, the manager or the person: Juno Paxton is an Assistant Salon Director here. */
+  it("names the person inside a leader's reported question when the person is named in the sentence (c090 T5, c091 T2)", () => {
+    expect(withoutPersonPronouns("When Juno Paxton asked whether she had completed her 10-minute sanitization, Tamsin said yes.", "Tamsin", ["Juno Paxton"], undefined, LEADER_JUNO).text)
       .toBe("When Juno Paxton asked whether Tamsin had completed Tamsin's 10-minute sanitization, Tamsin said yes.");
-    expect(withoutPersonPronouns("**Observation of Offense:** When **Juno Paxton** asked if she had finished her closing checklist, **Tamsin Orwell** said yes.", "Tamsin", ["Juno Paxton"]).text)
+    expect(withoutPersonPronouns("**Observation of Offense:** When **Juno Paxton** asked if she had finished her closing checklist, **Tamsin Orwell** said yes.", "Tamsin", ["Juno Paxton"], undefined, LEADER_JUNO).text)
       .toBe("**Observation of Offense:** When **Juno Paxton** asked if Tamsin had finished Tamsin's closing checklist, **Tamsin Orwell** said yes.");
-    expect(withoutPersonPronouns("Juno Paxton reminded Tamsin to clean her beds after each guest.", "Tamsin", ["Juno Paxton"]).text)
+    expect(withoutPersonPronouns("Juno Paxton reminded Tamsin to clean her beds after each guest.", "Tamsin", ["Juno Paxton"], undefined, LEADER_JUNO).text)
       .toBe("Juno Paxton reminded Tamsin to clean Tamsin's beds after each guest.");
   });
   it("keeps the other person's own pronoun: no reported question, or the person not named in the sentence (c210 T2, c097)", () => {
@@ -67,12 +70,9 @@ describe("withoutPersonPronouns", () => {
     // c097: the new hire is the subject; her onboarding is the new hire's.
     const onboarding = "New hire Juno Paxton was left alone during her onboarding with Tamsin on 9-28-26.";
     expect(withoutPersonPronouns(onboarding, "Tamsin", ["Juno Paxton"])).toEqual({ text: onboarding, replaced: 0 });
-    /*
-     * Changed on purpose (Pau's ruling via QA, 17 Nov 2026, Runner 2's c090 T5 / c091 T5 on train 3): a pronoun in another
-     * person's reported question is the card person's even when the card's person is not named in the sentence (they are
-     * the card's person), so this is no longer kept. What stays is a reporter who is a pronoun (below).
-     */
-    expect(withoutPersonPronouns("Juno Paxton asked whether she could swap shifts.", "Tamsin", ["Juno Paxton"]).text).toBe("Juno Paxton asked whether Tamsin could swap shifts.");
+    // A peer's reported question about herself (QA, 17 Nov 2026): "she" is Juno's own, so it stays.
+    const unnamed = "Juno Paxton asked whether she could swap shifts.";
+    expect(withoutPersonPronouns(unnamed, "Tamsin", ["Juno Paxton"])).toEqual({ text: unnamed, replaced: 0 });
     // After the clause's comma, the other person's own words are theirs again.
     const after = "When Juno Paxton asked whether Tamsin was done, she said her checklist was finished.";
     expect(withoutPersonPronouns(after, "Tamsin", ["Juno Paxton"])).toEqual({ text: after, replaced: 0 });
@@ -80,18 +80,31 @@ describe("withoutPersonPronouns", () => {
   /*
    * Pau's ruling, extended (QA, 17 Nov 2026; Runner 2's c090 T5, c091 T5, c247 T1 on train 3; invented names): a pronoun in a
    * clause a named person reports ("<M> asked whether she …", "<P> messaged <M> … stating she quit") is the card person's,
-   * whether or not the card's person is named in the sentence. A reporter who is a pronoun ("she said her checklist …")
-   * keeps the pronoun (it may be the speaker's own).
+   * whether or not the card's person is named in the sentence, when the reporter is the card's person, the signed-in
+   * manager or a roster leader (QA's narrowing). A peer, a guest or a pronoun as reporter keeps the pronoun.
    */
-  it("names the card's person in a reported clause when the card's person is not named in it (c090 T5, c091 T5)", () => {
-    expect(withoutPersonPronouns("**Observation of Offense:** Corin set up a spray booth, then went into Room 4 and stayed there until the first customer arrived at 7:57am. When we arrived at 8:15am, the lobby lights were still off. When Brisa asked whether she had completed her 10-minute sanitization, Arlo said yes. The footage showed that it had not been completed.", "Corin", ["Brisa", "Arlo"]).text)
+  it("names the card's person in a leader's reported question when the card's person is not named in it (c090 T5, c091 T5)", () => {
+    expect(withoutPersonPronouns("**Observation of Offense:** Corin set up a spray booth, then went into Room 4 and stayed there until the first customer arrived at 7:57am. When we arrived at 8:15am, the lobby lights were still off. When Brisa asked whether she had completed her 10-minute sanitization, Arlo said yes. The footage showed that it had not been completed.", "Corin", ["Brisa", "Arlo"], undefined, ["Brisa Rennick", "Brisa"]).text)
       .toBe("**Observation of Offense:** Corin set up a spray booth, then went into Room 4 and stayed there until the first customer arrived at 7:57am. When we arrived at 8:15am, the lobby lights were still off. When Brisa asked whether Corin had completed Corin's 10-minute sanitization, Arlo said yes. The footage showed that it had not been completed.");
-    expect(withoutPersonPronouns("When Corin asked whether she had completed her 10-minute sanitization, Brisa said yes.", "Arlo", ["Corin Rennick", "Corin", "Brisa", "Delphine Sorrowby"]).text)
+    expect(withoutPersonPronouns("When Corin asked whether she had completed her 10-minute sanitization, Brisa said yes.", "Arlo", ["Corin Rennick", "Corin", "Brisa", "Delphine Sorrowby"], undefined, ["Corin Rennick", "Corin", "Delphine Sorrowby", "Delphine"]).text)
       .toBe("When Corin asked whether Arlo had completed Arlo's 10-minute sanitization, Brisa said yes.");
   });
-  it("names the card's person in a clause reported with \"stating\", another person named between (c247 T1)", () => {
+  it("names the card's person in a clause the person reports with \"stating\", another person named between (c247 T1)", () => {
     expect(withoutPersonPronouns("on 11-5-26 Arlo messaged Training Salon Director, Brisa Rennick via Woven stating she quit effective immediately.", "Arlo", ["Brisa Rennick"]).text)
       .toBe("on 11-5-26 Arlo messaged Training Salon Director, Brisa Rennick via Woven stating Arlo quit effective immediately.");
+  });
+  it("keeps the pronoun when the reporter is a peer or a guest, not a leader, the manager or the person (QA, 17 Nov 2026)", () => {
+    const peer = "Juno Paxton asked whether she could swap shifts.";
+    expect(withoutPersonPronouns(peer, "Tamsin", ["Juno Paxton"], undefined, ["Brisa Rennick"])).toEqual({ text: peer, replaced: 0 });
+    const guest = "Mia Lane, a guest, said she wanted a refund.";
+    expect(withoutPersonPronouns(guest, "Tamsin", ["Mia Lane"], undefined, ["Brisa Rennick"])).toEqual({ text: guest, replaced: 0 });
+    // A guest the name reader does not know (not in others) is still a reporter who is not trusted.
+    expect(withoutPersonPronouns(guest, "Tamsin", [], undefined, ["Brisa Rennick"])).toEqual({ text: guest, replaced: 0 });
+    // "You said she …": the manager reporting, about the card's person.
+    expect(withoutPersonPronouns("You said she was late on 11/14.", "Tamsin").text).toBe("You said Tamsin was late on 11/14.");
+    // The same question from the signed-in manager (passed as a reporter) is about the card's person.
+    expect(withoutPersonPronouns("Kearney Account asked whether she could swap shifts.", "Tamsin", ["Kearney Account"], undefined, ["Kearney Account"]).text)
+      .toBe("Kearney Account asked whether Tamsin could swap shifts.");
   });
   it("keeps the pronoun of a reporter who is a pronoun, and the other person's own words with no reporting verb", () => {
     const speaker = "Juno Paxton came in at 9, and she said her checklist was finished.";
