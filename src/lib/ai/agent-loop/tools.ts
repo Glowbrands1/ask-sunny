@@ -555,6 +555,9 @@ export interface ToolEffects {
   proposalAsked?: readonly string[];
   /** QA (c208): the warning level this turn's card holds (verbal / written), for the card record, so a rebuild keeps it. */
   proposalLevel?: "verbal" | "written" | null;
+  /** QA (c022): the payroll answer and amount this turn's card holds, for the card record, so a rebuild keeps them. */
+  proposalPayroll?: "yes" | "no" | null;
+  proposalPayrollAmount?: string | null;
   /**
    * Every source a tool read this turn, numbered from 1 in the order read: the model cites one as [S<n>] (`addSource`).
    * Only the ones the reply cites become source cards (run.ts, QA's live-app item 12), as today's grounded path does.
@@ -2355,7 +2358,7 @@ export async function proposeForm(
   const typedAmount = typeof input.payroll_amount === "string" && /\d/.test(input.payroll_amount) ? input.payroll_amount.replace(/[^\d.]/g, "") : null;
   /* The amount the manager stated, read as today reads it (`payrollAmountFromConversation`) when the model left it out. */
   const statedAmount = payroll === "yes" ? payrollAmountFromConversation(conversationTurns(context), { payrollAnswer: "yes" })?.replace(/[^\d.]/g, "") ?? null : null;
-  const amount = caOnlyFields && typedAmount && managerWords.replace(/[^\d.]/g, " ").split(/\s+/).some((n) => n !== "" && Number(n) === Number(typedAmount)) ? typedAmount : null;
+  let amount = caOnlyFields && typedAmount && managerWords.replace(/[^\d.]/g, " ").split(/\s+/).some((n) => n !== "" && Number(n) === Number(typedAmount)) ? typedAmount : null;
   const today = context.today || businessToday();
   let date = typeof input.incident_date === "string" && DATE.test(input.incident_date.trim()) ? input.incident_date.trim() : null;
   /* Several incident dates and the latest message does not pick one: the date waits, and the card asks (today's rule). */
@@ -2444,6 +2447,21 @@ export async function proposeForm(
     answersThisMessage(payrollCheck) && payrollCheck.wholeMessage && oneWord(withoutMessageIdTags(conversationTurnsNow.at(-1)!.content)) &&
     !(answersThisMessage(levelCheck) && level !== null);
   if (payrollAnswerUnclear) payroll = null;
+  /*
+   * PAYROLL STATED FOR THIS REQUEST STAYS ON THE CARD (QA, 16 Nov 2026; c022: "payroll is deductable" put Yes on the card,
+   * and the next turn's rebuild dropped it), exactly as a stated level does (c208, c019). The latest record of THIS card
+   * inside this request's turns (else the card on screen or the chat's latest card, when it is this card) holds the answer
+   * and its amount; with no payroll from this turn's evidence, they stay. A new request (new_form_evidence) starts fresh;
+   * an answer still counts only for the card it answered (PR 1c): another person's or another form's card is never this
+   * card's record. Never "as you said" for a carried answer (stated_this_turn lists this message's only).
+   */
+  const payrollRecord = caOnlyFields && !asksNewForm
+    ? ([...(context.cardRecords ?? [])].reverse().find((record) => isThisCard(record) && inRequest(record) && record.payroll) ?? [context.cardOnScreen, context.earlierCard].find((record): record is CardRecord => isThisCard(record) && Boolean(record.payroll)) ?? null)
+    : null;
+  if (payroll === null && !payrollAnswerUnclear && payrollRecord?.payroll) {
+    payroll = payrollRecord.payroll;
+    if (payroll === "yes" && !amount && payrollRecord.payrollAmount) amount = payrollRecord.payrollAmount;
+  }
   const payrollQuestion = `Is payroll deduct applicable for **${employee.name}**? Yes or no.`;
   const amountInThisMessage = (digits: string | null) => Boolean(digits && context.question.replace(/[^\d.]/g, " ").split(/\s+/).some((n) => n !== "" && Number(n) === Number(digits)));
   const statedThisTurn = [
@@ -2663,6 +2681,8 @@ export async function proposeForm(
   /* Fix batch item 7: what this card's reply asks (the next turn's card record): payroll alone after an unclear answer. */
   effects.proposalAsked = payrollAnswerUnclear ? ["payroll_deduct"] : unset;
   effects.proposalLevel = level;
+  effects.proposalPayroll = payroll;
+  effects.proposalPayrollAmount = payroll === "yes" ? amount : null;
   const salonNames = (ids: readonly string[] | undefined) => (ids ?? []).map((id) => ({ id, name: rosterSalonName(id) ?? id }));
   /*
    * Batch K4 (QA's 266 shadow replay, c137/c134: a pasted account about <Y>, off the roster, went on <X>'s card; the
