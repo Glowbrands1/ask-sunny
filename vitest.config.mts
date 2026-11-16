@@ -90,7 +90,14 @@ export default defineConfig({
             "src/**/*.test.tsx",
             "extension/**/*.test.mjs",
           ],
-          exclude: [...configDefaults.exclude, "src/lib/ai/flags-off-parity.test.ts"],
+          // UNIT_WITHOUT_REPLAY_PACK_E2E=1 (CI's unit shards only; QA, 17 Nov 2026): vitest --shard splits by file, and
+          // the replay pack's e2e is one file holding nearly all of the suite's time, so each shard leaves it out here
+          // and runs a quarter of its cases in a second step (REPLAY_PACK_PART). Unset, the project is as before.
+          exclude: [
+            ...configDefaults.exclude,
+            "src/lib/ai/flags-off-parity.test.ts",
+            ...(process.env.UNIT_WITHOUT_REPLAY_PACK_E2E === "1" ? ["src/app/api/chat/replay-pack/replay-pack-e2e.test.ts"] : []),
+          ],
         },
       },
       {
