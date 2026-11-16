@@ -560,6 +560,9 @@ export interface ToolEffects {
   proposalAsked?: readonly string[];
   /** QA (c208): the warning level this turn's card holds (verbal / written), for the card record, so a rebuild keeps it. */
   proposalLevel?: "verbal" | "written" | null;
+  /** QA (c022): the payroll answer and amount this turn's card holds, for the card record, so a rebuild keeps them. */
+  proposalPayroll?: "yes" | "no" | null;
+  proposalPayrollAmount?: string | null;
   /**
    * Every source a tool read this turn, numbered from 1 in the order read: the model cites one as [S<n>] (`addSource`).
    * Only the ones the reply cites become source cards (run.ts, QA's live-app item 12), as today's grounded path does.
@@ -2481,7 +2484,7 @@ export async function proposeForm(
   const typedAmount = typeof input.payroll_amount === "string" && /\d/.test(input.payroll_amount) ? input.payroll_amount.replace(/[^\d.]/g, "") : null;
   /* The amount the manager stated, read as today reads it (`payrollAmountFromConversation`) when the model left it out. */
   const statedAmount = payroll === "yes" ? payrollAmountFromConversation(conversationTurns(context), { payrollAnswer: "yes" })?.replace(/[^\d.]/g, "") ?? null : null;
-  const amount = caOnlyFields && typedAmount && managerWords.replace(/[^\d.]/g, " ").split(/\s+/).some((n) => n !== "" && Number(n) === Number(typedAmount)) ? typedAmount : null;
+  let amount = caOnlyFields && typedAmount && managerWords.replace(/[^\d.]/g, " ").split(/\s+/).some((n) => n !== "" && Number(n) === Number(typedAmount)) ? typedAmount : null;
   const today = context.today || businessToday();
   let date = typeof input.incident_date === "string" && DATE.test(input.incident_date.trim()) ? input.incident_date.trim() : null;
   /* Several incident dates and the latest message does not pick one: the date waits, and the card asks (today's rule). */
@@ -2551,7 +2554,15 @@ export async function proposeForm(
    * inside this request's turns still holds the level, so it returns. A new request (new_form_evidence) starts fresh.
    */
   const inRequest = (record: CardRecord) => Boolean(record.messageId && requestTurnIds.includes(record.messageId));
-  const carriedRecord = [...(context.cardRecords ?? [])].reverse().find((record) => isThisCard(record) && inRequest(record) && record.level) ?? [context.cardOnScreen, context.earlierCard].find(isThisCard) ?? null;
+  /*
+   * QA (16 Nov 2026, with #1070's payroll carry): only while a card for THIS person is on screen (this card, or their card
+   * on another form: c019's switch away and back). After a reply with no card ("verbal", "thanks", "another ca for
+   * <name>"), the level an earlier card held never reaches the next card; the manager states it again.
+   */
+  const samePersonOnScreen = Boolean(context.cardOnScreen && (employee.id ? context.cardOnScreen.employeeKey === personKey(employee.id) : !context.cardOnScreen.employeeKey && context.cardOnScreen.nameKey === personKey(employee.name)));
+  const carriedRecord = samePersonOnScreen
+    ? ([...(context.cardRecords ?? [])].reverse().find((record) => isThisCard(record) && inRequest(record) && record.level) ?? (isThisCard(context.cardOnScreen) ? context.cardOnScreen : null))
+    : null;
   const carriedLevel = caOnlyFields && !asksNewForm ? (carriedRecord?.level ?? null) : null;
   const level = askedLevel && levelCheck?.ok ? askedLevel : carriedLevel;
   /*
@@ -2570,6 +2581,19 @@ export async function proposeForm(
     answersThisMessage(payrollCheck) && payrollCheck.wholeMessage && oneWord(withoutMessageIdTags(conversationTurnsNow.at(-1)!.content)) &&
     !(answersThisMessage(levelCheck) && level !== null);
   if (payrollAnswerUnclear) payroll = null;
+  /*
+   * PAYROLL STATED FOR THIS REQUEST STAYS ON THE CARD (QA, 16 Nov 2026; c022: "payroll is deductable" put Yes on the card,
+   * and the next turn's rebuild dropped it). A rebuild of the card ON SCREEN (the last reply showed this card, by the
+   * server's record) keeps the payroll answer and amount that card held, when this turn's evidence states none. Only the
+   * card on screen: an answer belongs to the card it answered (PR 1c), so a card shown again after a turn with no card
+   * ("yes", "thanks", "another ca for <name>") never gets it, nor does a new request (new_form_evidence), another
+   * person's card or another form. Never "as you said" for a carried answer (stated_this_turn lists this message's only).
+   */
+  const payrollRecord = caOnlyFields && !asksNewForm && isThisCard(context.cardOnScreen) && context.cardOnScreen.payroll ? context.cardOnScreen : null;
+  if (payroll === null && !payrollAnswerUnclear && payrollRecord?.payroll) {
+    payroll = payrollRecord.payroll;
+    if (payroll === "yes" && !amount && payrollRecord.payrollAmount) amount = payrollRecord.payrollAmount;
+  }
   const payrollQuestion = `Is payroll deduct applicable for **${employee.name}**? Yes or no.`;
   const amountInThisMessage = (digits: string | null) => Boolean(digits && context.question.replace(/[^\d.]/g, " ").split(/\s+/).some((n) => n !== "" && Number(n) === Number(digits)));
   const statedThisTurn = [
@@ -2789,6 +2813,8 @@ export async function proposeForm(
   /* Fix batch item 7: what this card's reply asks (the next turn's card record): payroll alone after an unclear answer. */
   effects.proposalAsked = payrollAnswerUnclear ? ["payroll_deduct"] : unset;
   effects.proposalLevel = level;
+  effects.proposalPayroll = payroll;
+  effects.proposalPayrollAmount = payroll === "yes" ? amount : null;
   const salonNames = (ids: readonly string[] | undefined) => (ids ?? []).map((id) => ({ id, name: rosterSalonName(id) ?? id }));
   /*
    * Batch K4 (QA's 266 shadow replay, c137/c134: a pasted account about <Y>, off the roster, went on <X>'s card; the
