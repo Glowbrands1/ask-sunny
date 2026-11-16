@@ -208,4 +208,70 @@ export const NOV16_LEVEL_CARRY_CASES: ReplayCase[] = [
       expect(proposeOutputs(standIn.views).at(-1)!.reason_code).toBe("level_not_stated");
     },
   },
+  ...([
+    ["no-level-from-the-model", false],
+    ["level-evidence-from-t2", true],
+  ] as const).map(([what, cites]): ReplayCase => ({
+    id: `nov16-level-carry-c019-form-switched-back-${what}`,
+    title: `c019 shape: Verbal stated at T2 for Remy Calder's Corrective Action; \"Create a Coaching Form from this conversation\", then \"Create a Corrective Action Form from this conversation\" (same person, same incident): the CA card has Verbal again (${cites ? "the model cites T2" : "the model gives no level: the record carries it"})`,
+    report: "QA's 266-chat re-run (16 Nov 2026), c019: switching the form away and back lost the stated level",
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.() || !offline) return;
+      start(t);
+      const standIn = loopStandIn((view): LoopDecision => {
+        const text = said(view);
+        const ca = { template_key: "dpoa", employee_id: "e-2", what_happened: "She was late to her shift on 11/14.", incident_date: "2026-11-14" };
+        if (/^ca for remy/i.test(text)) {
+          if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
+          return lastResult(view, "propose_form") ? { text: "Here's the card. Warning level isn't set; tell me if it applies." } : { tool: "propose_form", input: ca };
+        }
+        if (/^verbal$/i.test(text)) return lastResult(view, "propose_form") ? { text: "Verbal it is." } : { tool: "propose_form", input: { ...ca, warning_level: "verbal", level_evidence: evidenceFrom(view, "verbal") } };
+        if (/coaching form/i.test(text)) return lastResult(view, "propose_form") ? { text: "Here's the Coaching Form." } : { tool: "propose_form", input: { template_key: "coaching", employee_id: "e-2", what_happened: "She was late to her shift on 11/14." } };
+        if (/corrective action form/i.test(text)) return lastResult(view, "propose_form") ? { text: "Here's the Corrective Action Form." } : { tool: "propose_form", input: { ...ca, ...(cites ? { warning_level: "verbal", level_evidence: evidenceFrom(view, "verbal", 3) } : {}) } };
+        return { text: "Okay." };
+      });
+      t.loopModel!(standIn);
+      const thread = t.thread();
+      await thread.say("ca for remy calder, she was late to her shift on 11/14");
+      await thread.say("verbal");
+      expect(levelOf(thread)).toBe("verbal");
+      await thread.say("actually what would a coaching look like");
+      await thread.say("Create a Coaching Form from this conversation");
+      expect(thread.proposal?.templateKey).toBe("coaching");
+      await thread.say("Create a Corrective Action Form from this conversation");
+      expect(thread.proposal?.templateKey).toBe("dpoa");
+      expect(levelOf(thread), "switching the form away and back lost the level stated for this request").toBe("verbal");
+    },
+  })),
+  {
+    id: "nov16-level-carry-c019-guard-new-incident-starts-fresh",
+    title: "c019 guard: Verbal for Remy Calder's CA, a Coaching Form from this conversation, then \"make a new ca for remy calder, she was rude to a guest on 11/15\" (new_form_evidence, a new incident): the new CA card has no level",
+    report: "QA's 266-chat re-run (16 Nov 2026), c019: a genuinely new incident still starts fresh",
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.() || !offline) return;
+      start(t);
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        const text = said(view);
+        const late = { template_key: "dpoa", employee_id: "e-2", what_happened: "She was late to her shift on 11/14.", incident_date: "2026-11-14" };
+        if (/^ca for remy/i.test(text)) {
+          if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
+          return lastResult(view, "propose_form") ? { text: "Here's the card." } : { tool: "propose_form", input: late };
+        }
+        if (/^verbal$/i.test(text)) return lastResult(view, "propose_form") ? { text: "Verbal it is." } : { tool: "propose_form", input: { ...late, warning_level: "verbal", level_evidence: evidenceFrom(view, "verbal") } };
+        if (/coaching form/i.test(text)) return lastResult(view, "propose_form") ? { text: "Here's the Coaching Form." } : { tool: "propose_form", input: { template_key: "coaching", employee_id: "e-2", what_happened: "She was late to her shift on 11/14." } };
+        return lastResult(view, "propose_form") ? { text: "Here's the new card." } : { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: "She was rude to a guest on 11/15.", incident_date: "2026-11-15", new_form_evidence: evidenceFrom(view, "make a new ca for remy calder") } };
+      }));
+      const thread = t.thread();
+      await thread.say("ca for remy calder, she was late to her shift on 11/14");
+      await thread.say("verbal");
+      await thread.say("Create a Coaching Form from this conversation");
+      await thread.say("make a new ca for remy calder, she was rude to a guest on 11/15");
+      expect(thread.proposal?.templateKey).toBe("dpoa");
+      expect(levelOf(thread), "the earlier incident's level went on a new incident's card").toBeNull();
+    },
+  },
 ];

@@ -1942,9 +1942,13 @@ export async function proposeForm(
    * The carry (c208: "redo the outline" rebuilt the card with no level, and it stayed unset): the card on screen, or this
    * chat's latest card, is THIS card and this is not a new request, so the level it held (its record) stays unless this
    * turn's evidence states one. The model leaving warning_level out, or claiming another level with no evidence, never
-   * drops it.
+   * drops it. c019 (QA): the form switched away and back for the same person and incident ("Create a Coaching Form from
+   * this conversation", then "Create a Corrective Action Form from this conversation"): the latest record of THIS card
+   * inside this request's turns still holds the level, so it returns. A new request (new_form_evidence) starts fresh.
    */
-  const carriedLevel = caOnlyFields && !asksNewForm ? ([context.cardOnScreen, context.earlierCard].find(isThisCard)?.level ?? null) : null;
+  const inRequest = (record: CardRecord) => Boolean(record.messageId && requestTurnIds.includes(record.messageId));
+  const carriedRecord = [...(context.cardRecords ?? [])].reverse().find((record) => isThisCard(record) && inRequest(record) && record.level) ?? [context.cardOnScreen, context.earlierCard].find(isThisCard) ?? null;
+  const carriedLevel = caOnlyFields && !asksNewForm ? (carriedRecord?.level ?? null) : null;
   const level = askedLevel && levelCheck?.ok ? askedLevel : carriedLevel;
   /*
    * Fix batch item 7 (QA's targeted re-run, c163: a bare "yes" after "Payroll deduct and warning level aren't set" set
