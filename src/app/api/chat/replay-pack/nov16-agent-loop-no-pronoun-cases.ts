@@ -137,4 +137,21 @@ export const NOV16_AGENT_LOOP_NO_PRONOUN_CASES: ReplayCase[] = [
       expect(notes.content, `another employee's figures got the card person's name:\n${notes.content}`).toContain("those edits name **Juno Paxton** and her figures");
     },
   },
+  {
+    id: "nov16-no-pronoun-a-salon-before-she-is-no-other-person-c150",
+    title: "Runner 2's c150 / c198 T3: \"At NE Kearney, she was late again\" — a salon named before \"she\" is no other person, so the reply says Tamsin",
+    report: `${REPORT}; Runner 2's offline re-check of 03ea9e1: a salon name counted as another person`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      start(t);
+      t.loopModel!(cardModel());
+      const thread = t.thread();
+      await thread.say("ca for Tamsin Orwell, late to the shift on 11/14");
+      t.loopModel!(wordsOnly("At NE Kearney, she was late again on 11/14."));
+      const later = await thread.say("At NE Kearney it happened again on 11/14");
+      expect(later.content).toBe("At NE Kearney, Tamsin was late again on 11/14.");
+    },
+  },
 ];
