@@ -2,6 +2,7 @@ import { expect, vi } from "vitest";
 
 import { KEARNEY, STAFF, type ReplayCase, type ReplayContext } from "./cases";
 import { evidenceFrom, lastResult, loopStandIn, type LoopDecision, type LoopView } from "./loop-stand-in";
+import { fullNameUsed, personPronoun } from "./reply-checks";
 
 /**
  * ============================================================================
@@ -25,8 +26,8 @@ const FLAG = "AGENT_LOOP_ENABLED";
 const REPORT = "The Runner's c219 detail (16 Nov 2026): T1 promised a termination Corrective Action from a pasted script; T2 guessed \"he/his\"";
 const FIRST_NAME_RULE = "call each employee by their FIRST name every time";
 const PASTED_RULE = "When the manager has not said what they want made";
-/* Pau (16 Nov 2026): the employee by first name every time; no he/she/they for them. */
-const PRONOUN = /\b(?:he|him|his|she|her|hers|they|them|their|theirs)\b/i;
+/* Pau (16 Nov 2026): the employee by first name every time; no pronoun for them (`reply-checks.ts`, QA's checker). */
+const offline = process.env.AGENT_LOOP_LIVE !== "1";
 const SCRIPT =
   "Lysa, this meeting is about the text you sent your salon director Juno Paxton on 11/3. It was disrespectful. Your employment with us is terminated, effective 11/5. Please return your keys; your final paycheck will be mailed.";
 
@@ -57,6 +58,7 @@ export const NOV16_AGENT_LOOP_NO_GUESSING_CASES: ReplayCase[] = [
       expect(thread.proposal ?? null, "a card was made from a pasted script with no ask").toBeNull();
       expect(reply.content, "the reply promised a form or a termination before the manager asked").not.toMatch(/\b(?:I'll|I will|I'm going to)\b[^.?!]*\b(?:Corrective Action|termination|exit form)\b/i);
       expect(reply.content).toMatch(/\?/);
+      expect(personPronoun(reply.content), `a pronoun for the person:\n${reply.content}`).toBeNull();
     },
   },
   {
@@ -77,8 +79,10 @@ export const NOV16_AGENT_LOOP_NO_GUESSING_CASES: ReplayCase[] = [
       const thread = t.thread();
       const reply = await thread.say("exit form for rowan kestrel, last day 11/28");
       expect(shownRules(standIn.views), "the model is not taught the first-name rule").toContain(FIRST_NAME_RULE);
-      expect(reply.content, `a pronoun for the employee:\n${reply.content}`).not.toMatch(PRONOUN);
+      expect(personPronoun(reply.content), `a pronoun for the employee:\n${reply.content}`).toBeNull();
       expect(reply.content).toMatch(/\bRowan\b/);
+      // QA (16 Nov 2026): never the full name in the reply's words (the card shows it).
+      expect(fullNameUsed(reply.content, "Rowan Kestrel"), `the full name in the reply's words:\n${reply.content}`).toBeNull();
       expect(thread.proposal?.employeeName, "the card's name is no longer the full name").toBe("Rowan Kestrel");
     },
   },
@@ -105,7 +109,7 @@ export const NOV16_AGENT_LOOP_NO_GUESSING_CASES: ReplayCase[] = [
       const plain = reply.content.replace(/\*\*/g, "");
       expect(plain, `a bare "Rowan" where two Rowans are in the conversation:\n${reply.content}`).not.toMatch(/\bRowan\b(?!['’]?s?\s+(?:Kestrel|Pike)|\s+(?:Kestrel|Pike))/);
       expect(plain).toMatch(/Rowan Kestrel/);
-      expect(plain, `a pronoun for the employee:\n${reply.content}`).not.toMatch(PRONOUN);
+      expect(personPronoun(reply.content), `a pronoun for the employee:\n${reply.content}`).toBeNull();
     },
   },
   {
@@ -125,18 +129,33 @@ export const NOV16_AGENT_LOOP_NO_GUESSING_CASES: ReplayCase[] = [
       ] as const;
       const standIn = loopStandIn((view): LoopDecision => {
         const next = steps[view.results.length];
-        if (!next) return { text: "done" };
+        if (!next) return { text: "This is a termination meeting script for Lysa. Do you want the Employee Exit Form, or a Corrective Action?" };
         return { tool: next.tool, input: { ...next.input, ...(next.tool === "find_staff" ? { person_evidence: evidenceFrom(view, "Lysa") } : {}) } };
       });
       t.loopModel!(standIn);
-      await t.thread().say(SCRIPT);
+      const thread = t.thread();
+      const reply = await thread.say(SCRIPT);
       const results = standIn.views.reduce<{ tool: string; output: unknown }[]>((most, view) => (view.results.length > most.length ? [...view.results] : most), []);
-      const [before, propose, after] = results.map((result) => result.output as { reason_code?: string; ask_exactly?: string; form_not_chosen?: boolean });
-      expect(before, "find_staff asked the name before a form was chosen").toMatchObject({ reason_code: "not_on_roster", form_not_chosen: true });
-      expect(before?.ask_exactly).toBeUndefined();
-      expect(propose).toMatchObject({ reason_code: "not_on_roster", ask_exactly: USE_LYSA });
-      expect(after).toMatchObject({ reason_code: "not_on_roster", ask_exactly: USE_LYSA });
-      expect(after?.form_not_chosen).toBeUndefined();
+      type Out = { reason_code?: string; ask_exactly?: string; form_not_chosen?: boolean };
+      // Both modes (QA): before a form is chosen (the first propose_form), no tool result carries a name question.
+      const firstPropose = results.findIndex((result) => result.tool === "propose_form");
+      const beforeForm = (firstPropose < 0 ? results : results.slice(0, firstPropose)).map((result) => result.output as Out);
+      expect(beforeForm.filter((out) => out.reason_code === "not_on_roster" && out.ask_exactly), "a name question before a form was chosen").toEqual([]);
+      if (firstPropose < 0) {
+        const row = [...(t.rows?.("chat_traces") ?? [])].reverse().find((entry) => (entry.slots as { agent_loop?: unknown } | undefined)?.agent_loop);
+        expect((row?.slots as { agent_loop?: { name_question?: unknown } } | undefined)?.agent_loop?.name_question, "a name question was recorded with no form chosen").toBeUndefined();
+        expect(reply.content, `the reply asked a name question before a form was chosen:\n${reply.content}`).not.toMatch(/Reply \*\*use|full name|staff list/i);
+      }
+      expect(personPronoun(reply.content), `a pronoun for the person:\n${reply.content}`).toBeNull();
+      if (offline) {
+        // The stand-in's scripted calls: today's exact checks of the code path.
+        const [before, propose, after] = results.map((result) => result.output as Out);
+        expect(before, "find_staff asked the name before a form was chosen").toMatchObject({ reason_code: "not_on_roster", form_not_chosen: true });
+        expect(before?.ask_exactly).toBeUndefined();
+        expect(propose).toMatchObject({ reason_code: "not_on_roster", ask_exactly: USE_LYSA });
+        expect(after).toMatchObject({ reason_code: "not_on_roster", ask_exactly: USE_LYSA });
+        expect(after?.form_not_chosen).toBeUndefined();
+      }
     },
   },
 ];
