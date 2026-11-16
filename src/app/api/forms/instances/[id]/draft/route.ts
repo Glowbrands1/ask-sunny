@@ -2676,7 +2676,19 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      */
     {
       const dateKeys = new Set([...narrativeKeys, ...(fixedPlan ? [fixedPlan.key] : [])].filter((key) => !keeps(key)));
-      const undated = withoutUnstatedDates(draftedPayload.values, dateKeys, notes, businessToday(), narrativeFormDate?.iso ?? null);
+      /*
+       * The form's own date is a stated one when it is not the day the form was created: the manager set it (in chat, from
+       * their words, or on the form). Left at the creation day, it was nobody's statement.
+       */
+      const createdDay = loaded.instance.createdAt ? businessToday(new Date(loaded.instance.createdAt)) : null;
+      const formDateStated = Boolean(narrativeFormDate && createdDay && narrativeFormDate.iso !== createdDay);
+      const undated = withoutUnstatedDates(
+        draftedPayload.values,
+        dateKeys,
+        formDateStated ? `${notes}\n${narrativeFormDate!.iso}` : notes,
+        businessToday(),
+        narrativeFormDate?.iso ?? null,
+      );
       if (undated.removed.length > 0) {
         draftedPayload.values = undated.values;
         console.info("[draft] removed dates the manager did not state", { instanceId: id, removed: undated.removed });

@@ -526,7 +526,16 @@ export function withoutUnstatedDates(
   /** The form's own date: "today" in the manager's words is that day (the form is dated the day they said it). */
   formDate?: string | null,
 ): { values: Record<string, string>; removed: string[] } {
+  // The manager's dates read exactly as the date correction reads them (yearless "10-5", ordinals), in the form's year.
+  const year = (formDate ?? today).slice(0, 4);
+  const reference = `${year}-01-01`;
+  const noted = withOrdinalsFromToday(
+    priorSentenceFixFor(notes) ? managerDatesForDraft(notes, reference) : datesInText(notes, reference),
+    notes,
+    today,
+  );
   const stated = new Set<string>([
+    ...noted.map((found) => found.iso),
     ...datesInText(notes, today).map((found) => found.iso),
     ...relativeDates(notes, today).map((found) => found.iso),
     ...(SAID_THE_DAY.test(notes) ? [today, ...(formDate ? [formDate] : [])] : []),
