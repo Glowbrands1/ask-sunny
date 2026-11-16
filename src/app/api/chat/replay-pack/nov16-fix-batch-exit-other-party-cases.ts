@@ -32,11 +32,13 @@ function start(t: ReplayContext, extra: typeof STAFF = []) {
 const lastSaid = (view: LoopView) => [...view.turns].reverse().find((turn) => turn.role === "user")?.text ?? "";
 
 /** The model: asks about the name until "use Odalys Fenwick", then the exit card citing T1 and T2 (T2's ask). */
-function model() {
+function model(atT3 = false) {
   return loopStandIn((view): LoopDecision => {
     const said = lastSaid(view);
-    if (/^use Odalys Fenwick/i.test(said)) {
-      const card = lastResult(view, "propose_form") as { reason_code?: string } | null;
+    // The 266 re-run's real c219 shape: the card is proposed at T3 ("For <A>"), the cited turns one and two back.
+    const back = atT3 ? 0 : 1;
+    if (atT3 ? /^For Odalys Fenwick/i.test(said) : /^use Odalys Fenwick/i.test(said)) {
+      const card = lastResult(view, "propose_form") as { reason_code?: string; ask_exactly?: string } | null;
       if (!card) {
         return {
           tool: "propose_form",
@@ -45,12 +47,13 @@ function model() {
             employee_name: "Odalys Fenwick",
             exit_type: "termination",
             effective_date: "11/5",
-            exit_evidence: { ...evidenceFrom(view, ASK, 2), kind: "asks_for_exit_form" },
-            request_evidence: [evidenceFrom(view, "this meeting is about the text you sent", 3), evidenceFrom(view, ASK, 2)],
+            exit_evidence: { ...evidenceFrom(view, ASK, 1 + back), kind: "asks_for_exit_form" },
+            request_evidence: [evidenceFrom(view, "this meeting is about the text you sent", 2 + back), evidenceFrom(view, ASK, 1 + back)],
           },
         };
       }
-      return { text: card.reason_code ?? "Here's the Resignation/Exit Form for **Odalys Fenwick**." };
+      const refused = card as { reason_code?: string; ask_exactly?: string };
+      return { text: refused.ask_exactly ?? refused.reason_code ?? "Here's the Resignation/Exit Form for **Odalys Fenwick**." };
     }
     if (/^For Odalys Fenwick/i.test(said)) {
       const staff = lastResult(view, "find_staff") as { note?: string } | null;
@@ -61,14 +64,26 @@ function model() {
   });
 }
 
-async function c219(t: ReplayContext, first: string) {
+async function c219(t: ReplayContext, first: string, script = SCRIPT) {
   const thread = t.thread();
-  await thread.say(SCRIPT(first));
-  await thread.say(`${ASK} ${SCRIPT(first)}`);
+  await thread.say(script(first));
+  await thread.say(`${ASK} ${script(first)}`);
   await thread.say("For Odalys Fenwick");
   const reply = await thread.say("use Odalys Fenwick");
   return { thread, reply };
 }
+
+/** c219 as the 266 re-run ran it: the card at T3, "For <A>"; the possessive form "<A'>'s" in the script. */
+const POSSESSIVE = (first: string) =>
+  `Meeting notes on ${first}'s conduct: this meeting is about the text you sent your salon director Juno Paxton on 11/3. It was disrespectful. Your employment with us is terminated, effective 11/5. Please return your keys; your final paycheck will be mailed.`;
+async function c219AtT3(t: ReplayContext, first: string, script = SCRIPT) {
+  const thread = t.thread();
+  await thread.say(script(first));
+  await thread.say(`${ASK} ${script(first)}`);
+  const reply = await thread.say("For Odalys Fenwick");
+  return { thread, reply };
+}
+const proposeCount = (views: readonly LoopView[]) => Math.max(0, ...views.map((view) => view.results.filter((result) => result.tool === "propose_form").length));
 
 export const NOV16_FIX_BATCH_EXIT_OTHER_PARTY_CASES: ReplayCase[] = [
   {
@@ -103,7 +118,7 @@ export const NOV16_FIX_BATCH_EXIT_OTHER_PARTY_CASES: ReplayCase[] = [
   },
   {
     id: "nov16-fix-batch-5-a-spelling-near-two-people-stays-refused",
-    title: "Fix batch item 5, QA's limit (b): with Odalie Brandt also on the roster, \"Odalis\" is one edit from two people's first names (Odalys, Odalie), so the turn stays refused (request_evidence_other_person), no card",
+    title: "Fix batch item 5, QA's limit (b): with Odalie Brandt also on the roster, \"Odalis\" is one edit from two people's first names (Odalys, Odalie), so the turn is not taken as Odalys Fenwick's: no card, and the refusal asks \"In your message, is Odalis **Odalys Fenwick** or **Odalie Brandt**?\" (near_name_ambiguous)",
     report: REPORT,
     status: "fixed",
     fixFlags: [FLAG],
@@ -113,7 +128,132 @@ export const NOV16_FIX_BATCH_EXIT_OTHER_PARTY_CASES: ReplayCase[] = [
       t.loopModel!(model());
       const { thread, reply } = await c219(t, "Odalis");
       expect(thread.proposal, "an ambiguous one-edit spelling kept the turn in the request").toBeFalsy();
-      expect(reply.content).toBe("request_evidence_other_person");
+      // Changed on purpose (QA's ruling, 16 Nov 2026, after the 266 re-run): the strict limit holds, and the refusal asks
+      // which person instead of request_evidence_other_person about the director.
+      expect(reply.content).toBe("In your message, is Odalis **Odalys Fenwick** or **Odalie Brandt**?");
     },
   },
+  {
+    id: "nov16-fix-batch-5-c219-real-shape-first-propose-makes-the-exit-card",
+    title: "Item 5 follow-up (the 266 re-run's real c219 shape): the script, then \"I need an exit form with this information.\" and the script, then \"For Odalys Fenwick\" (off the active roster, named in full only there): the FIRST propose_form makes the exit card",
+    report: `${REPORT}; the 266 re-run on b155c737: four refusals before the card`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      start(t);
+      const standIn = model(true);
+      t.loopModel!(standIn);
+      const { thread, reply } = await c219AtT3(t, "Odalis");
+      expect(thread.proposal?.templateKey, `no exit card at T3:\n${reply.content}`).toBe("stc-exit");
+      expect(thread.proposal?.employeeName).toBe("Odalys Fenwick");
+      expect(proposeCount(standIn.views), "the exit card took more than one propose_form").toBe(1);
+    },
+  },
+  {
+    id: "nov16-fix-batch-5-a-possessive-near-name-still-names-the-person",
+    title: "Item 5 follow-up: the same chat with the script naming her only as \"Odalis's\" (a possessive) beside the director Juno Paxton makes the exit card on the first propose_form",
+    report: `${REPORT}; the 266 re-run on b155c737`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      start(t);
+      const standIn = model(true);
+      t.loopModel!(standIn);
+      const { thread, reply } = await c219AtT3(t, "Odalis", POSSESSIVE);
+      expect(thread.proposal?.templateKey, `a possessive near name lost the exit ask:\n${reply.content}`).toBe("stc-exit");
+      expect(proposeCount(standIn.views)).toBe(1);
+    },
+  },
+  ...([
+    ["the person typed in full", "Odalys Fenwick", "Odalys Fenwick"],
+    ["the other person typed in full", "Odalie Brandt", "Odalie Brandt"],
+    ["neither", "not sure, the one from the script", null],
+  ] as const).map(([label, answer, carded]): ReplayCase => ({
+    id: `nov16-fix-batch-5-near-name-question-answered-${label.replace(/\s+/g, "-")}`,
+    title: `Item 5 follow-up (Pau, 16 Nov 2026: the answer must be used): with Odalie Brandt on the roster, T3 asks "In your message, is Odalis **Odalys Fenwick** or **Odalie Brandt**?"; the answer "${answer}" ${carded ? `makes the exit card for ${carded} with the script's turns` : "names neither, so the question is asked again and nothing is guessed"}`,
+    report: `${REPORT}; Pau's addition: the answer to the which-person question is used (name question record)`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      start(t, [{ id: "e-9", firstName: "Odalie", lastName: "Brandt", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" }]);
+      const QUESTION = "In your message, is Odalis **Odalys Fenwick** or **Odalie Brandt**?";
+      const standIn = loopStandIn((view): LoopDecision => {
+        const said = lastSaid(view);
+        const card = lastResult(view, "propose_form") as { reason_code?: string; ask_exactly?: string } | null;
+        if (card) return { text: card.ask_exactly ?? card.reason_code ?? "Here's the Resignation/Exit Form." };
+        const t3 = /^For Odalys Fenwick/i.test(said);
+        const back = t3 ? 0 : 1;
+        const exit = (person: Record<string, unknown>) => ({
+          tool: "propose_form" as const,
+          input: {
+            template_key: "stc-exit", exit_type: "termination", effective_date: "11/5", ...person,
+            exit_evidence: { ...evidenceFrom(view, ASK, 1 + back), kind: "asks_for_exit_form" },
+            request_evidence: [evidenceFrom(view, "this meeting is about the text you sent", 2 + back), evidenceFrom(view, ASK, 1 + back)],
+          },
+        });
+        if (/^Odalie Brandt/i.test(said)) {
+          if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "Odalie Brandt" } };
+          return exit({ employee_id: "e-9" });
+        }
+        if (t3 || /^Odalys Fenwick|^not sure/i.test(said)) return exit({ employee_name: "Odalys Fenwick" });
+        return { text: "I can't find **Odalis** on your staff list. Who is this for?" };
+      });
+      t.loopModel!(standIn);
+      const { thread, reply } = await c219AtT3(t, "Odalis");
+      expect(reply.content, "T3 did not ask which person").toBe(QUESTION);
+      expect(thread.proposal ?? null).toBeNull();
+      const after = await thread.say(answer);
+      if (carded) {
+        expect(thread.proposal?.templateKey, `the answer was not used:\n${after.content}`).toBe("stc-exit");
+        expect(thread.proposal?.employeeName).toBe(carded);
+      } else {
+        expect(thread.proposal ?? null, "a person was guessed").toBeNull();
+        expect(after.content).toBe(QUESTION);
+      }
+    },
+  })),
+  ...([true, false] as const).map((asked): ReplayCase => ({
+    id: `nov16-fix-batch-5-answer-bridge-${asked ? "the-app-asked-for-the-full-name" : "control-the-app-never-asked"}`,
+    title: asked
+      ? "The answer bridge (QA's ruling, 16 Nov 2026; Pau: every answer is used): the script names \"Lysa\" (no spelling rule reaches Odalys) and the director Juno Paxton; the app answers \"I can't find **Lysa** … give me the full name\" (recorded); \"For Odalys Fenwick\" right after confirms Lysa as Odalys Fenwick, so the FIRST propose_form makes the exit card from the script's turns"
+      : "The answer bridge, control: the same chat where the app never asked about Lysa (no find_staff offer): nothing bridges, the cited script turns stay the director's (request_evidence_other_person), no card",
+    report: `${REPORT}; the Runner's facts: <A'> is two edits from <A>'s 4-letter-or-longer first name, out of reach of any spelling rule`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      start(t);
+      const standIn = loopStandIn((view): LoopDecision => {
+        const said = lastSaid(view);
+        if (/^For Odalys Fenwick/i.test(said)) {
+          const card = lastResult(view, "propose_form") as { reason_code?: string; ask_exactly?: string } | null;
+          if (card) return { text: card.ask_exactly ?? card.reason_code ?? "Here's the Resignation/Exit Form for **Odalys Fenwick**." };
+          return {
+            tool: "propose_form",
+            input: {
+              template_key: "stc-exit", employee_name: "Odalys Fenwick", exit_type: "termination", effective_date: "11/5",
+              exit_evidence: { ...evidenceFrom(view, ASK, 1), kind: "asks_for_exit_form" },
+              request_evidence: [evidenceFrom(view, "this meeting is about the text you sent", 2), evidenceFrom(view, ASK, 1)],
+            },
+          };
+        }
+        const staff = lastResult(view, "find_staff") as { ask_exactly?: string } | null;
+        if (asked && !staff) return { tool: "find_staff", input: { name: "Lysa", person_evidence: evidenceFrom(view, "Lysa") } };
+        return { text: staff?.ask_exactly ?? "Who is this exit form for?" };
+      });
+      t.loopModel!(standIn);
+      const { thread, reply } = await c219AtT3(t, "Lysa");
+      if (asked) {
+        expect(thread.proposal?.templateKey, `the answer to the app's own question was not used:\n${reply.content}`).toBe("stc-exit");
+        expect(thread.proposal?.employeeName).toBe("Odalys Fenwick");
+        expect(proposeCount(standIn.views), "the exit card took more than one propose_form").toBe(1);
+      } else {
+        expect(thread.proposal ?? null, "a turn naming the director bridged with no question asked").toBeNull();
+        expect(reply.content).toBe("request_evidence_other_person");
+      }
+    },
+  })),
 ];
