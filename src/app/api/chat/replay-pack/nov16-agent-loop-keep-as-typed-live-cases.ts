@@ -103,3 +103,65 @@ for (const answer of ["no", "use Remi Calder"] as const) {
   });
 }
 
+/*
+ * QA's production chat_traces (16 Nov 2026): the FIRST message of a new chat was traced with conversation_id NULL (the
+ * inline ask sent none), while the ids matched. The records were read by conversation only, so turn 1's records were
+ * never fetched. These cases send T1 without a conversationId and later turns with it, as production did.
+ */
+const firstWithoutConversation = { conversationId: null };
+for (const answer of ["no", "use Remi Calder"] as const) {
+  NOV16_AGENT_LOOP_KEEP_AS_TYPED_LIVE_CASES.push({
+    id: `nov16-keep-as-typed-first-turn-without-conversation-${answer === "no" ? "no" : "use-typed"}`,
+    title: `Production shape: T1 "coaching for Remi Calder on greeting guests" sent with no conversationId (its trace's conversation_id is null), "${answer}" with it: the answer to T1's Did-you-mean is found and makes the card for "Remi Calder"; a later edit is never asked again`,
+    report: `${REPORT}; QA's production chat_traces: T1's conversation_id NULL, T2's conv_…`,
+    status: "fixed",
+    fixFlags: [FLAG, NEAR_MISS],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      start(t);
+      t.loopModel!(lookupModel());
+      const thread = t.thread();
+      const ask = await thread.say("coaching for Remi Calder on greeting guests", {}, firstWithoutConversation);
+      expect(ask.content).toMatch(/Did you mean \*\*Remy Calder\*\*/);
+      t.loopModel!(lookupModel());
+      const reply = await thread.say(answer);
+      expect(reply.content, `"${answer}" was asked again:\n${reply.content}`).not.toMatch(/Did you mean/);
+      expect(thread.proposal?.employeeName).toBe("Remi Calder");
+      t.loopModel!(lookupModel());
+      const later = await thread.say("also add that it was on Friday");
+      expect(later.content, `the settled name was asked again:\n${later.content}`).not.toMatch(/Did you mean/);
+    },
+  });
+}
+
+NOV16_AGENT_LOOP_KEEP_AS_TYPED_LIVE_CASES.push(
+  {
+    id: "nov16-first-turn-without-conversation-who-is-it-for",
+    title: "Production shape: T1 \"I need a written CA for being late on 11/14\" (no conversationId) asks who it is for (person_asked recorded); T2 \"Remy Calder\" answers it and makes the written CA card",
+    report: `${REPORT}; QA: the which-person question asked on turn 1 of a new chat`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      start(t);
+      const model = () => loopStandIn((view): LoopDecision => {
+        const said = userTurns(view).at(-1)?.text ?? "";
+        const card = lastResult(view, "propose_form") as Out;
+        const staff = lastResult(view, "find_staff") as Out;
+        if (/^I need/.test(said)) return card ? { text: card.ask_exactly ?? "Who is this Corrective Action Form for?" } : { tool: "propose_form", input: { template_key: "dpoa", what_happened: "Late on 11/14.", incident_date: "2026-11-14", warning_level: "written", level_evidence: evidenceFrom(view, "written CA") } };
+        if (!staff) return { tool: "find_staff", input: { name: "Remy Calder", person_evidence: evidenceFrom(view, "Remy Calder") } };
+        if (!card) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: staff.matches?.[0]?.employee_id, what_happened: "Late on 11/14.", incident_date: "2026-11-14", warning_level: "written", level_evidence: evidenceFrom(view, "written CA", 1), request_evidence: [evidenceFrom(view, "late on 11/14", 1)] } };
+        return { text: card.ask_exactly ?? "Here's the Corrective Action Form for **Remy**." };
+      });
+      t.loopModel!(model());
+      const thread = t.thread();
+      const who = await thread.say("I need a written CA for being late on 11/14", {}, firstWithoutConversation);
+      expect(who.content).toMatch(/who is this/i);
+      t.loopModel!(model());
+      const answered = await thread.say("Remy Calder");
+      expect(thread.proposal?.employeeName, `the answer to turn 1's question made no card:\n${answered.content}`).toBe("Remy Calder");
+      expect((thread.proposal as { warningLevel?: string | null } | null)?.warningLevel ?? null, "the level stated on turn 1 was lost").toBe("written");
+    },
+  },
+);
+

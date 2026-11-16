@@ -131,17 +131,33 @@ type LoopRecords = { cards: CardRecord[]; nameQuestions: NameQuestionRecord[]; p
 const NO_RECORDS = (): LoopRecords => ({ cards: [], nameQuestions: [], personAsked: [], turns: [] });
 
 /** This user's loop records in this conversation, oldest first, from one read. Empty without a conversation id, or if the read fails. */
-export async function readLoopRecords(conversationId: string | undefined, userId: string): Promise<LoopRecords> {
-  if (!conversationId) return NO_RECORDS();
+export async function readLoopRecords(conversationId: string | undefined, userId: string, historyMessageIds: readonly string[] = []): Promise<LoopRecords> {
+  /*
+   * QA (16 Nov 2026, production chat_traces): the FIRST message of a new chat was traced with conversation_id NULL, so a
+   * read by conversation never fetched it, and turn 1's records (the Did-you-mean, the which-person question, the card)
+   * were invisible from turn 2 on ("no" was asked again every turn). This user's rows are read by this conversation OR by
+   * the message ids of this request's own history (ids are the client's, unique per browser; the user check stays).
+   */
+  const ids = [...new Set(historyMessageIds.filter((id) => /^[A-Za-z0-9_-]{1,80}$/.test(id)))];
+  if (!conversationId && ids.length === 0) return NO_RECORDS();
   try {
-    const { data, error } = await getSupabaseAdmin()
-      .from("chat_traces")
-      .select("message_id, slots, created_at")
-      .eq("conversation_id", conversationId)
-      .eq("user_id", userId)
-      .order("created_at", { ascending: true });
-    if (error) return NO_RECORDS();
-    const rows = (data ?? []) as TraceRow[];
+    const admin = getSupabaseAdmin();
+    const read = async (by: "conversation" | "messages") => {
+      const query = admin.from("chat_traces").select("message_id, slots, created_at").eq("user_id", userId);
+      const filtered = by === "conversation" ? query.eq("conversation_id", conversationId!) : query.in("message_id", ids);
+      return filtered.order("created_at", { ascending: true });
+    };
+    const results = await Promise.all([...(conversationId ? [read("conversation")] : []), ...(ids.length > 0 ? [read("messages")] : [])]);
+    if (results.some((result) => result.error)) return NO_RECORDS();
+    const seen = new Set<string>();
+    const rows = (results.flatMap((result) => (result.data ?? []) as (TraceRow & { created_at?: string })[]))
+      .filter((row) => {
+        const key = `${row.message_id ?? ""}\u0000${row.created_at ?? ""}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .sort((a, b) => String(a.created_at ?? "").localeCompare(String(b.created_at ?? ""))) as TraceRow[];
     return {
       cards: rows.flatMap((row) => {
         const card = row.slots?.agent_loop?.card;
@@ -172,8 +188,8 @@ export async function readLoopRecords(conversationId: string | undefined, userId
 }
 
 /** The cards this user's loop made in this conversation, oldest first. None without a conversation id, or if the read fails. */
-export async function readCardRecords(conversationId: string | undefined, userId: string): Promise<CardRecord[]> {
-  return (await readLoopRecords(conversationId, userId)).cards;
+export async function readCardRecords(conversationId: string | undefined, userId: string, historyMessageIds: readonly string[] = []): Promise<CardRecord[]> {
+  return (await readLoopRecords(conversationId, userId, historyMessageIds)).cards;
 }
 
 /**
