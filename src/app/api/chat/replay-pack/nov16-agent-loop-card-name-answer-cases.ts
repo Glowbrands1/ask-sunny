@@ -29,7 +29,13 @@ function start(t: ReplayContext) {
 }
 
 const lastSaid = (view: LoopView) => [...view.turns].reverse().find((turn) => turn.role === "user")?.text ?? "";
-type CardOut = { reason_code?: string; ask_exactly?: string; facts?: { name_corrected?: { from: string; to: string } } } | null;
+type CardOut = {
+  reason_code?: string;
+  ask_exactly?: string;
+  not_on_card?: { field: string; reason_code: string }[];
+  facts?: { name_corrected?: { from: string; to: string }; exit_termination?: { form_label: string; effective: string } };
+} | null;
+const lastCardOut = (views: readonly LoopView[]) => views.flatMap((view) => view.results).filter((result) => result.tool === "propose_form").at(-1)?.output as CardOut;
 
 /** The model: T2 makes the exit card for the typed name; later turns propose the same exit card for the name given. */
 function model(name: string) {
@@ -96,8 +102,85 @@ export const NOV16_AGENT_LOOP_CARD_NAME_ANSWER_CASES: ReplayCase[] = [
       expect(t3.content).not.toMatch(RE_ASK);
       expect(thread.proposal?.templateKey).toBe("stc-exit");
       expect(thread.proposal?.employeeName, `the roster person did not correct the card:\n${t3.content}`).toBe("Remy Calder");
-      const out = standIn.views.flatMap((view) => view.results).filter((result) => result.tool === "propose_form").at(-1)?.output as CardOut;
+      const out = lastCardOut(standIn.views);
       expect(out?.facts?.name_corrected).toEqual({ from: "Test Testi", to: "Remy Calder" });
+      /* QA (16 Nov 2026, live 0/6): the script's turns named "Test Testi"; after the correction they are Remy Calder's own turns. */
+      expect(out?.not_on_card ?? [], "the termination was dropped after the name correction").not.toContainEqual({ field: "exit_type", reason_code: "termination_not_stated" });
+      expect(out?.facts?.exit_termination, "the exit card is not a termination").toEqual({ form_label: "Immediate involuntary separation", effective: "2026-11-05" });
+    },
+  },
+  {
+    id: "nov16-card-name-answer-on-roster-corrected-ca-keeps-the-stated-level-c219",
+    title: "c219 re-ask, Corrective Action variant: \"Test Testi was disrespectful to a client at the front desk on 11/3. I need a written CA.\" made a written CA card for \"Test Testi\" (not on the staff list); \"For Remy Calder\" corrects that card and keeps the written level stated in the turn that named Test Testi",
+    report: `${REPORT}; QA's follow-up (16 Nov 2026): every evidence check (level included) reads the turns that named the earlier name`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      start(t);
+      const SAID = "Test Testi was disrespectful to a client at the front desk on 11/3. I need a written CA.";
+      const standIn = loopStandIn((view): LoopDecision => {
+        const said = lastSaid(view);
+        const card = lastResult(view, "propose_form") as CardOut;
+        if (card) return { text: card.ask_exactly ?? card.reason_code ?? "Here's the Corrective Action Form." };
+        const back = said.startsWith("For ") ? 1 : 0;
+        return {
+          tool: "propose_form",
+          input: {
+            template_key: "dpoa", employee_name: said.startsWith("For ") ? "Remy Calder" : "Test Testi",
+            what_happened: "Disrespectful to a client at the front desk on 11/3.", incident_date: "2026-11-03",
+            warning_level: "written", level_evidence: evidenceFrom(view, "I need a written CA", back),
+            request_evidence: [evidenceFrom(view, "was disrespectful", back)],
+          },
+        };
+      });
+      t.loopModel!(standIn);
+      const thread = t.thread();
+      await thread.say(SAID);
+      expect(thread.proposal?.employeeName, "T1 made no CA card for the typed name").toBe("Test Testi");
+      const t2 = await thread.say("For Remy Calder");
+      expect(thread.proposal?.employeeName, `the roster person did not correct the card:\n${t2.content}`).toBe("Remy Calder");
+      expect(lastCardOut(standIn.views)?.facts?.name_corrected).toEqual({ from: "Test Testi", to: "Remy Calder" });
+      expect((thread.proposal as { warningLevel?: string | null } | null)?.warningLevel ?? null, `the stated level was dropped after the correction:\n${t2.content}`).toBe("written");
+    },
+  },
+  {
+    id: "nov16-card-check-hand-back-compares-the-card-on-screen-c219",
+    title: "c219 live (QA, 16 Nov 2026): a CA card citing the Standards of Conduct is on screen; the next reply repeats that card's **Policy:** line with nothing proposed this turn. The card check compares it with the card on screen, so it is never \"That change isn't on the card yet: policy (…)\"; and a turn with no card on screen never gets that sentence",
+    report: `${REPORT}; QA's follow-up (16 Nov 2026): "That change isn't on the card yet: policy (Standards of Conduct Policy, JBA Policy Manual p.12). Tell me again and I'll update the card." with no card on screen, and at T3`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      start(t);
+      const SAID = "ca for Remy Calder, she was disrespectful to a client at the front desk on 11/3";
+      const standIn = loopStandIn((view): LoopDecision => {
+        const said = lastSaid(view);
+        const card = lastResult(view, "propose_form") as { card?: { policy?: string | null }; reason_code?: string } | null;
+        const staff = lastResult(view, "find_staff") as { matches?: { employee_id: string }[] } | null;
+        if (said.startsWith("ca for Remy") && !staff) return { tool: "find_staff", input: { name: "Remy Calder", person_evidence: evidenceFrom(view, "Remy Calder") } };
+        if (said.startsWith("ca for Remy") && !card) {
+          return { tool: "propose_form", input: { template_key: "dpoa", employee_id: staff?.matches?.[0]?.employee_id, what_happened: "Disrespectful to a client at the front desk on 11/3.", incident_date: "2026-11-03", policy: "Standards of Conduct", request_evidence: [evidenceFrom(view, "disrespectful to a client")] } };
+        }
+        // The card's own policy line, as the card holds it (the cited heading, manual and page).
+        const policy = (view.results.map((result) => (result.output as { card?: { policy?: string | null } } | null)?.card?.policy).filter(Boolean).at(-1)) ?? "Standards of Conduct Policy, JBA Policy Manual p.12";
+        return { text: `The Corrective Action Form for Remy is below; press Create when it's right.\n\n**Policy:** ${policy}` };
+      });
+      t.loopModel!(standIn);
+      const thread = t.thread();
+      const t1 = await thread.say(SAID);
+      expect(thread.proposal?.employeeName, `no CA card:\n${t1.content}`).toBe("Remy Calder");
+      expect(t1.content).not.toMatch(/isn't on the card yet/);
+      const t2 = await thread.say("thanks, is that the right policy?");
+      expect(t2.formProposal ?? null, "nothing was proposed this turn").toBeNull();
+      expect(t2.content, "the card check compared the reply with no card, not the card on screen").not.toMatch(/isn't on the card yet/);
+
+      // No card on screen at all (a reply with a policy line and no card): never the hand-back.
+      const words = t.thread();
+      t.loopModel!(loopStandIn((): LoopDecision => ({ text: "Disrespect toward a coworker falls under the conduct rules.\n\n**Policy:** Standards of Conduct Policy, JBA Policy Manual p.12" })));
+      const plain = await words.say("is a rude text to a director a conduct issue?");
+      expect(words.proposal ?? null).toBeNull();
+      expect(plain.content, "the card check wrote its hand-back with no card on screen").not.toMatch(/isn't on the card yet/);
     },
   },
 ];

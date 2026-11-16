@@ -339,11 +339,16 @@ interface EvidencePerson {
   readonly name: string;
   readonly roster: readonly RosterEmployee[];
   readonly rosterRead: boolean;
+  /**
+   * QA (16 Nov 2026, the live c219 run): the card's earlier names after a recorded correction (name_corrected from <T> to
+   * <C>): a turn or reply that names <T> is <C>'s, for every evidence check (termination, level, payroll, date, account).
+   */
+  readonly aliases: readonly string[];
 }
 
-function evidencePersonFor(name: string, read: { kind: string; roster?: readonly RosterEmployee[] }): EvidencePerson {
+function evidencePersonFor(name: string, read: { kind: string; roster?: readonly RosterEmployee[] }, aliases: readonly string[] = []): EvidencePerson {
   const roster = read.kind === "read" ? (read.roster ?? []) : [];
-  return { name, roster, rosterRead: read.kind === "read" && roster.length > 0 };
+  return { name, roster, rosterRead: read.kind === "read" && roster.length > 0, aliases };
 }
 
 /**
@@ -353,8 +358,9 @@ function evidencePersonFor(name: string, read: { kind: string; roster?: readonly
  */
 function otherPersonNamed(said: string, person: EvidencePerson): boolean {
   const rosterNames = person.roster.map((row) => displayName(row));
-  if (rosterNames.some((name) => !samePerson(name, person.name) && mentionsPerson(said, name, rosterNames))) return true;
-  const own = person.roster.filter((row) => [displayName(row), ...fullNamesOf(row)].some((full) => samePerson(full, person.name)));
+  const isThisPerson = (name: string) => samePerson(name, person.name) || person.aliases.some((alias) => samePerson(name, alias));
+  if (rosterNames.some((name) => !isThisPerson(name) && mentionsPerson(said, name, rosterNames))) return true;
+  const own = person.roster.filter((row) => [displayName(row), ...fullNamesOf(row)].some((full) => isThisPerson(full)));
   const ownFirsts = new Set([...own.flatMap((row) => [row.firstName, row.preferredFirstName]), person.name.split(/\s+/)[0]].map((first) => (first ?? "").trim().toLowerCase()).filter(Boolean));
   const lower = said.toLowerCase();
   return person.roster.some((row) => {
@@ -366,7 +372,7 @@ function otherPersonNamed(said: string, person: EvidencePerson): boolean {
 function answerEvidence(
   context: Pick<ToolContext, "question" | "history" | "questionMessageId">,
   evidence: unknown,
-  scope: "this_message" | "request" | { readonly card: string },
+  scope: "this_message" | "request" | { readonly card: string; readonly aliases?: readonly string[] },
   person?: EvidencePerson,
   /** QA (16 Nov 2026; c158): with scope "request", the earlier manager turns of THIS request a level may be quoted from. */
   options: { readonly requestTurnIds?: readonly string[] } = {},
@@ -399,7 +405,7 @@ function answerEvidence(
     if (!person || !person.rosterRead) return { ok: false, reason: "evidence_not_this_turn" };
     if (!lastTwoManagerTurns.some((turn) => turn.id === check.turn.id)) return { ok: false, reason: "evidence_not_this_turn" };
     const reply = turns[check.turn.index + 1];
-    if (!reply || reply.role !== "assistant" || !namesCard(reply, person.name)) return { ok: false, reason: "evidence_after_card" };
+    if (!reply || reply.role !== "assistant" || ![person.name, ...person.aliases].some((name) => namesCard(reply, name))) return { ok: false, reason: "evidence_after_card" };
   }
   /*
    * A payroll answer belongs to ONE card (QA, 15 Nov 2026): the message being answered, or the manager's answer right after
@@ -410,7 +416,7 @@ function answerEvidence(
     if (!lastTwoManagerTurns.some((turn) => turn.id === check.turn.id)) return { ok: false, reason: "evidence_after_card" };
     let shown = -1;
     for (let at = turns.length - 2; at >= 0; at -= 1) {
-      if (turns[at]!.role === "assistant" && namesCard(turns[at], scope.card)) {
+      if (turns[at]!.role === "assistant" && [scope.card, ...(scope.aliases ?? [])].some((name) => namesCard(turns[at], name))) {
         shown = at;
         break;
       }
@@ -1817,9 +1823,22 @@ export async function proposeForm(
    * another person's (`confirmed-spelling.ts`; the server's name question record, never the reply's text).
    */
   const confirmedKeys = read.kind === "read" && employee.id ? spellingKeysConfirmedFor(nameQuestionView(context, read.roster), employee.id) : [];
+  /*
+   * QA (16 Nov 2026, the live c219 run): after a recorded correction of this card's name (<T> to <C>), every turn of this
+   * request that named <T> is <C>'s own turn, so termination, level, payroll, dates and the account read it (it fell to
+   * resignation when only the card's name moved).
+   */
+  const aliases = nameCorrectedFrom !== null ? [nameCorrectedFrom] : [];
   const sameAsThisPerson = (named: string, person: string) =>
-    samePerson(named, person) || (samePerson(person, employee.name) && isConfirmedSpelling(named, confirmedKeys));
-  const personTurns = turnsFromThisPersonsRequest(asked, employee.name, { names: extractEmployeeNames, same: sameAsThisPerson }).filter((id) => {
+    samePerson(named, person) || (samePerson(person, employee.name) && (isConfirmedSpelling(named, confirmedKeys) || aliases.some((alias) => samePerson(named, alias))));
+  /*
+   * The request the card was made from under <T> (THIS_PERSONS_TURNS run for <T>) is this card's request too: the walk back
+   * from "For <C>" stops at a turn that also names someone else (the script's "your salon director <D>"), so it is added.
+   */
+  const aliasTurns = new Set(aliases.flatMap((alias) => turnsFromThisPersonsRequest(asked, alias, { names: extractEmployeeNames, same: samePerson })));
+  const ownTurns = new Set([...turnsFromThisPersonsRequest(asked, employee.name, { names: extractEmployeeNames, same: sameAsThisPerson }), ...aliasTurns]);
+  const personTurns = asked.ids.filter((id) => ownTurns.has(id)).filter((id) => {
+    if (aliasTurns.has(id)) return true;
     if (id === context.questionMessageId) return true;
     const said = asked.messages.find((message) => message.id === id)?.content ?? "";
     return mentionsPerson(said, employee.name, rosterNames) || !rosterNames.some((name) => !samePerson(name, employee.name) && mentionsPerson(said, name, rosterNames));
@@ -1926,7 +1945,7 @@ export async function proposeForm(
     }
   }
   /* Batch C (code-check #16): what the manager said that the account leaves out, as a fact for the model to put back. */
-  const evidencePerson = evidencePersonFor(employee.name, read);
+  const evidencePerson = evidencePersonFor(employee.name, read, aliases);
   /*
    * A WARNING LEVEL STATED FOR THIS REQUEST STAYS ON THE CARD (QA, 16 Nov 2026; c158 and c208; Pau's "every answer is used").
    * This card, by the server's records (never the reply's text): the same form, and the same person by roster id (by the
@@ -1935,8 +1954,11 @@ export async function proposeForm(
    * card or with "who is it for?" for this form. Before that turn (a remark like "she was written up before" earlier in
    * the chat) never counts; with no such record, only this message counts, as before.
    */
+  /* A card recorded under the corrected-from name (name_corrected <T> to <C>) is this card: the correction moved it to <C>. */
   const isThisCard = (record: CardRecord | null | undefined): record is CardRecord =>
-    Boolean(record && record.templateKey === template.key && (employee.id ? record.employeeKey === personKey(employee.id) : !record.employeeKey && record.nameKey === personKey(employee.name)));
+    Boolean(record && record.templateKey === template.key && (
+      (employee.id ? record.employeeKey === personKey(employee.id) : !record.employeeKey && record.nameKey === personKey(employee.name)) ||
+      (!record.employeeKey && aliases.some((alias) => record.nameKey === personKey(alias)))));
   const requestStarts = new Set([
     ...(context.cardRecords ?? []).filter(isThisCard).map((record) => record.messageId),
     ...(context.personAskedRecords ?? []).filter((record) => record.templateKey === template.key).map((record) => record.messageId),
@@ -1948,7 +1970,7 @@ export async function proposeForm(
   if (whatHappened && ACCOUNT_FORMS.has(template.key)) {
     /* A message that is only a level or payroll answer (the model's evidence quotes the whole message) is not the incident's account. */
     const answerOnly = new Set(
-      [answerEvidence(context, input.level_evidence, "request", evidencePerson, { requestTurnIds }), answerEvidence(context, input.payroll_evidence, { card: employee.name }, evidencePerson)].flatMap((check) => (check.ok && check.wholeMessage ? [check.turnId] : [])),
+      [answerEvidence(context, input.level_evidence, "request", evidencePerson, { requestTurnIds }), answerEvidence(context, input.payroll_evidence, { card: employee.name, aliases }, evidencePerson)].flatMap((check) => (check.ok && check.wholeMessage ? [check.turnId] : [])),
     );
     const accountWords = asked.messages
       .filter((message) => (sourceIds.includes(message.id ?? "") || citedRequestIds.includes(message.id ?? "")) && !answerOnly.has(message.id ?? ""))
@@ -2046,7 +2068,7 @@ export async function proposeForm(
    */
   const caOnlyFields = template.key === appConfig().formKeys.corrective;
   const askedPayroll = (input.payroll_deduct === "yes" || input.payroll_deduct === "no") ? input.payroll_deduct : null;
-  const payrollCheck = caOnlyFields && askedPayroll ? answerEvidence(context, input.payroll_evidence, { card: employee.name }, evidencePerson) : null;
+  const payrollCheck = caOnlyFields && askedPayroll ? answerEvidence(context, input.payroll_evidence, { card: employee.name, aliases }, evidencePerson) : null;
   let payroll: "yes" | "no" | null = askedPayroll && payrollCheck?.ok ? askedPayroll : null;
   const typedAmount = typeof input.payroll_amount === "string" && /\d/.test(input.payroll_amount) ? input.payroll_amount.replace(/[^\d.]/g, "") : null;
   /* The amount the manager stated, read as today reads it (`payrollAmountFromConversation`) when the model left it out. */

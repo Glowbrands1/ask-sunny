@@ -7,3 +7,10 @@ server's name question record before any roster refusal: "no" / "use <typed>" ke
 card's name check is recorded, so the next message's full name corrects the card through the s10 roster check. When the
 loop is ported, take the mechanism and the replay cases `nov16-agent-loop-keep-as-typed-cases.ts` and
 `nov16-agent-loop-card-name-answer-cases.ts`, swapping the invented people and the salon/store wording.
+
+**Follow-up (QA, 16 Nov 2026, live c219 0/6).** After a recorded name correction (`name_corrected` <T> → <C>), every
+turn of the request made under <T> is <C>'s own turn for every evidence check (termination, level, payroll, dates,
+account): `tools.ts` adds <T>'s request turns and treats <T> as an alias in `answerEvidence`, and a card recorded under
+<T> is this card's request start. The card check (`run.ts`) now compares a reply with the card on screen (its record
+holds the policy line beside the level) when nothing is proposed this turn, and writes "That change isn't on the card
+yet" only with a card on screen. Sunny-only for the same reason: Ask Bubbles has no agent loop yet.
