@@ -46,3 +46,21 @@ export function cardPolicyPhrase(heading: string): string {
   const name = heading.trim().slice(0, 120);
   return /\bpolic(?:y|ies)$/i.test(name) ? name : `${name} policy`;
 }
+
+/**
+ * HOTFIX (QA, 17 Nov 2026; the tester's form 7545d162): the "Other — <topic>" part of the card's own policy line, or null.
+ * A loop card whose policy is "Other — 10-minute sanitization" (or "Attendance …; Other — <topic>") saved with no policy:
+ * the draft request carried only the heading ("Other" is none). The topic goes with it, so the saved form ticks Other and
+ * says what it is.
+ */
+export function cardOtherTopic(proposal: Pick<ChatFormProposal, "proposalId">, messages: readonly Pick<ChatMessage, "role" | "content" | "formProposal">[]): string | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]!;
+    if (message.role !== "assistant" || message.formProposal?.proposalId !== proposal.proposalId) continue;
+    const line = message.formProposal.policyLine;
+    if (typeof line !== "string") return null;
+    const topic = /(?:^|;\s*)Other\s*[\u2014\u2013-]\s*([^;\n]+)$/i.exec(line.trim())?.[1]?.trim() ?? "";
+    return topic.length > 0 && topic.length <= 120 ? topic : null;
+  }
+  return null;
+}
