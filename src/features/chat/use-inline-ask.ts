@@ -213,6 +213,12 @@ export function useInlineAsk({ reportContext, onActiveChange, surface }: InlineA
           /* Reporting only — see `AskRequest.surface`. */
           surface,
           /*
+           * QA (16 Nov 2026, production chat_traces): which conversation this is, on every send including the first, as
+           * the chat screen sends it. Without it the first turn's trace had no conversation_id and its records (a name
+           * question, a card) were lost to the next turn. A correlation key; it confers nothing.
+           */
+          conversationId: id,
+          /*
            * NO `todayIso`. The route fills the date from its own clock — the
            * browser used to send the frozen anchor and the route preferred it,
            * so every freshness judgement was made against a day already past.
