@@ -25,10 +25,16 @@ export interface CardRecord {
   readonly templateName: string | null;
   /** The manager's message the card's turn answered (the trace's message_id). */
   readonly messageId: string | null;
+  /**
+   * Fix batch item 7 (16 Nov 2026): the CA-only fields the card's reply asks about ("payroll_deduct", "warning_level"):
+   * both after "Payroll deduct and warning level aren't set", payroll alone after a bare answer to that line. Field names
+   * only, never values. Empty for an older record.
+   */
+  readonly asked: readonly string[];
 }
 
 /** What a turn writes into `slots.agent_loop.card`. */
-export type CardSlot = Omit<CardRecord, "messageId">;
+export type CardSlot = Omit<CardRecord, "messageId" | "asked"> & { readonly asked?: readonly string[] };
 
 function isCardSlot(value: unknown): value is CardSlot {
   const row = value as Partial<CardSlot> | null;
@@ -93,7 +99,7 @@ export async function readLoopRecords(conversationId: string | undefined, userId
       cards: rows.flatMap((row) => {
         const card = row.slots?.agent_loop?.card;
         return isCardSlot(card)
-          ? [{ proposalId: card.proposalId, employeeKey: card.employeeKey ?? null, nameKey: card.nameKey ?? null, templateKey: card.templateKey, templateName: card.templateName ?? null, messageId: row.message_id }]
+          ? [{ proposalId: card.proposalId, employeeKey: card.employeeKey ?? null, nameKey: card.nameKey ?? null, templateKey: card.templateKey, templateName: card.templateName ?? null, messageId: row.message_id, asked: Array.isArray(card.asked) ? card.asked.filter((field): field is string => typeof field === "string") : [] }]
           : [];
       }),
       nameQuestions: rows.flatMap((row) => {

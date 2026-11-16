@@ -393,6 +393,11 @@ export const AFFIRMATIVE =
 const NEGATIVE =
   /^\s*(?:no|nope|nah|n|keep (?:it|that|the name)?(?: as (?:i )?typed| as is)?|keep\s+.+|leave it|as typed|that'?s (?:wrong|not (?:her|him|them|it|right)))\b/i;
 
+/** The manager's answer to a name question keeps the name as typed ("no", "keep it as typed"): today's reading, for a recorded question (agent loop). */
+export function saysNo(answer: string): boolean {
+  return NEGATIVE.test(answer);
+}
+
 export type NameConfirmation =
   /** The manager said yes to the single name Sunny suggested. */
   | { kind: "accepted"; name: string }
