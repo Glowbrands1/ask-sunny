@@ -1366,7 +1366,7 @@ function cardNameCorrection(
   const view = nameQuestionView(context, roster);
   const declined = latestTurnKeepsTyped(view, typed);
   /* The card on screen; after this chat's Did-you-mean or "reply **use <name>**" offer (no card shown), the chat's latest card. */
-  const card = context.cardOnScreen ?? (latestTurnAnswersFor(view, typed) || answeredByFullName(view, typed) || offRosterConfirmed(context, typed) ? (context.earlierCard ?? null) : null);
+  const card = context.cardOnScreen ?? (latestTurnAnswersFor(view, typed) || answeredByFullName(view, typed) ? (context.earlierCard ?? null) : null);
   if (!card || card.templateKey !== templateKey) return null;
   /*
    * The card's name: its roster person (the record's employeeKey), or, for a name not on the roster (live s10's card
@@ -1399,7 +1399,7 @@ function cardNameCorrection(
   if (holders.length > 1) {
     return { refusal: { reason_code: "ambiguous_person", error: `More than one person on the staff list is ${typed}. The card was not changed. Call find_staff with this name and ask which one.` } };
   }
-  if (declined || offRosterConfirmed(context, typed) || latestTurnKeepsOrUsesTyped(view, typed)) return { asTyped: true, from: cardName };
+  if (declined || latestTurnKeepsOrUsesTyped(view, typed)) return { asTyped: true, from: cardName };
   const close = matchEmployeeName(typed, roster);
   const candidates = close.kind === "confirm" ? close.candidates.map((candidate) => candidate.name) : [];
   if (candidates.length > 0 && close.kind === "confirm") {
@@ -1434,13 +1434,10 @@ function answeredByFullName(view: NameQuestionView, typed: string): boolean {
   return person.length === 1 && latestTurnConfirms(view, person[0]!.id) !== null;
 }
 
-/** The manager accepted the off-roster offer for this name ("use <name>", or yes right after the offer). */
-function offRosterConfirmed(context: Pick<ToolContext, "question" | "history">, typed: string): boolean {
-  const offered = context.history.some((message) => message.role === "assistant" && message.content.toLowerCase().includes(`reply **use ${typed.toLowerCase()}**`));
-  if (!offered) return false;
-  const said = context.question.trim().toLowerCase();
-  return said.includes(`use ${typed.toLowerCase()}`) || /^(?:yes|yep|yeah|ok|okay|sure)\b|\buse (?:that|the) name\b|\buse it\b/.test(said);
-}
+/*
+ * The off-roster offer's answer ("use <name>", or yes right after "Reply **use <name>**") is read from the server's name
+ * question record (`latestTurnKeepsOrUsesTyped`), never from the reply's text (QA's review of #1064, 16 Nov 2026).
+ */
 
 /**
  * The text names this person: their full name as words, and not as the start of a longer roster name ("Test Employee"
@@ -1723,7 +1720,7 @@ export async function proposeForm(
       employee = { name: typed, salonIds: [] };
       offRosterName = typed;
     }
-    else if (typed && !rosterMatches(typed, read.roster).length && !namesAPlace(typed) && (offRosterConfirmed(context, typed) || (offRosterTyped(typed, `for ${typed}`, read.roster.map(displayName)) && matchEmployeeName(typed, read.roster).kind !== "confirm"))) {
+    else if (typed && !rosterMatches(typed, read.roster).length && !namesAPlace(typed) && offRosterTyped(typed, `for ${typed}`, read.roster.map(displayName)) && matchEmployeeName(typed, read.roster).kind !== "confirm") {
       employee = { name: typed, salonIds: [] };
       offRosterName = typed;
       /* The card's off_roster_name line asks the manager to check this name: recorded, so a full name next turn corrects it. */
@@ -1741,6 +1738,8 @@ export async function proposeForm(
        * the refusal says what to ask (find_staff's own use-<name> line), so the model asks instead of retrying.
        */
       const shown = typed.replace(/\s+/g, " ").trim();
+      /* The answer bridge: this refusal offers "use <name>" or the full name, so it is recorded and the answer read next turn. */
+      if (shown) effects.nameQuestion = { offeredIds: [], typed: shown, asksFullName: true };
       return {
         reason_code: "not_on_roster", error: "Give the employee_id find_staff returned for this person (call find_staff first). A name not on the roster goes on a form only after the manager answers the \"reply **use <name>**\" offer.",
         ...(shown ? { not_on_roster: shown, ask_exactly: offRosterNameQuestion(shown) } : {}),
