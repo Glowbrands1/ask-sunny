@@ -31,6 +31,10 @@ const KNOWN = new Set([
   "several_dates_not_chosen", "date_from_another_request", "not_on_this_form",
   // Fix batch item 1 (16 Nov 2026): a resignation told with no ask makes no exit card; the app offers the form.
   "exit_not_asked",
+  // The retry guard (QA, 16 Nov 2026): a third call of a tool refused twice this turn for one reason_code is not run.
+  "stop_retrying",
+  // Item 5 follow-up (the 266 re-run's c219): a near name one edit from the card's person and another active person.
+  "near_name_ambiguous",
   // Added on purpose (fix-name, live s10; Pau's ruling 16 Nov 2026): a corrected name on a card not yet created that is on nobody's roster.
   "name_correction_not_on_roster",
 ]);
