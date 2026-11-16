@@ -67,12 +67,37 @@ describe("withoutPersonPronouns", () => {
     // c097: the new hire is the subject; her onboarding is the new hire's.
     const onboarding = "New hire Juno Paxton was left alone during her onboarding with Tamsin on 9-28-26.";
     expect(withoutPersonPronouns(onboarding, "Tamsin", ["Juno Paxton"])).toEqual({ text: onboarding, replaced: 0 });
-    // A reported question, but the card's person is not named in the sentence: whose it is stays open, so it stays.
-    const unnamed = "Juno Paxton asked whether she could swap shifts.";
-    expect(withoutPersonPronouns(unnamed, "Tamsin", ["Juno Paxton"])).toEqual({ text: unnamed, replaced: 0 });
+    /*
+     * Changed on purpose (Pau's ruling via QA, 17 Nov 2026, Runner 2's c090 T5 / c091 T5 on train 3): a pronoun in another
+     * person's reported question is the card person's even when the card's person is not named in the sentence (they are
+     * the card's person), so this is no longer kept. What stays is a reporter who is a pronoun (below).
+     */
+    expect(withoutPersonPronouns("Juno Paxton asked whether she could swap shifts.", "Tamsin", ["Juno Paxton"]).text).toBe("Juno Paxton asked whether Tamsin could swap shifts.");
     // After the clause's comma, the other person's own words are theirs again.
     const after = "When Juno Paxton asked whether Tamsin was done, she said her checklist was finished.";
     expect(withoutPersonPronouns(after, "Tamsin", ["Juno Paxton"])).toEqual({ text: after, replaced: 0 });
+  });
+  /*
+   * Pau's ruling, extended (QA, 17 Nov 2026; Runner 2's c090 T5, c091 T5, c247 T1 on train 3; invented names): a pronoun in a
+   * clause a named person reports ("<M> asked whether she …", "<P> messaged <M> … stating she quit") is the card person's,
+   * whether or not the card's person is named in the sentence. A reporter who is a pronoun ("she said her checklist …")
+   * keeps the pronoun (it may be the speaker's own).
+   */
+  it("names the card's person in a reported clause when the card's person is not named in it (c090 T5, c091 T5)", () => {
+    expect(withoutPersonPronouns("**Observation of Offense:** Corin set up a spray booth, then went into Room 4 and stayed there until the first customer arrived at 7:57am. When we arrived at 8:15am, the lobby lights were still off. When Brisa asked whether she had completed her 10-minute sanitization, Arlo said yes. The footage showed that it had not been completed.", "Corin", ["Brisa", "Arlo"]).text)
+      .toBe("**Observation of Offense:** Corin set up a spray booth, then went into Room 4 and stayed there until the first customer arrived at 7:57am. When we arrived at 8:15am, the lobby lights were still off. When Brisa asked whether Corin had completed Corin's 10-minute sanitization, Arlo said yes. The footage showed that it had not been completed.");
+    expect(withoutPersonPronouns("When Corin asked whether she had completed her 10-minute sanitization, Brisa said yes.", "Arlo", ["Corin Rennick", "Corin", "Brisa", "Delphine Sorrowby"]).text)
+      .toBe("When Corin asked whether Arlo had completed Arlo's 10-minute sanitization, Brisa said yes.");
+  });
+  it("names the card's person in a clause reported with \"stating\", another person named between (c247 T1)", () => {
+    expect(withoutPersonPronouns("on 11-5-26 Arlo messaged Training Salon Director, Brisa Rennick via Woven stating she quit effective immediately.", "Arlo", ["Brisa Rennick"]).text)
+      .toBe("on 11-5-26 Arlo messaged Training Salon Director, Brisa Rennick via Woven stating Arlo quit effective immediately.");
+  });
+  it("keeps the pronoun of a reporter who is a pronoun, and the other person's own words with no reporting verb", () => {
+    const speaker = "Juno Paxton came in at 9, and she said her checklist was finished.";
+    expect(withoutPersonPronouns(speaker, "Tamsin", ["Juno Paxton"])).toEqual({ text: speaker, replaced: 0 });
+    const figures = "Those edits name **Juno Paxton** and her figures (24 tans).";
+    expect(withoutPersonPronouns(figures, "Tamsin", ["Juno Paxton"])).toEqual({ text: figures, replaced: 0 });
   });
   it("names the person inside a quote the manager did not type (Runner 2's c020 T6), not inside the manager's own", () => {
     const sunny = 'The card says "She completed onboarding with new hire Juno Paxton on 9-28-26."';

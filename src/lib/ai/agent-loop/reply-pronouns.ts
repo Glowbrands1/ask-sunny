@@ -22,6 +22,8 @@ const ALWAYS = /\b(?:he|him|his|she|her|hers|himself|herself)\b/gi;
 /** they/them in a person's place: someone told, asked, thanked; someone who quit, worked, said; "themself". */
 const THEY_PERSON =
   /\b(?:tell|ask|let|remind|give|call|text|email|meet|thank|inform|notify|pay|schedule|fire|terminate|coach)\s+them\b|\bthey(?:'re|'ve|'ll|'d)?\s+(?:were|are|was|is|have|had|will|would|quit|resigned|left|worked|said|did|can|should|need|gave|told|missed|came)\b|\bthemsel(?:f|ves)\b/gi;
+/** A verb that reports what someone asked, said or wrote (in Sunny's reply): the clause after it is reported speech. */
+const REPORTING = /\b(?:asked|asking|told|telling|said|saying|stated|stating|reminded|reminding|messaged|messaging|texted|texting|emailed|wrote|writing|replied|replying|explained|explaining|claimed|claiming|admitted|admitting|wanted\s+to\s+know)\b/;
 /** Words that make "they/them" the form's fields or the card, when they come before it in the sentence. */
 const FIELD_WORDS = /\b(?:fields?|blanks?|boxes?|lines?|details|answers?|dates?|values?|sections?|items?|questions?)\b/i;
 /** "their <person word>": the person's own things. */
@@ -103,21 +105,19 @@ export function withoutPersonPronouns(reply: string, name: string, others: reado
     return !reportedForThePerson(at, before);
   };
   /*
-   * Pau's ruling (QA, 16 Nov 2026; Runner 2's c090 T5, c091 T2): "When <M> asked whether she had completed her 10-minute
-   * sanitization, <P> said yes." When the card's person is ALSO named in the same sentence, a pronoun inside the clause the
-   * other person's reporting verb opens ("<M> asked / told / said / reminded … whether / if / that / to …", up to the
-   * clause's comma or semicolon) is the card's person's, and is replaced. Anything else after the other person's name stays
-   * as written: "<M> and her figures" (c210 T2), "<M> … during her onboarding" (c097).
+   * Pau's ruling (QA, 16 Nov 2026; Runner 2's c090 T5, c091 T2), extended 17 Nov 2026 (c090 T5, c091 T5, c247 T1 on train
+   * 3): a pronoun inside a clause a named person reports is the card's person's, and is replaced, whether or not the card's
+   * person is named in the sentence (they are the card's person): "When <M> asked whether she had completed her
+   * 10-minute sanitization", "<P> messaged <M> via Woven stating she quit". The clause is the text since the sentence's
+   * last comma, semicolon or colon, with a reporting verb in it (REPORTING) before the pronoun. A reporter who is a
+   * pronoun ("she said her checklist …") keeps it: it may be the speaker's own. Anything else after the other person's
+   * name stays as written: "<M> and her figures" (c210 T2), "<M> … during her onboarding" (c097).
    */
-  const reportedForThePerson = (at: number, before: string): boolean => {
-    const sentenceEnd = /[.?!](?!\d)|\n/.exec(reply.slice(at));
-    const sentence = before + reply.slice(at, sentenceEnd ? at + sentenceEnd.index : reply.length).toLowerCase();
-    if (!nameRe(display.toLowerCase()).test(sentence)) return false;
-    return otherKeys.some((other) => {
-      const key = other.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const opener = new RegExp(`(?<![\\p{L}'-])${key}(?![\\p{L}-])[*_]*\\s+(?:asked|told|said|reminded|wanted\\s+to\\s+know)\\b(?:\\s+[\\p{L}'-]+){0,3}?\\s+(?:whether|if|that|to)\\b([^,;:]*)$`, "u");
-      return opener.test(before);
-    });
+  const reportedForThePerson = (_at: number, before: string): boolean => {
+    const clause = before.split(/[,;:]/).at(-1) ?? before;
+    const verb = REPORTING.exec(clause);
+    if (!verb) return false;
+    return !/\b(?:he|she|they|him|her|them|his|their)\b/.test(clause.slice(0, verb.index));
   };
   const inQuote = (at: number) => quoted.some(([from, to]) => at >= from && at < to) || namesAnother(at);
   const edits: Array<{ from: number; to: number; text: string }> = [];
