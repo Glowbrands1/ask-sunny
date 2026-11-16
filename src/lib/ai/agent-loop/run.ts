@@ -1049,6 +1049,8 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     ? used.map((marker) => sources[marker - 1]!)
     : sources.filter((source, index, all) => content.toLowerCase().includes(source.documentTitle.toLowerCase()) && all.findIndex((row) => row.documentId === source.documentId) === index);
   content = content.replace(/\s?\[S\d{1,2}\]/g, "");
+  /* A question code decided (effects.replyMustAsk) ends the reply even when the model left it out (QA, the live re-run of #1067). */
+  if (effects.replyMustAsk && !content.includes(effects.replyMustAsk)) content = `${content.trim()}\n\n${effects.replyMustAsk}`.trim();
   const answer: AskResponse = {
     /* The evidence tags are the app's protocol, like the source markers: never shown to the manager. */
     content: withoutMessageIdTags(withoutSourceMarkers(withoutSourceNotes(content))),

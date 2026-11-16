@@ -187,7 +187,8 @@ export const NOV16_AGENT_LOOP_CLOSE_SPELLING_SETTLED_CASES: ReplayCase[] = [
       const answered = loopStandIn((view): LoopDecision => {
         const found = lastResult(view, "find_past_forms") as { forms?: unknown[]; reason_code?: string; card_on_screen?: { form: string }; ask_exactly?: string } | null;
         if (!found) return { tool: "find_past_forms", input: { employee_name: "Tamsin Orwell", form: "CA", open: true, forms_on_file_evidence: evidenceFrom(view, "edit tamsen orwel ca", 1) } };
-        if (found.card_on_screen) return { text: `That's the ${found.card_on_screen.form} card on screen for Tamsin, not saved yet.\n\n${found.ask_exactly ?? ""}` };
+        // The live model (the Runner's re-run on ee48ded): it states the facts and leaves the question out.
+        if (found.card_on_screen) return { text: `Got it, Tamsin. The ${found.card_on_screen.form} is the card on screen - it hasn't been created yet, so there's nothing on file to open.` };
         return { text: found.reason_code ?? "No Corrective Action on file for Tamsin." };
       });
       t.loopModel!(answered);

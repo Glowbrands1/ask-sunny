@@ -526,6 +526,11 @@ const NOT_ASKED = "Forms on file are looked at only when the manager asks about 
 /** What the turn's tools produced for the reply: the card and the edit, when there were any. */
 export interface ToolEffects {
   proposal: ChatFormProposal | null;
+  /**
+   * QA (16 Nov 2026, the live re-run of #1067): a question code decided that the reply must end with (find_past_forms'
+   * card_on_screen offer). run.ts adds it when the model's reply left it out.
+   */
+  replyMustAsk?: string;
   /** `saved`: each field that really changed on the form written, read back from the database (PR 3; `saved-diff.ts`). */
   formUpdate: { instanceId: string; updated: string[]; saved?: SavedChange[]; putBack?: string[] } | null;
   /** Roster ids find_staff chose from a close spelling or a lone first name this turn (the card's name_from_staff_list fact). */
@@ -1194,6 +1199,7 @@ export async function findPastForms(context: ToolContext, input: { employee_name
         /* The Runner's live re-run on ee48ded: the model said "nothing on file to open" and never asked; the question is code's. */
         const form = card.templateName ?? "card";
         const first = replyNameFor(holder ? displayName(holder) : typed, people, extractEmployeeNames(managerTurns(context)), holder?.id ?? null);
+        if (effects) effects.replyMustAsk = `Want me to change the ${form} card for ${first}? Tell me what to change.`;
         return {
           forms,
           card_on_screen: { form, created: false },
