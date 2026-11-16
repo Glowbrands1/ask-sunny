@@ -39,6 +39,10 @@ import { rulesBookText } from "./rules-book";
  * propose_form's name_corrected fact ("I changed the name on the card from <from> to <to>; nothing else changed.").
  * It names no app, place, staff system or form key; nothing else in either text changed.
  *
+ * Re-taken on purpose on 16 Nov 2026 (QA, c019 in #1056): one line in "Which form" teaches that "Create a <form> from this
+ * conversation" / "make it a <form> instead" for the same person and incident is the same request, not
+ * new_form_evidence. It names no app, place, staff system or form key; nothing else changed.
+ *
  * Updated on purpose on 16 Nov 2026 (QA's live findings: the reply says what the code did): the finalized-form line
  * words the reply from revision_draft.reused (a reused revision draft is never called new), and a new line teaches
  * edit_form's form_state ("It's saved on the draft", never "press Create"); the payroll line adds edit_form's
