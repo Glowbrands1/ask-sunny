@@ -45,6 +45,9 @@ function setUp(t: ReplayContext, extra: DirectoryRow[] = []) {
   t.as("salon_director", KEARNEY);
 }
 
+/** propose_form's facts (they sit under `facts` on its result). */
+const factsOf = (output: Record<string, unknown>) => (output.facts ?? {}) as Record<string, unknown>;
+
 /** The tool result a turn's stand-in got, for the first call of that tool. */
 const firstResult = (views: readonly LoopView[], tool: string) => views.flatMap((view) => view.results).find((result) => result.tool === tool)?.output ?? null;
 
@@ -223,6 +226,74 @@ export const NOV16_AGENT_LOOP_PR6_SPEED_CASES: ReplayCase[] = [
       const carded = await thread.say("use Odalis");
       expect(carded.formProposal?.employeeName, carded.content).toBe("Odalis");
       expect(answer.views.flatMap((view) => view.results).filter((result) => result.tool === "propose_form").length, "more than one call for the card").toBe(1);
+    },
+  },
+  {
+    id: "nov16-pr6-one-call-coaching-keeps-its-policy",
+    title: "PR 6 (the Runner's live comparison, 16 Nov 2026): a Coaching card made in one propose_form call (no find_staff, no read_policy), \"did not greet guests at the front desk\": with the policy passed, the card cites Standards of Conduct with its page; a call that leaves the policy out gets policy_not_given, and the card made after it cites the policy",
+    report: `${REPORT}; the live comparison: #1059 gave this coaching card no policy line in both rounds`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      setUp(t);
+      const message = "coaching form for marnie holloway, she did not greet guests at the front desk today";
+      const card = (view: LoopView, policy?: string) => ({ tool: "propose_form", input: { template_key: "coaching", employee_name: "marnie holloway", person_evidence: evidenceFrom(view, "coaching form for marnie holloway"), what_happened: "She did not greet guests at the front desk.", ...(policy ? { policy } : {}) } });
+      const policyOf = (reply: { formProposal?: unknown }) => String((reply.formProposal as { policyLine?: string } | undefined)?.policyLine ?? "");
+
+      // The shape the live model takes: one call, the policy in it.
+      t.loopModel!(loopStandIn((view): LoopDecision => (lastResult(view, "propose_form") ? { text: "Here's the Coaching Form for **Marnie Holloway**." } : card(view, "Standards of Conduct"))));
+      const withPolicy = await t.thread().say(message);
+      expect(policyOf(withPolicy), JSON.stringify(withPolicy.formProposal)).toMatch(/Standards of Conduct/);
+      expect(policyOf(withPolicy)).toMatch(/p\.\s?\d+/);
+
+      // A call that leaves the policy out is told so (a fact, no policy picked by code); the model's next call has it.
+      const model = loopStandIn((view): LoopDecision => {
+        const results = view.results.filter((result) => result.tool === "propose_form");
+        if (results.length === 0) return card(view);
+        if (results.length === 1 && factsOf(results[0]!.output).policy_not_given) return card(view, "Standards of Conduct");
+        return { text: "Here's the Coaching Form for **Marnie Holloway**." };
+      });
+      t.loopModel!(model);
+      const fixed = await t.thread().say(message);
+      const first = model.views.flatMap((view) => view.results).find((result) => result.tool === "propose_form")!.output;
+      expect(factsOf(first).policy_not_given, JSON.stringify(first)).toBeTruthy();
+      expect(policyOf(fixed), JSON.stringify(fixed.formProposal)).toMatch(/Standards of Conduct/);
+    },
+  },
+  {
+    id: "nov16-pr6-one-call-exit-keeps-the-whole-account",
+    title: "PR 6 (the Runner's live comparison, 16 Nov 2026): an exit card made in one propose_form call, \"<P> resigned by text, last day 11/13\": the full account is on the card; an account that drops the last day gets account_words_missing [11/13], an empty one gets account_not_given, and the card made after either keeps \"resigned by text\" and 11/13",
+    report: `${REPORT}; the live comparison: #1059's exit account was empty in round 1 and lost the last day in round 2`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      setUp(t);
+      const message = "exit form for rowan kestrel, she resigned by text, last day 11/13";
+      const FULL = "Rowan Kestrel resigned by text; her last day was 11/13.";
+      const exitCard = (view: LoopView, account?: string) => ({ tool: "propose_form", input: { template_key: "stc-exit", employee_name: "rowan kestrel", person_evidence: evidenceFrom(view, "exit form for rowan kestrel"), exit_type: "resignation", exit_evidence: { ...evidenceFrom(view, "exit form for rowan kestrel"), kind: "asks_for_exit_form" }, ...(account !== undefined ? { what_happened: account } : {}) } });
+
+      t.loopModel!(loopStandIn((view): LoopDecision => (lastResult(view, "propose_form") ? { text: "Here's the Employee Exit Form for **Rowan Kestrel**." } : exitCard(view, FULL))));
+      const whole = await t.thread().say(message);
+      expect(whole.formProposal?.issue ?? "", JSON.stringify(whole.formProposal)).toMatch(/resigned by text/);
+      expect(whole.formProposal?.issue ?? "").toMatch(/11\/13/);
+
+      for (const [label, first, fact] of [["the last day dropped", "Rowan Kestrel resigned by text.", "account_words_missing"], ["no account", undefined, "account_not_given"]] as const) {
+        const model = loopStandIn((view): LoopDecision => {
+          const results = view.results.filter((result) => result.tool === "propose_form");
+          if (results.length === 0) return exitCard(view, first);
+          if (results.length === 1 && factsOf(results[0]!.output)[fact]) return exitCard(view, FULL);
+          return { text: "Here's the Employee Exit Form for **Rowan Kestrel**." };
+        });
+        t.loopModel!(model);
+        const reply = await t.thread().say(message);
+        const out = model.views.flatMap((view) => view.results).find((result) => result.tool === "propose_form")!.output;
+        expect(factsOf(out)[fact], `${label}: no ${fact} fact: ${JSON.stringify(out)}`).toBeTruthy();
+        if (fact === "account_words_missing") expect(factsOf(out)[fact]).toEqual(expect.arrayContaining(["11/13"]));
+        expect(reply.formProposal?.issue ?? "", `${label}: ${JSON.stringify(reply.formProposal)}`).toMatch(/resigned by text/);
+        expect(reply.formProposal?.issue ?? "").toMatch(/11\/13/);
+      }
     },
   },
   {

@@ -1997,6 +1997,13 @@ export async function proposeForm(
   const requestStart = ownRequestTurns.find((turn) => requestStarts.has(turn.id));
   const requestTurnIds = requestStart ? ownRequestTurns.filter((turn) => turn.index >= requestStart.index).map((turn) => turn.id) : [];
   let accountLost: string[] = [];
+  /*
+   * PR 6 (the Runner's live comparison, 16 Nov 2026: an exit card's account came back empty, or without the last day, once
+   * the card was one propose_form call): every card's account keeps the dates, times, amounts and figures the manager
+   * gave, the Employee Exit Form's too. Code compares formats only (`accountMissing`); the model writes the account.
+   */
+  const exitForm = template.key === appConfig().formKeys.exit;
+  if (exitForm && whatHappened) accountLost = accountMissing(withoutPayrollClauses(requestWords), whatHappened, null);
   if (whatHappened && ACCOUNT_FORMS.has(template.key)) {
     /* A message that is only a level or payroll answer (the model's evidence quotes the whole message) is not the incident's account. */
     const answerOnly = new Set(
@@ -2438,6 +2445,14 @@ export async function proposeForm(
     /* Batch G (G16): this chat already asked which date; a second ask is never made (the rules book: use the best reading). */
     ...(datesGiven.length > 1 && context.history.some((message) => message.role === "assistant" && /more than one date|which date goes on the form/i.test(String(message.content))) ? { dates_asked_before: true } : {}),
     ...(accountLost.length > 0 ? { account_words_missing: accountLost } : {}),
+    /* PR 6: an exit card with no account at all. A fact: the model puts the manager's own account in what_happened, or leaves it. */
+    ...(exitForm && !whatHappened ? { account_not_given: { note: "This exit card has no account. If the manager said how or when they left (\"resigned by text\", their last day), propose the card again with all of it in what_happened, in their own words." } } : {}),
+    /*
+     * PR 6 (the live comparison: a coaching card came back with no policy line once read_policy was no longer called first):
+     * a Corrective Action or Coaching card with an account and no policy. A fact, never a policy code picked: the model
+     * passes the heading (the system prompt lists them) or Other, or says no section fits.
+     */
+    ...(ACCOUNT_FORMS.has(template.key) && !awaiting && !askedPolicyWhole ? { policy_not_given: { note: "This card has no policy. Propose it again with policy: the one JBA Policy Manual heading that fits what happened (the headings are listed in your instructions), or \"Other — <short topic>\". If no section fits, say so in your reply." } } : {}),
     ...(accountGiven ? { request_words: untrusted(accountGiven) } : {}),
     ...(figuresNotSaid.length > 0 ? { figures_not_said: figuresNotSaid } : {}),
     ...(formatFigures.length > 0 ? { format_figures: formatFigures } : {}),
