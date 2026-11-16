@@ -76,7 +76,7 @@ export const NOV16_AGENT_LOOP_NO_PRONOUN_CASES: ReplayCase[] = [
   },
   {
     id: "nov16-no-pronoun-controls-another-person-and-quotes",
-    title: "Controls: a message naming someone else (\"Juno Paxton was there too\") leaves the reply's pronoun as written (it may be Juno's); the manager's words quoted back stay as typed",
+    title: "Controls: a message naming someone else (\"Juno Paxton was there too\") leaves the reply's pronoun as written (it may be Juno's); the manager's own words quoted back (\"she was late to her shift\", typed by the manager) stay as typed",
     report: REPORT,
     status: "fixed",
     fixFlags: [FLAG],
@@ -85,13 +85,56 @@ export const NOV16_AGENT_LOOP_NO_PRONOUN_CASES: ReplayCase[] = [
       start(t);
       t.loopModel!(cardModel());
       const thread = t.thread();
-      await thread.say("ca for Tamsin Orwell, late to the shift on 11/14");
+      await thread.say("ca for Tamsin Orwell, she was late to her shift on 11/14");
       t.loopModel!(wordsOnly("Noted: she saw it happen."));
       const other = await thread.say("Juno Paxton was there too");
       expect(other.content, "a pronoun was replaced although someone else was named").toBe("Noted: she saw it happen.");
       t.loopModel!(wordsOnly('You wrote "she was late to her shift", so the Observation keeps that.'));
       const quoted = await thread.say("is the wording ok");
       expect(quoted.content).toBe('You wrote "she was late to her shift", so the Observation keeps that.');
+    },
+  },
+  {
+    id: "nov16-no-pronoun-forms-on-file-lookup-no-card-c019",
+    title: "Runner 2's c019 T1: \"any corrective actions for Tamsin Orwell?\" finds none on file and the reply offers \"I'll start the Corrective Action Form for her now\" with no card yet: the lookup names the person (reply_name), so the reply says Tamsin",
+    report: `${REPORT}; Runner 2's offline re-check of bd7705f: c019 T1 still had "for her now" (no card yet, no name)`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      start(t);
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        if (!lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { employee_name: "Tamsin Orwell", form: "CA", forms_on_file_evidence: evidenceFrom(view, "any corrective actions for Tamsin Orwell") } };
+        return { text: "I don't have any corrective action on file for Tamsin Orwell — nothing was found. Tell me what happened and I'll start the Corrective Action Form for her now." };
+      }));
+      const thread = t.thread();
+      const reply = await thread.say("any corrective actions for Tamsin Orwell?");
+      expect(personPronoun(reply.content), `a pronoun with no card yet:\n${reply.content}`).toBeNull();
+      expect(reply.content).toContain("I'll start the Corrective Action Form for Tamsin now.");
+    },
+  },
+  {
+    id: "nov16-no-pronoun-another-employees-figures-keep-her-c210",
+    title: "Runner 2's c210 T2 pinned: the manager pastes feedback about another employee (Juno Paxton); \"those edits name **Juno Paxton** and her figures\" keeps \"her\" (Juno's figures), never Tamsin's",
+    report: `${REPORT}; Runner 2's offline re-check: without the other-person rule the pass wrote the card person's name on another employee's figures`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      start(t);
+      t.loopModel!(cardModel());
+      const thread = t.thread();
+      await thread.say("ca for Tamsin Orwell, late to the shift on 11/14");
+      t.loopModel!(cardModel());
+      const pasted = await thread.say("here are the edits for Juno Paxton: 24 tans in October 2026, below on PPTA");
+      expect(pasted.content, `another employee's figures got the card person's name:\n${pasted.content}`).not.toMatch(/Tamsin's figures/);
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        const staff = lastResult(view, "find_staff") as { matches?: { employee_id: string }[] } | null;
+        if (!staff) return { tool: "find_staff", input: { name: "Tamsin Orwell", person_evidence: evidenceFrom(view, "Tamsin Orwell", 2) } };
+        return { text: "A couple of notes on what you pasted: those edits name **Juno Paxton** and her figures (24 tans, October 2026), so I haven't put any of that on this card." };
+      }));
+      const notes = await thread.say("so what did you do with Juno Paxton's edits");
+      expect(notes.content, `another employee's figures got the card person's name:\n${notes.content}`).toContain("those edits name **Juno Paxton** and her figures");
     },
   },
 ];

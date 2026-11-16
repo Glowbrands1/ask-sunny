@@ -37,9 +37,18 @@ export const ACCOUNT_LINE = /^[ \t*_>-]*(?:Observation(?: of Offense)?|Coaching 
  * QA (16 Nov 2026, Runner 2's 266 re-run): the card's account line is NOT exempt any more. "She was late on …" there is
  * Sunny's paraphrase, Sunny's wording, so it names the person too; only text in quotes stays as the manager typed it.
  */
-function quotedSpans(text: string): Array<[number, number]> {
+function quotedSpans(text: string, managerWords?: string): Array<[number, number]> {
+  const flat = (words: string) => words.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  const said = managerWords === undefined ? null : flat(managerWords);
   const spans: Array<[number, number]> = [];
-  for (const match of text.matchAll(/"[^"\n]*"|“[^”\n]*”/g)) spans.push([match.index!, match.index! + match[0].length]);
+  for (const match of text.matchAll(/"[^"\n]*"|“[^”\n]*”/g)) {
+    /*
+     * Runner 2's c020 T6: Sunny quoted its own card line ("She completed onboarding …"). Only what the manager typed is
+     * kept as typed: with the manager's words given, a quote they do not hold is Sunny's wording and is named too.
+     */
+    if (said !== null && !said.includes(flat(match[0]))) continue;
+    spans.push([match.index!, match.index! + match[0].length]);
+  }
   return spans;
 }
 
@@ -65,10 +74,10 @@ function singularAfterThey(rest: string): string {
  * The reply with every pronoun for the person replaced by `name`, and how many were replaced. `name` is the turn's one
  * reply_name; with none or several, the caller does not call this.
  */
-export function withoutPersonPronouns(reply: string, name: string, others: readonly string[] = []): { text: string; replaced: number } {
+export function withoutPersonPronouns(reply: string, name: string, others: readonly string[] = [], managerWords?: string): { text: string; replaced: number } {
   const display = name.trim();
   if (!display) return { text: reply, replaced: 0 };
-  const quoted = quotedSpans(reply);
+  const quoted = quotedSpans(reply, managerWords);
   /*
    * Runner 2's c210 T2: "those edits name <M> and her figures" — "her" is <M>'s. A pronoun whose sentence names another
    * person before it is left as written (it may be theirs); the card's person named first ("She completed onboarding

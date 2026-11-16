@@ -1832,6 +1832,23 @@ export async function otherPeopleNamed(context: ToolContext, reply: string, pers
   return [...new Set(named.filter((name) => !own(name) && !(ownRow && (fullNamesOf(ownRow).some((full) => samePerson(full, name)) || [ownRow.firstName, ownRow.preferredFirstName].includes(name)))))];
 }
 
+/**
+ * QA (16 Nov 2026, Runner 2's c019 T1: "I'll start the Corrective Action Form for her now" after a forms-on-file lookup
+ * found nothing): a lookup that settles ONE roster person (find_staff with one match, find_past_forms for one person's
+ * name) says what the reply calls them, as the card results do (`replyNameFor`). A refusal or several people: unchanged.
+ */
+export async function withLookupReplyName(context: ToolContext, result: ToolResult, typed: unknown): Promise<ToolResult> {
+  const out = result as { reply_name?: unknown; reason_code?: unknown; matches?: Array<{ employee_id?: string }> };
+  if (out.reply_name !== undefined || typeof out.reason_code === "string") return result;
+  const read = await rosterFor(context.actor.scope);
+  if (read.kind !== "read") return result;
+  const byMatch = Array.isArray(out.matches) && out.matches.length === 1 ? read.roster.find((row) => row.id === out.matches![0]!.employee_id) : undefined;
+  const byName = !byMatch && typeof typed === "string" && typed.trim() ? read.roster.filter((row) => fullNamesOf(row).some((full) => samePerson(full, typed))) : [];
+  const row = byMatch ?? (byName.length === 1 ? byName[0] : undefined);
+  if (!row) return result;
+  return { ...result, reply_name: replyNameFor(displayName(row), read.roster, extractEmployeeNames(managerTurns(context)), row.id) };
+}
+
 /** edit_form's results name the form's person too: reply_name for the form that was written (`replyNameFor`). */
 export async function withEditReplyName(context: ToolContext, effects: ToolEffects, result: ToolResult): Promise<ToolResult> {
   const record = result as { error?: unknown; revision_draft?: { id?: unknown } };

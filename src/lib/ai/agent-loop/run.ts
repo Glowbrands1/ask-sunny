@@ -39,6 +39,7 @@ import {
   findPastForms,
   cardPersonReplyName,
   otherPeopleNamed,
+  withLookupReplyName,
   findStaff,
   manualFor,
   turnManual,
@@ -646,8 +647,8 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   /* What one reviser run costs at least: its patch call, and a check round when EDIT_SEES_SAVED_FORM is on. */
   const reviserModelCalls = () => (editSeesSavedFormEnabled() ? 2 : 1);
   const handlers: Record<string, (args: Record<string, unknown>) => Promise<ToolResult>> = {
-    find_staff: (args) => findStaff(context, args, effects),
-    find_past_forms: (args) => findPastForms(context, args, effects),
+    find_staff: async (args) => withLookupReplyName(context, await findStaff(context, args, effects), undefined),
+    find_past_forms: async (args) => withLookupReplyName(context, await findPastForms(context, args, effects), (args as { employee_name?: unknown }).employee_name),
     read_form: (args) => readForm(context, args, effects),
     read_policy: (args) => readPolicy(context, args, effects),
     propose_form: (args) => proposeForm(context, effects, args),
@@ -1080,7 +1081,8 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   const pronounName = replyNames.size === 1 ? [...replyNames][0]! : replyNames.size === 0 && text ? await cardPersonReplyName(context).catch(() => null) : null;
   if (pronounName && text) {
     const others = await otherPeopleNamed(context, text, pronounName).catch(() => [] as string[]);
-    const named = withoutPersonPronouns(text, pronounName, others);
+    const managerWords = [...input.history.filter((turn) => turn.role === "user").map((turn) => String(turn.content ?? "")), input.question].join("\n");
+    const named = withoutPersonPronouns(text, pronounName, others, managerWords);
     text = named.text;
     pronounsReplaced = named.replaced;
   }

@@ -48,6 +48,13 @@ describe("withoutPersonPronouns", () => {
     expect(withoutPersonPronouns("**Observation of Offense:** She completed onboarding with new hire Juno Paxton on 9-28-26.", "Tamsin", ["Juno Paxton"]).text)
       .toBe("**Observation of Offense:** Tamsin completed onboarding with new hire Juno Paxton on 9-28-26.");
   });
+  it("names the person inside a quote the manager did not type (Runner 2's c020 T6), not inside the manager's own", () => {
+    const sunny = 'The card says "She completed onboarding with new hire Juno Paxton on 9-28-26."';
+    expect(withoutPersonPronouns(sunny, "Tamsin", [], "ca for tamsin orwell, onboarding not done").text)
+      .toBe('The card says "Tamsin completed onboarding with new hire Juno Paxton on 9-28-26."');
+    const theirs = 'You wrote "sent her immediate resignation to management".';
+    expect(withoutPersonPronouns(theirs, "Tamsin", [], "exit form for tamsin orwell, she sent her immediate resignation to management").text).toBe(theirs);
+  });
   it("leaves a reply with no pronoun alone", () => {
     const plain = "Here's the Corrective Action Form for **Tamsin**. Tamsin's shift was on 11/14.";
     expect(withoutPersonPronouns(plain, "Tamsin")).toEqual({ text: plain, replaced: 0 });
