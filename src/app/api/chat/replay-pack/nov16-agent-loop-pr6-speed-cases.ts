@@ -13,7 +13,8 @@ import { evidenceFrom, lastResult, loopStandIn, type LoopDecision, type LoopView
  * General rules this PR adds, and the cases here:
  * 1. A card needs no find_staff step: propose_form looks a typed name up with find_staff's own code. One person and
  *    nothing to ask → the card (2 model calls instead of 3). Anything else → find_staff's own result, unchanged, and no
- *    card: not_on_roster, ambiguous_person, did_you_mean with keep-as-typed (QA: one case each), a word that is no one.
+ *    card: not_on_roster, ambiguous_person, did_you_mean with keep-as-typed (QA: one case each); a name it finds no one
+ *    for and says nothing about falls to propose_form's own not_on_roster refusal (the retry guard's, #1054).
  * 2. The policy manual is read once per turn (never kept past it).
  * 3. One budget for the turn's model calls: AGENT_LOOP_MAX_STEPS counts the reviser's own calls too, and a reviser
  *    that would leave no room for the reply is refused (reason_code step_budget), so the turn ends with a reply.
@@ -65,14 +66,14 @@ async function lookupBothWays(t: ReplayContext, message: string, name: string, q
 
 /**
  * propose_form's result without its own keys: what is left must be find_staff's result, unchanged. Its reason_code is
- * find_staff's own; only when find_staff gave none does propose_form add person_unclear (every refusal has a code).
+ * find_staff's own; only a Did you mean (find_staff gives it no code) gets propose_form's name_to_confirm.
  */
 function asFindStaff(proposed: Record<string, unknown>, staff: Record<string, unknown>): Record<string, unknown> {
   const { card, looked_up_by, error, ...rest } = proposed;
   void card;
   void looked_up_by;
   void error;
-  if (!("reason_code" in staff) && rest.reason_code === "person_unclear") delete rest.reason_code;
+  if (!("reason_code" in staff) && rest.reason_code === "name_to_confirm") delete rest.reason_code;
   return rest;
 }
 
@@ -151,6 +152,77 @@ export const NOV16_AGENT_LOOP_PR6_SPEED_CASES: ReplayCase[] = [
         expect((staff.did_you_mean as { name: string }[] | undefined)?.map((row) => row.name), JSON.stringify(staff)).toEqual(["Remy Calder"]);
         expect(String(staff.note)).toMatch(/keep \*\*remi calder\*\* as you typed it/i);
       });
+    },
+  },
+  {
+    id: "nov16-pr6-propose-lookup-retry-guard-per-person",
+    title: "PR 6 item 1 with the retry guard (#1054; QA: the per-person count through propose_form's own lookup): \"Odalis\", nobody on the roster, proposed twice with no find_staff step: not_on_roster with the use-Odalis question, then stop_retrying with it; a third call is not run; and find_staff + propose_form for that name count together",
+    report: REPORT,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      setUp(t);
+      const USE_ODALIS = "I can't find **Odalis** on your staff list. Reply **use Odalis** to put the name on the form as you typed it, or give me the full name.";
+      type Out = { reason_code?: string; ask_exactly?: string; stop_retrying?: { reason_code: string; ask_exactly?: string } };
+      const all = (views: readonly LoopView[]) => views.reduce<{ tool: string; output: Record<string, unknown> }[]>((most, view) => (view.results.length > most.length ? [...view.results] : most), []);
+      const propose = (view: LoopView) => ({ tool: "propose_form", input: { template_key: "dpoa", employee_name: "Odalis", person_evidence: evidenceFrom(view, "ca for odalis"), what_happened: "She was late on 11/12.", incident_date: "2026-11-12" } });
+
+      // propose_form alone, three times: refused, stopped, not run.
+      const only = loopStandIn((view): LoopDecision => {
+        const latest = view.results.at(-1)?.output as Out | undefined;
+        if (view.results.length >= 3) return { text: `Odalis isn't on your staff list yet. ${(latest?.stop_retrying?.ask_exactly ?? latest?.ask_exactly) ?? ""}`.trim() };
+        return propose(view);
+      });
+      t.loopModel!(only);
+      const reply = await t.thread().say("ca for odalis, late on 11/12");
+      const outs = all(only.views).map((result) => result.output as Out);
+      expect(outs[0]!.reason_code, JSON.stringify(outs)).toBe("not_on_roster");
+      expect(outs[0]!.ask_exactly).toBe(USE_ODALIS);
+      expect(outs[1]!.stop_retrying, JSON.stringify(outs[1])).toEqual({ reason_code: "not_on_roster", ask_exactly: USE_ODALIS });
+      expect(outs[2]!.reason_code, "the third call ran").toBe("stop_retrying");
+      expect(reply.content).toContain(USE_ODALIS);
+      expect(reply.formProposal ?? null).toBeNull();
+
+      // find_staff, then propose_form's own lookup, for the same name: one count, stopped by the second refusal.
+      const mixed = loopStandIn((view): LoopDecision => {
+        const latest = view.results.at(-1)?.output as Out | undefined;
+        if (latest?.stop_retrying) return { text: `Odalis isn't on your staff list yet. ${latest.stop_retrying.ask_exactly ?? ""}`.trim() };
+        if (view.results.length === 0) return { tool: "find_staff", input: { name: "Odalis", person_evidence: evidenceFrom(view, "ca for odalis") } };
+        if (view.results.length >= 3) return { text: "Who is this for?" };
+        return propose(view);
+      });
+      t.loopModel!(mixed);
+      await t.thread().say("ca for odalis, late on 11/12");
+      const mixedOuts = all(mixed.views).map((result) => [result.tool, (result.output as Out).reason_code, Boolean((result.output as Out).stop_retrying)]);
+      expect(mixedOuts.slice(0, 2), JSON.stringify(mixedOuts)).toEqual([["find_staff", "not_on_roster", false], ["propose_form", "not_on_roster", true]]);
+    },
+  },
+  {
+    id: "nov16-pr6-propose-lookup-answer-bridge",
+    title: "PR 6 item 1 with the retry guard's answer bridge (#1054; QA): propose_form's own lookup asks \"Reply **use Odalis**\"; the manager's \"use Odalis\" then makes the card with the name as typed, in one call, never a third question",
+    report: REPORT,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      setUp(t);
+      const thread = t.thread();
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        const card = lastResult(view, "propose_form") as { ask_exactly?: string } | null;
+        if (card) return { text: card.ask_exactly ?? "Who is this for?" };
+        return { tool: "propose_form", input: { template_key: "dpoa", employee_name: "Odalis", person_evidence: evidenceFrom(view, "ca for odalis"), what_happened: "She was late on 11/12.", incident_date: "2026-11-12" } };
+      }));
+      const asked = await thread.say("ca for odalis, late on 11/12");
+      expect(asked.content).toContain("Reply **use Odalis**");
+      expect(asked.formProposal ?? null).toBeNull();
+      const answer = loopStandIn((view): LoopDecision => (lastResult(view, "propose_form")
+        ? { text: "Here's the Corrective Action Form for **Odalis** (not on your staff list; the name as you typed it)." }
+        : { tool: "propose_form", input: { template_key: "dpoa", employee_name: "Odalis", person_evidence: evidenceFrom(view, "use Odalis"), what_happened: "She was late on 11/12.", incident_date: "2026-11-12" } }));
+      t.loopModel!(answer);
+      const carded = await thread.say("use Odalis");
+      expect(carded.formProposal?.employeeName, carded.content).toBe("Odalis");
+      expect(answer.views.flatMap((view) => view.results).filter((result) => result.tool === "propose_form").length, "more than one call for the card").toBe(1);
     },
   },
   {

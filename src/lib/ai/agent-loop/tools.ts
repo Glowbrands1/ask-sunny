@@ -10,7 +10,7 @@ import { appConfig } from "./app-config";
 import { isoDate, monthDayToIso, readDates, sameDate, withoutDates } from "./dates";
 import { candidateNameWords, chatFormsActor } from "@/lib/forms/chat-form-records";
 import { holdsPhrase, identifiedTurns, verifyEvidence, withoutMessageIdTags, type IdentifiedTurn } from "./evidence";
-import { answerNamesSomeoneElse, isConfirmedSpelling, latestTurnAnswersFor, latestTurnConfirms, latestTurnKeepsTyped, spellingKeysConfirmedFor, type NameQuestionView } from "./confirmed-spelling";
+import { answerNamesSomeoneElse, isConfirmedSpelling, latestTurnAnswersFor, latestTurnConfirms, latestTurnKeepsTyped, spellingKeysConfirmedFor, spellingKeysConfirmedForName, type NameQuestionView } from "./confirmed-spelling";
 import { displayName, editDistance, matchEmployeeName, nameConfirmationQuestion, readNameConfirmation, type RosterEmployee } from "@/lib/forms/employee-match";
 import { offRosterTyped } from "@/lib/forms/roster-only-names";
 import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
@@ -197,6 +197,11 @@ async function formsOnFileAskedFor(context: ToolContext, evidence: unknown, pers
   return { ok: false, reason: "evidence_other_person", reasonCode: "privacy_not_this_person" };
 }
 
+/** find_staff's offer for a name not on the staff list (the propose_form refusal gives the same line). */
+export function offRosterNameQuestion(name: string): string {
+  return `I can't find **${name}** on your staff list. Reply **use ${name}** to put the name on the form as you typed it, or give me the full name.`;
+}
+
 /** What the model says its exit_evidence quote is (fix batch item 1); null when it said nothing or something else. */
 export type ExitEvidenceKind = "asks_for_exit_form" | "yes_to_exit_offer" | "resignation_told";
 export function exitEvidenceKind(value: unknown): ExitEvidenceKind | null {
@@ -238,28 +243,46 @@ export function requestTurns(
   person: string,
   rosterNames: readonly string[],
   kind: "request_evidence" | "account_evidence",
-): { ok: true; ids: string[]; quotes: string[]; texts: string[] } | { ok: false; result: ToolResult } {
+  /** `personKey`s of typed spellings the manager confirmed as this person (the name question record). */
+  confirmedTypedKeys: readonly string[] = [],
+): { ok: true; ids: string[]; quotes: string[]; texts: string[] } | { ok: false; result: ToolResult; near?: { typed: string; others: string[] } } {
   /*
    * Fix batch item 5 (QA's 266 shadow replay, c219; QA's ruling, 16 Nov 2026): a pasted script names the form's person by a
    * one-letter-off first name (<A'>) and another roster person as a party (<B>, the director). The turn is still THIS
    * person's when it also names them, so <B> is a party there, not its owner. "Names them": the exact first name, or a
    * word one edit from the card's first name that is no active roster person's first name. Limits (QA): (a) only once the
-   * manager named the card's person in full in this request; (b) a word one edit from two or more people's first names
-   * is ambiguous and keeps today's refusal. Code compares spellings with the roster; it never reads what the words mean.
+   * manager named the card's person in full in this request; (b) a word one edit from another active person's first name
+   * too is ambiguous: no automatic match, and the refusal asks which (near_name_ambiguous). Code compares spellings with
+   * the roster; it never reads what the words mean.
    */
   const firstOf = (name: string) => name.trim().split(/\s+/)[0]!.toLowerCase();
   const personFirst = firstOf(person);
-  const othersFirsts = rosterNames.filter((name) => !samePerson(name, person)).map(firstOf);
+  const others = rosterNames.filter((name) => !samePerson(name, person));
   const namedInFull = person.trim().split(/\s+/).length >= 2 && turns.some((turn) => turn.role === "user" && holdsPhrase(turn.content, person));
-  const namesThisPerson = (clean: string): boolean => {
-    if (!namedInFull || personFirst.length < 3) return false;
-    const tokens = [...new Set(clean.toLowerCase().match(/[\p{L}'’-]{3,}/gu) ?? [])];
-    return tokens.some((token) => {
-      const near = othersFirsts.filter((first) => first === token || editDistance(first, token) <= 1);
-      if (token === personFirst) return near.length === 0;
-      return editDistance(token, personFirst) === 1 && !othersFirsts.includes(token) && near.length === 0;
-    });
+  /*
+   * How the turn names the card's person, if it does: "this" (the exact first name, or one edit from it and from no active
+   * roster person's first name), or "ambiguous" (one edit from it AND from another active person <C>'s first name: QA's
+   * strict limit (b) holds, and the refusal asks which, 16 Nov 2026). Words are letters only, so "<A'>'s" reads as <A'>
+   * (the 266 re-run's c219 shape). A spelling comparison with the roster, never a reading of the words.
+   */
+  const nearName = (clean: string): { kind: "this" } | { kind: "ambiguous"; typed: string; others: string[] } | null => {
+    if (!namedInFull || personFirst.length < 3) return null;
+    let ambiguous: { kind: "ambiguous"; typed: string; others: string[] } | null = null;
+    for (const word of new Set(clean.match(/\p{L}{3,}/gu) ?? [])) {
+      const token = word.toLowerCase();
+      // The manager confirmed this spelling as this person in answer to the app's own question (Pau, 16 Nov 2026).
+      // A spelling the manager confirmed as this person, answering the app's own question: any spelling (the answer bridge).
+      if (confirmedTypedKeys.includes(personKey(word))) return { kind: "this" };
+      const near = others.filter((name) => firstOf(name) === token || editDistance(firstOf(name), token) <= 1);
+      if (token === personFirst && near.length === 0) return { kind: "this" };
+      if (token !== personFirst && editDistance(token, personFirst) === 1) {
+        if (near.length === 0) return { kind: "this" };
+        if (!near.some((name) => firstOf(name) === token)) ambiguous ??= { kind: "ambiguous", typed: word, others: near };
+      }
+    }
+    return ambiguous;
   };
+  const namesThisPerson = (clean: string): boolean => nearName(clean)?.kind === "this";
   const namesOther = (text: string) => {
     const clean = withoutMessageIdTags(text);
     if (namesThisPerson(clean)) return null;
@@ -276,6 +299,12 @@ export function requestTurns(
     const check = verifyEvidence(claim, turns);
     if (!check.ok) return { ok: false, result: { error: `${kind} must quote the manager's own messages in this chat. Nothing was written.`, reason_code: `${kind}_invalid`, evidence: check.reason } };
     const other = namesOther(check.turn.content);
+    const near = other ? nearName(withoutMessageIdTags(check.turn.content)) : null;
+    if (near?.kind === "ambiguous") {
+      const choices = [person, ...near.others].map((name) => `**${name}**`);
+      const ask = `In your message, is ${near.typed} ${choices.slice(0, -1).join(", ")} or ${choices.at(-1)}?`;
+      return { ok: false, near: { typed: near.typed, others: near.others }, result: { error: `That message names ${near.typed}, one letter from ${person} and from ${near.others.join(", ")} on the staff list: ask which. Nothing was written.`, reason_code: "near_name_ambiguous", ask_exactly: ask } };
+    }
     if (other) return { ok: false, result: { error: `That message is about ${other}, not ${person}: it is not this person's request. Nothing was written.`, reason_code: `${kind}_other_person` } };
     if (check.turn.index <= boundary) return { ok: false, result: { error: `That message is from an earlier request, before the manager turned to someone else. Cite only this request's messages. Nothing was written.`, reason_code: `${kind}_not_this_request` } };
     if (ids.includes(check.turn.id)) continue;
@@ -485,7 +514,7 @@ export interface ToolEffects {
   /** find_staff ran this turn: a person was named, so a card without one is not "nobody named" (item 6). */
   staffLookedUp?: boolean;
   /** Fix batch items 4 and 3: this turn's last "Did you mean" (the roster ids offered, the name typed), for the record. */
-  nameQuestion?: { offeredIds: string[]; typed: string };
+  nameQuestion?: { offeredIds: string[]; typed: string; offeredNames?: string[]; asksFullName?: boolean };
   /** Batch G (G4), by the rebuild plan's PR 1b: find_past_forms found forms on file to open (open: true) for this person. */
   openRequested?: string;
   /** PR 2: the roster id of the card's person (the card record); null for a team card or a name not on the roster. */
@@ -767,7 +796,12 @@ export async function findStaff(context: ToolContext, input: { name?: unknown; p
       const holdsName = named.ok && !isJobTitlePhrase(typed) && holdsPhrase(String((input.person_evidence as { quote: string }).quote), typed);
       if (holdsName) {
         const shown = typed.replace(/\s+/g, " ").trim();
-        return { reason_code: "not_on_roster", matches: [], not_on_roster: shown, note: `Not on the ${staffSystem()} staff list. Ask the manager, in these words: I can't find **${shown}** on your staff list. Reply **use ${shown}** to put the name on the form as you typed it, or give me the full name.` };
+        /*
+         * The answer bridge (QA's ruling, 16 Nov 2026; Pau: every answer is used): this offer asks for the full name, so it
+         * is recorded like a Did-you-mean, and a full name given in the next message confirms <shown> as that person.
+         */
+        if (effects) effects.nameQuestion = { offeredIds: [], typed: shown, asksFullName: true };
+        return { reason_code: "not_on_roster", matches: [], not_on_roster: shown, ask_exactly: offRosterNameQuestion(shown), note: `Not on the ${staffSystem()} staff list. Ask the manager, in these words: ${offRosterNameQuestion(shown)}` };
       }
     }
     if (!person) {
@@ -1617,11 +1651,16 @@ async function lookUpForCard(context: ToolContext, effects: ToolEffects, typed: 
     void _note;
     return { kind: "person", person, facts };
   }
-  if (record.reason_code === "missing_input") return { kind: "none" };
-  /* find_staff's result as it is (reason code, facts, note), plus propose_form's own refusal: no card was made. */
+  /*
+   * Nobody found and nothing for find_staff to say (no code, no Did you mean: the name reads as no one, or no
+   * person_evidence holds it): propose_form's own refusal answers, as before this lookup (the retry guard's not_on_roster
+   * with the use-<name> question, #1054), so its count over find_staff and propose_form for that name is unchanged.
+   */
+  if (record.reason_code === "missing_input" || (typeof record.reason_code !== "string" && matches.length === 0 && !("did_you_mean" in record) && !("error" in record) && record.unchecked !== true)) return { kind: "none" };
+  /* find_staff's result as it is (reason code, facts, note, ask_exactly), plus propose_form's own refusal: no card was made. */
   const ask = typeof record.note === "string" ? record.note : "Ask the manager who the form is for.";
-  /* find_staff's own reason_code when it gave one; otherwise propose_form's person_unclear (every refusal carries a code). */
-  return { kind: "ask", result: { ...found, card: null, looked_up_by: "propose_form", reason_code: typeof record.reason_code === "string" ? record.reason_code : "person_unclear", ...("error" in record ? {} : { error: `No card was made: the name was looked up as find_staff does. ${ask}` }) } };
+  /* find_staff's reason_code when it gave one; a Did you mean (no code of its own) is name_to_confirm, so every refusal has a code. */
+  return { kind: "ask", result: { ...found, card: null, looked_up_by: "propose_form", reason_code: typeof record.reason_code === "string" ? record.reason_code : "name_to_confirm", ...("error" in record ? {} : { error: `No card was made: the name was looked up as find_staff does. ${ask}` }) } };
 }
 
 export async function proposeForm(
@@ -1736,7 +1775,8 @@ export async function proposeForm(
      * with find_staff's own code (`findStaff`), so the card needs no find_staff step first. Exactly one person found
      * and nothing to ask (an exact full name, the manager's confirmed answer, a whole first name only one person has):
      * the card is made for them, with find_staff's facts on the result. Anything else (not_on_roster, ambiguous_person,
-     * did_you_mean, a word that is no person) comes back exactly as find_staff gives it, with no card.
+     * did_you_mean) comes back exactly as find_staff gives it, with no card; a name find_staff finds no one for and says
+     * nothing about falls to propose_form's own not_on_roster refusal below, as before.
      */
     else if (typed && !id && (lookedUp = await lookUpForCard(context, effects, typed, input.person_evidence, read.roster)).kind !== "none") {
       if (lookedUp.kind === "ask") return lookedUp.result;
@@ -1749,8 +1789,14 @@ export async function proposeForm(
        * names it with its heading and page.
        */
       if (!typed && !id && !effects.staffLookedUp) return askWhoFor(context, template, effects);
+      /*
+       * The retry guard (QA, 16 Nov 2026; the 266 re-run's c219 turn 3 ran propose_form five times): with a typed name,
+       * the refusal says what to ask (find_staff's own use-<name> line), so the model asks instead of retrying.
+       */
+      const shown = typed.replace(/\s+/g, " ").trim();
       return {
         reason_code: "not_on_roster", error: "Give the employee_id find_staff returned for this person (call find_staff first). A name not on the roster goes on a form only after the manager answers the \"reply **use <name>**\" offer.",
+        ...(shown ? { not_on_roster: shown, ask_exactly: offRosterNameQuestion(shown) } : {}),
       };
     }
   } else {
@@ -1828,8 +1874,17 @@ export async function proposeForm(
    * join the request for the exit check and the account, and never unlock a level, payroll or termination by themselves.
    */
   const conversation = identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId);
-  const cited = requestTurns(conversation, input.request_evidence, employee.name, rosterNames, "request_evidence");
-  if (!cited.ok) return cited.result;
+  /* Item 5 follow-up (Pau, 16 Nov 2026): a near name the manager confirmed as this person, by the name question record. */
+  const typedConfirmed = read.kind === "read" ? (employee.id ? confirmedKeys : spellingKeysConfirmedForName(nameQuestionView(context, read.roster), employee.name)) : [];
+  const cited = requestTurns(conversation, input.request_evidence, employee.name, rosterNames, "request_evidence", typedConfirmed);
+  if (!cited.ok) {
+    /* The "is <A'> <A> or <C>?" question is recorded like a Did-you-mean, so the manager's answer is read next turn. */
+    if (cited.near && read.kind === "read") {
+      const offered = read.roster.filter((row) => cited.near!.others.some((name) => samePerson(name, displayName(row))));
+      effects.nameQuestion = { offeredIds: [...(employee.id ? [employee.id] : []), ...offered.map((row) => row.id)], typed: cited.near.typed, ...(employee.id ? {} : { offeredNames: [employee.name] }) };
+    }
+    return cited.result;
+  }
   const citedRequestIds = cited.ids;
   /*
    * QA's ruling 5: a new request (new_form_evidence) starts from this turn, and earlier turns of this person's request
