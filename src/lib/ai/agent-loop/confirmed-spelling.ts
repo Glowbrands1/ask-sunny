@@ -82,12 +82,14 @@ export function spellingKeysConfirmedFor(view: NameQuestionView, employeeId: str
 
 /**
  * Item 5 follow-up (Pau, 16 Nov 2026): the typed-name keys the manager confirmed as a person who is NOT on the roster: a
- * recorded question offered this name (by key), and the manager's answer holds it in full as whole words.
+ * recorded question offered this name (by key), or asked for the full name (the answer bridge: "I can't find **<A'>** …
+ * give me the full name"), and the manager's next message holds this name in full as whole words. "use <A'>" keeps <A'>.
  */
 export function spellingKeysConfirmedForName(view: NameQuestionView, name: string): string[] {
   const key = personKey(name);
   return [...replyTurns(view.history, view.records)]
-    .filter(([, record]) => record.offeredNameKeys?.includes(key))
+    // Offered by name (the which-person question), or the app asked for the full name and this is a different name given.
+    .filter(([, record]) => record.offeredNameKeys?.includes(key) || (record.asksFullName === true && record.typedKey !== key))
     .flatMap(([reply, record]) => {
       const next = view.history.findIndex((turn, at) => at > reply && turn.role === "user");
       const answer = next < 0 ? view.question : String(view.history[next]!.content ?? "");

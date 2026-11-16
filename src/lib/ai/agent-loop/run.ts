@@ -943,7 +943,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     : null;
   /* Fix batch items 4 and 3: this turn's "Did you mean", for the next turn's name question record (one-way keys only). */
   const nameQuestionSlot: NameQuestionSlot | null = effects.nameQuestion && stoppedAt === "reply"
-    ? { offeredKeys: effects.nameQuestion.offeredIds.map(personKey), typedKey: personKey(effects.nameQuestion.typed), ...(effects.nameQuestion.offeredNames?.length ? { offeredNameKeys: effects.nameQuestion.offeredNames.map(personKey) } : {}) }
+    ? { offeredKeys: effects.nameQuestion.offeredIds.map(personKey), typedKey: personKey(effects.nameQuestion.typed), ...(effects.nameQuestion.offeredNames?.length ? { offeredNameKeys: effects.nameQuestion.offeredNames.map(personKey) } : {}), ...(effects.nameQuestion.asksFullName ? { asksFullName: true } : {}) }
     : null;
   /* Fix batch item 6: propose_form asked who the form is for, for the next turn's person asked record (no names). */
   const personAskedSlot: PersonAskedSlot | null = effects.personAsked && stoppedAt === "reply" && !effects.proposal ? { templateKey: effects.personAsked.templateKey } : null;

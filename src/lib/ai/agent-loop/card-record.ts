@@ -58,6 +58,8 @@ export interface NameQuestionSlot {
    * typed by the manager, beside a roster person with a near first name). Absent on older records.
    */
   readonly offeredNameKeys?: readonly string[];
+  /** The answer bridge (QA, 16 Nov 2026): the question asked for the full name ("I can't find **<A'>** … give me the full name"). */
+  readonly asksFullName?: boolean;
 }
 
 export interface NameQuestionRecord extends NameQuestionSlot {
@@ -110,7 +112,7 @@ export async function readLoopRecords(conversationId: string | undefined, userId
       nameQuestions: rows.flatMap((row) => {
         const asked = row.slots?.agent_loop?.name_question;
         return isNameQuestionSlot(asked)
-          ? [{ offeredKeys: [...asked.offeredKeys], typedKey: asked.typedKey, ...(Array.isArray(asked.offeredNameKeys) ? { offeredNameKeys: asked.offeredNameKeys.filter((key): key is string => typeof key === "string") } : {}), messageId: row.message_id }]
+          ? [{ offeredKeys: [...asked.offeredKeys], typedKey: asked.typedKey, ...(Array.isArray(asked.offeredNameKeys) ? { offeredNameKeys: asked.offeredNameKeys.filter((key): key is string => typeof key === "string") } : {}), ...(asked.asksFullName === true ? { asksFullName: true } : {}), messageId: row.message_id }]
           : [];
       }),
       personAsked: rows.flatMap((row) => {

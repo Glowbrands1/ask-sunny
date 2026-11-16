@@ -262,7 +262,8 @@ export function requestTurns(
     for (const word of new Set(clean.match(/\p{L}{3,}/gu) ?? [])) {
       const token = word.toLowerCase();
       // The manager confirmed this spelling as this person in answer to the app's own question (Pau, 16 Nov 2026).
-      if (token !== personFirst && editDistance(token, personFirst) === 1 && confirmedTypedKeys.includes(personKey(word))) return { kind: "this" };
+      // A spelling the manager confirmed as this person, answering the app's own question: any spelling (the answer bridge).
+      if (confirmedTypedKeys.includes(personKey(word))) return { kind: "this" };
       const near = others.filter((name) => firstOf(name) === token || editDistance(firstOf(name), token) <= 1);
       if (token === personFirst && near.length === 0) return { kind: "this" };
       if (token !== personFirst && editDistance(token, personFirst) === 1) {
@@ -504,7 +505,7 @@ export interface ToolEffects {
   /** find_staff ran this turn: a person was named, so a card without one is not "nobody named" (item 6). */
   staffLookedUp?: boolean;
   /** Fix batch items 4 and 3: this turn's last "Did you mean" (the roster ids offered, the name typed), for the record. */
-  nameQuestion?: { offeredIds: string[]; typed: string; offeredNames?: string[] };
+  nameQuestion?: { offeredIds: string[]; typed: string; offeredNames?: string[]; asksFullName?: boolean };
   /** Batch G (G4), by the rebuild plan's PR 1b: find_past_forms found forms on file to open (open: true) for this person. */
   openRequested?: string;
   /** PR 2: the roster id of the card's person (the card record); null for a team card or a name not on the roster. */
@@ -780,6 +781,11 @@ export async function findStaff(context: ToolContext, input: { name?: unknown; p
       const holdsName = named.ok && !isJobTitlePhrase(typed) && holdsPhrase(String((input.person_evidence as { quote: string }).quote), typed);
       if (holdsName) {
         const shown = typed.replace(/\s+/g, " ").trim();
+        /*
+         * The answer bridge (QA's ruling, 16 Nov 2026; Pau: every answer is used): this offer asks for the full name, so it
+         * is recorded like a Did-you-mean, and a full name given in the next message confirms <shown> as that person.
+         */
+        if (effects) effects.nameQuestion = { offeredIds: [], typed: shown, asksFullName: true };
         return { reason_code: "not_on_roster", matches: [], not_on_roster: shown, ask_exactly: offRosterNameQuestion(shown), note: `Not on the ${staffSystem()} staff list. Ask the manager, in these words: ${offRosterNameQuestion(shown)}` };
       }
     }
