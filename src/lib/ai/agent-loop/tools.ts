@@ -10,8 +10,8 @@ import { appConfig } from "./app-config";
 import { isoDate, monthDayToIso, readDates, sameDate, withoutDates } from "./dates";
 import { candidateNameWords, chatFormsActor } from "@/lib/forms/chat-form-records";
 import { holdsPhrase, identifiedTurns, verifyEvidence, withoutMessageIdTags, type IdentifiedTurn } from "./evidence";
-import { answerNamesSomeoneElse, isConfirmedSpelling, latestTurnAnswersFor, latestTurnConfirms, latestTurnKeepsTyped, spellingKeysConfirmedFor, spellingKeysConfirmedForName, type NameQuestionView } from "./confirmed-spelling";
-import { displayName, editDistance, matchEmployeeName, nameConfirmationQuestion, readNameConfirmation, type RosterEmployee } from "@/lib/forms/employee-match";
+import { answeredNameQuestions, answerNamesSomeoneElse, isConfirmedSpelling, latestTurnAnswersFor, latestTurnConfirms, latestTurnKeepsOrUsesTyped, latestTurnKeepsTyped, spellingKeysConfirmedFor, spellingKeysConfirmedForName, type NameQuestionView } from "./confirmed-spelling";
+import { AFFIRMATIVE, displayName, editDistance, matchEmployeeName, nameConfirmationQuestion, readNameConfirmation, type RosterEmployee } from "@/lib/forms/employee-match";
 import { offRosterTyped } from "@/lib/forms/roster-only-names";
 import { parseFormDocument } from "@/lib/forms/document";
 import { draftableCheckboxGroups, draftableFields } from "@/lib/forms/responsibility";
@@ -271,6 +271,9 @@ export function requestTurns(
   const nearName = (clean: string): { kind: "this" } | { kind: "ambiguous"; typed: string; others: string[] } | null => {
     if (!namedInFull || personFirst.length < 3) return null;
     let ambiguous: { kind: "ambiguous"; typed: string; others: string[] } | null = null;
+    // A confirmed spelling of two words (a corrected card's earlier full name) names this person too.
+    const allWords = clean.match(/\p{L}+/gu) ?? [];
+    if (allWords.some((word, at) => at > 0 && confirmedTypedKeys.includes(personKey(`${allWords[at - 1]} ${word}`)))) return { kind: "this" };
     for (const word of new Set(clean.match(/\p{L}{3,}/gu) ?? [])) {
       const token = word.toLowerCase();
       // The manager confirmed this spelling as this person in answer to the app's own question (Pau, 16 Nov 2026).
@@ -345,11 +348,16 @@ interface EvidencePerson {
   readonly name: string;
   readonly roster: readonly RosterEmployee[];
   readonly rosterRead: boolean;
+  /**
+   * QA (16 Nov 2026, the live c219 run): the card's earlier names after a recorded correction (name_corrected from <T> to
+   * <C>): a turn or reply that names <T> is <C>'s, for every evidence check (termination, level, payroll, date, account).
+   */
+  readonly aliases: readonly string[];
 }
 
-function evidencePersonFor(name: string, read: { kind: string; roster?: readonly RosterEmployee[] }): EvidencePerson {
+function evidencePersonFor(name: string, read: { kind: string; roster?: readonly RosterEmployee[] }, aliases: readonly string[] = []): EvidencePerson {
   const roster = read.kind === "read" ? (read.roster ?? []) : [];
-  return { name, roster, rosterRead: read.kind === "read" && roster.length > 0 };
+  return { name, roster, rosterRead: read.kind === "read" && roster.length > 0, aliases };
 }
 
 /**
@@ -359,8 +367,9 @@ function evidencePersonFor(name: string, read: { kind: string; roster?: readonly
  */
 function otherPersonNamed(said: string, person: EvidencePerson): boolean {
   const rosterNames = person.roster.map((row) => displayName(row));
-  if (rosterNames.some((name) => !samePerson(name, person.name) && mentionsPerson(said, name, rosterNames))) return true;
-  const own = person.roster.filter((row) => [displayName(row), ...fullNamesOf(row)].some((full) => samePerson(full, person.name)));
+  const isThisPerson = (name: string) => samePerson(name, person.name) || person.aliases.some((alias) => samePerson(name, alias));
+  if (rosterNames.some((name) => !isThisPerson(name) && mentionsPerson(said, name, rosterNames))) return true;
+  const own = person.roster.filter((row) => [displayName(row), ...fullNamesOf(row)].some((full) => isThisPerson(full)));
   const ownFirsts = new Set([...own.flatMap((row) => [row.firstName, row.preferredFirstName]), person.name.split(/\s+/)[0]].map((first) => (first ?? "").trim().toLowerCase()).filter(Boolean));
   const lower = said.toLowerCase();
   return person.roster.some((row) => {
@@ -372,7 +381,7 @@ function otherPersonNamed(said: string, person: EvidencePerson): boolean {
 function answerEvidence(
   context: Pick<ToolContext, "question" | "history" | "questionMessageId">,
   evidence: unknown,
-  scope: "this_message" | "request" | { readonly card: string },
+  scope: "this_message" | "request" | { readonly card: string; readonly aliases?: readonly string[] },
   person?: EvidencePerson,
   /** QA (16 Nov 2026; c158): with scope "request", the earlier manager turns of THIS request a level may be quoted from. */
   options: { readonly requestTurnIds?: readonly string[] } = {},
@@ -405,7 +414,7 @@ function answerEvidence(
     if (!person || !person.rosterRead) return { ok: false, reason: "evidence_not_this_turn" };
     if (!lastTwoManagerTurns.some((turn) => turn.id === check.turn.id)) return { ok: false, reason: "evidence_not_this_turn" };
     const reply = turns[check.turn.index + 1];
-    if (!reply || reply.role !== "assistant" || !namesCard(reply, person.name)) return { ok: false, reason: "evidence_after_card" };
+    if (!reply || reply.role !== "assistant" || ![person.name, ...person.aliases].some((name) => namesCard(reply, name))) return { ok: false, reason: "evidence_after_card" };
   }
   /*
    * A payroll answer belongs to ONE card (QA, 15 Nov 2026): the message being answered, or the manager's answer right after
@@ -416,7 +425,7 @@ function answerEvidence(
     if (!lastTwoManagerTurns.some((turn) => turn.id === check.turn.id)) return { ok: false, reason: "evidence_after_card" };
     let shown = -1;
     for (let at = turns.length - 2; at >= 0; at -= 1) {
-      if (turns[at]!.role === "assistant" && namesCard(turns[at], scope.card)) {
+      if (turns[at]!.role === "assistant" && [scope.card, ...(scope.aliases ?? [])].some((name) => namesCard(turns[at], name))) {
         shown = at;
         break;
       }
@@ -725,6 +734,14 @@ export async function findStaff(context: ToolContext, input: { name?: unknown; p
   const read = await rosterFor(context.actor.scope);
   if (read.kind === "failed") return { reason_code: "roster_failed", error: ROSTER_FAILED };
   if (read.kind === "unchecked") return { unchecked: true, note: ROSTER_UNCHECKED };
+  /*
+   * QA's live test a4 (ruling A): this turn keeps this typed name as typed, answering this chat's recorded name question
+   * ("no", or "use <typed>"): settled from the record. Never ask the Did-you-mean or the use-<name> offer again.
+   */
+  if (typed && latestTurnKeepsOrUsesTyped(nameQuestionView(context, read.roster), typed)) {
+    /* QA (16 Nov 2026): what the reply calls this person, decided by code (`replyNameFor`), as on every card result. */
+    return { matches: [], kept_as_typed: typed, reply_name: replyNameFor(typed, read.roster, extractEmployeeNames(managerTurns(context)), null), note: `The manager kept "${typed}" as typed (their answer to your question). Do not ask again: propose the card now with employee_name "${typed}", with this request's account from the earlier turns.` };
+  }
   let found = rosterMatches(typed, read.roster).slice(0, 10);
   /* The roster's exact full name wins over people whose names only start the same ("Test Employee" vs "Test Employee Two"). */
   const exact = found.filter((person) => samePerson(displayName(person), typed) && words(displayName(person)).length === words(typed).length);
@@ -741,6 +758,19 @@ export async function findStaff(context: ToolContext, input: { name?: unknown; p
       matches: [staffRow(found[0]!)],
       confirmed_by_manager: { name: displayName(found[0]!), answer: confirmed.by },
       note: `The manager confirmed ${displayName(found[0]!)} (their answer to Did you mean). Do not ask again: propose the card for ${displayName(found[0]!)} now, with this request's account from the earlier turns.`,
+    };
+  }
+  /* QA (16 Nov 2026, live): the roster spelling the model looked up is settled only by the manager's own words. */
+  const unsettled = found.length > 0 ? found.map((row) => closeSpellingNotSettled(context, row, read.roster, input.person_evidence)) : [];
+  if (unsettled.length > 0 && unsettled.every((spelling) => spelling !== null)) {
+    const spelled = unsettled[0]!;
+    const names = found.slice(0, 5).map(displayName);
+    if (effects) effects.nameQuestion = { offeredIds: found.slice(0, 5).map((row) => row.id), typed: spelled };
+    return {
+      matches: [],
+      did_you_mean: found.slice(0, 5).map((row) => staffRow(row)),
+      note: `The manager typed "${spelled}", not this name. Ask the manager, in these words: ${nameConfirmationQuestion(spelled, names)}`,
+      also_ask_if_no_account: ALSO_ASK_ACCOUNT,
     };
   }
   if (found.length === 0) {
@@ -1065,6 +1095,8 @@ export async function findPastForms(context: ToolContext, input: { employee_name
   if (typed === "") return { reason_code: "missing_input", error: "Give the employee's name." };
   const asked = await formsOnFileAskedFor(context, input.forms_on_file_evidence, typed);
   if (!asked.ok) return privacyRefusal(asked.reason, asked.reasonCode);
+  const closeSpelled = await closeSpellingRefusal(context, effects, typed);
+  if (closeSpelled) return closeSpelled;
   const actor = await chatFormsActor(context.actor).catch(() => undefined);
   if (actor === undefined) return { reason_code: "read_failed", error: "Form Monitoring could not be read just now. Say so; do not say there are no forms." };
   if (actor === null) return { reason_code: "scope", error: "This manager's role cannot view Form Monitoring, so past forms cannot be listed." };
@@ -1178,7 +1210,7 @@ export async function findPastForms(context: ToolContext, input: { employee_name
 
 const VALUES_LIMIT = 6_000;
 
-export async function readForm(context: ToolContext, input: { instance_id?: unknown; forms_on_file_evidence?: unknown }): Promise<ToolResult> {
+export async function readForm(context: ToolContext, input: { instance_id?: unknown; forms_on_file_evidence?: unknown }, effects?: ToolEffects): Promise<ToolResult> {
   const id = typeof input.instance_id === "string" ? input.instance_id.trim() : "";
   if (id === "") return { reason_code: "missing_input", error: "Give the form's instance_id (from find_past_forms or the open form)." };
   if (id !== context.openFormId) {
@@ -1187,6 +1219,8 @@ export async function readForm(context: ToolContext, input: { instance_id?: unkn
   }
   try {
     const { loaded } = await authorizeInstance(context.request, id, "view");
+    const closeSpelled = loaded.instance.employeeName ? await closeSpellingRefusal(context, effects, loaded.instance.employeeName) : null;
+    if (closeSpelled) return closeSpelled;
     const values: Record<string, { untrusted_text: string }> = {};
     let size = 0;
     for (const row of loaded.values) {
@@ -1382,8 +1416,17 @@ function cardNameCorrection(
   templateKey: string,
   typed: string,
   roster: readonly RosterEmployee[],
+  /*
+   * QA (16 Nov 2026, live c219 on 1a53042): the model looked "For <C>" up first and proposed with <C>'s employee_id, and
+   * chose a Corrective Action, so the exit card's name check was never answered: the CA replaced the exit card and lost
+   * its evidence. `byId`: the roster person the model chose (corrects the card only when the record says this turn
+   * answers the card's name check). `newFormEvidence`: the model's new_form_evidence (this turn asks for another form).
+   */
+  options: { readonly byId?: RosterEmployee; readonly newFormEvidence?: unknown } = {},
 ): { person: RosterEmployee; from: string } | { asTyped: true; from: string } | { refusal: ToolResult } | null {
   if (context.openFormId) return null;
+  /* A salon or city answer ("KS Manhattan" to the which-salon question) is never a person, so never a name correction. */
+  if (namesAPlace(typed)) return null;
   /*
    * After #1051 (QA): this check's "Did you mean" is recorded like find_staff's (effects.nameQuestion), and the answer is
    * read through `confirmed-spelling.ts` from the server's record, never from the reply's text. A "no" keeps the name as
@@ -1392,8 +1435,8 @@ function cardNameCorrection(
   const view = nameQuestionView(context, roster);
   const declined = latestTurnKeepsTyped(view, typed);
   /* The card on screen; after this chat's Did-you-mean or "reply **use <name>**" offer (no card shown), the chat's latest card. */
-  const card = context.cardOnScreen ?? (latestTurnAnswersFor(view, typed) || answeredByFullName(view, typed) || offRosterConfirmed(context, typed) ? (context.earlierCard ?? null) : null);
-  if (!card || card.templateKey !== templateKey) return null;
+  const card = context.cardOnScreen ?? (latestTurnAnswersFor(view, typed) || answeredByFullName(view, typed) ? (context.earlierCard ?? null) : null);
+  if (!card) return null;
   /*
    * The card's name: its roster person (the record's employeeKey), or, for a name not on the roster (live s10's card
    * was one), the name in this chat's earlier manager turns whose key is the record's nameKey. The record holds only
@@ -1413,22 +1456,49 @@ function cardNameCorrection(
   const said = words(typed);
   const own = cardPerson ? { first: words([cardPerson.firstName, cardPerson.preferredFirstName ?? ""].join(" ")), last: words(cardPerson.lastName) } : { first: words(cardName).slice(0, 1), last: words(cardName).slice(-1) };
   const sharesAName = said.length >= 2 && (own.first.includes(said[0]!) || own.last.includes(said.at(-1)!));
-  if (!sharesAName) return null;
+  /*
+   * QA's live c219 re-ask (16 Nov 2026): a card for a name not on the roster asks the manager to check that name (its
+   * off_roster_name line; recorded as a name question). A different full name given in the next message answers it: a
+   * correction of the card's person, though the two names share no word. Read from the record, never the reply's text.
+   */
+  const answersCardCheck = !cardPerson && card.nameKey !== null && spellingKeysConfirmedForName(view, typed).includes(card.nameKey);
+  if (!sharesAName && !answersCardCheck) return null;
+  /* A roster person the model chose by id corrects the card only when this turn answers the card's recorded name check. */
+  if (options.byId && !answersCardCheck) return null;
+  if (card.templateKey !== templateKey) {
+    /*
+     * QA (16 Nov 2026, live c219): a message that answers the name check of the card on screen is about THAT card. It never
+     * makes another form unless the message itself asks for one (new_form_evidence, checked against this turn's words).
+     */
+    if (!answersCardCheck) return null;
+    if (verifyEvidence(options.newFormEvidence, identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId), { thisTurnOnly: true }).ok) return null;
+    const form = card.templateName ?? "card";
+    return {
+      refusal: {
+        template_key: card.templateKey,
+        reason_code: "name_answer_keeps_form", error: `This message answers the name check on the ${form} on screen (${cardName} → ${typed}); it does not ask for another form. Propose the ${form} again (template_key "${card.templateKey}") for ${typed}, with everything that card already has. Only the name changes.`,
+      },
+    };
+  }
+  if (options.byId) return { person: options.byId, from: cardName };
   const holders = roster.filter((row) => fullNamesOf(row).some((full) => samePerson(full, typed)));
   if (holders.length === 1) return { person: holders[0]!, from: cardName };
   if (holders.length > 1) {
     return { refusal: { reason_code: "ambiguous_person", error: `More than one person on the staff list is ${typed}. The card was not changed. Call find_staff with this name and ask which one.` } };
   }
-  if (declined || offRosterConfirmed(context, typed)) return { asTyped: true, from: cardName };
+  if (declined || latestTurnKeepsOrUsesTyped(view, typed)) return { asTyped: true, from: cardName };
   const close = matchEmployeeName(typed, roster);
   const candidates = close.kind === "confirm" ? close.candidates.map((candidate) => candidate.name) : [];
   if (candidates.length > 0 && close.kind === "confirm") {
     effects.nameQuestion = { offeredIds: close.candidates.slice(0, 5).map((candidate) => candidate.employee.id), typed };
     return { refusal: { reason_code: "name_correction_did_you_mean", error: `${typed} is not on the staff list as typed. The card was not changed. Ask the manager, in these words: ${nameConfirmationQuestion(typed, candidates.slice(0, 5))}` } };
   }
+  /* The answer bridge: this refusal asks for "use <typed>" or the full name; recorded so the answer is read next turn. */
+  effects.nameQuestion = { offeredIds: [], typed, asksFullName: true };
   return {
     refusal: {
       reason_code: "name_correction_not_on_roster", error: `${typed} is not on the ${staffSystem()} staff list. The card was not changed and is still for ${cardName}. Say so; it goes on the card as typed only if the manager replies **use ${typed}**.`,
+      ask_exactly: offRosterNameQuestion(typed),
     },
   };
 }
@@ -1451,13 +1521,10 @@ function answeredByFullName(view: NameQuestionView, typed: string): boolean {
   return person.length === 1 && latestTurnConfirms(view, person[0]!.id) !== null;
 }
 
-/** The manager accepted the off-roster offer for this name ("use <name>", or yes right after the offer). */
-function offRosterConfirmed(context: Pick<ToolContext, "question" | "history">, typed: string): boolean {
-  const offered = context.history.some((message) => message.role === "assistant" && message.content.toLowerCase().includes(`reply **use ${typed.toLowerCase()}**`));
-  if (!offered) return false;
-  const said = context.question.trim().toLowerCase();
-  return said.includes(`use ${typed.toLowerCase()}`) || /^(?:yes|yep|yeah|ok|okay|sure)\b|\buse (?:that|the) name\b|\buse it\b/.test(said);
-}
+/*
+ * The off-roster offer's answer ("use <name>", or yes right after "Reply **use <name>**") is read from the server's name
+ * question record (`latestTurnKeepsOrUsesTyped`), never from the reply's text (QA's review of #1064, 16 Nov 2026).
+ */
 
 /**
  * The text names this person: their full name as words, and not as the start of a longer roster name ("Test Employee"
@@ -1474,6 +1541,67 @@ export function mentionsPerson(text: string, name: string, rosterNames: readonly
     if (!longer.some((other) => rest.startsWith(other))) return true;
   }
   return false;
+}
+
+/**
+ * A ROSTER MATCH IS SETTLED BY THE MANAGER'S OWN WORDS (QA, 16 Nov 2026, live on 1a53042: "tamsen orwel" was seated as
+ * Tamsin Orwell when the model looked up the roster spelling itself). The words the lookup came from: the model's
+ * verified person_evidence quote, else the manager's turns, newest first. They settle <A> when they name <A> exactly
+ * (a full name, legal or preferred, or a whole first or preferred name; case and spacing ignored) or when the close
+ * spelling they hold was confirmed as <A> in this chat's recorded Did-you-mean. Returns that close spelling when it is
+ * not settled ("tamsen orwel"), so the caller asks Did you mean; null when settled, or when no words name <A> at all.
+ */
+function closeSpellingNotSettled(
+  context: Pick<ToolContext, "question" | "history" | "questionMessageId" | "nameQuestions">,
+  row: RosterEmployee,
+  roster: readonly RosterEmployee[],
+  evidence: unknown,
+): string | null {
+  const turns = identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId);
+  const quoted = verifyEvidence(evidence, turns);
+  const texts = quoted.ok
+    ? [String((evidence as { quote: string }).quote)]
+    : turns.filter((turn) => turn.role === "user").map((turn) => withoutMessageIdTags(turn.content)).reverse();
+  const exactNames = [...fullNamesOf(row), row.firstName, row.preferredFirstName ?? ""].map((name) => name.trim()).filter(Boolean);
+  const view = nameQuestionView(context as ToolContext, roster);
+  const confirmed = spellingKeysConfirmedFor(view, row.id);
+  const askedAbout = answeredNameQuestions(view).filter((asked) => asked.offered.some((person) => person.id === row.id));
+  /* This message answers a recorded question that offered this person: the answer's own checks decide (yes, no, someone else). */
+  if (askedAbout.some((asked) => asked.latest)) return null;
+  /* An earlier question for this spelling answered with a yes (a bare yes, or a yes going on with the account: K12b). */
+  const saidYes = (key: string) => askedAbout.some((asked) => asked.record.typedKey === key && AFFIRMATIVE.test(asked.answer.split(/[,.;!\n]/)[0] ?? ""));
+  for (const text of texts) {
+    if (exactNames.some((name) => holdsPhrase(text, name))) return null;
+    /* The name reader's names, then each two-word window of the words (it reads "edit tamsen orwel ca" as no name). */
+    const plain = text.toLowerCase().replace(/[^\p{L}'\s-]+/gu, " ").split(/\s+/).filter(Boolean);
+    const windows = plain.slice(1).map((word, at) => `${plain[at]} ${word}`);
+    const close = [...extractEmployeeNames(text), ...windows].find((name) => {
+      const match = matchEmployeeName(name, [row]);
+      return match.kind === "confirm" && match.candidates.some((candidate) => candidate.employee.id === row.id);
+    });
+    if (close) return confirmed.includes(personKey(close)) || saidYes(personKey(close)) ? null : close;
+  }
+  return null;
+}
+
+/**
+ * QA (16 Nov 2026, the Runner's live set on 1a53042): the model read "tamsen orwel" as the open card's person and went to
+ * the forms on file, never calling find_staff or propose_form. A form tool given a person (find_past_forms' name, or the
+ * person on the form open_form / read_form opens) asks the Did-you-mean when the manager's words hold only a close
+ * spelling of that person (`closeSpellingNotSettled`), and records it so the answer is read next turn.
+ */
+async function closeSpellingRefusal(context: ToolContext, effects: ToolEffects | undefined, personName: string): Promise<ToolResult | null> {
+  const read = await rosterFor(context.actor.scope);
+  if (read.kind !== "read") return null;
+  const holders = read.roster.filter((row) => fullNamesOf(row).some((full) => samePerson(full, personName)));
+  if (holders.length !== 1) return null;
+  const spelled = closeSpellingNotSettled(context, holders[0]!, read.roster, undefined);
+  if (!spelled) return null;
+  if (effects) effects.nameQuestion = { offeredIds: [holders[0]!.id], typed: spelled };
+  return {
+    reason_code: "close_spelling_not_confirmed", error: `The manager typed "${spelled}", not ${displayName(holders[0]!)}. Nothing was looked up or opened. Ask exactly ask_exactly, once.`,
+    ask_exactly: nameConfirmationQuestion(spelled, [displayName(holders[0]!)]),
+  };
 }
 
 /** A roster person's full names: the Woven preferred name with the surname, and the legal one (batch G, QA). */
@@ -1748,8 +1876,22 @@ export async function proposeForm(
         reason_code: "right_person", error: `The manager's answer to "Did you mean ${displayName(person)}?" names ${elsewhere.others.join(", ")}, not ${displayName(person)}: that is not a yes. Never put ${displayName(person)} on the card from it. Look up ${other} with find_staff; if the form's person is still unclear, ask: "Is this form for **${other}** or **${displayName(person)}**?"`,
       };
     }
+    /*
+     * QA (16 Nov 2026, live on 1a53042): an employee_id is settled only by the manager's own words (or a recorded
+     * confirmation): a close spelling they typed ("tamsen orwel") gets the Did-you-mean, never the roster person.
+     */
+    const spelled = person ? closeSpellingNotSettled(context, person, read.roster, undefined) : null;
+    if (person && spelled) {
+      effects.nameQuestion = { offeredIds: [person.id], typed: spelled };
+      return {
+        reason_code: "close_spelling_not_confirmed", error: `The manager typed "${spelled}", not ${displayName(person)}. The card was not made. Ask exactly ask_exactly, once.`,
+        ask_exactly: nameConfirmationQuestion(spelled, [displayName(person)]),
+      };
+    }
     /* fix-name, live s10 (Pau's ruling, 16 Nov 2026): a typed name that corrects the card's person goes through the roster check. */
-    const corrected = !person && typed ? cardNameCorrection(context, effects, key, typed, read.roster) : null;
+    const corrected = person
+      ? cardNameCorrection(context, effects, key, displayName(person), read.roster, { byId: person, newFormEvidence: input.new_form_evidence })
+      : typed ? cardNameCorrection(context, effects, key, typed, read.roster, { newFormEvidence: input.new_form_evidence }) : null;
     if (corrected && "refusal" in corrected) return corrected.refusal;
     if (corrected) nameCorrectedFrom = corrected.from;
     if (corrected && "person" in corrected) employee = { name: displayName(corrected.person), salonIds: corrected.person.salonIds, id: corrected.person.id };
@@ -1762,9 +1904,20 @@ export async function proposeForm(
      * OFF_ROSTER_CONFIRM (as today): a person not in Woven yet goes on the form by the name the manager typed, only
      * after the app offered "reply **use <name>**" and the manager said so. Never a name nobody confirmed.
      */
-    else if (typed && !rosterMatches(typed, read.roster).length && !namesAPlace(typed) && (offRosterConfirmed(context, typed) || (offRosterTyped(typed, `for ${typed}`, read.roster.map(displayName)) && matchEmployeeName(typed, read.roster).kind !== "confirm"))) {
+    /*
+     * QA's live test a4 (16 Nov 2026; ruling A): the manager's answer to this chat's recorded name question for this typed
+     * name ("no" to "Did you mean <B>?", or "use <typed>" after the app offered it) keeps the name as typed. Settled from
+     * the record, before the roster checks below that would refuse a close spelling of a roster person.
+     */
+    else if (typed && !namesAPlace(typed) && latestTurnKeepsOrUsesTyped(nameQuestionView(context, read.roster), typed)) {
       employee = { name: typed, salonIds: [] };
       offRosterName = typed;
+    }
+    else if (typed && !rosterMatches(typed, read.roster).length && !namesAPlace(typed) && offRosterTyped(typed, `for ${typed}`, read.roster.map(displayName)) && matchEmployeeName(typed, read.roster).kind !== "confirm") {
+      employee = { name: typed, salonIds: [] };
+      offRosterName = typed;
+      /* The card's off_roster_name line asks the manager to check this name: recorded, so a full name next turn corrects it. */
+      effects.nameQuestion ??= { offeredIds: [], typed, asksFullName: true };
     }
     else {
       /*
@@ -1778,7 +1931,7 @@ export async function proposeForm(
        * the refusal says what to ask (find_staff's own use-<name> line), so the model asks instead of retrying.
        */
       const shown = typed.replace(/\s+/g, " ").trim();
-      /* The answer bridge: this refusal asks for the full name, so it is recorded (the next message's full name confirms it). */
+      /* The answer bridge: this refusal offers "use <name>" or the full name, so it is recorded and the answer read next turn. */
       if (shown) effects.nameQuestion = { offeredIds: [], typed: shown, asksFullName: true };
       return {
         reason_code: "not_on_roster", error: "Give the employee_id find_staff returned for this person (call find_staff first). A name not on the roster goes on a form only after the manager answers the \"reply **use <name>**\" offer.",
@@ -1844,9 +1997,22 @@ export async function proposeForm(
    * another person's (`confirmed-spelling.ts`; the server's name question record, never the reply's text).
    */
   const confirmedKeys = read.kind === "read" && employee.id ? spellingKeysConfirmedFor(nameQuestionView(context, read.roster), employee.id) : [];
+  /*
+   * QA (16 Nov 2026, the live c219 run): after a recorded correction of this card's name (<T> to <C>), every turn of this
+   * request that named <T> is <C>'s own turn, so termination, level, payroll, dates and the account read it (it fell to
+   * resignation when only the card's name moved).
+   */
+  const aliases = nameCorrectedFrom !== null ? [nameCorrectedFrom] : [];
   const sameAsThisPerson = (named: string, person: string) =>
-    samePerson(named, person) || (samePerson(person, employee.name) && isConfirmedSpelling(named, confirmedKeys));
-  const personTurns = turnsFromThisPersonsRequest(asked, employee.name, { names: extractEmployeeNames, same: sameAsThisPerson }).filter((id) => {
+    samePerson(named, person) || (samePerson(person, employee.name) && (isConfirmedSpelling(named, confirmedKeys) || aliases.some((alias) => samePerson(named, alias))));
+  /*
+   * The request the card was made from under <T> (THIS_PERSONS_TURNS run for <T>) is this card's request too: the walk back
+   * from "For <C>" stops at a turn that also names someone else (the script's "your salon director <D>"), so it is added.
+   */
+  const aliasTurns = new Set(aliases.flatMap((alias) => turnsFromThisPersonsRequest(asked, alias, { names: extractEmployeeNames, same: samePerson })));
+  const ownTurns = new Set([...turnsFromThisPersonsRequest(asked, employee.name, { names: extractEmployeeNames, same: sameAsThisPerson }), ...aliasTurns]);
+  const personTurns = asked.ids.filter((id) => ownTurns.has(id)).filter((id) => {
+    if (aliasTurns.has(id)) return true;
     if (id === context.questionMessageId) return true;
     const said = asked.messages.find((message) => message.id === id)?.content ?? "";
     return mentionsPerson(said, employee.name, rosterNames) || !rosterNames.some((name) => !samePerson(name, employee.name) && mentionsPerson(said, name, rosterNames));
@@ -1863,7 +2029,9 @@ export async function proposeForm(
   const conversation = identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId);
   /* Item 5 follow-up (Pau, 16 Nov 2026): a near name the manager confirmed as this person, by the name question record. */
   const typedConfirmed = read.kind === "read" ? (employee.id ? confirmedKeys : spellingKeysConfirmedForName(nameQuestionView(context, read.roster), employee.name)) : [];
-  const cited = requestTurns(conversation, input.request_evidence, employee.name, rosterNames, "request_evidence", typedConfirmed);
+  /* A corrected card (name_corrected): turns that named the card's earlier name are this person's request. */
+  const correctedKeys = nameCorrectedFrom !== null ? [personKey(nameCorrectedFrom)] : [];
+  const cited = requestTurns(conversation, input.request_evidence, employee.name, rosterNames, "request_evidence", [...typedConfirmed, ...correctedKeys]);
   if (!cited.ok) {
     /* The "is <A'> <A> or <C>?" question is recorded like a Did-you-mean, so the manager's answer is read next turn. */
     if (cited.near && read.kind === "read") {
@@ -1951,7 +2119,7 @@ export async function proposeForm(
     }
   }
   /* Batch C (code-check #16): what the manager said that the account leaves out, as a fact for the model to put back. */
-  const evidencePerson = evidencePersonFor(employee.name, read);
+  const evidencePerson = evidencePersonFor(employee.name, read, aliases);
   /*
    * A WARNING LEVEL STATED FOR THIS REQUEST STAYS ON THE CARD (QA, 16 Nov 2026; c158 and c208; Pau's "every answer is used").
    * This card, by the server's records (never the reply's text): the same form, and the same person by roster id (by the
@@ -1960,8 +2128,11 @@ export async function proposeForm(
    * card or with "who is it for?" for this form. Before that turn (a remark like "she was written up before" earlier in
    * the chat) never counts; with no such record, only this message counts, as before.
    */
+  /* A card recorded under the corrected-from name (name_corrected <T> to <C>) is this card: the correction moved it to <C>. */
   const isThisCard = (record: CardRecord | null | undefined): record is CardRecord =>
-    Boolean(record && record.templateKey === template.key && (employee.id ? record.employeeKey === personKey(employee.id) : !record.employeeKey && record.nameKey === personKey(employee.name)));
+    Boolean(record && record.templateKey === template.key && (
+      (employee.id ? record.employeeKey === personKey(employee.id) : !record.employeeKey && record.nameKey === personKey(employee.name)) ||
+      (!record.employeeKey && aliases.some((alias) => record.nameKey === personKey(alias)))));
   const requestStarts = new Set([
     ...(context.cardRecords ?? []).filter(isThisCard).map((record) => record.messageId),
     ...(context.personAskedRecords ?? []).filter((record) => record.templateKey === template.key).map((record) => record.messageId),
@@ -1973,7 +2144,7 @@ export async function proposeForm(
   if (whatHappened && ACCOUNT_FORMS.has(template.key)) {
     /* A message that is only a level or payroll answer (the model's evidence quotes the whole message) is not the incident's account. */
     const answerOnly = new Set(
-      [answerEvidence(context, input.level_evidence, "request", evidencePerson, { requestTurnIds }), answerEvidence(context, input.payroll_evidence, { card: employee.name }, evidencePerson)].flatMap((check) => (check.ok && check.wholeMessage ? [check.turnId] : [])),
+      [answerEvidence(context, input.level_evidence, "request", evidencePerson, { requestTurnIds }), answerEvidence(context, input.payroll_evidence, { card: employee.name, aliases }, evidencePerson)].flatMap((check) => (check.ok && check.wholeMessage ? [check.turnId] : [])),
     );
     const accountWords = asked.messages
       .filter((message) => (sourceIds.includes(message.id ?? "") || citedRequestIds.includes(message.id ?? "")) && !answerOnly.has(message.id ?? ""))
@@ -2071,7 +2242,20 @@ export async function proposeForm(
    */
   const caOnlyFields = template.key === appConfig().formKeys.corrective;
   const askedPayroll = (input.payroll_deduct === "yes" || input.payroll_deduct === "no") ? input.payroll_deduct : null;
-  const payrollCheck = caOnlyFields && askedPayroll ? answerEvidence(context, input.payroll_evidence, { card: employee.name }, evidencePerson) : null;
+  /*
+   * QA (16 Nov 2026, the Runner's live set on 1a53042: "and payroll"): payroll stated in the message that asked for THIS
+   * card (the turn its card record answered: "I need a written CA, payroll deduct $20") stays on it, as a stated level does
+   * (c158), a corrected card's request under its earlier name included. A later answer still belongs only to the card it
+   * answered (QA's PR 1c: an older "yes" never reaches "another ca for <name>").
+   */
+  const payrollCheck = caOnlyFields && askedPayroll
+    ? (() => {
+        const byCard = answerEvidence(context, input.payroll_evidence, { card: employee.name, aliases }, evidencePerson);
+        if (byCard.ok || !requestStart) return byCard;
+        const byRequest = answerEvidence(context, input.payroll_evidence, "request", evidencePerson, { requestTurnIds: [requestStart.id] });
+        return byRequest.ok && byRequest.turnId === requestStart.id ? byRequest : byCard;
+      })()
+    : null;
   let payroll: "yes" | "no" | null = askedPayroll && payrollCheck?.ok ? askedPayroll : null;
   const typedAmount = typeof input.payroll_amount === "string" && /\d/.test(input.payroll_amount) ? input.payroll_amount.replace(/[^\d.]/g, "") : null;
   /* The amount the manager stated, read as today reads it (`payrollAmountFromConversation`) when the model left it out. */
@@ -3412,6 +3596,8 @@ export async function openForm(context: ToolContext, effects: ToolEffects, input
   try {
     const { loaded } = await authorizeInstance(context.request, id, "view");
     const instance = loaded.instance;
+    const closeSpelled = instance.employeeName ? await closeSpellingRefusal(context, effects, instance.employeeName) : null;
+    if (closeSpelled) return closeSpelled;
     effects.formOpened = { instanceId: instance.id, templateName: instance.templateName, revisesInstanceId: null };
     return {
       opened: true,
