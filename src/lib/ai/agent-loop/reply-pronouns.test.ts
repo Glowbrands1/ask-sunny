@@ -42,6 +42,12 @@ describe("withoutPersonPronouns", () => {
     expect(withoutPersonPronouns("Since you've already talked to her, a Verbal Warning fits.", "Tamsin").text).toBe("Since you've already talked to Tamsin, a Verbal Warning fits.");
     expect(withoutPersonPronouns("Print it and walk through it with her.", "Tamsin").text).toBe("Print it and walk through it with Tamsin.");
   });
+  it("leaves a pronoun whose sentence names another person first (Runner 2's c210 T2, c020 T3; invented names)", () => {
+    expect(withoutPersonPronouns("Those edits name **Juno Paxton** and her figures (24 tans), so none of that is on this card.", "Tamsin", ["Juno Paxton"]).text)
+      .toBe("Those edits name **Juno Paxton** and her figures (24 tans), so none of that is on this card.");
+    expect(withoutPersonPronouns("**Observation of Offense:** She completed onboarding with new hire Juno Paxton on 9-28-26.", "Tamsin", ["Juno Paxton"]).text)
+      .toBe("**Observation of Offense:** Tamsin completed onboarding with new hire Juno Paxton on 9-28-26.");
+  });
   it("leaves a reply with no pronoun alone", () => {
     const plain = "Here's the Corrective Action Form for **Tamsin**. Tamsin's shift was on 11/14.";
     expect(withoutPersonPronouns(plain, "Tamsin")).toEqual({ text: plain, replaced: 0 });

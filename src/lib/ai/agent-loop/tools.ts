@@ -1813,6 +1813,25 @@ export async function cardPersonReplyName(context: ToolContext): Promise<string 
   return replyNameFor(name, roster, mentioned, row?.id ?? null);
 }
 
+/**
+ * The other people named around this reply, for the pronoun pass's sentence rule (`reply-pronouns.ts`): roster people the
+ * reply or the manager's message names (full or first name), and the names the app's name reader reads in the manager's
+ * message, other than the person the reply is about.
+ */
+export async function otherPeopleNamed(context: ToolContext, reply: string, person: string): Promise<string[]> {
+  const read = await rosterFor(context.actor.scope);
+  const roster = read.kind === "read" ? read.roster : [];
+  const rosterNames = roster.map(displayName);
+  const own = (name: string) => samePerson(name, person) || name.trim().toLowerCase() === person.trim().toLowerCase() || person.toLowerCase().split(/\s+/).includes(name.trim().toLowerCase());
+  const named = [
+    ...rosterNames.filter((name) => mentionsPerson(reply, name, rosterNames) || mentionsPerson(context.question, name, rosterNames)),
+    ...roster.flatMap((row) => [row.firstName, row.preferredFirstName ?? ""]).filter((first) => first && holdsPhrase(reply, first)),
+    ...extractEmployeeNames(context.question),
+  ];
+  const ownRow = roster.find((row) => fullNamesOf(row).some((full) => samePerson(full, person)) || [row.firstName, row.preferredFirstName].some((first) => first && first.toLowerCase() === person.trim().toLowerCase()));
+  return [...new Set(named.filter((name) => !own(name) && !(ownRow && (fullNamesOf(ownRow).some((full) => samePerson(full, name)) || [ownRow.firstName, ownRow.preferredFirstName].includes(name)))))];
+}
+
 /** edit_form's results name the form's person too: reply_name for the form that was written (`replyNameFor`). */
 export async function withEditReplyName(context: ToolContext, effects: ToolEffects, result: ToolResult): Promise<ToolResult> {
   const record = result as { error?: unknown; revision_draft?: { id?: unknown } };

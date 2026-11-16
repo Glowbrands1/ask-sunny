@@ -45,7 +45,9 @@ function quotedSpans(text: string): Array<[number, number]> {
 
 /** The sentence around an offset (to read a field word before "they"). */
 function sentenceBefore(text: string, at: number): string {
-  const start = Math.max(text.lastIndexOf(".", at - 1), text.lastIndexOf("?", at - 1), text.lastIndexOf("!", at - 1), text.lastIndexOf("\n", at - 1));
+  // A full stop between digits or inside a date/number ("9.28", "1.5") does not end the sentence.
+  const ends = [...text.slice(0, at).matchAll(/[.?!](?!\d)|\n/g)];
+  const start = ends.length > 0 ? ends.at(-1)!.index! : -1;
   return text.slice(start + 1, at);
 }
 
@@ -63,11 +65,21 @@ function singularAfterThey(rest: string): string {
  * The reply with every pronoun for the person replaced by `name`, and how many were replaced. `name` is the turn's one
  * reply_name; with none or several, the caller does not call this.
  */
-export function withoutPersonPronouns(reply: string, name: string): { text: string; replaced: number } {
+export function withoutPersonPronouns(reply: string, name: string, others: readonly string[] = []): { text: string; replaced: number } {
   const display = name.trim();
   if (!display) return { text: reply, replaced: 0 };
   const quoted = quotedSpans(reply);
-  const inQuote = (at: number) => quoted.some(([from, to]) => at >= from && at < to);
+  /*
+   * Runner 2's c210 T2: "those edits name <M> and her figures" — "her" is <M>'s. A pronoun whose sentence names another
+   * person before it is left as written (it may be theirs); the card's person named first ("She completed onboarding
+   * with new hire <M>") is still replaced.
+   */
+  const otherKeys = others.map((other) => other.trim().toLowerCase()).filter((other) => other && other !== display.toLowerCase());
+  const namesAnother = (at: number) => {
+    const before = sentenceBefore(reply, at).toLowerCase();
+    return otherKeys.some((other) => new RegExp(`(?<![\\p{L}'-])${other.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}-])`, "u").test(before));
+  };
+  const inQuote = (at: number) => quoted.some(([from, to]) => at >= from && at < to) || namesAnother(at);
   const edits: Array<{ from: number; to: number; text: string }> = [];
 
   for (const match of reply.matchAll(ALWAYS)) {

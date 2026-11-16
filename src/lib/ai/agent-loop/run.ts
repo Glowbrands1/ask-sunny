@@ -38,6 +38,7 @@ import {
   listStaffTool,
   findPastForms,
   cardPersonReplyName,
+  otherPeopleNamed,
   findStaff,
   manualFor,
   turnManual,
@@ -1078,7 +1079,8 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
    */
   const pronounName = replyNames.size === 1 ? [...replyNames][0]! : replyNames.size === 0 && text ? await cardPersonReplyName(context).catch(() => null) : null;
   if (pronounName && text) {
-    const named = withoutPersonPronouns(text, pronounName);
+    const others = await otherPeopleNamed(context, text, pronounName).catch(() => [] as string[]);
+    const named = withoutPersonPronouns(text, pronounName, others);
     text = named.text;
     pronounsReplaced = named.replaced;
   }
