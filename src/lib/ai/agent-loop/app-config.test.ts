@@ -37,7 +37,9 @@ import { rulesBookText } from "./rules-book";
  *
  * Re-taken on purpose on 16 Nov 2026 (never guess, QA): a Replies line (never guess a pronoun) and a Which form line
  * (pasted text with no ask gets one question) were added, and the termination-offense line now says "the manager tells
- * in their own words". All read the same under every config; nothing else changed.
+ * in their own words". All read the same under every config; nothing else changed. The same day (Pau): the pronoun line
+ * became "the employee by first name every time" (full names when two share a first name), and title_differs' template
+ * says <first name> instead of <them>.
  */
 
 const fixture = (name: string): string => readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), "utf8");

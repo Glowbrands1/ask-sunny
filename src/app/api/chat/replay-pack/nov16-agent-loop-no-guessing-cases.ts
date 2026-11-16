@@ -23,9 +23,10 @@ import { evidenceFrom, lastResult, loopStandIn, type LoopDecision, type LoopView
 
 const FLAG = "AGENT_LOOP_ENABLED";
 const REPORT = "The Runner's c219 detail (16 Nov 2026): T1 promised a termination Corrective Action from a pasted script; T2 guessed \"he/his\"";
-const PRONOUN_RULE = "Never guess a pronoun for an employee";
+const FIRST_NAME_RULE = "call each employee by their FIRST name every time";
 const PASTED_RULE = "When the manager has not said what they want made";
-const GUESSED = /\b(?:he|him|his|she|her|hers)\b/i;
+/* Pau (16 Nov 2026): the employee by first name every time; no he/she/they for them. */
+const PRONOUN = /\b(?:he|him|his|she|her|hers|they|them|their|theirs)\b/i;
 const SCRIPT =
   "Lysa, this meeting is about the text you sent your salon director Juno Paxton on 11/3. It was disrespectful. Your employment with us is terminated, effective 11/5. Please return your keys; your final paycheck will be mailed.";
 
@@ -60,8 +61,8 @@ export const NOV16_AGENT_LOOP_NO_GUESSING_CASES: ReplayCase[] = [
   },
   {
     id: "nov16-no-guessing-no-pronoun-the-manager-never-used",
-    title: "Never guess a pronoun: \"exit form for rowan kestrel, last day 11/28\" (no pronoun anywhere): the reply names Rowan Kestrel and never says he/his/she/her",
-    report: REPORT,
+    title: "First name every time (Pau, 16 Nov 2026): \"exit form for rowan kestrel, last day 11/28\": the reply calls the employee Rowan and never he/him/his/she/her/they/them/their; the card keeps the full name",
+    report: `${REPORT}; Pau's rule: the employee by first name every time`,
     status: "fixed",
     fixFlags: [FLAG],
     async run(t) {
@@ -70,14 +71,41 @@ export const NOV16_AGENT_LOOP_NO_GUESSING_CASES: ReplayCase[] = [
       const standIn = loopStandIn((view): LoopDecision => {
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "rowan kestrel" } };
         if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "stc-exit", employee_id: "e-4", exit_type: "resignation", effective_date: "11/28", exit_evidence: { ...evidenceFrom(view, "exit form for rowan kestrel"), kind: "asks_for_exit_form" } } };
-        return { text: "Here's the Resignation/Exit Form for **Rowan Kestrel**. Their last day is 11/28; tell me if Rowan is eligible for rehire." };
+        return { text: "Here's the Resignation/Exit Form for Rowan. Rowan's last day worked: November 28, 2026. Filed as a resignation from your wording; say if it was a termination." };
       });
       t.loopModel!(standIn);
       const thread = t.thread();
       const reply = await thread.say("exit form for rowan kestrel, last day 11/28");
-      expect(shownRules(standIn.views), "the model is not taught never to guess a pronoun").toContain(PRONOUN_RULE);
-      expect(reply.content, `a pronoun the manager never used:\n${reply.content}`).not.toMatch(GUESSED);
-      expect(reply.content).toContain("Rowan Kestrel");
+      expect(shownRules(standIn.views), "the model is not taught the first-name rule").toContain(FIRST_NAME_RULE);
+      expect(reply.content, `a pronoun for the employee:\n${reply.content}`).not.toMatch(PRONOUN);
+      expect(reply.content).toMatch(/\bRowan\b/);
+      expect(thread.proposal?.employeeName, "the card's name is no longer the full name").toBe("Rowan Kestrel");
+    },
+  },
+  {
+    id: "nov16-no-guessing-two-people-sharing-a-first-name-get-full-names",
+    title: "First name every time, the exception (Pau): with Rowan Kestrel and Rowan Pike in the same conversation (\"exit form for rowan kestrel, last day 11/28, rowan pike will cover the shift\"), the reply calls each by full name, never a bare \"Rowan\"",
+    report: `${REPORT}; Pau's rule: two people sharing a first name are both called by full name`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-15T22:40:00Z"));
+      t.directory([...STAFF, { id: "e-8", firstName: "Rowan", lastName: "Pike", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" }]);
+      t.as("salon_director", KEARNEY);
+      const standIn = loopStandIn((view): LoopDecision => {
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "rowan kestrel" } };
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "stc-exit", employee_id: "e-4", exit_type: "resignation", effective_date: "11/28", exit_evidence: { ...evidenceFrom(view, "exit form for rowan kestrel"), kind: "asks_for_exit_form" } } };
+        return { text: "Here's the Resignation/Exit Form for Rowan Kestrel. Rowan Kestrel's last day worked: November 28, 2026; Rowan Pike covers the shift. Filed as a resignation from your wording; say if it was a termination." };
+      });
+      t.loopModel!(standIn);
+      const thread = t.thread();
+      const reply = await thread.say("exit form for rowan kestrel, last day 11/28, rowan pike will cover the shift");
+      expect(shownRules(standIn.views), "the model is not taught the shared-first-name exception").toContain("share a first name, use the full name for both");
+      const plain = reply.content.replace(/\*\*/g, "");
+      expect(plain, `a bare "Rowan" where two Rowans are in the conversation:\n${reply.content}`).not.toMatch(/\bRowan\b(?!['’]?s?\s+(?:Kestrel|Pike)|\s+(?:Kestrel|Pike))/);
+      expect(plain).toMatch(/Rowan Kestrel/);
+      expect(plain, `a pronoun for the employee:\n${reply.content}`).not.toMatch(PRONOUN);
     },
   },
   {
