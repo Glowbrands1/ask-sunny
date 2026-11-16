@@ -2840,7 +2840,13 @@ export async function proposeForm(
    * it in this card's request words, or today's topic reader fits it to this card's own account; never one copied from
    * another form in the chat. Otherwise the heading is left off the card (not_on_card: policy_not_for_this_card).
    */
-  const policyNotForThisCard = template.key !== appConfig().formKeys.corrective && policyHeading !== null && !managerNamed && !(topicFits ?? []).some((heading) => headingKey(heading) === headingKey(policyHeading!));
+  /*
+   * Narrowed (QA, 16 Nov 2026, CI on 65382449: nov16-pr6-one-call-coaching-keeps-its-policy, an earlier ruling): a heading
+   * the model chose because it fits THIS card's account stays. What is left off is a heading COPIED from another form's
+   * card in this chat (its card record's policy line), unnamed for this card and not fitted to it by the topic reader.
+   */
+  const copiedFromAnotherForm = policyHeading !== null && (context.cardRecords ?? []).some((record) => record.templateKey !== template.key && typeof record.policyLine === "string" && record.policyLine.toLowerCase().includes(policyHeading!.toLowerCase()));
+  const policyNotForThisCard = template.key !== appConfig().formKeys.corrective && policyHeading !== null && copiedFromAnotherForm && !managerNamed && !(topicFits ?? []).some((heading) => headingKey(heading) === headingKey(policyHeading!));
   /* The heading is left off; an "Other — <topic>" beside it (after "; ") stays, as #1068's rules decide it. */
   if (policyNotForThisCard) policyLine = policyLine && policyLine.includes("; ") ? policyLine.split("; ").slice(1).join("; ") : null;
   const otherPart = askedOther || (/^other\b/i.test(askedPolicy) ? askedPolicy : "");
