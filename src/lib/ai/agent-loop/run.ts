@@ -41,6 +41,7 @@ import {
   otherPeopleNamed,
   withLookupReplyName,
   findStaff,
+  LEVEL_QUESTION,
   manualFor,
   turnManual,
   type TurnReads,
@@ -461,7 +462,7 @@ function buildAgentLoopTools(config: AppConfig) {
   {
     name: "edit_form",
     description:
-      "Change a form. The form's date is a direct field edit, never the reviser: values form_date (MM/DD/YYYY), the date the manager typed for this request. Leave values out to have the form's own reviser apply the manager's latest message (details, the policy line); give values (field key to exact text) only for text the manager dictated word for word. A warning level or payroll answer (\"make it a written\", \"yes payroll, $20\") is a targeted edit: values warning_type (verbal/written), payroll_deduct (yes/no), payroll_deduct_amount only. A finalized form is never changed: this opens a new draft revising it and applies the change there.",
+      "Change a form. The form's date is a direct field edit, never the reviser: values form_date (MM/DD/YYYY), the date the manager typed for this request. Leave values out to have the form's own reviser apply the manager's latest message (details, the policy line); give values (field key to exact text) only for text the manager dictated word for word. A warning level or payroll answer (\"make it a written\", \"yes payroll, $<amount>\") is a targeted edit: values warning_type (verbal/written), payroll_deduct (yes/no), payroll_deduct_amount only. A finalized form is never changed: this opens a new draft revising it and applies the change there.",
     input_schema: object(
       {
         instance_id: { type: "string" },
@@ -988,7 +989,37 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
          * Only on a second miss of a stated value: the reply says plainly what is not on the card (today's no-op honesty
          * pattern). A reply that only left the Policy line out keeps the model's words (the hand-back's, else the first).
          */
-        if (offer.length > 0 && cardShownNow()) text = `That change isn't on the card yet: ${offer.join("; ")}. Tell me again and I'll update the card.`;
+        /*
+         * QA's pre-launch live re-test (16 Nov 2026, E r2): the reply claimed "payroll amount ($20)" when nobody in the chat
+         * had typed an amount, and this line echoed it back ("Tell me again"). A value the manager typed in this chat is
+         * still said back; one they never typed is never echoed: the reply asks that field's question instead. The value
+         * is read from the app's own mismatch label ("<field> (<value>)"); a payroll answer and amount are one question.
+         */
+        const managerSaid = [...input.history.filter((turn) => turn.role === "user").map((turn) => String(turn.content ?? "")), input.question].map((said) => withoutMessageIdTags(said)).join("\n");
+        const valueOf = (field: string) => /\(([^()]*)\)$/.exec(field)?.[1] ?? "";
+        const typedNumbers = new Set(managerSaid.replace(/[^\d.]/g, " ").split(/\s+/).filter((n) => n !== "" && !Number.isNaN(Number(n))).map(Number));
+        const flat = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+        const typedByManager = (field: string): boolean => {
+          const value = valueOf(field);
+          if (/^payroll amount /.test(field)) return typedNumbers.has(Number(value.replace(/[^\d.]/g, "")));
+          if (/^date /.test(field)) {
+            const [month, day] = value.split("/").map(Number);
+            return [...managerSaid.matchAll(/\b(\d{1,2})[/-](\d{1,2})\b/g)].some((found) => Number(found[1]) === month && Number(found[2]) === day);
+          }
+          if (/^policy /.test(field)) return true;
+          return ` ${flat(managerSaid)} `.includes(` ${flat(value)} `);
+        };
+        const payrollField = (field: string) => /^payroll (?:deduct|amount) /.test(field);
+        const payrollUntyped = offer.some((field) => payrollField(field) && !typedByManager(field));
+        const untyped = offer.filter((field) => (payrollField(field) ? payrollUntyped : !typedByManager(field)));
+        const questionFor = (field: string) =>
+          payrollField(field) ? "Is payroll deduct applicable, and how much?"
+            : /^warning level /.test(field) ? LEVEL_QUESTION
+              : /^date /.test(field) ? "What date goes on the form?"
+                : `Which ${appConfig().locationWord} is this for?`;
+        const sayBack = offer.filter((field) => !untyped.includes(field));
+        const asks = [...new Set(untyped.map(questionFor))];
+        if (offer.length > 0 && cardShownNow()) text = [...(sayBack.length > 0 ? [`That change isn't on the card yet: ${sayBack.join("; ")}. Tell me again and I'll update the card.`] : []), ...asks].join(" ");
         else if (again) text = withoutPolicyLine(again);
         else if (still.length > 0) text = withoutPolicyLine(text);
       }

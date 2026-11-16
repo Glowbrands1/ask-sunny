@@ -18,7 +18,11 @@ import { evidenceFrom, lastResult, loopStandIn, type LoopDecision, type LoopView
 const FLAG = "AGENT_LOOP_ENABLED";
 const REPORT = "QA's targeted re-run (16 Nov 2026), fix batch item 7, c163: a bare \"yes\" after \"Payroll deduct and warning level aren't set\" set payroll";
 const UNSET_BOTH = "Payroll deduct and warning level aren't set; tell me if they apply.";
-const ASK = "Is payroll deduct applicable for **Remy Calder**? Yes or no.";
+/*
+ * Changed on purpose (QA's pre-launch re-test, E r2, 16 Nov 2026): the reply now asks which the bare answer is for and,
+ * for payroll, the amount, instead of payroll alone; the card keeps asking both, so the next answer must say which.
+ */
+const ASK = "Which does that answer: payroll deduct, the warning level, or both? If payroll deduct applies for **Remy Calder**, how much?";
 const offline = process.env.AGENT_LOOP_LIVE !== "1";
 
 function start(t: ReplayContext) {
@@ -49,7 +53,7 @@ function liveModel() {
 export const NOV16_FIX_BATCH_BARE_YES_PAYROLL_CASES: ReplayCase[] = [
   {
     id: "nov16-fix-batch-7-bare-yes-after-unset-both-sets-no-payroll-c163",
-    title: "Fix batch item 7 (c163): after \"Payroll deduct and warning level aren't set; tell me if they apply.\", a bare \"yes\" passed whole as payroll_evidence sets no payroll (payroll_not_stated, answer_to_two_questions) and the reply asks \"Is payroll deduct applicable for **Remy Calder**? Yes or no.\"; the \"yes\" to that question sets it",
+    title: "Fix batch item 7 (c163): after \"Payroll deduct and warning level aren't set; tell me if they apply.\", a bare \"yes\" passed whole as payroll_evidence sets no payroll (payroll_not_stated, answer_to_two_questions) and the reply asks which it answers and the amount; \"payroll deduct, $15\" then sets it",
     report: REPORT,
     status: "fixed",
     fixFlags: [FLAG],
@@ -66,8 +70,9 @@ export const NOV16_FIX_BATCH_BARE_YES_PAYROLL_CASES: ReplayCase[] = [
       expect(out.card?.payroll_deduct ?? null, `a bare "yes" to two questions set payroll:\n${JSON.stringify(out)}`).toBeNull();
       expect(out.reason_code).toBe("payroll_not_stated");
       expect(out.payroll_evidence).toBe("answer_to_two_questions");
-      expect(reply.content, "the reply does not ask payroll alone").toContain(ASK);
-      await thread.say("yes");
+      expect(reply.content, "the reply does not ask which, and the amount").toContain(ASK);
+      // Changed on purpose (E r2): a second bare "yes" still answers two questions; an answer that says which is kept.
+      await thread.say("payroll deduct, $15");
       const answered = proposeOutputs(model.views).at(-1)!;
       expect(answered.reason_code, JSON.stringify(answered)).toBeUndefined();
       expect(answered.card?.payroll_deduct, "the yes to the payroll question alone was not kept").toBe("yes");
