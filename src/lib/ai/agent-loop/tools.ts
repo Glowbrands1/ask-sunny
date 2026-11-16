@@ -10,7 +10,7 @@ import { appConfig } from "./app-config";
 import { isoDate, monthDayToIso, readDates, sameDate, withoutDates } from "./dates";
 import { candidateNameWords, chatFormsActor } from "@/lib/forms/chat-form-records";
 import { holdsPhrase, identifiedTurns, verifyEvidence, withoutMessageIdTags, type IdentifiedTurn } from "./evidence";
-import { answeredNameQuestions, answerNamesSomeoneElse, isConfirmedSpelling, latestTurnAnswersFor, latestTurnConfirms, latestTurnKeepsOrUsesTyped, latestTurnKeepsTyped, spellingKeysConfirmedFor, spellingKeysConfirmedForName, type NameQuestionView } from "./confirmed-spelling";
+import { answeredNameQuestions, answerNamesSomeoneElse, everKeptOrUsedTyped, isConfirmedSpelling, latestTurnAnswersFor, latestTurnConfirms, latestTurnKeepsOrUsesTyped, latestTurnKeepsTyped, spellingKeysConfirmedFor, spellingKeysConfirmedForName, type NameQuestionView } from "./confirmed-spelling";
 import { AFFIRMATIVE, displayName, editDistance, matchEmployeeName, nameConfirmationQuestion, readNameConfirmation, type RosterEmployee } from "@/lib/forms/employee-match";
 import { offRosterTyped } from "@/lib/forms/roster-only-names";
 import { parseFormDocument } from "@/lib/forms/document";
@@ -740,7 +740,7 @@ const ALSO_ASK_ACCOUNT = "If so, tell me what happened.";
 export const FIND_STAFF_LIMIT = 10;
 
 export async function findStaff(context: ToolContext, input: { name?: unknown; person_evidence?: unknown }, effects?: ToolEffects): Promise<ToolResult> {
-  const typed = typeof input.name === "string" ? input.name.trim() : "";
+  const typed = typeof input.name === "string" ? withoutJobTitle(input.name) : "";
   if (typed === "") return { reason_code: "missing_input", error: "Give the name to look for." };
   if (effects) effects.staffLookedUp = true;
   const read = await rosterFor(context.actor.scope);
@@ -750,7 +750,7 @@ export async function findStaff(context: ToolContext, input: { name?: unknown; p
    * QA's live test a4 (ruling A): this turn keeps this typed name as typed, answering this chat's recorded name question
    * ("no", or "use <typed>"): settled from the record. Never ask the Did-you-mean or the use-<name> offer again.
    */
-  if (typed && latestTurnKeepsOrUsesTyped(nameQuestionView(context, read.roster), typed)) {
+  if (typed && (latestTurnKeepsOrUsesTyped(nameQuestionView(context, read.roster), typed) || typedNameSettled(context, read.roster, typed))) {
     /* QA (16 Nov 2026): what the reply calls this person, decided by code (`replyNameFor`), as on every card result. */
     return { matches: [], kept_as_typed: typed, reply_name: replyNameFor(typed, read.roster, extractEmployeeNames(managerTurns(context)), null), note: `The manager kept "${typed}" as typed (their answer to your question). Do not ask again: propose the card now with employee_name "${typed}", with this request's account from the earlier turns.` };
   }
@@ -783,6 +783,8 @@ export async function findStaff(context: ToolContext, input: { name?: unknown; p
     if (effects) effects.nameQuestion = { offeredIds: found.slice(0, 5).map((row) => row.id), typed: spelled };
     return {
       matches: [],
+      reason_code: "close_spelling_not_confirmed",
+      ask_exactly: nameConfirmationQuestion(spelled, names),
       did_you_mean: found.slice(0, 5).map((row) => staffRow(row)),
       note: `The manager typed "${spelled}", not this name. Ask the manager, in these words: ${nameConfirmationQuestion(spelled, names)}`,
       also_ask_if_no_account: ALSO_ASK_ACCOUNT,
@@ -830,6 +832,8 @@ export async function findStaff(context: ToolContext, input: { name?: unknown; p
       if (effects) effects.nameQuestion = { offeredIds: close.candidates.slice(0, 5).map((candidate) => candidate.employee.id), typed };
       return {
         matches: [],
+        reason_code: "close_spelling_not_confirmed",
+        ask_exactly: nameConfirmationQuestion(typed, names),
         did_you_mean: close.candidates.slice(0, 5).map((candidate) => staffRow(candidate.employee)),
         note: `Not on the roster as typed. Ask the manager, in these words: ${nameConfirmationQuestion(typed, names)}`,
         also_ask_if_no_account: ALSO_ASK_ACCOUNT,
@@ -868,6 +872,10 @@ export async function findStaff(context: ToolContext, input: { name?: unknown; p
         if (!context.formChosen && !effects?.formChosen) {
           return { reason_code: "not_on_roster", matches: [], not_on_roster: shown, form_not_chosen: true, note: `Not on the ${staffSystem()} staff list. No form is chosen yet: if the manager has not said what they want made, your one question is that (ending with "?"). Ask about the name only once a form is chosen (propose_form will give the question).` };
         }
+        /* QA (16 Nov 2026, c220/c224): a full name the manager typed, a close spelling of nobody, is taken as typed. */
+        if (fullNameTakenAsTyped(context, read.roster, shown)) {
+          return { reason_code: "not_on_roster", matches: [], not_on_roster: shown, staff_list: context.actor.scope.level === "salon" ? `your ${locationWord()}'s` : "the", note: `Not on the ${staffSystem()} staff list. Propose the card now with employee_name "${shown}" as typed, and say so as the rules book's Card replies teach.` };
+        }
         if (effects) effects.nameQuestion = { offeredIds: [], typed: shown, asksFullName: true };
         return { reason_code: "not_on_roster", matches: [], not_on_roster: shown, ask_exactly: offRosterNameQuestion(shown), note: `Not on the ${staffSystem()} staff list. Ask the manager, in these words: ${offRosterNameQuestion(shown)}` };
       }
@@ -901,6 +909,8 @@ export async function findStaff(context: ToolContext, input: { name?: unknown; p
       if (effects) effects.nameQuestion = { offeredIds: [only.id], typed };
       return {
         matches: [],
+        reason_code: "close_spelling_not_confirmed",
+        ask_exactly: nameConfirmationQuestion(typed, [displayName(only)]),
         did_you_mean: [staffRow(only)],
         note: `Not a whole first name on the roster. Ask the manager, in these words: ${nameConfirmationQuestion(typed, [displayName(only)])}`,
         also_ask_if_no_account: ALSO_ASK_ACCOUNT,
@@ -1530,6 +1540,8 @@ function cardNameCorrection(
     effects.nameQuestion = { offeredIds: close.candidates.slice(0, 5).map((candidate) => candidate.employee.id), typed };
     return { refusal: { reason_code: "name_correction_did_you_mean", error: `${typed} is not on the staff list as typed. The card was not changed. Ask the manager, in these words: ${nameConfirmationQuestion(typed, candidates.slice(0, 5))}` } };
   }
+  /* QA (16 Nov 2026, c224): a full name the manager typed as their own correction, a close spelling of nobody, goes on as typed. */
+  if (fullNameTakenAsTyped(context, roster, typed)) return { asTyped: true, from: cardName };
   /* The answer bridge: this refusal asks for "use <typed>" or the full name; recorded so the answer is read next turn. */
   effects.nameQuestion = { offeredIds: [], typed, asksFullName: true };
   return {
@@ -1538,6 +1550,47 @@ function cardNameCorrection(
       ask_exactly: offRosterNameQuestion(typed),
     },
   };
+}
+
+/**
+ * QA (16 Nov 2026, the 266 re-run's c220 and c224): a job title typed beside the name ("TC <name>", "<name> TC",
+ * "Tanning Consultant, <name>") is not part of it. The company's titles come from the app config; only a whole title
+ * at the start or end is taken off, and never the last word left.
+ */
+export function withoutJobTitle(typed: string): string {
+  let name = typed.replace(/\s+/g, " ").trim();
+  for (let pass = 0; pass < 3; pass += 1) {
+    const before = name;
+    for (const title of appConfig().jobTitles) {
+      const lead = new RegExp(`^(?:${title.source})[\\s,:-]+`, "i");
+      const tail = new RegExp(`[\\s,:-]+(?:${title.source})$`, "i");
+      const cut = name.replace(lead, "").replace(tail, "").trim();
+      if (cut !== "" && cut !== name) name = cut;
+    }
+    if (name === before) break;
+  }
+  return name;
+}
+
+/**
+ * A name that is settled for this chat (QA, 16 Nov 2026, c022 and c220): kept as typed in an earlier answer, or already
+ * the name on this chat's card for a person not on the roster (the card record's nameKey). It is never asked about again.
+ */
+function typedNameSettled(context: ToolContext, roster: readonly RosterEmployee[], typed: string): boolean {
+  if (everKeptOrUsedTyped(nameQuestionView(context, roster), typed)) return true;
+  return [context.cardOnScreen, context.earlierCard].some((card) => Boolean(card && !card.employeeKey && card.nameKey === personKey(typed)));
+}
+
+/**
+ * The general rule (QA, 16 Nov 2026, c220 and c224): a FULL name the manager typed (their own words hold it) that is
+ * nobody on the roster and not a close spelling of anyone on it is taken as typed, with the card's off-roster line.
+ * Only a close spelling of a roster person is asked about (ruling A); a single word still gets the use-<name> offer.
+ */
+function fullNameTakenAsTyped(context: ToolContext, roster: readonly RosterEmployee[], typed: string): boolean {
+  const name = typed.replace(/\s+/g, " ").trim();
+  if (words(name).length < 2 || namesAPlace(name) || isJobTitlePhrase(name)) return false;
+  if (rosterMatches(name, roster).length > 0 || matchEmployeeName(name, roster).kind === "confirm") return false;
+  return holdsPhrase(managerTurns(context), name);
 }
 
 /**
@@ -1932,7 +1985,7 @@ export async function proposeForm(
   if (read.kind === "read") {
     const id = typeof input.employee_id === "string" ? input.employee_id.trim() : "";
     const person = id ? read.roster.find((row) => row.id === id) : undefined;
-    const typed = typeof input.employee_name === "string" ? tidyTypedName(input.employee_name) : "";
+    const typed = typeof input.employee_name === "string" ? withoutJobTitle(tidyTypedName(input.employee_name)) : "";
     /*
      * HARD GUARD, A "NO" NEVER SEATS THE NAME (NEAR_MISS_QUESTION_RULES, parity gap #45): when the manager answered
      * "no" to this chat's own "Did you mean **<A>**?" or "Is this for **<A>**?", <A> is not put on the card.
@@ -1985,9 +2038,15 @@ export async function proposeForm(
      * name ("no" to "Did you mean <B>?", or "use <typed>" after the app offered it) keeps the name as typed. Settled from
      * the record, before the roster checks below that would refuse a close spelling of a roster person.
      */
-    else if (typed && !namesAPlace(typed) && latestTurnKeepsOrUsesTyped(nameQuestionView(context, read.roster), typed)) {
+    else if (typed && !namesAPlace(typed) && (latestTurnKeepsOrUsesTyped(nameQuestionView(context, read.roster), typed) || typedNameSettled(context, read.roster, typed))) {
       employee = { name: typed, salonIds: [] };
       offRosterName = typed;
+    }
+    /* QA (16 Nov 2026, c220/c224): a full name the manager typed, a close spelling of nobody on the roster, is taken as typed. */
+    else if (typed && !id && fullNameTakenAsTyped(context, read.roster, typed)) {
+      employee = { name: typed, salonIds: [] };
+      offRosterName = typed;
+      effects.nameQuestion ??= { offeredIds: [], typed, asksFullName: true };
     }
     else if (typed && !rosterMatches(typed, read.roster).length && !namesAPlace(typed) && offRosterTyped(typed, `for ${typed}`, read.roster.map(displayName)) && matchEmployeeName(typed, read.roster).kind !== "confirm") {
       employee = { name: typed, salonIds: [] };
