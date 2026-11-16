@@ -54,7 +54,7 @@ import { redactSensitiveDefaults } from "@/lib/ai/sensitive-defaults";
 import { expandPolicyQuery } from "@/lib/knowledge/policy-retrieval";
 import type { SourceCitation } from "@/types";
 import type { AccessScope, ChatFormProposal, ChatMessage, Role } from "@/types";
-import { personKey, type CardRecord, type NameQuestionRecord, type PersonAskedRecord, type TurnRecord } from "@/lib/ai/agent-loop/card-record";
+import { personKey, replyTurns, type CardRecord, type NameQuestionRecord, type PersonAskedRecord, type TurnRecord } from "@/lib/ai/agent-loop/card-record";
 
 /**
  * ============================================================================
@@ -385,6 +385,57 @@ function otherPersonNamed(said: string, person: EvidencePerson): boolean {
     if (own.includes(row)) return false;
     return [row.firstName, row.preferredFirstName].map((first) => (first ?? "").trim().toLowerCase()).filter((first) => first !== "" && !ownFirsts.has(first)).some((first) => new RegExp(`(?<![\\p{L}'-])${first.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}-])`, "u").test(lower));
   });
+}
+
+/**
+ * THE OPEN REQUEST (QA, 16 Nov 2026, the live re-test's dateedit and paycheck): the manager turns before this one that
+ * belong to the request this message finishes. Walking back, a manager turn belongs to it while the loop's turn that
+ * answered it was left OPEN (its trace record: nothing saved, no card; a "Which one?" or "Who is it for?" turn), and the
+ * walk stops at the first turn that did something, or that has no record. Oldest first. A finished request's turns never
+ * count; with no records, there is none (only this message, as before).
+ */
+export function openRequestTurns(context: Pick<ToolContext, "history" | "turnRecords">): ChatMessage[] {
+  const history = context.history as ChatMessage[];
+  /*
+   * A turn's record is found the way every loop record is (`replyTurns`: by the trace's message id, and by whatever else
+   * the record lookup matches on), keyed by the reply that turn wrote; never by comparing ids here.
+   */
+  const byReply = replyTurns(history, context.turnRecords ?? []);
+  const open: ChatMessage[] = [];
+  for (let at = history.length - 1; at >= 0; at -= 1) {
+    const turn = history[at]!;
+    if (turn.role !== "user") continue;
+    const reply = history.findIndex((later, index) => index > at && later.role === "assistant");
+    const nextUser = history.findIndex((later, index) => index > at && later.role === "user");
+    const record = reply > at && (nextUser < 0 || reply < nextUser) ? byReply.get(reply) : undefined;
+    if (!record || record.saved || record.card) break;
+    open.unshift(turn);
+  }
+  return open;
+}
+
+/**
+ * A level or payroll answer stated in this message, or in a turn of the open request this message finishes (the edit the
+ * request started with: "…, tick payroll deduct" → "the 11/10 one" → "the finalized one"). The same evidence rules as
+ * this message's own: the quote must be in that turn, and a turn naming another roster person is that person's.
+ */
+function answerEvidenceInOpenRequest(
+  context: Pick<ToolContext, "question" | "history" | "questionMessageId" | "turnRecords">,
+  evidence: unknown,
+  person?: EvidencePerson,
+): AnswerEvidence {
+  const now = answerEvidence(context, evidence, "this_message", person);
+  if (now.ok) return now;
+  const openIds = new Set(openRequestTurns(context).map((turn) => turn.id).filter(Boolean));
+  if (openIds.size === 0) return now;
+  const turns = identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId);
+  const check = verifyEvidence(evidence, turns);
+  if (!check.ok || !openIds.has(check.turn.id)) return now;
+  const said = withoutMessageIdTags(check.turn.content);
+  if (person && otherPersonNamed(said, person)) return { ok: false, reason: "other_person" };
+  const flat = (text: string) => withoutMessageIdTags(text).toLowerCase().replace(/\s+/g, " ").trim();
+  const quote = (evidence as { quote?: unknown } | null)?.quote;
+  return { ok: true, turnId: check.turn.id, wholeMessage: typeof quote === "string" && flat(quote) === flat(said) };
 }
 
 function answerEvidence(
@@ -3233,7 +3284,8 @@ export async function editForm(
         if (!(await import("@/lib/config/chat-quality-flags")).terminationStatedTicksEnabled() || !(await import("@/lib/forms/termination-word")).statesTerminationWordNow(context.question)) unstated.push(field);
         continue;
       }
-      const levelCheck = answerEvidence(context, input.level_evidence, "this_message", editPerson);
+      /* QA (16 Nov 2026): the level stated in the message that started this open request counts too. */
+      const levelCheck = answerEvidenceInOpenRequest(context, input.level_evidence, editPerson);
       /* Fix batch item 2: the quote must name the option the model chose ("final warning" names none). */
       const named = levelNamedInEvidence(input.level_evidence, kind);
       if (!levelCheck.ok || !named) {
@@ -3242,7 +3294,8 @@ export async function editForm(
       }
     } else if (field === "payroll_deduct") {
       const answer = /^\s*yes/i.test(value) ? "yes" : /^\s*no/i.test(value) ? "no" : null;
-      const payrollCheck = answerEvidence(context, input.payroll_evidence, "this_message", editPerson);
+      /* QA (16 Nov 2026, paycheck): "…, tick payroll deduct" → "which one?" → "the finalized one" keeps its payroll answer. */
+      const payrollCheck = answerEvidenceInOpenRequest(context, input.payroll_evidence, editPerson);
       if (!answer || !payrollCheck.ok) {
         unstated.push(field);
         unstatedCodes.set(field, { reason_code: "payroll_not_stated", evidence_reason: payrollCheck.ok ? "evidence_not_manager_turn" : payrollCheck.reason });
@@ -3344,9 +3397,15 @@ export async function editForm(
      * no card (its trace record; a "Which one?" or "Who is it for?" turn). A finished request's date ("…dated 11/3" on
      * another form) is never settable on the next request; with no record, only this message counts.
      */
-    const leftOpen = lastManagerTurn?.id ? (context.turnRecords ?? []).some((turn) => turn.messageId === lastManagerTurn.id && !turn.saved && !turn.card) : false;
+    /* The same record lookup as the open request's (`openRequestTurns`, through `replyTurns`). */
+    const leftOpen = lastManagerTurn ? openRequestTurns(context).includes(lastManagerTurn) : false;
     const previousManagerTurn = leftOpen ? lastManagerTurn : undefined;
-    const typedDates = [...readDates(context.question), ...readDates(String(previousManagerTurn?.content ?? ""))];
+    /*
+     * QA (16 Nov 2026, dateedit): a request can take more than one answer to finish ("the 11/10 one", then "the finalized
+     * one"): every turn of the open request counts, not only the one right before (`openRequestTurns`).
+     */
+    const requestTurnsOpen = openRequestTurns(context);
+    const typedDates = [...readDates(context.question), ...readDates(String(previousManagerTurn?.content ?? "")), ...requestTurnsOpen.flatMap((turn) => readDates(String(turn.content ?? "")))];
     /*
      * QA's design (15 Nov 2026): on an incident form (CA, coaching), form_date and incident_date after today are always
      * refused, with one question, however the message names them. Only the follow-up date and an exit's last day or
@@ -3628,7 +3687,11 @@ export async function editForm(
       const [year, month, day] = (iso ?? "").split("-").map(Number) as [number, number, number];
       if (iso && typedDates.some((typed) => sameDate(typed, { month, day, year }))) {
         documentDate = iso;
-        if (!readDates(context.question).some((typed) => sameDate(typed, { month, day, year }))) documentDateSaid = String(previousManagerTurn?.content ?? context.question);
+        /* The manager turn that holds the date (this one, the one before, or an earlier turn of the open request: QA, dateedit). */
+        if (!readDates(context.question).some((typed) => sameDate(typed, { month, day, year }))) {
+          const holder = [previousManagerTurn, ...[...requestTurnsOpen].reverse()].find((turn) => turn && readDates(String(turn.content ?? "")).some((typed) => sameDate(typed, { month, day, year })));
+          documentDateSaid = String(holder?.content ?? previousManagerTurn?.content ?? context.question);
+        }
         delete values.form_date;
       } else {
         /* QA's live finding: never handed to the drafting writer ("system fields are not drafted"); said plainly, with the fix. */
