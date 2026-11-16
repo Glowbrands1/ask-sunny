@@ -52,7 +52,7 @@ import { redactSensitiveDefaults } from "@/lib/ai/sensitive-defaults";
 import { expandPolicyQuery } from "@/lib/knowledge/policy-retrieval";
 import type { SourceCitation } from "@/types";
 import type { AccessScope, ChatFormProposal, ChatMessage, Role } from "@/types";
-import { personKey, type CardRecord, type NameQuestionRecord } from "@/lib/ai/agent-loop/card-record";
+import { personKey, type CardRecord, type NameQuestionRecord, type PersonAskedRecord } from "@/lib/ai/agent-loop/card-record";
 
 /**
  * ============================================================================
@@ -112,6 +112,9 @@ export interface ToolContext {
   readonly earlierCard?: CardRecord | null;
   /** Fix batch items 4 and 3: the "Did you mean" questions this chat's find_staff gave, from the server's record. */
   readonly nameQuestions?: readonly NameQuestionRecord[];
+  /** QA (16 Nov 2026; c158, c208): every card this chat's loop made, and every "who is it for?" it asked, oldest first. */
+  readonly cardRecords?: readonly CardRecord[];
+  readonly personAskedRecords?: readonly PersonAskedRecord[];
 }
 
 /** The recorded name questions and the roster, for `confirmed-spelling.ts`. */
@@ -365,6 +368,8 @@ function answerEvidence(
   evidence: unknown,
   scope: "this_message" | "request" | { readonly card: string },
   person?: EvidencePerson,
+  /** QA (16 Nov 2026; c158): with scope "request", the earlier manager turns of THIS request a level may be quoted from. */
+  options: { readonly requestTurnIds?: readonly string[] } = {},
 ): AnswerEvidence {
   const turns = identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId);
   const check = verifyEvidence(evidence, turns, scope === "this_message" ? { thisTurnOnly: true } : {});
@@ -378,7 +383,14 @@ function answerEvidence(
     // An evidence turn that names another roster person (full, preferred or first name) is that person's message, not this card's.
     if (otherPersonNamed(said, person)) return { ok: false, reason: "other_person" };
   }
-  if (scope === "request" && !current) {
+  if (scope === "request" && !current && options.requestTurnIds?.includes(check.turn.id)) {
+    /*
+     * QA (16 Nov 2026; c158, Pau's "every answer is used"): a turn of THIS request (this person's own request turns, from
+     * the turn the app answered with this form's card or its "who is it for?", by the server's records) is where the level
+     * was stated: "I need to create a verbal corrective action form", then the name. Another person's turn was refused
+     * above; a turn before the request started, or before a new request's boundary, is not in the list.
+     */
+  } else if (scope === "request" && !current) {
     /*
      * The manager message before this one counts only when the app's reply between the two showed THIS card (the card was
      * proposed in reply to it): "she was written up before" followed by an unrelated reply and then "ca for <name>" is no
@@ -515,6 +527,8 @@ export interface ToolEffects {
   proposalEmployeeId?: string | null;
   /** Fix batch item 7: the CA-only fields this turn's card asks about, for the card record (`card-record.ts` asked). */
   proposalAsked?: readonly string[];
+  /** QA (c208): the warning level this turn's card holds (verbal / written), for the card record, so a rebuild keeps it. */
+  proposalLevel?: "verbal" | "written" | null;
   /**
    * Every source a tool read this turn, numbered from 1 in the order read: the model cites one as [S<n>] (`addSource`).
    * Only the ones the reply cites become source cards (run.ts, QA's live-app item 12), as today's grounded path does.
@@ -1913,11 +1927,28 @@ export async function proposeForm(
   }
   /* Batch C (code-check #16): what the manager said that the account leaves out, as a fact for the model to put back. */
   const evidencePerson = evidencePersonFor(employee.name, read);
+  /*
+   * A WARNING LEVEL STATED FOR THIS REQUEST STAYS ON THE CARD (QA, 16 Nov 2026; c158 and c208; Pau's "every answer is used").
+   * This card, by the server's records (never the reply's text): the same form, and the same person by roster id (by the
+   * typed name's key off the roster). THIS request's turns for a level: this person's own request turns (`sourceIds`, the
+   * set the account uses; a new request's boundary keeps only this turn), from the first one the app answered with this
+   * card or with "who is it for?" for this form. Before that turn (a remark like "she was written up before" earlier in
+   * the chat) never counts; with no such record, only this message counts, as before.
+   */
+  const isThisCard = (record: CardRecord | null | undefined): record is CardRecord =>
+    Boolean(record && record.templateKey === template.key && (employee.id ? record.employeeKey === personKey(employee.id) : !record.employeeKey && record.nameKey === personKey(employee.name)));
+  const requestStarts = new Set([
+    ...(context.cardRecords ?? []).filter(isThisCard).map((record) => record.messageId),
+    ...(context.personAskedRecords ?? []).filter((record) => record.templateKey === template.key).map((record) => record.messageId),
+  ].filter((id): id is string => Boolean(id)));
+  const ownRequestTurns = conversation.filter((turn) => turn.role === "user" && sourceIds.includes(turn.id));
+  const requestStart = ownRequestTurns.find((turn) => requestStarts.has(turn.id));
+  const requestTurnIds = requestStart ? ownRequestTurns.filter((turn) => turn.index >= requestStart.index).map((turn) => turn.id) : [];
   let accountLost: string[] = [];
   if (whatHappened && ACCOUNT_FORMS.has(template.key)) {
     /* A message that is only a level or payroll answer (the model's evidence quotes the whole message) is not the incident's account. */
     const answerOnly = new Set(
-      [answerEvidence(context, input.level_evidence, "request", evidencePerson), answerEvidence(context, input.payroll_evidence, { card: employee.name }, evidencePerson)].flatMap((check) => (check.ok && check.wholeMessage ? [check.turnId] : [])),
+      [answerEvidence(context, input.level_evidence, "request", evidencePerson, { requestTurnIds }), answerEvidence(context, input.payroll_evidence, { card: employee.name }, evidencePerson)].flatMap((check) => (check.ok && check.wholeMessage ? [check.turnId] : [])),
     );
     const accountWords = asked.messages
       .filter((message) => (sourceIds.includes(message.id ?? "") || citedRequestIds.includes(message.id ?? "")) && !answerOnly.has(message.id ?? ""))
@@ -2077,11 +2108,22 @@ export async function proposeForm(
     ? incidentDates(requestWords, null).find((given) => monthDayToIso(given, today) === date) ?? null
     : null;
   const askedLevel = input.warning_level === "verbal" || input.warning_level === "written" ? input.warning_level : null;
-  const levelAnswer = caOnlyFields && askedLevel ? answerEvidence(context, input.level_evidence, "request", evidencePerson) : null;
+  const levelAnswer = caOnlyFields && askedLevel ? answerEvidence(context, input.level_evidence, "request", evidencePerson, { requestTurnIds }) : null;
   /* Fix batch item 2: the quote must name the option ("final warning" names none: level_not_in_evidence, and ask which). */
   const levelUnnamed = Boolean(levelAnswer?.ok && askedLevel && !levelNamedInEvidence(input.level_evidence, askedLevel));
   const levelCheck: AnswerEvidence | null = levelUnnamed ? { ok: false, reason: "level_not_in_evidence" } : levelAnswer;
-  const level = askedLevel && levelCheck?.ok ? askedLevel : null;
+  /*
+   * The carry (c208: "redo the outline" rebuilt the card with no level, and it stayed unset): the card on screen, or this
+   * chat's latest card, is THIS card and this is not a new request, so the level it held (its record) stays unless this
+   * turn's evidence states one. The model leaving warning_level out, or claiming another level with no evidence, never
+   * drops it. c019 (QA): the form switched away and back for the same person and incident ("Create a Coaching Form from
+   * this conversation", then "Create a Corrective Action Form from this conversation"): the latest record of THIS card
+   * inside this request's turns still holds the level, so it returns. A new request (new_form_evidence) starts fresh.
+   */
+  const inRequest = (record: CardRecord) => Boolean(record.messageId && requestTurnIds.includes(record.messageId));
+  const carriedRecord = [...(context.cardRecords ?? [])].reverse().find((record) => isThisCard(record) && inRequest(record) && record.level) ?? [context.cardOnScreen, context.earlierCard].find(isThisCard) ?? null;
+  const carriedLevel = caOnlyFields && !asksNewForm ? (carriedRecord?.level ?? null) : null;
+  const level = askedLevel && levelCheck?.ok ? askedLevel : carriedLevel;
   /*
    * Fix batch item 7 (QA's targeted re-run, c163: a bare "yes" after "Payroll deduct and warning level aren't set" set
    * payroll). The card on screen asked two things in one line (its record's `asked`), and this message is one word, quoted
@@ -2310,6 +2352,7 @@ export async function proposeForm(
   const unset = corrective && !awaiting ? [...(payroll ? [] : ["payroll_deduct"]), ...(level || terminationStated ? [] : ["warning_level"])] : [];
   /* Fix batch item 7: what this card's reply asks (the next turn's card record): payroll alone after an unclear answer. */
   effects.proposalAsked = payrollAnswerUnclear ? ["payroll_deduct"] : unset;
+  effects.proposalLevel = level;
   const salonNames = (ids: readonly string[] | undefined) => (ids ?? []).map((id) => ({ id, name: rosterSalonName(id) ?? id }));
   /*
    * Batch K4 (QA's 266 shadow replay, c137/c134: a pasted account about <Y>, off the roster, went on <X>'s card; the
@@ -2399,7 +2442,7 @@ export async function proposeForm(
    */
   const notOnCard: { field: string; reason_code: string }[] = [
     ...(dateFromAnotherRequest ? [{ field: "incident_date", reason_code: "date_from_another_request" }] : []),
-    ...((askedLevel && !level) ? [{ field: "warning_level", reason_code: caOnlyFields ? "level_not_stated" : "not_on_this_form" }] : []),
+    ...((askedLevel && level !== askedLevel) ? [{ field: "warning_level", reason_code: caOnlyFields ? "level_not_stated" : "not_on_this_form" }] : []),
     ...((askedTermination && !loopTermination) ? [{ field: "warning_level", reason_code: "termination_not_stated" }] : []),
     ...((askedPayroll && !payroll) ? [{ field: "payroll_deduct", reason_code: caOnlyFields ? "payroll_not_stated" : "not_on_this_form" }] : []),
     ...((typedAmount && !amount) ? [{ field: "payroll_amount", reason_code: caOnlyFields ? "amount_not_stated" : "not_on_this_form" }] : []),
@@ -2409,7 +2452,7 @@ export async function proposeForm(
     ...(datesAsked.length > 0 ? [{ field: "form_date", reason_code: "several_dates_not_chosen" }] : []),
   ];
   return {
-    ...(askedLevel && !level && levelCheck && !levelCheck.ok ? { reason_code: "level_not_stated", level_evidence: levelCheck.reason } : askedPayroll && !payroll && payrollCheck && !payrollCheck.ok ? { reason_code: "payroll_not_stated" } : {}),
+    ...(askedLevel && level !== askedLevel && levelCheck && !levelCheck.ok ? { reason_code: "level_not_stated", level_evidence: levelCheck.reason } : askedPayroll && !payroll && payrollCheck && !payrollCheck.ok ? { reason_code: "payroll_not_stated" } : {}),
     ...(askedPayroll && !payroll && payrollCheck && !payrollCheck.ok ? { payroll_evidence: payrollCheck.reason } : {}),
     ...(payrollAnswerUnclear ? { ...(askedLevel && !level ? {} : { reason_code: "payroll_not_stated" }), payroll_evidence: "answer_to_two_questions" } : {}),
     ...(notOnCard.length > 0 ? { not_on_card: notOnCard } : {}),
