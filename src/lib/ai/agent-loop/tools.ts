@@ -2308,7 +2308,15 @@ export async function proposeForm(
   const topicFits = topicHeadings(requestWords);
   const managerNamed = namedPolicies(requestWords).some((named) => policyHeading !== null && headingKey(named.phrase) === headingKey(policyHeading));
   /* Batch C (code-check #19): the headings today's reader fits this incident to, when the model's is not one of them. */
-  const fitsHeadings = policyHeading && topicFits && !managerNamed && !topicFits.some((heading) => headingKey(heading) === headingKey(policyHeading!)) ? topicFits : null;
+  /*
+   * "Other" is only for Must See Behaviors (Pau, 16 Nov 2026), a cleaning duty left undone (OTHER_POLICY_AGREES), or an
+   * incident no section of the manual covers (QA, 16 Nov 2026: the launch train's 266 re-run cited "Other — <topic>" on
+   * c156, c163, c231, c242 and c244, where a manual section fits). A card that cites Other alone while today's reader fits
+   * the incident to a manual section gets the same fits_headings fact as a wrong heading: the model chooses again.
+   */
+  const otherAlone = !policyHeading && /^other\b/i.test(askedPolicyWhole);
+  const otherIsTheRule = /\bmsb\b|must see behaviou?rs?/i.test(requestWords) || Boolean(cleaning && !careAndCleaning);
+  const fitsHeadings = topicFits && !managerNamed && ((policyHeading && !topicFits.some((heading) => headingKey(heading) === headingKey(policyHeading!))) || (otherAlone && !otherIsTheRule)) ? topicFits : null;
   /* As today's card prints it (`formatManualCitation`): "Standards of Conduct Policy, JBA Policy Manual p.12". */
   /*
    * The card cites the policy the model chose (batch B, code-check #22: the cleaning rule is a fact and a rules-book
@@ -2706,10 +2714,11 @@ export async function proposeForm(
     ...(exitForm && !whatHappened ? { account_not_given: { note: "This exit card has no account. If the manager said how or when they left (\"resigned by text\", their last day), propose the card again with all of it in what_happened, in their own words." } } : {}),
     /*
      * PR 6 (the live comparison: a coaching card came back with no policy line once read_policy was no longer called first):
-     * a Corrective Action or Coaching card with an account and no policy. A fact, never a policy code picked: the model
+     * a Corrective Action card (the form with policy fields; a Coaching card has none: QA, the train's c231/c242/c244) with an
+     * account and no policy. A fact, never a policy code picked: the model
      * passes the heading (the system prompt lists them) or Other, or says no section fits.
      */
-    ...(ACCOUNT_FORMS.has(template.key) && !awaiting && !askedPolicyWhole ? { policy_not_given: { note: "This card has no policy. Propose it again with policy: the one JBA Policy Manual heading that fits what happened (the headings are listed in your instructions), or \"Other — <short topic>\". If no section fits, say so in your reply." } } : {}),
+    ...(template.key === appConfig().formKeys.corrective && !awaiting && !askedPolicyWhole ? { policy_not_given: { note: "This card has no policy. Propose it again with policy: the one JBA Policy Manual heading that fits what happened (the headings are listed in your instructions). \"Other — <short topic>\" only for Must See Behaviors, a cleaning duty left undone, or when no section fits; then say so in your reply." } } : {}),
     ...(accountGiven ? { request_words: untrusted(accountGiven) } : {}),
     ...(figuresNotSaid.length > 0 ? { figures_not_said: figuresNotSaid } : {}),
     ...(formatFigures.length > 0 ? { format_figures: formatFigures } : {}),

@@ -242,7 +242,7 @@ export const NOV16_AGENT_LOOP_PR6_SPEED_CASES: ReplayCase[] = [
   },
   {
     id: "nov16-pr6-one-call-coaching-keeps-its-policy",
-    title: "PR 6 (the Runner's live comparison, 16 Nov 2026): a Coaching card made in one propose_form call (no find_staff, no read_policy), \"did not greet guests at the front desk\": with the policy passed, the card cites Standards of Conduct with its page; a call that leaves the policy out gets policy_not_given, and the card made after it cites the policy",
+    title: "PR 6 (the Runner's live comparison, 16 Nov 2026; QA's 266 re-run of the train): \"did not greet guests at the front desk\" in one propose_form call: a Coaching card with the policy passed cites Standards of Conduct with its page; a Coaching card without one keeps none and gets no policy_not_given (the form has no policy field); a Corrective Action that leaves the policy out gets policy_not_given, and the card made after it cites the policy",
     report: `${REPORT}; the live comparison: #1059 gave this coaching card no policy line in both rounds`,
     status: "fixed",
     fixFlags: [FLAG],
@@ -259,15 +259,28 @@ export const NOV16_AGENT_LOOP_PR6_SPEED_CASES: ReplayCase[] = [
       expect(policyOf(withPolicy), JSON.stringify(withPolicy.formProposal)).toMatch(/Standards of Conduct/);
       expect(policyOf(withPolicy)).toMatch(/p\.\s?\d+/);
 
-      // A call that leaves the policy out is told so (a fact, no policy picked by code); the model's next call has it.
+      /*
+       * Changed on purpose (QA, the launch train's 266 re-run: c231, c242, c244): a Coaching form has no policy field, so a
+       * coaching card with no policy is right as it is. It gets no policy_not_given fact and no policy. The fact is for a
+       * Corrective Action, below.
+       */
+      const none = loopStandIn((view): LoopDecision => (lastResult(view, "propose_form") ? { text: "Here's the Coaching Form for **Marnie Holloway**." } : card(view)));
+      t.loopModel!(none);
+      const coachingNone = await t.thread().say(message);
+      const coachingResult = firstResult(none.views, "propose_form")!;
+      expect(factsOf(coachingResult).policy_not_given, JSON.stringify(coachingResult)).toBeUndefined();
+      expect(policyOf(coachingNone)).toBe("");
+
+      // A Corrective Action that leaves the policy out is told so (a fact, no policy picked by code); the model's next call has it.
+      const ca = (view: LoopView, policy?: string) => ({ tool: "propose_form", input: { template_key: "dpoa", employee_name: "marnie holloway", person_evidence: evidenceFrom(view, "ca for marnie holloway"), what_happened: "She did not greet guests at the front desk.", ...(policy ? { policy } : {}) } });
       const model = loopStandIn((view): LoopDecision => {
         const results = view.results.filter((result) => result.tool === "propose_form");
-        if (results.length === 0) return card(view);
-        if (results.length === 1 && factsOf(results[0]!.output).policy_not_given) return card(view, "Standards of Conduct");
-        return { text: "Here's the Coaching Form for **Marnie Holloway**." };
+        if (results.length === 0) return ca(view);
+        if (results.length === 1 && factsOf(results[0]!.output).policy_not_given) return ca(view, "Standards of Conduct");
+        return { text: "Here's the Corrective Action Form for **Marnie Holloway**." };
       });
       t.loopModel!(model);
-      const fixed = await t.thread().say(message);
+      const fixed = await t.thread().say("ca for marnie holloway, she did not greet guests at the front desk today");
       const first = model.views.flatMap((view) => view.results).find((result) => result.tool === "propose_form")!.output;
       expect(factsOf(first).policy_not_given, JSON.stringify(first)).toBeTruthy();
       expect(policyOf(fixed), JSON.stringify(fixed.formProposal)).toMatch(/Standards of Conduct/);
