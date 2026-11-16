@@ -882,7 +882,7 @@ export async function findStaff(context: ToolContext, input: { name?: unknown; p
    */
   if (typed && (latestTurnKeepsOrUsesTyped(nameQuestionView(context, read.roster), typed) || typedNameSettled(context, read.roster, typed))) {
     /* QA (16 Nov 2026): what the reply calls this person, decided by code (`replyNameFor`), as on every card result. */
-    return { matches: [], kept_as_typed: shownAsTyped(typed), reply_name: replyNameFor(shownAsTyped(typed), read.roster, extractEmployeeNames(managerTurns(context)), null), note: `The manager kept "${typed}" as typed (their answer to your question). Do not ask again: propose the card now with employee_name "${typed}", with this request's account from the earlier turns.` };
+    return { matches: [], kept_as_typed: typed, reply_name: replyNameFor(shownAsTyped(typed), read.roster, extractEmployeeNames(managerTurns(context)), null), note: `The manager kept "${typed}" as typed (their answer to your question). Do not ask again: propose the card now with employee_name "${typed}", with this request's account from the earlier turns.` };
   }
   /* Rebuild plan PR 6: the list is cut at 10; more_matches says so, so a cut list is never read as everyone. */
   const allMatches = rosterMatches(typed, read.roster);
