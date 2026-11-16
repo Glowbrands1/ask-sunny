@@ -157,4 +157,38 @@ export const NOV16_AGENT_LOOP_CLOSE_SPELLING_SETTLED_CASES: ReplayCase[] = [
       expect(also.formProposal ?? null, "a new card was made from a close spelling").toBeNull();
     },
   },
+  {
+    id: "nov16-close-spelling-forms-on-file-typed-name-asked-live",
+    title: "The Runner's live inputs on d2710ad: after Tamsin Orwell's card, \"edit tamsen orwel ca\" with the model calling find_past_forms with the typo itself (form CA, open): never \"None on file\" for her, but Did you mean **Tamsin Orwell**?",
+    report: `${REPORT}; the Runner's live inputs on d2710ad (16 Nov 2026): find_past_forms {"employee_name": "<typo>", "form": "CA", "open": true} returned "None on file", and the reply said "No Corrective Action on file for <Ta> yet" with no Did-you-mean (4 of 4)`,
+    status: "fixed",
+    fixFlags: [FLAG, NEAR_MISS],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      start(t);
+      t.loopModel!(model());
+      const thread = t.thread();
+      await thread.say("ca for tamsin orwell, she was late to her shift on 11/14");
+      expect(thread.proposal?.employeeName).toBe("Tamsin Orwell");
+      const live = loopStandIn((view): LoopDecision => {
+        const found = lastResult(view, "find_past_forms") as { ask_exactly?: string } | null;
+        if (!found) return { tool: "find_past_forms", input: { employee_name: "tamsen orwel", form: "CA", open: true, forms_on_file_evidence: evidenceFrom(view, "edit tamsen orwel ca") } };
+        return { text: found.ask_exactly ?? "No Corrective Action on file for **Tamsin Orwell** yet - the card from my last reply hasn't been created, so there's nothing saved to open." };
+      });
+      t.loopModel!(live);
+      const edit = await thread.say("edit tamsen orwel ca");
+      const out = live.views.flatMap((view) => view.results).find((result) => result.tool === "find_past_forms")?.output as { reason_code?: string } | undefined;
+      expect(out?.reason_code, "find_past_forms said None on file for a close spelling of the card's person").toBe("close_spelling_not_confirmed");
+      expect(edit.content, `no Did-you-mean:\n${edit.content}`).toMatch(ASKED);
+      // The answer is read next turn: "yes" is Tamsin Orwell.
+      const answered = loopStandIn((view): LoopDecision => {
+        const found = lastResult(view, "find_past_forms") as { forms?: unknown[]; reason_code?: string } | null;
+        if (!found) return { tool: "find_past_forms", input: { employee_name: "Tamsin Orwell", form: "CA", open: true, forms_on_file_evidence: evidenceFrom(view, "edit tamsen orwel ca", 1) } };
+        return { text: found.reason_code ?? "Tamsin Orwell's Corrective Action card is not created yet." };
+      });
+      t.loopModel!(answered);
+      const yes = await thread.say("yes");
+      expect(yes.content).not.toMatch(/close_spelling_not_confirmed|Did you mean/);
+    },
+  },
 ];

@@ -1174,7 +1174,16 @@ export async function findPastForms(context: ToolContext, input: { employee_name
         salon: salonLabel(row.locationId, row.locationName) ?? `no ${locationWord()}`,
       }));
     /* "Draw me up a coaching document … she already has one" (the live re-run's sun-late-date): none on file is no reason to stop. */
-    if (forms.length === 0) return { forms, note: "None on file. If the manager asked you to create or draw up a form, propose it now with their account and date, and say no earlier form was found on file." };
+    if (forms.length === 0) {
+      /*
+       * QA (16 Nov 2026; the Runner's inputs on d2710ad): the live model passes the manager's near-miss itself ("edit <typo>
+       * ca" → employee_name "<typo>"). No form is under it, and it is a close spelling of a roster person (the open card's
+       * person): never "None on file" for that person, but the Did-you-mean, recorded so the answer is read next turn.
+       */
+      const close = await closeSpellingOfRoster(context, effects, typed);
+      if (close) return close;
+      return { forms, note: "None on file. If the manager asked you to create or draw up a form, propose it now with their account and date, and say no earlier form was found on file." };
+    }
     /*
      * An open request (the model's open: true; QA's review of PR 1b, ruling 3): only once forms ARE on file for this person,
      * the turn opens one of them, so a card proposed earlier this turn for the SAME person is withdrawn (a fact) and no new
@@ -1601,6 +1610,31 @@ async function closeSpellingRefusal(context: ToolContext, effects: ToolEffects |
   return {
     reason_code: "close_spelling_not_confirmed", error: `The manager typed "${spelled}", not ${displayName(holders[0]!)}. Nothing was looked up or opened. Ask exactly ask_exactly, once.`,
     ask_exactly: nameConfirmationQuestion(spelled, [displayName(holders[0]!)]),
+  };
+}
+
+/**
+ * A name a tool was given that is nobody on the roster exactly but a close spelling of roster people ("tamsen orwel"), not
+ * confirmed in this chat: the Did-you-mean (recorded), never a read under that name. Null when it is someone's exact
+ * name, nobody's close spelling, already confirmed, or this message answers the question about them.
+ */
+async function closeSpellingOfRoster(context: ToolContext, effects: ToolEffects | undefined, typed: string): Promise<ToolResult | null> {
+  const read = await rosterFor(context.actor.scope);
+  if (read.kind !== "read" || namesAPlace(typed)) return null;
+  if (read.roster.some((row) => fullNamesOf(row).some((full) => samePerson(full, typed)))) return null;
+  const match = matchEmployeeName(typed, read.roster);
+  if (match.kind !== "confirm" || match.candidates.length === 0) return null;
+  const view = nameQuestionView(context, read.roster);
+  const key = personKey(typed);
+  const settled = match.candidates.some(({ employee }) =>
+    spellingKeysConfirmedFor(view, employee.id).includes(key) ||
+    answeredNameQuestions(view).some((asked) => asked.latest && asked.offered.some((person) => person.id === employee.id)));
+  if (settled) return null;
+  const candidates = match.candidates.slice(0, 5);
+  if (effects) effects.nameQuestion = { offeredIds: candidates.map((candidate) => candidate.employee.id), typed };
+  return {
+    reason_code: "close_spelling_not_confirmed", error: `"${typed}" is nobody on the staff list as typed. Nothing was looked up. Ask exactly ask_exactly, once.`,
+    ask_exactly: nameConfirmationQuestion(typed, candidates.map((candidate) => candidate.name)),
   };
 }
 
