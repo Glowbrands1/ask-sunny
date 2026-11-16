@@ -102,4 +102,34 @@ export const NOV16_AGENT_LOOP_LEVEL_SAID_IS_SET_CASES: ReplayCase[] = [
       }
     },
   },
+  {
+    id: "nov16-level-said-is-set-c158-who-asked-by-the-model",
+    title: "c158 on 63ba4c48 (Runner 2, the 266 re-run): \"I need to create a verbal corrective action form\" answered \"Who is this Corrective Action Form for?\" by the model with NO tool (no person_asked record), then \"remy calder\", then the account: level_evidence quoting T1 is this request's, so the card has Verbal at T2 and keeps it at T3 (never level_not_stated evidence_after_card / evidence_not_this_turn)",
+    report: `${REPORT}; Runner 2's c158 on 63ba4c48: the level named at T1, before the name, was refused at T2 (evidence_after_card) and T3 (evidence_not_this_turn)`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      start(t);
+      const t1 = "I need to create a verbal corrective action form";
+      const card = (view: LoopView, extra: Record<string, unknown>) => ({ template_key: "dpoa", employee_name: "Remy Calder", person_evidence: evidenceFrom(view, "Remy Calder", view.turns.filter((turn) => turn.role === "user").length > 2 ? 1 : 0), warning_level: "verbal", level_evidence: evidenceFrom(view, t1, view.turns.filter((turn) => turn.role === "user").length - 1), ...extra });
+      const results: Array<Record<string, unknown>> = [];
+      const model = loopStandIn((view): LoopDecision => {
+        const managerTurns = view.turns.filter((turn) => turn.role === "user").length;
+        const done = view.results.find((result) => result.tool === "propose_form");
+        if (managerTurns === 1) return { text: "Who is this Corrective Action Form for?" };
+        if (!done) return { tool: "propose_form", input: managerTurns === 2 ? card(view, {}) : card(view, { what_happened: "Underperformance for the month of October.", policy: "Standards of Conduct" }) };
+        results.push(done.output);
+        return { text: "Here's the Corrective Action Form for **Remy**." };
+      });
+      t.loopModel!(model);
+      const thread = t.thread();
+      await thread.say(t1);
+      const second = await thread.say("Remy Calder");
+      expect(levelOf(second), `T2: the level named at T1 was refused: ${JSON.stringify(results.at(-1))}`).toBe("verbal");
+      const third = await thread.say("underperformance for the month of october");
+      expect(levelOf(third), `T3: the level named at T1 was refused: ${JSON.stringify(results.at(-1))}`).toBe("verbal");
+      for (const result of results) expect(result.reason_code ?? null, JSON.stringify(result)).toBeNull();
+    },
+  },
 ];

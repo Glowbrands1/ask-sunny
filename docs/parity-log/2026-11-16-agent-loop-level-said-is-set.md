@@ -14,3 +14,8 @@ this case:
 Those words, as typed, are the evidence, and they pass the same evidence, person and offer checks as a model-given level.
 "written closing checklist", "written up before" and a termination stay unset. Port with the rest of the loop when Ask
 Bubbles gets it.
+
+c158 (Runner 2, 63ba4c48): for "I need to create a verbal corrective action form", the model asked "Who is this Corrective
+Action Form for?" without calling a tool, so no person-asked record was written. The level quoted from that turn was then
+refused (evidence_after_card, then evidence_not_this_turn). The app's own question for this form, in the reply right after a
+manager turn, now marks that turn as the request's start, as the record does.

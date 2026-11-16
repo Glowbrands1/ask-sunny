@@ -2568,9 +2568,21 @@ export async function proposeForm(
     Boolean(record && record.templateKey === template.key && (
       (employee.id ? record.employeeKey === personKey(employee.id) : !record.employeeKey && record.nameKey === personKey(employee.name)) ||
       (!record.employeeKey && aliases.some((alias) => record.nameKey === personKey(alias)))));
+  /*
+   * Runner 2's c158 on 63ba4c48: the model answered "I need to create a verbal corrective action form" with "Who is this
+   * Corrective Action Form for?" itself, with no tool call, so no person_asked record was written, and the level named
+   * there was refused at T2 (evidence_after_card) and T3. The app's own question for THIS form ("Who is this <form name>
+   * for", by the template's name) in the reply right after a manager turn marks that turn as this request's start, as
+   * the record does. It reads Sunny's reply, never the manager's words.
+   */
+  const askedWhoFor = new RegExp(`\\bwho is this ${template.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} for\\b`, "i");
+  const whoAskedTurns = conversation
+    .filter((turn, index) => turn.role === "user" && conversation[index + 1]?.role === "assistant" && askedWhoFor.test(withoutMessageIdTags(conversation[index + 1]!.content)))
+    .map((turn) => turn.id);
   const requestStarts = new Set([
     ...(context.cardRecords ?? []).filter(isThisCard).map((record) => record.messageId),
     ...(context.personAskedRecords ?? []).filter((record) => record.templateKey === template.key).map((record) => record.messageId),
+    ...whoAskedTurns,
   ].filter((id): id is string => Boolean(id)));
   const ownRequestTurns = conversation.filter((turn) => turn.role === "user" && sourceIds.includes(turn.id));
   const requestStart = ownRequestTurns.find((turn) => requestStarts.has(turn.id));
