@@ -13,6 +13,9 @@ import { appConfig } from "./app-config";
 
 export const STATUS_NAME_MAX = 40;
 
+/** A tool with no status of its own (a test keeps every loop tool off it, so a new tool cannot slip through). */
+export const DEFAULT_STATUS = "Working on it…";
+
 /** A name as plain text for the status line: no markdown or HTML characters, one line, at most 40 characters. */
 export function plainStatusName(value: unknown): string {
   const text = typeof value === "string" ? value.replace(/[<>*_`#[\]()\\|~{}]/g, " ").replace(/\s+/g, " ").trim() : "";
@@ -42,9 +45,13 @@ export function progressStatus(tool: string, args: unknown): string {
     case "find_past_forms":
     case "open_form":
       return "Checking forms on file…";
+    case "read_reviews":
+      return "Reading your reviews…";
+    case "read_stats":
+      return "Checking the numbers…";
     case "app_help":
       return `Checking ${appConfig().appName}'s help…`;
     default:
-      return "Working on it…";
+      return DEFAULT_STATUS;
   }
 }

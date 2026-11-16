@@ -93,6 +93,28 @@ describe("version 2: the header and an enabled channel", () => {
   });
 });
 
+describe("a multi-line reply stays on the envelope's one line (QA's review of #1058)", () => {
+  it("newlines in the reply are escaped by JSON.stringify, so the envelope line is never split", async () => {
+    vi.useFakeTimers();
+    const multi = { ...ANSWER, content: "Here is the card.\n\n**Observation of Offense:** she was late.\r\n**Policy:** Attendance (p.14)" };
+    const progress = progressChannel();
+    progress.enable();
+    setTimeout(() => progress.emit("Building the card…"), 3_000);
+    const pending = streamWhenSlow(() => after(6_000, () => json(multi)), progress);
+    await vi.advanceTimersByTimeAsync(START_AFTER_MS);
+    const response = await pending;
+    const text = response.text();
+    await vi.advanceTimersByTimeAsync(6_000);
+    const lines = (await text).split("\n").filter((line) => line !== "");
+    expect(JSON.parse(lines.at(-1)!)).toEqual({ status: 200, body: multi });
+    expect(lines.filter((line) => line.includes("Observation"))).toHaveLength(1);
+    vi.useRealTimers();
+    const seen: string[] = [];
+    await expect(readStreamedLines(new Response(await text, { headers: { [STREAM_HEADER]: PROGRESS_STREAM } }), (status) => seen.push(status))).resolves.toEqual({ status: 200, body: multi });
+    expect(seen).toEqual(["Building the card…"]);
+  });
+});
+
 describe("the client reads version 2, and never errors on a line it cannot read", () => {
   const body = (text: string) => new Response(text, { status: 200, headers: { [STREAM_HEADER]: PROGRESS_STREAM } });
 

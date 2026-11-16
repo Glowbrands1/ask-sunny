@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { STATUS_NAME_MAX, plainStatusName, progressStatus } from "./progress";
+import { DEFAULT_STATUS, STATUS_NAME_MAX, plainStatusName, progressStatus } from "./progress";
+import { agentLoopTools } from "./run";
 
 /** PR 6 item 5: a status from the tool's name and input only; the one echoed input (a name) is plain text, at most 40 characters. */
 describe("progressStatus", () => {
@@ -27,5 +28,20 @@ describe("progressStatus", () => {
     expect(long.endsWith("…")).toBe(true);
     expect(progressStatus("find_staff", { name: "  " })).toBe("Looking up your staff…");
     expect(progressStatus("find_staff", { name: 42 })).toBe("Looking up your staff…");
+  });
+});
+
+/* QA's review of #1058: every tool shows its own status, so a new tool added to the loop cannot fall through to the default. */
+describe("every loop tool has its own status", () => {
+  it("each tool name in the loop's tool list gets a status that is not the default", () => {
+    const names = agentLoopTools().map((tool) => tool.name);
+    expect(names).toEqual(expect.arrayContaining(["find_staff", "propose_form", "edit_form", "read_reviews", "read_stats"]));
+    const missing = names.filter((name) => progressStatus(name, {}) === DEFAULT_STATUS);
+    expect(missing, `tools with no status of their own: ${missing.join(", ")}`).toEqual([]);
+  });
+
+  it("the data tools: reviews and numbers", () => {
+    expect(progressStatus("read_reviews", {})).toBe("Reading your reviews…");
+    expect(progressStatus("read_stats", {})).toBe("Checking the numbers…");
   });
 });
