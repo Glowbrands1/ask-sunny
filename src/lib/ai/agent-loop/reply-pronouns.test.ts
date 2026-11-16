@@ -29,9 +29,18 @@ describe("withoutPersonPronouns", () => {
     const quoted = 'You wrote "she was rude to a client", so the Observation says that.';
     expect(withoutPersonPronouns(quoted, "Tamsin")).toEqual({ text: quoted, replaced: 0 });
   });
-  it("leaves the card's account line, the manager's own words (the pack's Observation lines)", () => {
-    const card = "Here's the Corrective Action Form for **Tamsin**.\n**Observation of Offense:** she was late on 10/26/26";
-    expect(withoutPersonPronouns(card, "Tamsin")).toEqual({ text: card, replaced: 0 });
+  it("names the person on the card's account line too (Sunny's paraphrase), but not inside the manager's quoted words", () => {
+    expect(withoutPersonPronouns("Here's the Corrective Action Form for **Tamsin**.\n**Observation of Offense:** She was late on 10/26/26.", "Tamsin").text)
+      .toBe("Here's the Corrective Action Form for **Tamsin**.\n**Observation of Offense:** Tamsin was late on 10/26/26.");
+    const quoted = 'Observation: as you wrote, "she opened the salon 20 minutes late".';
+    expect(withoutPersonPronouns(quoted, "Tamsin")).toEqual({ text: quoted, replaced: 0 });
+  });
+  it("covers Runner 2's 266 re-run lines (the shapes of c019, c198, c208, c210, c231; invented names)", () => {
+    expect(withoutPersonPronouns("I'll start the Corrective Action Form for her now.", "Tamsin").text).toBe("I'll start the Corrective Action Form for Tamsin now.");
+    expect(withoutPersonPronouns("That puts her with her 146 tans this month.", "Tamsin").text).toBe("That puts Tamsin with Tamsin's 146 tans this month.");
+    expect(withoutPersonPronouns("Compare her figures with her own 146 tans.", "Tamsin").text).toBe("Compare Tamsin's figures with Tamsin's own 146 tans.");
+    expect(withoutPersonPronouns("Since you've already talked to her, a Verbal Warning fits.", "Tamsin").text).toBe("Since you've already talked to Tamsin, a Verbal Warning fits.");
+    expect(withoutPersonPronouns("Print it and walk through it with her.", "Tamsin").text).toBe("Print it and walk through it with Tamsin.");
   });
   it("leaves a reply with no pronoun alone", () => {
     const plain = "Here's the Corrective Action Form for **Tamsin**. Tamsin's shift was on 11/14.";

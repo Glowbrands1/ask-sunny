@@ -37,6 +37,7 @@ import {
   searchKnowledge,
   listStaffTool,
   findPastForms,
+  cardPersonReplyName,
   findStaff,
   manualFor,
   turnManual,
@@ -1070,8 +1071,14 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
    * (`reply-pronouns.ts`; deterministic, no model call). Several people, or none: the reply is left as written.
    */
   let pronounsReplaced = 0;
-  if (replyNames.size === 1 && text) {
-    const named = withoutPersonPronouns(text, [...replyNames][0]!);
+  /*
+   * QA (16 Nov 2026, Runner 2's 266 re-run, 24 lines in 14 chats): a turn where no tool named anyone ("I'll start the
+   * Corrective Action Form for her now") uses the card's person, from the server's card record (`cardPersonReplyName`).
+   * Several people named by this turn's tools, or another person named in this message: the reply is left as written.
+   */
+  const pronounName = replyNames.size === 1 ? [...replyNames][0]! : replyNames.size === 0 && text ? await cardPersonReplyName(context).catch(() => null) : null;
+  if (pronounName && text) {
+    const named = withoutPersonPronouns(text, pronounName);
     text = named.text;
     pronounsReplaced = named.replaced;
   }

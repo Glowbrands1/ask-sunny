@@ -12,8 +12,8 @@
  * - they / them / their / theirs / themself: only in a person's place (someone told, asked or thanked; someone who quit,
  *   worked or said; "their last day", "their shift"), never after a field word in the sentence ("two fields are
  *   blank: tell me and I'll add them"), so "they" for the blank fields or a group stays.
- * - Text inside quotes (the manager's words quoted back, a form's wording), and the card's account line (the
- *   Observation in the manager's own words), are left as written.
+ * - Text inside quotes (the manager's words typed back verbatim) is left as written. The card's account line is
+ *   Sunny's paraphrase and names the person too (QA, Runner 2's 266 re-run).
  * The patterns were the replay pack's live-run judge (`replay-pack/reply-checks.ts`), whose must-pass and must-fail
  * examples are this module's unit tests.
  */
@@ -29,17 +29,17 @@ const THEIR_PERSON = /\btheir(?=\s+(?:\w+\s+)?(?:last\s+day|shift|shifts|manager
 /** After "her", a word that is not the thing she owns: "for her and", "tell her that", "her." (object, not possessive). */
 const NOT_OWNED = /^\s+(?:to|and|or|that|a|an|the|about|if|so|now|yet|on|in|at|for|with|again|know|too|as|is|was|when|before|after|by|from|this|these|those|it)\b/i;
 
-/**
- * The card's account line: the Observation (or coaching details) is the manager's own words on the card, shown as the
- * card holds them (the pack's run found "Observation of Offense: she was late on 10/26/26"). Left as written.
- */
+/** The card's account line (the Observation, coaching details): pronouns there are replaced too (QA, 16 Nov 2026). */
 export const ACCOUNT_LINE = /^[ \t*_>-]*(?:Observation(?: of Offense)?|Coaching Details|What happened)[*_]*\s*:.*$/gim;
 
-/** The spans of the reply inside quotes (straight or curly), or on the card's account line, which are left as written. */
+/**
+ * The spans of the reply inside quotes (straight or curly): the manager's words typed back verbatim, left as written.
+ * QA (16 Nov 2026, Runner 2's 266 re-run): the card's account line is NOT exempt any more. "She was late on …" there is
+ * Sunny's paraphrase, Sunny's wording, so it names the person too; only text in quotes stays as the manager typed it.
+ */
 function quotedSpans(text: string): Array<[number, number]> {
   const spans: Array<[number, number]> = [];
   for (const match of text.matchAll(/"[^"\n]*"|“[^”\n]*”/g)) spans.push([match.index!, match.index! + match[0].length]);
-  for (const match of text.matchAll(ACCOUNT_LINE)) spans.push([match.index!, match.index! + match[0].length]);
   return spans;
 }
 
@@ -77,7 +77,8 @@ export function withoutPersonPronouns(reply: string, name: string): { text: stri
     const end = at + match[0].length;
     let text: string;
     if (word === "his" || word === "hers") text = possessive(display);
-    else if (word === "her") text = /^\s+[A-Za-z]/.test(reply.slice(end)) && !NOT_OWNED.test(reply.slice(end)) ? possessive(display) : display;
+    // "her shift", "her 146 tans", "her own" own something; "for her.", "with her and", "talked to her" do not.
+    else if (word === "her") text = /^\s+[A-Za-z0-9$]/.test(reply.slice(end)) && !NOT_OWNED.test(reply.slice(end)) ? possessive(display) : display;
     else text = display;
     edits.push({ from: at, to: end, text });
   }

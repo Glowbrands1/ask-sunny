@@ -1784,6 +1784,35 @@ export function replyNameFor(name: string, roster: readonly RosterEmployee[], me
   return [...onRoster, ...typed].some((other) => firstOf(other) === first) ? full : words[0]!;
 }
 
+/**
+ * QA (16 Nov 2026, Runner 2's 266 re-run: "I'll start the Corrective Action Form for her now" on a turn with no tool):
+ * what the reply calls the card's person when no tool named anyone this turn. The card on screen, else the chat's
+ * latest card, by the server's record (one-way keys: the roster person by id, or a name not on the roster found again
+ * in the manager's turns by its key). Null when this message names someone else (the pronoun may be theirs), or the
+ * record's person cannot be found.
+ */
+export async function cardPersonReplyName(context: ToolContext): Promise<string | null> {
+  const card = context.cardOnScreen ?? context.earlierCard ?? null;
+  if (!card || (!card.employeeKey && !card.nameKey)) return null;
+  const read = await rosterFor(context.actor.scope);
+  const roster = read.kind === "read" ? read.roster : [];
+  const mentioned = extractEmployeeNames(managerTurns(context));
+  const row = card.employeeKey ? roster.find((candidate) => personKey(candidate.id) === card.employeeKey) : undefined;
+  const typed = !row && card.nameKey
+    ? [...(context.history as ChatMessage[]).filter((turn) => turn.role === "user").map((turn) => String(turn.content ?? "")), context.question]
+        .flatMap((said) => extractEmployeeNames(said))
+        .find((name) => personKey(name) === card.nameKey) ?? null
+    : null;
+  const name = row ? displayName(row) : typed?.replace(/(^|[\s'-])(\p{Ll})/gu, (_all, lead: string, letter: string) => lead + letter.toUpperCase()) ?? null;
+  if (!name) return null;
+  // Someone else named in this message: the pronoun may be theirs, so the reply is left as written.
+  const rosterNames = roster.map(displayName);
+  const others = [...extractEmployeeNames(context.question), ...rosterNames.filter((other) => mentionsPerson(context.question, other, rosterNames))]
+    .filter((other) => !samePerson(other, name) && !(row && fullNamesOf(row).some((full) => samePerson(full, other))));
+  if (others.length > 0) return null;
+  return replyNameFor(name, roster, mentioned, row?.id ?? null);
+}
+
 /** edit_form's results name the form's person too: reply_name for the form that was written (`replyNameFor`). */
 export async function withEditReplyName(context: ToolContext, effects: ToolEffects, result: ToolResult): Promise<ToolResult> {
   const record = result as { error?: unknown; revision_draft?: { id?: unknown } };
