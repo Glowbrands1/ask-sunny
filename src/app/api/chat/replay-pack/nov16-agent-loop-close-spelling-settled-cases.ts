@@ -159,7 +159,7 @@ export const NOV16_AGENT_LOOP_CLOSE_SPELLING_SETTLED_CASES: ReplayCase[] = [
   },
   {
     id: "nov16-close-spelling-forms-on-file-typed-name-asked-live",
-    title: "The Runner's live inputs on d2710ad: after Tamsin Orwell's card, \"edit tamsen orwel ca\" with the model calling find_past_forms with the typo itself (form CA, open): never \"None on file\" for her, but Did you mean **Tamsin Orwell**?",
+    title: "The Runner's live inputs on d2710ad: after Tamsin Orwell's card, \"edit tamsen orwel ca\" with the model calling find_past_forms with the typo itself (form CA, open): never \"None on file\" for her, but Did you mean **Tamsin Orwell**?; after \"yes\" the tool says her card is the one on screen (card_on_screen) and the reply offers to change it",
     report: `${REPORT}; the Runner's live inputs on d2710ad (16 Nov 2026): find_past_forms {"employee_name": "<typo>", "form": "CA", "open": true} returned "None on file", and the reply said "No Corrective Action on file for <Ta> yet" with no Did-you-mean (4 of 4)`,
     status: "fixed",
     fixFlags: [FLAG, NEAR_MISS],
@@ -180,15 +180,22 @@ export const NOV16_AGENT_LOOP_CLOSE_SPELLING_SETTLED_CASES: ReplayCase[] = [
       const out = live.views.flatMap((view) => view.results).find((result) => result.tool === "find_past_forms")?.output as { reason_code?: string } | undefined;
       expect(out?.reason_code, "find_past_forms said None on file for a close spelling of the card's person").toBe("close_spelling_not_confirmed");
       expect(edit.content, `no Did-you-mean:\n${edit.content}`).toMatch(ASKED);
-      // The answer is read next turn: "yes" is Tamsin Orwell.
+      /*
+       * The answer is read next turn: "yes" is Tamsin Orwell, whose card is on screen and not created yet. QA: the tool says
+       * so (card_on_screen), so the reply offers to change that card instead of only "nothing on file".
+       */
       const answered = loopStandIn((view): LoopDecision => {
-        const found = lastResult(view, "find_past_forms") as { forms?: unknown[]; reason_code?: string } | null;
+        const found = lastResult(view, "find_past_forms") as { forms?: unknown[]; reason_code?: string; card_on_screen?: { form: string } } | null;
         if (!found) return { tool: "find_past_forms", input: { employee_name: "Tamsin Orwell", form: "CA", open: true, forms_on_file_evidence: evidenceFrom(view, "edit tamsen orwel ca", 1) } };
-        return { text: found.reason_code ?? "Tamsin Orwell's Corrective Action card is not created yet." };
+        if (found.card_on_screen) return { text: `That's the ${found.card_on_screen.form} card on screen for Tamsin, not saved yet. Want me to change it? Tell me what to change.` };
+        return { text: found.reason_code ?? "No Corrective Action on file for Tamsin." };
       });
       t.loopModel!(answered);
       const yes = await thread.say("yes");
-      expect(yes.content).not.toMatch(/close_spelling_not_confirmed|Did you mean/);
+      const after = answered.views.flatMap((view) => view.results).find((result) => result.tool === "find_past_forms")?.output as { reason_code?: string; card_on_screen?: unknown } | undefined;
+      expect(after?.reason_code, "the yes was asked again").toBeUndefined();
+      expect(after?.card_on_screen, "find_past_forms did not say the card on screen is this person's").toEqual({ form: "Corrective Action Form", created: false });
+      expect(yes.content, `the reply did not offer to change the card on screen:\n${yes.content}`).toMatch(/Want me to change it\?/);
     },
   },
 ];

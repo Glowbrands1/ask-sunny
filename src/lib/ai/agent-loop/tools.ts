@@ -1182,6 +1182,21 @@ export async function findPastForms(context: ToolContext, input: { employee_name
        */
       const close = await closeSpellingOfRoster(context, effects, typed);
       if (close) return close;
+      /*
+       * QA (16 Nov 2026): the person's card is on screen and not created yet ("edit <typo> ca", then "yes" to the
+       * Did-you-mean): the manager means that card. A fact by the server's card record (never the reply's text).
+       */
+      /* The card on screen, else the chat's latest card (the reply in between was the Did-you-mean); nothing on file, so not created. */
+      const card = context.cardOnScreen ?? context.earlierCard ?? null;
+      const holder = holders.length === 1 ? holders[0]! : null;
+      const onScreen = card && ((holder && card.employeeKey === personKey(holder.id)) || (!card.employeeKey && card.nameKey === personKey(typed)));
+      if (onScreen) {
+        return {
+          forms,
+          card_on_screen: { form: card.templateName ?? "card", created: false },
+          note: `Nothing is on file: the ${card.templateName ?? "card"} for this person is the card on screen, not created yet. The manager means that card: offer to change it (ask what to change), as the rules book's card_on_screen line says. Never say only that nothing is on file.`,
+        };
+      }
       return { forms, note: "None on file. If the manager asked you to create or draw up a form, propose it now with their account and date, and say no earlier form was found on file." };
     }
     /*
