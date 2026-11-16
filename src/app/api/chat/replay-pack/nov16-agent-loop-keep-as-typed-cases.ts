@@ -66,3 +66,37 @@ export const NOV16_AGENT_LOOP_KEEP_AS_TYPED_CASES: ReplayCase[] = ([["no", false
     expect(thread.proposal?.employeeName, `"${answer}" did not keep the name as typed:\n${reply.content}`).toBe("Remi Calder");
   },
 }));
+
+/*
+ * QA's review of #1064 (16 Nov 2026): a chat that started before this deploy has an earlier "Reply **use <name>**" offer
+ * in its reply text but no offer record. With the reply-text reader gone, the manager's "use <name>" is asked again, once
+ * (that refusal is now recorded), and the next "use <name>" makes the card. Never a wrong card. Invented name: Wrenna.
+ */
+NOV16_AGENT_LOOP_KEEP_AS_TYPED_CASES.push({
+  id: "nov16-keep-as-typed-an-offer-from-before-the-record-is-asked-once-more",
+  title: "Keep-as-typed, a chat from before the deploy: the earlier \"Reply **use Wrenna**\" offer is only reply text (no record); \"use Wrenna\" is asked once more (no card, never someone else), and the next \"use Wrenna\" makes the card for Wrenna",
+  report: `${REPORT}; QA's review of #1064 (the reply text is no longer read)`,
+  status: "fixed",
+  fixFlags: [FLAG, NEAR_MISS],
+  async run(t) {
+    if (!t.loopOn?.()) return;
+    start(t);
+    const USE = "I can't find **Wrenna** on your staff list. Reply **use Wrenna** to put the name on the form as you typed it, or give me the full name.";
+    t.loopModel!(loopStandIn((view): LoopDecision => {
+      const said = lastSaid(view);
+      // T1: the old reply, written without a tool (as a chat from before the deploy has it): no record.
+      if (/^ca for/i.test(said)) return { text: USE };
+      const card = lastResult(view, "propose_form") as { reason_code?: string; ask_exactly?: string } | null;
+      if (!card) return { tool: "propose_form", input: { template_key: "dpoa", employee_name: "Wrenna", what_happened: "She was late on 11/12.", incident_date: "2026-11-12" } };
+      return { text: card.ask_exactly ?? card.reason_code ?? "Here's the Corrective Action Form for **Wrenna**." };
+    }));
+    const thread = t.thread();
+    await thread.say("ca for wrenna, late on 11/12");
+    const again = await thread.say("use Wrenna");
+    expect(thread.proposal ?? null, "a card was made on an unrecorded offer").toBeNull();
+    expect(again.content, "the offer was not asked once more").toBe(USE);
+    await thread.say("use Wrenna");
+    expect(thread.proposal?.employeeName, "the recorded offer's answer made no card").toBe("Wrenna");
+  },
+});
+
