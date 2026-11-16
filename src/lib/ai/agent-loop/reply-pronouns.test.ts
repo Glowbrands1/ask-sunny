@@ -93,6 +93,15 @@ describe("withoutPersonPronouns", () => {
     expect(withoutPersonPronouns("on 11-5-26 Arlo messaged Training Salon Director, Brisa Rennick via Woven stating she quit effective immediately.", "Arlo", ["Brisa Rennick"]).text)
       .toBe("on 11-5-26 Arlo messaged Training Salon Director, Brisa Rennick via Woven stating Arlo quit effective immediately.");
   });
+  /*
+   * Coding-9's find on train 4 (nov16-pr6-three-saved-edits-reply-lists-all): "She said her car broke down." — the reporter
+   * "She" is the card's person (it is replaced), so the "her" in what she said is the card person's too.
+   */
+  it("names the person in what the person said when the reporter is the person's own pronoun (train 4, pr6 three saved edits)", () => {
+    expect(withoutPersonPronouns("She said her car broke down.", "Remy").text).toBe("Remy said Remy's car broke down.");
+    expect(withoutPersonPronouns("Here's the update. She said her car broke down, so she was late.", "Remy").text)
+      .toBe("Here's the update. Remy said Remy's car broke down, so Remy was late.");
+  });
   it("keeps the pronoun when the reporter is a peer or a guest, not a leader, the manager or the person (QA, 17 Nov 2026)", () => {
     const peer = "Juno Paxton asked whether she could swap shifts.";
     expect(withoutPersonPronouns(peer, "Tamsin", ["Juno Paxton"], undefined, ["Brisa Rennick"])).toEqual({ text: peer, replaced: 0 });
