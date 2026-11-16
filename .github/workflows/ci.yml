@@ -48,9 +48,20 @@ jobs:
         run: npx tsc --noEmit -p .
 
   unit-tests:
+    name: unit-tests (${{ matrix.shard }}/4)
     runs-on: ubuntu-latest
     # QA 15 Nov: suite at 28/30 min before batch G's 33 cases
+    # QA 17 Nov: unit job cancelled at its 45-min limit on launch train 3 (2,998 replay runs), no failing test; now in quarters.
+    # vitest --shard splits by file, and the replay pack's e2e is one file with nearly all the time (2,998 runs), so each
+    # shard runs its quarter of the other files (UNIT_WITHOUT_REPLAY_PACK_E2E=1 leaves the e2e out, see vitest.config.mts)
+    # and then a quarter of the e2e's cases (REPLAY_PACK_PART, interleaved by id as in the parity children). Together the
+    # four shards run every file of project "unit" and every replay case exactly once.
+    # "checks" still needs unit-tests: a matrix job's result is success only when every shard succeeded.
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -58,8 +69,13 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Tests (vitest project "unit")
-        run: npx vitest run --project unit
+      - name: Tests (vitest project "unit", shard ${{ matrix.shard }}/4, without the replay pack e2e)
+        env:
+          UNIT_WITHOUT_REPLAY_PACK_E2E: "1"
+        run: npx vitest run --project unit --shard=${{ matrix.shard }}/4
+      - name: Replay pack e2e (part ${{ matrix.shard }} of 4 of its cases)
+        if: success() || failure()
+        run: REPLAY_PACK_PART=$(( ${{ matrix.shard }} - 1 ))/4 npx vitest run --project unit src/app/api/chat/replay-pack/replay-pack-e2e.test.ts
 
   # THE PARITY CHILDREN SIDE BY SIDE (QA, 13 Nov 2026). The project's children (the
   # chat and form suites re-run with every new flag off) ran one after another in

@@ -54,7 +54,7 @@ import { redactSensitiveDefaults } from "@/lib/ai/sensitive-defaults";
 import { expandPolicyQuery } from "@/lib/knowledge/policy-retrieval";
 import type { SourceCitation } from "@/types";
 import type { AccessScope, ChatFormProposal, ChatMessage, Role } from "@/types";
-import { personKey, type CardRecord, type NameQuestionRecord, type PersonAskedRecord, type TurnRecord } from "@/lib/ai/agent-loop/card-record";
+import { personKey, replyTurns, type CardRecord, type NameQuestionRecord, type PersonAskedRecord, type TurnRecord } from "@/lib/ai/agent-loop/card-record";
 
 /**
  * ============================================================================
@@ -235,8 +235,58 @@ export function levelNamedInEvidence(evidence: unknown, level: "verbal" | "writt
   return holdsPhrase(quote, level) || (quote.toLowerCase().match(/[\p{L}]+/gu) ?? []).some((word) => word.length >= 4 && editDistance(word, level) === 1);
 }
 
+/**
+ * QA (16 Nov 2026, #1079's control): the option word may describe something else, "she didn't follow the written closing
+ * checklist", and is then not the form's level. An occurrence counts as the level only when it does not describe another
+ * thing: the next word is one of the form's own words (`formWords`: the form's name, its initials, the option labels'
+ * "Warning"), or there is no next word in its clause, or the next word is a number ("verbal 146 tans") or a short linking
+ * word of three letters or fewer ("a written for being late", "verbal on 11/14"). A longer word right after it is what
+ * the option word describes ("written closing checklist", "written policy"): not the level. A shape check, never a list.
+ */
+export function levelOptionIsTheLevel(text: string, level: "verbal" | "written", formWords: readonly string[]): boolean {
+  const own = new Set(formWords.map((word) => word.toLowerCase()));
+  const tokens = text.toLowerCase().match(/[\p{L}\p{N}'$/-]+|[.,;:!?()\n]/gu) ?? [];
+  return tokens.some((token, index) => {
+    const isOption = token === level || (token.length >= 4 && /^\p{L}+$/u.test(token) && editDistance(token, level) === 1);
+    if (!isOption) return false;
+    const next = tokens[index + 1];
+    if (next === undefined || /^[.,;:!?()\n]$/.test(next) || /^[\d$]/.test(next)) return true;
+    const bare = next.replace(/[-']+$/g, "");
+    return own.has(bare) || bare.length <= 3;
+  });
+}
+
+/** The form's own words for `levelOptionIsTheLevel`: its name's words and initials, and the option labels' "warning". */
+export function levelFormWords(formName: string): string[] {
+  const words = formName.toLowerCase().match(/\p{L}+/gu)?.filter((word) => word !== "form") ?? [];
+  const initials = words.length > 1 ? [words.map((word) => word[0]).join("")] : [];
+  return [...words, ...initials, "warning", "warnings"];
+}
+
 /** The question when no level option was named (Pau's ruling, fix batch item 2). */
 export const LEVEL_QUESTION = "Which is it: Verbal Warning, Written Warning or Termination?";
+
+/**
+ * The next person's form, offered when a turn's second card was refused (one card per reply; QA's live re-test, 16 Nov
+ * 2026, item B). The reply ends with it (`replyMustAsk`), and the next turn recognises its own offer by this shape.
+ */
+export const nextPersonOffer = (form: string, first: string) => `Want me to make the ${form} for ${first} next?`;
+const NEXT_PERSON_OFFER = /Want me to make the [^\n?]+ for [^\n?]+ next\?\s*$/;
+
+/**
+ * The manager's one-word message ("yes") answers the app's own next-person offer, which ended the reply before it. It
+ * builds that card; it is never the card's payroll or level answer (QA: '"Yes" alone doesn't tell me whether that's for
+ * payroll deduct, warning level, or both'). Reads Sunny's own reply, never the manager's words.
+ */
+function answersNextPersonOffer(context: ToolContext): boolean {
+  const lastReply = [...(context.history as ChatMessage[])].reverse().find((turn) => turn.role === "assistant");
+  return Boolean(lastReply && NEXT_PERSON_OFFER.test(String(lastReply.content ?? "").trim()) && oneWord(withoutMessageIdTags(context.question)));
+}
+
+/** An answer whose quote is the whole one-word reply to the next-person offer is refused (`answersNextPersonOffer`). */
+function notTheOfferAnswer(check: AnswerEvidence, context: ToolContext): AnswerEvidence {
+  return check.ok && check.wholeMessage && answersNextPersonOffer(context) ? { ok: false, reason: "answer_to_offer" } : check;
+}
 
 /** A message of one word (punctuation aside): a format check, never a reading of which word (fix batch item 7). */
 export function oneWord(text: string): boolean {
@@ -385,6 +435,57 @@ function otherPersonNamed(said: string, person: EvidencePerson): boolean {
     if (own.includes(row)) return false;
     return [row.firstName, row.preferredFirstName].map((first) => (first ?? "").trim().toLowerCase()).filter((first) => first !== "" && !ownFirsts.has(first)).some((first) => new RegExp(`(?<![\\p{L}'-])${first.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}-])`, "u").test(lower));
   });
+}
+
+/**
+ * THE OPEN REQUEST (QA, 16 Nov 2026, the live re-test's dateedit and paycheck): the manager turns before this one that
+ * belong to the request this message finishes. Walking back, a manager turn belongs to it while the loop's turn that
+ * answered it was left OPEN (its trace record: nothing saved, no card; a "Which one?" or "Who is it for?" turn), and the
+ * walk stops at the first turn that did something, or that has no record. Oldest first. A finished request's turns never
+ * count; with no records, there is none (only this message, as before).
+ */
+export function openRequestTurns(context: Pick<ToolContext, "history" | "turnRecords">): ChatMessage[] {
+  const history = context.history as ChatMessage[];
+  /*
+   * A turn's record is found the way every loop record is (`replyTurns`: by the trace's message id, and by whatever else
+   * the record lookup matches on), keyed by the reply that turn wrote; never by comparing ids here.
+   */
+  const byReply = replyTurns(history, context.turnRecords ?? []);
+  const open: ChatMessage[] = [];
+  for (let at = history.length - 1; at >= 0; at -= 1) {
+    const turn = history[at]!;
+    if (turn.role !== "user") continue;
+    const reply = history.findIndex((later, index) => index > at && later.role === "assistant");
+    const nextUser = history.findIndex((later, index) => index > at && later.role === "user");
+    const record = reply > at && (nextUser < 0 || reply < nextUser) ? byReply.get(reply) : undefined;
+    if (!record || record.saved || record.card) break;
+    open.unshift(turn);
+  }
+  return open;
+}
+
+/**
+ * A level or payroll answer stated in this message, or in a turn of the open request this message finishes (the edit the
+ * request started with: "…, tick payroll deduct" → "the 11/10 one" → "the finalized one"). The same evidence rules as
+ * this message's own: the quote must be in that turn, and a turn naming another roster person is that person's.
+ */
+function answerEvidenceInOpenRequest(
+  context: Pick<ToolContext, "question" | "history" | "questionMessageId" | "turnRecords">,
+  evidence: unknown,
+  person?: EvidencePerson,
+): AnswerEvidence {
+  const now = answerEvidence(context, evidence, "this_message", person);
+  if (now.ok) return now;
+  const openIds = new Set(openRequestTurns(context).map((turn) => turn.id).filter(Boolean));
+  if (openIds.size === 0) return now;
+  const turns = identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId);
+  const check = verifyEvidence(evidence, turns);
+  if (!check.ok || !openIds.has(check.turn.id)) return now;
+  const said = withoutMessageIdTags(check.turn.content);
+  if (person && otherPersonNamed(said, person)) return { ok: false, reason: "other_person" };
+  const flat = (text: string) => withoutMessageIdTags(text).toLowerCase().replace(/\s+/g, " ").trim();
+  const quote = (evidence as { quote?: unknown } | null)?.quote;
+  return { ok: true, turnId: check.turn.id, wholeMessage: typeof quote === "string" && flat(quote) === flat(said) };
 }
 
 function answerEvidence(
@@ -1131,6 +1232,21 @@ export async function findPastForms(context: ToolContext, input: { employee_name
   if (!asked.ok) return privacyRefusal(asked.reason, asked.reasonCode);
   const closeSpelled = await closeSpellingRefusal(context, effects, typed);
   if (closeSpelled) return closeSpelled;
+  /*
+   * QA (16 Nov 2026, the Coordinator's live re-test, group E): "edit <typo> ca" with forms on file for the person the typo
+   * is close to listed those forms ("Which one should I open?") for a name nobody has. When the person the typo is close
+   * to has the card on screen (or the chat's latest card), the manager most likely means that card: the Did-you-mean
+   * comes first, before any form is read; after "yes", the confirmed name is read (and card_on_screen offers the card).
+   * With no such card, G4 (REOPEN_CLOSE_SPELLING) opens the one form on file under a close spelling, as before.
+   */
+  const shownCard = context.cardOnScreen ?? context.earlierCard ?? null;
+  if (shownCard?.employeeKey) {
+    const read = await rosterFor(context.actor.scope);
+    const close = read.kind === "read" ? matchEmployeeName(typed, read.roster) : null;
+    const cardIsClose = close?.kind === "confirm" && close.candidates.some((candidate) => personKey(candidate.employee.id) === shownCard.employeeKey);
+    const typedClose = cardIsClose ? await closeSpellingOfRoster(context, effects, typed) : null;
+    if (typedClose) return typedClose;
+  }
   const actor = await chatFormsActor(context.actor).catch(() => undefined);
   if (actor === undefined) return { reason_code: "read_failed", error: "Form Monitoring could not be read just now. Say so; do not say there are no forms." };
   if (actor === null) return { reason_code: "scope", error: "This manager's role cannot view Form Monitoring, so past forms cannot be listed." };
@@ -1244,8 +1360,28 @@ export async function findPastForms(context: ToolContext, input: { employee_name
      * the turn opens one of them, so a card proposed earlier this turn for the SAME person is withdrawn (a fact) and no new
      * card for them is proposed. Never on an error path or "None on file"; another person's card stays.
      */
+    /*
+     * QA (16 Nov 2026, the Coordinator's group E, after "yes"): the manager typed "ca" loosely while this person's card was
+     * on screen. With their card on screen (or the chat's latest card, not created) AND forms on file, the which-one
+     * question lists the card on screen FIRST; picking it changes that card, picking a dated form opens it. Code informs
+     * (card_on_screen, ask_exactly); the reply is the model's.
+     */
+    const shown = context.cardOnScreen ?? context.earlierCard ?? null;
+    const ownCard = input.open === true && shown && holders.length === 1 && shown.employeeKey === personKey(holders[0]!.id) ? shown : null;
+    const onScreenChoice = ownCard
+      ? (() => {
+          const cardForm = ownCard.templateName ?? "card";
+          const dated = forms.map((form) => `${form.form}${form.form_date ? ` from ${form.form_date}` : ""}`);
+          const onFile = dated.length === 1 ? `the ${dated[0]} on file` : `one of the ${dated.length} forms on file (${dated.join("; ")})`;
+          return {
+            card_on_screen: { form: cardForm, created: false },
+            ask_exactly: `Which one: the ${cardForm} on screen, or ${onFile}?`,
+            note: `This person's ${cardForm} is the card on screen, not created yet, and forms are on file too. End your reply with ask_exactly, exactly. If the manager picks the card on screen, change it (propose_form again with the change and everything it already has); if they pick a dated form, open it with open_form.`,
+          };
+        })()
+      : null;
     let withdrawn: string | null = null;
-    if (input.open === true && effects) {
+    if (input.open === true && effects && !onScreenChoice) {
       effects.openRequested = typed;
       if (effects.proposal && sameRosterPerson(effects.proposal.employeeName ?? "", typed, people)) {
         withdrawn = effects.proposal.templateName ?? "card";
@@ -1256,14 +1392,15 @@ export async function findPastForms(context: ToolContext, input: { employee_name
       forms,
       ...(withdrawn ? { card_withdrawn: `The ${withdrawn} card proposed earlier this turn was withdrawn: the manager asked to open a form on file, not to make one.` } : {}),
       ...(closeSpelling ? { close_spelling_of: { typed: untrusted(typed), on_file: closeSpelling } } : {}),
-      ...(forms.length === 1 && (described || closeSpelling) ? { best_match: forms[0]!.instance_id, note: "One form fits what the manager described. If they asked to open, edit or see it, open it now with open_form." } : {}),
+      ...(onScreenChoice ?? {}),
+      ...(!onScreenChoice && forms.length === 1 && (described || closeSpelling) ? { best_match: forms[0]!.instance_id, note: "One form fits what the manager described. If they asked to open, edit or see it, open it now with open_form." } : {}),
       /*
        * G4 follow-up (QA, 15 Nov 2026; the model decides, code only informs): several forms fit an open request, so the
        * model is told to compare them with the manager's description ("the one with no salon", "the draft") and to open
        * the one it singles out, asking WHICH_FORM_QUESTION only when the words still fit more than one.
        */
       /* The rebuild plan, PR 1b: OPEN_REQUEST (a word list) is gone; the model says it is opening one (open: true). */
-      ...(forms.length > 1 && input.open === true ? { which_form_question: WHICH_FORM_QUESTION, single_out: singleOutNote() } : {}),
+      ...(!onScreenChoice && forms.length > 1 && input.open === true ? { which_form_question: WHICH_FORM_QUESTION, single_out: singleOutNote() } : {}),
     };
   } catch {
     return { reason_code: "read_failed", error: "Form Monitoring could not be read just now. Say so; do not say there are no forms." };
@@ -1782,6 +1919,73 @@ export function replyNameFor(name: string, roster: readonly RosterEmployee[], me
   const onRoster = roster.filter((row) => row.id !== ownId).flatMap(fullNamesOf).filter((other) => !samePerson(other, full));
   const typed = mentioned.filter((other) => other.trim().split(/\s+/).length > 1 && !samePerson(other, full));
   return [...onRoster, ...typed].some((other) => firstOf(other) === first) ? full : words[0]!;
+}
+
+/**
+ * QA (16 Nov 2026, Runner 2's 266 re-run: "I'll start the Corrective Action Form for her now" on a turn with no tool):
+ * what the reply calls the card's person when no tool named anyone this turn. The card on screen, else the chat's
+ * latest card, by the server's record (one-way keys: the roster person by id, or a name not on the roster found again
+ * in the manager's turns by its key). Null when this message names someone else (the pronoun may be theirs), or the
+ * record's person cannot be found.
+ */
+export async function cardPersonReplyName(context: ToolContext): Promise<string | null> {
+  const card = context.cardOnScreen ?? context.earlierCard ?? null;
+  if (!card || (!card.employeeKey && !card.nameKey)) return null;
+  const read = await rosterFor(context.actor.scope);
+  const roster = read.kind === "read" ? read.roster : [];
+  const mentioned = extractEmployeeNames(managerTurns(context));
+  const row = card.employeeKey ? roster.find((candidate) => personKey(candidate.id) === card.employeeKey) : undefined;
+  const typed = !row && card.nameKey
+    ? [...(context.history as ChatMessage[]).filter((turn) => turn.role === "user").map((turn) => String(turn.content ?? "")), context.question]
+        .flatMap((said) => extractEmployeeNames(said))
+        .find((name) => personKey(name) === card.nameKey) ?? null
+    : null;
+  const name = row ? displayName(row) : typed?.replace(/(^|[\s'-])(\p{Ll})/gu, (_all, lead: string, letter: string) => lead + letter.toUpperCase()) ?? null;
+  if (!name) return null;
+  // Someone else named in this message: the pronoun may be theirs, so the reply is left as written.
+  const rosterNames = roster.map(displayName);
+  const others = [...extractEmployeeNames(context.question), ...rosterNames.filter((other) => mentionsPerson(context.question, other, rosterNames))]
+    .filter((other) => !samePerson(other, name) && !namesAPlace(other) && !(row && fullNamesOf(row).some((full) => samePerson(full, other))));
+  if (others.length > 0) return null;
+  return replyNameFor(name, roster, mentioned, row?.id ?? null);
+}
+
+/**
+ * The other people named around this reply, for the pronoun pass's sentence rule (`reply-pronouns.ts`): roster people the
+ * reply or the manager's message names (full or first name), and the names the app's name reader reads in the manager's
+ * message, other than the person the reply is about.
+ */
+export async function otherPeopleNamed(context: ToolContext, reply: string, person: string): Promise<string[]> {
+  const read = await rosterFor(context.actor.scope);
+  const roster = read.kind === "read" ? read.roster : [];
+  const rosterNames = roster.map(displayName);
+  const own = (name: string) => samePerson(name, person) || name.trim().toLowerCase() === person.trim().toLowerCase() || person.toLowerCase().split(/\s+/).includes(name.trim().toLowerCase());
+  const named = [
+    ...rosterNames.filter((name) => mentionsPerson(reply, name, rosterNames) || mentionsPerson(context.question, name, rosterNames)),
+    ...roster.flatMap((row) => [row.firstName, row.preferredFirstName ?? ""]).filter((first) => first && holdsPhrase(reply, first)),
+    ...extractEmployeeNames(context.question),
+  ];
+  const ownRow = roster.find((row) => fullNamesOf(row).some((full) => samePerson(full, person)) || [row.firstName, row.preferredFirstName].some((first) => first && first.toLowerCase() === person.trim().toLowerCase()));
+  // Runner 2 (c150, c198 T3: "At <salon>, she was late again"): a salon or city is no other person.
+  return [...new Set(named.filter((name) => !own(name) && !namesAPlace(name) && !isJobTitlePhrase(name) && !(ownRow && (fullNamesOf(ownRow).some((full) => samePerson(full, name)) || [ownRow.firstName, ownRow.preferredFirstName].includes(name)))))];
+}
+
+/**
+ * QA (16 Nov 2026, Runner 2's c019 T1: "I'll start the Corrective Action Form for her now" after a forms-on-file lookup
+ * found nothing): a lookup that settles ONE roster person (find_staff with one match, find_past_forms for one person's
+ * name) says what the reply calls them, as the card results do (`replyNameFor`). A refusal or several people: unchanged.
+ */
+export async function withLookupReplyName(context: ToolContext, result: ToolResult, typed: unknown): Promise<ToolResult> {
+  const out = result as { reply_name?: unknown; reason_code?: unknown; matches?: Array<{ employee_id?: string }> };
+  if (out.reply_name !== undefined || typeof out.reason_code === "string") return result;
+  const read = await rosterFor(context.actor.scope);
+  if (read.kind !== "read") return result;
+  const byMatch = Array.isArray(out.matches) && out.matches.length === 1 ? read.roster.find((row) => row.id === out.matches![0]!.employee_id) : undefined;
+  const byName = !byMatch && typeof typed === "string" && typed.trim() ? read.roster.filter((row) => fullNamesOf(row).some((full) => samePerson(full, typed))) : [];
+  const row = byMatch ?? (byName.length === 1 ? byName[0] : undefined);
+  if (!row) return result;
+  // As the card names them (the name the manager used: "Jo Quill" for Josephine Quill), so the turn has one reply_name.
+  return { ...result, reply_name: replyNameFor(nameAsSaid(row, managerTurns(context)), read.roster, extractEmployeeNames(managerTurns(context)), row.id) };
 }
 
 /** edit_form's results name the form's person too: reply_name for the form that was written (`replyNameFor`). */
@@ -2475,9 +2679,9 @@ export async function proposeForm(
    */
   const payrollCheck = caOnlyFields && askedPayroll
     ? (() => {
-        const byCard = answerEvidence(context, input.payroll_evidence, { card: employee.name, aliases }, evidencePerson);
+        const byCard = notTheOfferAnswer(answerEvidence(context, input.payroll_evidence, { card: employee.name, aliases }, evidencePerson), context);
         if (byCard.ok || !requestStart) return byCard;
-        const byRequest = answerEvidence(context, input.payroll_evidence, "request", evidencePerson, { requestTurnIds: [requestStart.id] });
+        const byRequest = notTheOfferAnswer(answerEvidence(context, input.payroll_evidence, "request", evidencePerson, { requestTurnIds: [requestStart.id] }), context);
         return byRequest.ok && byRequest.turnId === requestStart.id ? byRequest : byCard;
       })()
     : null;
@@ -2542,9 +2746,11 @@ export async function proposeForm(
     ? incidentDates(requestWords, null).find((given) => monthDayToIso(given, today) === date) ?? null
     : null;
   const askedLevel = input.warning_level === "verbal" || input.warning_level === "written" ? input.warning_level : null;
-  const levelAnswer = caOnlyFields && askedLevel ? answerEvidence(context, input.level_evidence, "request", evidencePerson, { requestTurnIds }) : null;
+  const levelAnswer = caOnlyFields && askedLevel ? notTheOfferAnswer(answerEvidence(context, input.level_evidence, "request", evidencePerson, { requestTurnIds }), context) : null;
   /* Fix batch item 2: the quote must name the option ("final warning" names none: level_not_in_evidence, and ask which). */
-  const levelUnnamed = Boolean(levelAnswer?.ok && askedLevel && !levelNamedInEvidence(input.level_evidence, askedLevel));
+  /* QA (#1079's control): and the option word in the quote is the form's level, not a word describing something else. */
+  const levelQuote = input.level_evidence && typeof input.level_evidence === "object" ? String((input.level_evidence as { quote?: unknown }).quote ?? "") : "";
+  const levelUnnamed = Boolean(levelAnswer?.ok && askedLevel && (!levelNamedInEvidence(input.level_evidence, askedLevel) || !levelOptionIsTheLevel(levelQuote, askedLevel, levelFormWords(template.name))));
   const levelCheck: AnswerEvidence | null = levelUnnamed ? { ok: false, reason: "level_not_in_evidence" } : levelAnswer;
   /*
    * The carry (c208: "redo the outline" rebuilt the card with no level, and it stayed unset): the card on screen, or this
@@ -2791,6 +2997,23 @@ export async function proposeForm(
   if (earlierKept) card.earlierCardKept = true;
   const earlierRead = earlierKept && earlier!.employeeKey ? await rosterFor(context.actor.scope) : null;
   const earlierRow = earlierRead?.kind === "read" ? earlierRead.roster.find((row) => personKey(row.id) === earlier!.employeeKey) : undefined;
+  /*
+   * ONE CARD PER REPLY, CHECKED WHERE THE CARD IS SET (QA's live re-test on 269ac0d9, 16 Nov 2026, item B): "write CAs
+   * for <A> and <B>, both late on 11/14" made two cards in one turn. The model called propose_form twice in ONE step; the
+   * calls run together, so both passed the one_card check at the top (no card yet) and the second replaced the first,
+   * while the reply described both ("Both cards are ready") and the "yes" after it was read as a payroll or level answer.
+   * The same rule, checked again here, where nothing awaits between the check and the set: the first card stays on screen,
+   * another person's card this turn is refused, and the reply ends with one question offering it. A "yes" to that offer
+   * builds the next card; it is never that card's payroll or level answer (the evidence rule takes those only after a
+   * reply showing that person's own card).
+   */
+  const refused = anotherCard(card.employeeName);
+  if (refused) {
+    const next = (card.employeeName ?? "").split(/\s+/)[0] || "the next person";
+    const offer = nextPersonOffer(card.templateName ?? template.name, next);
+    effects.replyMustAsk = offer;
+    return { ...refused, reason_code: "one_card", error: `${refused.error} Describe only the card on screen, never say both cards are ready, and end your reply with exactly: ${offer}`, ask_exactly: offer };
+  }
   effects.proposal = card;
   effects.proposalEmployeeId = employee.id ?? null;
   const personId = typeof input.employee_id === "string" ? input.employee_id.trim() : "";
@@ -2810,6 +3033,11 @@ export async function proposeForm(
   const stated = await import("@/lib/forms/termination-stated");
   /* QA's third review: in the loop only the model decides (locked above); main's reader never decides a loop card. */
   const terminationStated = loopTermination;
+  /* The level option this message names when the card has none and none was asked (`level_not_given` below). */
+  const namedOptions = caOnlyFields && !askedLevel && !level && !terminationStated
+    ? (["verbal", "written"] as const).filter((option) => levelNamedInEvidence({ quote: context.question }, option) && levelOptionIsTheLevel(withoutMessageIdTags(context.question), option, levelFormWords(template.name)))
+    : [];
+  const levelNotGiven = namedOptions.length === 1 ? namedOptions[0]! : null;
   const unset = corrective && !awaiting ? [...(payroll ? [] : ["payroll_deduct"]), ...(level || terminationStated ? [] : ["warning_level"])] : [];
   /* Fix batch item 7: what this card's reply asks (the next turn's card record): payroll alone after an unclear answer. */
   effects.proposalAsked = payrollAnswerUnclear ? ["payroll_deduct"] : unset;
@@ -2840,6 +3068,15 @@ export async function proposeForm(
     ...(unset.length > 0 && !payrollAnswerUnclear ? { unset } : {}),
     ...(payrollAnswerUnclear ? { payroll_answer_unclear: { ask_exactly: payrollQuestion } } : {}),
     ...(levelUnnamed ? { level_not_named: { ask_exactly: LEVEL_QUESTION } } : {}),
+    /*
+     * QA's live re-test (16 Nov 2026): "written CA for <A>, late 11/14, payroll deduct $20" came back "Warning level isn't
+     * set" (payroll kept), while "verbal ca for <A>, late on 11/13" ticked Verbal. The model sent no warning_level at all:
+     * "written CA" reads like the form's name. A Corrective Action card with no level, whose message names exactly one of
+     * the form's own Type of Warning options (the option word, as `levelNamedInEvidence` reads a quote), gets this fact,
+     * as a card with no policy gets policy_not_given. Only a fact: the model passes warning_level with level_evidence (the
+     * evidence check still decides), or leaves it when the words are history ("written up before").
+     */
+    ...(levelNotGiven ? { level_not_given: { option: levelNotGiven, note: `This card has no warning level, and the manager's message names the form's ${levelNotGiven === "written" ? "Written" : "Verbal"} Warning option. If it states THIS form's level, propose the card again with warning_level ${levelNotGiven} and level_evidence quoting those words; if it is history ("written up before"), leave the level unset.` } } : {}),
     ...(level || payroll || priorActions
       ? { stated: { ...(level ? { warning_level: level } : {}), ...(payroll ? { payroll_deduct: payroll } : {}), ...(payroll === "yes" && amount ? { payroll_amount: `$${amount.replace(/^\$/, "")}` } : {}), ...(priorActions ? { prior_actions: priorActions } : {}) } }
       : {}),
@@ -3166,16 +3403,21 @@ export async function editForm(
         if (!(await import("@/lib/config/chat-quality-flags")).terminationStatedTicksEnabled() || !(await import("@/lib/forms/termination-word")).statesTerminationWordNow(context.question)) unstated.push(field);
         continue;
       }
-      const levelCheck = answerEvidence(context, input.level_evidence, "this_message", editPerson);
+      /* QA (16 Nov 2026): the level stated in the message that started this open request counts too. */
+      const levelCheck = answerEvidenceInOpenRequest(context, input.level_evidence, editPerson);
       /* Fix batch item 2: the quote must name the option the model chose ("final warning" names none). */
-      const named = levelNamedInEvidence(input.level_evidence, kind);
+      /* QA (#1079): and the option word is the form's level, not a word describing something else (as propose_form reads it). */
+      const levelQuote = input.level_evidence && typeof input.level_evidence === "object" ? String((input.level_evidence as { quote?: unknown }).quote ?? "") : "";
+      const correctiveName = (await creatableTemplates(context.actor.role).catch(() => null))?.find((row) => row.key === appConfig().formKeys.corrective)?.name ?? "Corrective Action Form";
+      const named = levelNamedInEvidence(input.level_evidence, kind) && levelOptionIsTheLevel(levelQuote, kind, levelFormWords(correctiveName));
       if (!levelCheck.ok || !named) {
         unstated.push(field);
         unstatedCodes.set(field, { reason_code: "level_not_stated", evidence_reason: levelCheck.ok ? "level_not_in_evidence" : levelCheck.reason });
       }
     } else if (field === "payroll_deduct") {
       const answer = /^\s*yes/i.test(value) ? "yes" : /^\s*no/i.test(value) ? "no" : null;
-      const payrollCheck = answerEvidence(context, input.payroll_evidence, "this_message", editPerson);
+      /* QA (16 Nov 2026, paycheck): "…, tick payroll deduct" → "which one?" → "the finalized one" keeps its payroll answer. */
+      const payrollCheck = answerEvidenceInOpenRequest(context, input.payroll_evidence, editPerson);
       if (!answer || !payrollCheck.ok) {
         unstated.push(field);
         unstatedCodes.set(field, { reason_code: "payroll_not_stated", evidence_reason: payrollCheck.ok ? "evidence_not_manager_turn" : payrollCheck.reason });
@@ -3277,9 +3519,15 @@ export async function editForm(
      * no card (its trace record; a "Which one?" or "Who is it for?" turn). A finished request's date ("…dated 11/3" on
      * another form) is never settable on the next request; with no record, only this message counts.
      */
-    const leftOpen = lastManagerTurn?.id ? (context.turnRecords ?? []).some((turn) => turn.messageId === lastManagerTurn.id && !turn.saved && !turn.card) : false;
+    /* The same record lookup as the open request's (`openRequestTurns`, through `replyTurns`). */
+    const leftOpen = lastManagerTurn ? openRequestTurns(context).includes(lastManagerTurn) : false;
     const previousManagerTurn = leftOpen ? lastManagerTurn : undefined;
-    const typedDates = [...readDates(context.question), ...readDates(String(previousManagerTurn?.content ?? ""))];
+    /*
+     * QA (16 Nov 2026, dateedit): a request can take more than one answer to finish ("the 11/10 one", then "the finalized
+     * one"): every turn of the open request counts, not only the one right before (`openRequestTurns`).
+     */
+    const requestTurnsOpen = openRequestTurns(context);
+    const typedDates = [...readDates(context.question), ...readDates(String(previousManagerTurn?.content ?? "")), ...requestTurnsOpen.flatMap((turn) => readDates(String(turn.content ?? "")))];
     /*
      * QA's design (15 Nov 2026): on an incident form (CA, coaching), form_date and incident_date after today are always
      * refused, with one question, however the message names them. Only the follow-up date and an exit's last day or
@@ -3561,7 +3809,11 @@ export async function editForm(
       const [year, month, day] = (iso ?? "").split("-").map(Number) as [number, number, number];
       if (iso && typedDates.some((typed) => sameDate(typed, { month, day, year }))) {
         documentDate = iso;
-        if (!readDates(context.question).some((typed) => sameDate(typed, { month, day, year }))) documentDateSaid = String(previousManagerTurn?.content ?? context.question);
+        /* The manager turn that holds the date (this one, the one before, or an earlier turn of the open request: QA, dateedit). */
+        if (!readDates(context.question).some((typed) => sameDate(typed, { month, day, year }))) {
+          const holder = [previousManagerTurn, ...[...requestTurnsOpen].reverse()].find((turn) => turn && readDates(String(turn.content ?? "")).some((typed) => sameDate(typed, { month, day, year })));
+          documentDateSaid = String(holder?.content ?? previousManagerTurn?.content ?? context.question);
+        }
         delete values.form_date;
       } else {
         /* QA's live finding: never handed to the drafting writer ("system fields are not drafted"); said plainly, with the fix. */

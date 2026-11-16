@@ -1,0 +1,142 @@
+import { expect, vi } from "vitest";
+
+import type { ChatFormProposal as FormProposal } from "@/types";
+
+import { KEARNEY, STAFF, type ReplayCase, type ReplayContext } from "./cases";
+import { evidenceFrom, lastResult, loopStandIn, type LoopDecision, type LoopView } from "./loop-stand-in";
+
+/**
+ * ============================================================================
+ * A LEVEL SAID WITH THE REQUEST IS TICKED (QA's live re-test on 269ac0d9, 16 Nov 2026, item 2)
+ * ============================================================================
+ *
+ * "written CA for <A>, late 11/14, payroll deduct $20" came back with payroll Yes / $20 and "Warning level isn't set; tell
+ * me if it applies", while "verbal ca for <A>, late on 11/13" ticked Verbal. The live trace: one propose_form, no
+ * level_not_stated reason, so the model sent no warning_level at all ("written CA" reads like the form's name). The general
+ * rule: a Corrective Action card with no level, whose message names exactly one of the form's own Type of Warning options,
+ * gets the fact level_not_given (as a card with no policy gets policy_not_given); the model proposes again with
+ * warning_level and level_evidence, and the evidence check still decides. History ("written up before") stays unset.
+ * Invented names only (Remy Calder).
+ */
+
+const FLAG = "AGENT_LOOP_ENABLED";
+const REPORT = "QA's live re-test on 269ac0d9 (16 Nov 2026), item 2: \"written CA for <A>, late 11/14, payroll deduct $20\" left the warning level unset";
+
+function start(t: ReplayContext) {
+  vi.setSystemTime(new Date("2026-11-16T15:40:00Z"));
+  t.directory([...STAFF]);
+  t.as("salon_director", KEARNEY);
+}
+
+const factsOf = (output: Record<string, unknown>) => (output.facts ?? {}) as Record<string, unknown>;
+const proposals = (view: LoopView) => view.results.filter((result) => result.tool === "propose_form");
+
+/**
+ * The live model's first call: the CA with the account, the date and payroll, and no warning_level. Proposed again only
+ * when the result says level_not_given (with the level the manager's words state, quoted).
+ */
+function liveShape(levelWords: string, account: string) {
+  return loopStandIn((view): LoopDecision => {
+    const base = { template_key: "dpoa", employee_id: "e-2", what_happened: account, incident_date: "2026-11-14", policy: "Attendance", payroll_deduct: "yes", payroll_amount: "20", payroll_evidence: evidenceFrom(view, "payroll deduct $20") };
+    const done = proposals(view);
+    if (done.length === 0) return { tool: "propose_form", input: base };
+    const notGiven = factsOf(done.at(-1)!.output).level_not_given as { option?: string } | undefined;
+    if (done.length === 1 && notGiven?.option) return { tool: "propose_form", input: { ...base, warning_level: notGiven.option, level_evidence: evidenceFrom(view, levelWords) } };
+    return { text: "Here's the Corrective Action Form for **Remy**." };
+  });
+}
+
+export const NOV16_AGENT_LOOP_LEVEL_NOT_GIVEN_CASES: ReplayCase[] = [
+  {
+    id: "nov16-level-not-given-written-with-payroll",
+    title: "QA's live re-test item 2: \"written CA for <A>, late 11/14, payroll deduct $20\" — the model sends no level; propose_form says level_not_given (Written), and the card ticks Written Warning with payroll Yes / $20",
+    report: REPORT,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      start(t);
+      const message = "written CA for remy calder, late 11/14, payroll deduct $20";
+      t.loopModel!(liveShape("written CA", "Remy Calder was late on 11/14."));
+      const thread = t.thread();
+      const reply = await thread.say(message);
+      const card = reply.formProposal as FormProposal | undefined;
+      expect(card?.payrollDeduct).toBe("yes");
+      expect(card?.payrollDeductAmount).toBe("20");
+      expect(card?.warningLevel, `the level said with the request was not ticked: ${JSON.stringify(card)}`).toBe("written");
+    },
+  },
+  {
+    id: "nov16-level-not-given-control-history",
+    title: "Control: \"ca for remy calder, she was written up before, late 11/14\" — history names Written, so level_not_given is offered, but the model's quote is not this form's level and the card stays unset (the stand-in does not propose again)",
+    report: REPORT,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      start(t);
+      const message = "ca for remy calder, she was written up before, late 11/14";
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        if (proposals(view).length === 0) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: "Remy Calder was late on 11/14.", incident_date: "2026-11-14", policy: "Attendance" } };
+        return { text: "Here's the Corrective Action Form for **Remy**. Warning level isn't set; tell me if it applies." };
+      }));
+      const reply = await t.thread().say(message);
+      expect((reply.formProposal as FormProposal | undefined)?.warningLevel ?? null).toBeNull();
+    },
+  },
+  {
+    id: "nov16-level-not-given-control-written-describes-a-thing",
+    title: "Control (QA, #1079): \"CA for Remy Calder, she didn't follow the written closing checklist on 11/14\" — \"written\" describes the checklist, not the warning: no level_not_given, and a model that sends Written quoting \"written closing checklist\" is refused (level_not_in_evidence); the level is never ticked",
+    report: `${REPORT}; QA's control on #1079: "written" that describes something else is never the level`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      start(t);
+      const message = "CA for Remy Calder, she didn't follow the written closing checklist on 11/14";
+      const account = "Remy Calder did not follow the written closing checklist on 11/14.";
+      // 1. The live shape: no level sent; it is proposed again with Written only if level_not_given is offered.
+      t.loopModel!(liveShape("written closing checklist", account));
+      const offered = await t.thread().say(message);
+      expect((offered.formProposal as FormProposal | undefined)?.warningLevel ?? null, "Written was ticked from the checklist's \"written\"").toBeNull();
+      // 2. A model that sends Written itself, quoting the checklist words.
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        if (proposals(view).length === 0) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: account, incident_date: "2026-11-14", policy: "Other — closing duties", warning_level: "written", level_evidence: evidenceFrom(view, "the written closing checklist") } };
+        return { text: "Here's the Corrective Action Form for **Remy**." };
+      }));
+      const sent = await t.thread().say(message);
+      expect((sent.formProposal as FormProposal | undefined)?.warningLevel ?? null, "Written was ticked from the checklist's \"written\"").toBeNull();
+    },
+  },
+  {
+    id: "nov16-level-not-given-control-edit-written-checklist",
+    title: "Control (QA, #1079): \"add that she skipped the written closing checklist\" on an open CA with no level (the card on screen, then the saved draft): a model that sends Written quoting the checklist is refused on both paths (propose_form again, edit_form), and the level stays unset",
+    report: `${REPORT}; QA's edit control on #1079: the three level paths agree`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      start(t);
+      const base = { template_key: "dpoa", employee_id: "e-2", what_happened: "Remy Calder was late on 11/14.", incident_date: "2026-11-14", policy: "Attendance" };
+      t.loopModel!(loopStandIn((view): LoopDecision => (proposals(view).length === 0 ? { tool: "propose_form", input: base } : { text: "Here's the Corrective Action Form for **Remy**. Warning level isn't set; tell me if it applies." })));
+      const thread = t.thread();
+      await thread.say("ca for remy calder, late on 11/14");
+      const message = "add that she skipped the written closing checklist";
+
+      // The card on screen: proposed again with the account added, and Written quoting the checklist words.
+      t.loopModel!(loopStandIn((view): LoopDecision => (proposals(view).length === 0
+        ? { tool: "propose_form", input: { ...base, what_happened: "Remy Calder was late on 11/14. Remy Calder skipped the written closing checklist.", warning_level: "written", level_evidence: evidenceFrom(view, "the written closing checklist") } }
+        : { text: "I added that to the card." })));
+      const card = await thread.say(message);
+      expect((card.formProposal as FormProposal | undefined)?.warningLevel ?? null, "Written was ticked on the card from the checklist's \"written\"").toBeNull();
+
+      // The saved draft: edit_form with warning_type written, quoting the checklist words.
+      const id = await thread.create();
+      t.loopModel!(loopStandIn((view): LoopDecision => (lastResult(view, "edit_form")
+        ? { text: "I added that to the form." }
+        : { tool: "edit_form", input: { instance_id: id, values: { warning_type: "written" }, level_evidence: evidenceFrom(view, "the written closing checklist") } })));
+      await thread.say(message);
+      expect(t.checked(id).warning_type ?? [], "Written was ticked on the draft from the checklist's \"written\"").toEqual([]);
+    },
+  },
+];

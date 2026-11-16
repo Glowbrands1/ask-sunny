@@ -65,7 +65,11 @@ export const NOV16_AGENT_LOOP_KEEP_AS_TYPED_CASES: ReplayCase[] = ([["no", false
     const reply = await thread.say(answer);
     expect(reply.content, "the app re-offered the instruction it had just given").not.toMatch(/I can't find \*\*Remi Calder\*\*/);
     expect(thread.proposal?.employeeName, `"${answer}" did not keep the name as typed:\n${reply.content}`).toBe("Remi Calder");
-    if (lookupFirst) {
+    /*
+     * Stand-in only (Runner 2's live runs, 16 Nov 2026): the real model goes straight to propose_form and never looks the
+     * name up again, so there is no find_staff result to read live; the card above is the behaviour, checked both ways.
+     */
+    if (lookupFirst && process.env.AGENT_LOOP_LIVE !== "1") {
       /* QA (16 Nov 2026): the kept_as_typed result names the person for the reply, as every card result does (replyNameFor). */
       const kept = standIn.views.flatMap((view) => view.results).find((result) => result.tool === "find_staff" && (result.output as { kept_as_typed?: string } | null)?.kept_as_typed);
       expect(kept?.output, "find_staff did not settle the name as typed").toMatchObject({ kept_as_typed: "Remi Calder", reply_name: "Remi" });
