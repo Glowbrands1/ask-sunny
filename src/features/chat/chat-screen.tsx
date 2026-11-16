@@ -71,6 +71,8 @@ export function ChatScreen() {
   const [input, setInput] = useState("");
   const [mode, setMode] = useState<AnswerMode>("standard");
   const [busy, setBusy] = useState(false);
+  /* PR 6 item 5: the AI loop's latest status while it answers; screen state only, never a message. */
+  const [thinkingStatus, setThinkingStatus] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [contextOpen, setContextOpen] = useState(true);
 
@@ -250,6 +252,7 @@ export function ChatScreen() {
 
       setInput("");
       setBusy(true);
+      setThinkingStatus(null);
 
       const userMessage: ChatMessage = {
         id: createId("msg"),
@@ -340,7 +343,7 @@ export function ChatScreen() {
             userName: managerDisplayName,
             locationName: primaryLocationName,
           },
-        });
+        }, { onProgress: setThinkingStatus });
 
         const assistantMessage: ChatMessage = {
           id: createId("msg"),
@@ -417,6 +420,7 @@ export function ChatScreen() {
         appendConversationMessages(conversationId, [errorMessage]);
       } finally {
         setBusy(false);
+        setThinkingStatus(null);
       }
 
       return true;
@@ -1052,7 +1056,7 @@ export function ChatScreen() {
                     ownedBySignedIn={ownedBySignedIn}
                   />
                 ))}
-                {busy ? <ThinkingBubble /> : null}
+                {busy ? <ThinkingBubble status={thinkingStatus} /> : null}
 
                 {/*
                   ==========================================================

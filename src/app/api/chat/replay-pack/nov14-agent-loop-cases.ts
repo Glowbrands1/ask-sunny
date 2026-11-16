@@ -1,3 +1,4 @@
+import { agentLoopStepLimit } from "@/lib/ai/agent-loop/switch";
 import { appendFileSync } from "node:fs";
 
 import { expect, vi } from "vitest";
@@ -338,7 +339,7 @@ export const NOV14_AGENT_LOOP_CASES: ReplayCase[] = [
   },
   {
     id: "nov14-agent-loop-step-limit-says-so",
-    title: "a model that never stops asking for tools ends at the step limit (6) with a clear reply, never an empty one",
+    title: "a model that never stops asking for tools ends at the step limit (AGENT_LOOP_MAX_STEPS, default 6) with a clear reply, never an empty one",
     report: `${REPORT}: the step limit`,
     status: "fixed",
     fixFlags: [FLAG],
@@ -350,7 +351,8 @@ export const NOV14_AGENT_LOOP_CASES: ReplayCase[] = [
       const standIn = loopStandIn(() => ({ tool: "find_staff", input: { name: "rowan" } }));
       t.loopModel!(standIn);
       const reply = await t.thread().say("verbal CA for rowan kestrel, she was late on 11/1/26");
-      expect(standIn.calls).toBe(6);
+      // PR 6 (changed on purpose): the limit as configured (AGENT_LOOP_MAX_STEPS; code default 6, production 8 from PR 6), not a hard-coded 6.
+      expect(standIn.calls).toBe(agentLoopStepLimit());
       expect(reply.content).toMatch(/steps/);
       expect(reply.content.trim()).not.toBe("");
     },

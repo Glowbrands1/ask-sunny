@@ -1,4 +1,4 @@
-import { STREAM_HEADER, unwrapStreamed } from "@/lib/api/streamed-response";
+import { PROGRESS_HEADER, PROGRESS_STREAM, STREAM_HEADER, readStreamedLines, unwrapStreamed } from "@/lib/api/streamed-response";
 import { createHash, randomUUID } from "node:crypto";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -81,6 +81,10 @@ const state = vi.hoisted(() => ({
   knowledgeQueries: [] as string[],
   normalizerIntent: null as string | null,
   fullManualLoads: false,
+  /** PR 6 item 2: reads of the official policy manual this case (once per loop turn). */
+  manualReads: 0,
+  /** PR 6: the agent loop's per-turn check of the manual's document and version. */
+  manualVersionChecks: 0,
   /** The grounding block the answering model was last given (`lastGrounding`). */
   lastGrounding: "",
   /** What the slot model (record_intent_slots) reads this turn, when a case sets it — as a production trace shows. */
@@ -124,6 +128,8 @@ vi.mock("@/lib/forms/form-patch-call", () => ({
   FORM_PATCH_DEFAULT_TIMEOUT_MS: 5_000,
   formPatchTimeoutMs: () => 5_000,
   callFormPatchModel: async (input?: { prompt?: string }) => {
+    /* PR 6: a model call made inside a loop tool counts toward the step limit, as the real call notes itself. */
+    (await import("@/lib/ai/model-call-scope")).noteModelCall();
     /*
      * EDIT_SEES_SAVED_FORM_ENABLED (coding 6, 13 Nov 2026): a check round (the prompt holds "SAVED AFTER YOUR LAST
      * PATCH") never takes a reading from the script above. It answers `t.patchChecks([...])` in order; past the end,
@@ -291,6 +297,8 @@ vi.mock("@/lib/ai/call-claude", () => ({
    * lone first name: the name exactly as typed, with its sentence as evidence.
    */
   callClaudeToolTimed: async (input: { messages?: { content?: unknown }[] }) => {
+    /* PR 6: a model call made inside a loop tool counts toward the step limit, as the real call notes itself. */
+    (await import("@/lib/ai/model-call-scope")).noteModelCall();
     state.toolCalls += 1;
     const text = JSON.stringify(input.messages ?? []);
     const manager = (text.split("Manager: ").pop() ?? "").split("\n")[0]!.replace(/\\"/g, '"').replace(/"\}.*$/, "");
@@ -307,6 +315,8 @@ vi.mock("@/lib/ai/call-claude", () => ({
     };
   },
   callClaude: async (input?: { system?: string; grounding?: string; formEditTool?: { data: string; onToolUse: (call: unknown) => void } | null }) => {
+    /* PR 6: a model call made inside a loop tool counts toward the step limit, as the real call notes itself. */
+    (await import("@/lib/ai/model-call-scope")).noteModelCall();
     state.chatModelCalls += 1;
     state.lastGrounding = String(input?.grounding ?? "");
     // REPLAY_RECORD (QA, 10 Nov 2026): the system prompt each answer was asked with, as a hash, so two versions of the
@@ -344,6 +354,8 @@ vi.mock("@/lib/ai/call-claude", () => ({
     return said.answer ?? ANSWER;
   },
   callClaudeTool: async (input: { tool?: { name?: string }; messages?: { content?: unknown }[] }) => {
+    /* PR 6: a model call made inside a loop tool counts toward the step limit, as the real call notes itself. */
+    (await import("@/lib/ai/model-call-scope")).noteModelCall();
     state.toolCalls += 1;
     if (input.tool?.name === "store_summary") return summaries.reply === null ? null : { summary: summaries.reply };
     if (input.tool?.name === "extract_form_fields") {
@@ -408,6 +420,8 @@ vi.mock("@/lib/ai/anthropic", () => ({
   getAnthropicClient: () => ({
     messages: {
       create: async (request: { tool_choice?: { name?: string } }) => {
+        /* PR 6: a model call made inside a loop tool counts toward the step limit, as the real call notes itself. */
+      (await import("@/lib/ai/model-call-scope")).noteModelCall();
         const revising = request.tool_choice?.name === "revise_form_fields";
         if (!revising) {
           state.draftCalls += 1;
@@ -479,7 +493,13 @@ vi.mock("@/lib/knowledge/providers/supabase", () => ({
         },
       };
     }
+    /* PR 6: the manual's document and version; the version changes whenever a case adds sections (`t.manualAlsoHas`), as a sync writes a new one. */
+    async officialPolicyManualVersion() {
+      state.manualVersionChecks += 1;
+      return { documentId: "doc-manual", version: `v-${JSON.stringify(state.manualExtra).length}` };
+    }
     async fetchOfficialPolicyManual() {
+      state.manualReads += 1;
       return {
         ok: true,
         documentId: "doc-manual",
@@ -650,6 +670,14 @@ class Thread {
   private offeredCopy: OfferedCopy | undefined;
   // A well-formed client id, so the route keeps the intake state between turns (`isClientConversationId`).
   private readonly conversationId = createId("conv");
+  /** PR 6 item 5: the thread asks for progress lines (`askProgress`); the last turn's statuses and stream version. */
+  private progressAsked = false;
+  lastProgress: string[] = [];
+  lastStreamVersion: string | null = null;
+
+  askProgress(): void {
+    this.progressAsked = true;
+  }
 
   async say(question: string, reading: Record<string, unknown> = {}, extra: Record<string, unknown> = {}): Promise<Answer> {
     state.reading = reading;
@@ -660,7 +688,7 @@ class Thread {
     const response = await chatRoute.POST(
       new Request("https://app.test/api/chat", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", ...(this.progressAsked ? { [PROGRESS_HEADER]: "1" } : {}) },
         body: JSON.stringify({
           question,
           mode: "standard",
@@ -683,7 +711,13 @@ class Thread {
      * the sibling app, 5 Nov 2026: a slow redraft was recorded there as an empty reply because the envelope
      * was read as the answer).
      */
-    const streamed = response.headers.get(STREAM_HEADER) === "1" ? unwrapStreamed(await response.text()) : null;
+    this.lastStreamVersion = response.headers.get(STREAM_HEADER);
+    this.lastProgress = [];
+    const streamed = this.lastStreamVersion === "1"
+      ? unwrapStreamed(await response.text())
+      : this.lastStreamVersion === PROGRESS_STREAM
+        ? await readStreamedLines(response, (status) => this.lastProgress.push(status))
+        : null;
     const payload = (streamed ? streamed.body : await response.json()) as Answer & { error?: string };
     expect(streamed?.status ?? response.status, JSON.stringify(payload)).toBe(200);
     // EVERY REPLY (QA, 3 Nov 2026): "I still need …" is never said unless the reply asks who, which location or which date.
@@ -776,6 +810,8 @@ beforeEach(async () => {
   state.knowledgeQueries = [];
   state.normalizerIntent = null;
   state.fullManualLoads = false;
+  state.manualReads = 0;
+  state.manualVersionChecks = 0;
   state.lastGrounding = "";
   state.readerEmployee = null;
   state.slotsOnlyIfSaid = false;
@@ -959,6 +995,8 @@ function context(): ReplayContext {
     normalizerReads: (intent) => {
       state.normalizerIntent = intent;
     },
+    manualReads: () => state.manualReads,
+    manualVersionChecks: () => state.manualVersionChecks,
     fullManualLoads: () => {
       state.fullManualLoads = true;
     },

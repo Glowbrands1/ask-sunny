@@ -235,6 +235,32 @@ export class SupabaseKnowledgeProvider implements KnowledgeProvider {
    * `lib/forms/official-policy-manual.ts` — which is pure, so the decision is
    * testable against the manual's own text.
    */
+  /**
+   * AGENT LOOP PR 6 (QA's review of #1059): which document is the official policy manual and its version, from the
+   * small document list only (no chunks). The agent loop reads this every turn and re-reads the manual's chunks only
+   * when the document or its version changed (a Woven sync writes a new version), so a turn never cites a stale
+   * manual and the large chunk read is skipped when nothing changed. The same selection as `fetchOfficialPolicyManual`,
+   * which is left as it is for today's path. Null when the manual cannot be named (the caller then reads it in full).
+   */
+  async officialPolicyManualVersion(scopeId: string): Promise<{ readonly documentId: string; readonly version: string } | null> {
+    try {
+      const client = getSupabaseAdmin();
+      const { data, error } = await client
+        .from("knowledge_documents")
+        .select("id, title, category, original_filename, tags, version, source")
+        .eq("knowledge_scope_id", scopeId)
+        .eq("indexed", true)
+        .eq("status", "indexed");
+      if (error) return null;
+      const resolution = resolvePolicyManual(await withInheritedTags(client, scopeId, (data ?? []) as RoleDocumentRow[]));
+      if (!resolution.ok) return null;
+      const document = resolution.document as RoleDocumentRow;
+      return { documentId: document.id, version: String(document.version) };
+    } catch {
+      return null;
+    }
+  }
+
   async fetchOfficialPolicyManual(
     scopeId: string,
   ): Promise<OfficialPolicyManualResult> {

@@ -29,7 +29,61 @@ export const START_AFTER_MS = 2_000;
 export const KEEP_ALIVE_MS = 5_000;
 export const STREAM_HEADER = "x-chat-stream";
 
-export async function streamWhenSlow(produce: () => Promise<Response>): Promise<Response> {
+/*
+ * PROGRESS LINES (rebuild plan PR 6, item 5; QA-approved design, 16 Nov 2026): while the AI loop works, a short status
+ * per tool step ("Looking up <name>…", "Building the card…") in place of the empty wait. Only when BOTH the browser
+ * asked for them (request header PROGRESS_HEADER: 1) AND the route enabled the channel for this turn (a loop user,
+ * `agentLoopFor`) by the time the stream starts. Then the stream is version 2:
+ *
+ *   HTTP 200, `x-chat-stream: 2`
+ *   "\n" at once, a line {"progress": "<status>"} per status, "\n" keep-alives,
+ *   then the same envelope {"status", "body"} as version 1, on the last line
+ *
+ * Everyone else gets version 1, byte for byte. A status is display only: never part of the reply, the history or a
+ * trace. The client reads version 2 line by line (`readStreamedLines`); a line it cannot read is skipped.
+ */
+export const PROGRESS_HEADER = "x-chat-progress";
+export const PROGRESS_STREAM = "2";
+
+export interface ProgressChannel {
+  /** The route turns the channel on for a turn that may send statuses (a loop user). Off, nothing is ever sent. */
+  enable(): void;
+  readonly enabled: boolean;
+  /** A status for the screen. Ignored while off, and after the stream started as version 1. */
+  emit(status: string): void;
+  /** The stream's side: the latest status so far, then each new one. */
+  listen(onStatus: (status: string) => void): void;
+}
+
+export function progressChannel(): ProgressChannel {
+  let enabled = false;
+  let latest: string | null = null;
+  let listener: ((status: string) => void) | null = null;
+  return {
+    enable() {
+      enabled = true;
+    },
+    get enabled() {
+      return enabled;
+    },
+    emit(status) {
+      if (!enabled || status.trim() === "") return;
+      latest = status;
+      listener?.(status);
+    },
+    listen(onStatus) {
+      listener = onStatus;
+      if (latest !== null) onStatus(latest);
+    },
+  };
+}
+
+/** The browser asked for progress lines (the request header). */
+export function wantsProgress(request: Request): boolean {
+  return request.headers.get(PROGRESS_HEADER) === "1";
+}
+
+export async function streamWhenSlow(produce: () => Promise<Response>, progress?: ProgressChannel): Promise<Response> {
   const pending = produce();
   let timer: ReturnType<typeof setTimeout> | undefined;
   const early = await Promise.race([
@@ -43,9 +97,22 @@ export async function streamWhenSlow(produce: () => Promise<Response>): Promise<
 
   const encoder = new TextEncoder();
   let beat: ReturnType<typeof setInterval> | undefined;
+  /* Version 2 only when the channel was enabled before the stream starts; decided once, here. */
+  const withProgress = progress?.enabled === true;
+  let finished = false;
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       controller.enqueue(encoder.encode("\n"));
+      if (withProgress) {
+        progress!.listen((status) => {
+          if (finished) return;
+          try {
+            controller.enqueue(encoder.encode(`${JSON.stringify({ progress: status })}\n`));
+          } catch {
+            // The browser went away.
+          }
+        });
+      }
       beat = setInterval(() => {
         try {
           controller.enqueue(encoder.encode("\n"));
@@ -69,6 +136,7 @@ export async function streamWhenSlow(produce: () => Promise<Response>): Promise<
           envelope = { status: 500, body: {} };
         }
         clearInterval(beat);
+        finished = true;
         try {
           controller.enqueue(encoder.encode(JSON.stringify(envelope)));
           controller.close();
@@ -83,7 +151,9 @@ export async function streamWhenSlow(produce: () => Promise<Response>): Promise<
   });
   return new Response(stream, {
     status: 200,
-    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", [STREAM_HEADER]: "1" },
+    headers: withProgress
+      ? { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-store", [STREAM_HEADER]: PROGRESS_STREAM }
+      : { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", [STREAM_HEADER]: "1" },
   });
 }
 
@@ -92,4 +162,50 @@ export function unwrapStreamed(text: string): { status: number; body: unknown } 
   const parsed = JSON.parse(text) as { status?: unknown; body?: unknown };
   const status = typeof parsed.status === "number" ? parsed.status : 500;
   return { status, body: parsed.body ?? {} };
+}
+
+/**
+ * The client's side of version 2: reads the body line by line, hands each status to `onProgress`, and returns the
+ * envelope from the last line. A line that is not JSON, or not a status or an envelope, is skipped; a body with no
+ * envelope is a 502, as an unreadable version 1 body is.
+ */
+export async function readStreamedLines(response: Response, onProgress?: (status: string) => void): Promise<{ status: number; body: unknown }> {
+  let envelope: { status: number; body: unknown } | null = null;
+  const take = (line: string) => {
+    if (line.trim() === "") return;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      return;
+    }
+    if (!parsed || typeof parsed !== "object") return;
+    const record = parsed as { progress?: unknown; status?: unknown; body?: unknown };
+    if (typeof record.progress === "string") {
+      try {
+        onProgress?.(record.progress);
+      } catch {
+        // A screen update never fails the answer.
+      }
+    } else if ("status" in record || "body" in record) {
+      envelope = { status: typeof record.status === "number" ? record.status : 500, body: record.body ?? {} };
+    }
+  };
+  const reader = response.body?.getReader();
+  if (!reader) {
+    for (const line of (await response.text()).split("\n")) take(line);
+  } else {
+    const decoder = new TextDecoder();
+    let pending = "";
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      pending += decoder.decode(value, { stream: true });
+      const lines = pending.split("\n");
+      pending = lines.pop() ?? "";
+      for (const line of lines) take(line);
+    }
+    take(pending + decoder.decode());
+  }
+  return envelope ?? { status: 502, body: {} };
 }

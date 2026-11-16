@@ -39,7 +39,7 @@ import { fieldStates, mergeSaved, refusedFields, savedDiff, type SavedChange } f
 import { turnsFromThisPersonsRequest } from "@/lib/forms/this-persons-turns";
 import { closeHeadingReading, closePolicyQuestion, namedPolicies, namesHeading } from "@/lib/forms/named-policy-section";
 import { payrollAmountFromConversation } from "@/lib/forms/payroll-deduct";
-import { PAYROLL_AMOUNT_KEY } from "@/lib/forms/payroll-amount-field";
+import { PAYROLL_AMOUNT_KEY, PAYROLL_AMOUNT_QUESTION } from "@/lib/forms/payroll-amount-field";
 import { withoutPayrollClauses } from "@/lib/ai/payroll-clause-not-account";
 import { listTemplateSummaries, type TemplateSummary } from "@/lib/forms/repository";
 import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
@@ -124,6 +124,15 @@ export interface ToolContext {
   readonly personAskedRecords?: readonly PersonAskedRecord[];
   /** QA's review of #1062: each earlier loop turn's record (saved fields, a card), oldest first. */
   readonly turnRecords?: readonly TurnRecord[];
+  /** Rebuild plan PR 6: what this turn already read, read once per turn (`turnManual`). A tool called outside a turn reads fresh. */
+  readonly turn?: TurnReads;
+}
+
+/** PR 6: reads held for one turn only (the policy manual), never past it. */
+export interface TurnReads {
+  manual?: Promise<ManualRead>;
+  /** The manual read's time and whether its sections were reused (same document and version), for the trace: numbers only. */
+  manualRead?: { ms: number; cached: boolean };
 }
 
 /** The recorded name questions and the roster, for `confirmed-spelling.ts`. */
@@ -727,6 +736,9 @@ function namesAPlace(typed: string): boolean {
  */
 const ALSO_ASK_ACCOUNT = "If so, tell me what happened.";
 
+/** find_staff lists at most this many people (PR 6: and says when it cut the list). */
+export const FIND_STAFF_LIMIT = 10;
+
 export async function findStaff(context: ToolContext, input: { name?: unknown; person_evidence?: unknown }, effects?: ToolEffects): Promise<ToolResult> {
   const typed = typeof input.name === "string" ? input.name.trim() : "";
   if (typed === "") return { reason_code: "missing_input", error: "Give the name to look for." };
@@ -742,7 +754,10 @@ export async function findStaff(context: ToolContext, input: { name?: unknown; p
     /* QA (16 Nov 2026): what the reply calls this person, decided by code (`replyNameFor`), as on every card result. */
     return { matches: [], kept_as_typed: typed, reply_name: replyNameFor(typed, read.roster, extractEmployeeNames(managerTurns(context)), null), note: `The manager kept "${typed}" as typed (their answer to your question). Do not ask again: propose the card now with employee_name "${typed}", with this request's account from the earlier turns.` };
   }
-  let found = rosterMatches(typed, read.roster).slice(0, 10);
+  /* Rebuild plan PR 6: the list is cut at 10; more_matches says so, so a cut list is never read as everyone. */
+  const allMatches = rosterMatches(typed, read.roster);
+  const cut = allMatches.length > FIND_STAFF_LIMIT ? { more_matches: true, total_matches: allMatches.length } : null;
+  let found = allMatches.slice(0, FIND_STAFF_LIMIT);
   /* The roster's exact full name wins over people whose names only start the same ("Test Employee" vs "Test Employee Two"). */
   const exact = found.filter((person) => samePerson(displayName(person), typed) && words(displayName(person)).length === words(typed).length);
   /* r3 (right-persons-account): the longer names are a fact, so a manager's "<A> Two" is never lost to "<A>". */
@@ -897,6 +912,7 @@ export async function findStaff(context: ToolContext, input: { name?: unknown; p
   const shared = new Set(found.map((person) => displayName(person).toLowerCase())).size < found.length;
   return {
     matches: found.map(staffRow),
+    ...(cut && exact.length === 0 ? { ...cut, more_note: `Only the first ${FIND_STAFF_LIMIT} of ${cut.total_matches} people are listed. Ask the manager for the full name.` } : {}),
     ...(found.length > 1 ? { reason_code: "ambiguous_person" } : {}),
     ...(longer.length > 0 ? { longer_names_on_roster: longer, longer_note: "Other people's names start with this one. If the manager wrote one of these longer names, look that one up instead." } : {}),
     ...(found.length > 1 ? { note: shared ? "Several people share this name: ask the manager which one (by salon) before proposing a form." : "Several people match: ask the manager which one." } : {}),
@@ -975,7 +991,7 @@ export function accountSubjectChanged(managerWords: string, account: string, emp
 
 /** Batch G (G18): "Corrective Action citing **<heading>** (p.<page>). Who is it for?", for a policy the manager named in this chat. */
 async function policyQuestion(context: ToolContext, formName: string): Promise<string | null> {
-  const manual = await manualFor(context.scopeId);
+  const manual = await turnManual(context);
   if (!manual) return null;
   const said = managerTurns(context);
   /* The phrases today's reader names, then the words right before "policy" ("cite the animals in the workplace policy"), longest first. */
@@ -1273,35 +1289,56 @@ type ManualRead = {
   /** The manual's own row, for its source card (QA's live-app item 9). */
   readonly document?: { readonly id: string; readonly title: string; readonly category: string };
 } | null;
-const manualCache = new Map<string, Promise<ManualRead>>();
+/**
+ * THE POLICY MANUAL IS READ ONCE PER TURN, AND NEVER STALE (rebuild plan PR 6; bug 6 of the plan's status list: the old
+ * cache lived until the server restarted, so a manual re-synced from Woven was cited from its old copy until a redeploy).
+ * Each turn asks which document is the manual and its version (the small document list, `officialPolicyManualVersion`);
+ * the manual's sections (the large read) are reused only for that same document and version, and read again the moment
+ * either changes. A turn holds its one read (`turnManual`), so the system prompt, read_policy and propose_form share it.
+ * A failed read is null for that turn only and is never kept.
+ */
+const manualByVersion = new Map<string, { readonly key: string; readonly read: NonNullable<ManualRead> }>();
 
-export function manualFor(scopeId: string): Promise<ManualRead> {
-  const cached = manualCache.get(scopeId);
-  if (cached) return cached;
-  const pending = (async (): Promise<ManualRead> => {
+export function manualFor(scopeId: string, meta?: TurnReads): Promise<ManualRead> {
+  return (async (): Promise<ManualRead> => {
+    const started = performance.now();
+    const provider = new SupabaseKnowledgeProvider();
     try {
-      const manual = await new SupabaseKnowledgeProvider().fetchOfficialPolicyManual(scopeId);
+      const current = await provider.officialPolicyManualVersion(scopeId).catch(() => null);
+      const key = current ? `${current.documentId}@${current.version}` : null;
+      const kept = manualByVersion.get(scopeId);
+      if (key && kept?.key === key) {
+        if (meta) meta.manualRead = { ms: Math.round(performance.now() - started), cached: true };
+        return kept.read;
+      }
+      const manual = await provider.fetchOfficialPolicyManual(scopeId);
       if (!manual.ok) return null;
-      return {
+      const read = {
         chunks: manual.chunks,
         headings: manualSectionHeadings(manual.chunks),
         document: { id: manual.documentId, title: manual.documentTitle, category: manual.documentCategory ?? "policy" },
       };
+      /* Kept only under the version this read is known to be (the same document the version check named). */
+      if (key && current!.documentId === manual.documentId) manualByVersion.set(scopeId, { key, read });
+      else manualByVersion.delete(scopeId);
+      if (meta) meta.manualRead = { ms: Math.round(performance.now() - started), cached: false };
+      return read;
     } catch {
       return null;
     }
   })();
-  manualCache.set(scopeId, pending);
-  // A failed read is not kept: the next turn tries again.
-  void pending.then((read) => {
-    if (read === null) manualCache.delete(scopeId);
-  });
-  return pending;
 }
 
-/** Tests only. */
+/** This turn's one read of the manual (PR 6); outside a turn (a tool's unit test), a fresh read. */
+export function turnManual(context: Pick<ToolContext, "scopeId" | "turn">): Promise<ManualRead> {
+  if (!context.turn) return manualFor(context.scopeId);
+  context.turn.manual ??= manualFor(context.scopeId, context.turn);
+  return context.turn.manual;
+}
+
+/** Tests only: forget the manual kept under its version. */
 export function forgetAgentLoopManualForTests(): void {
-  manualCache.clear();
+  manualByVersion.clear();
 }
 
 /** A heading as words: case, punctuation and the word "policy" set aside. */
@@ -1318,7 +1355,7 @@ function headingOf(headings: readonly string[], asked: string): string | null {
 
 export async function readPolicy(context: ToolContext, input: { heading?: unknown }, effects?: ToolEffects): Promise<ToolResult> {
   const asked = typeof input.heading === "string" ? input.heading.trim() : "";
-  const manual = await manualFor(context.scopeId);
+  const manual = await turnManual(context);
   if (!manual) return { reason_code: "read_failed", error: "The JBA Policy Manual could not be read just now. Say so; do not answer from memory." };
   const heading = headingOf(manual.headings, asked);
   if (!heading) {
@@ -1525,6 +1562,9 @@ function answeredByFullName(view: NameQuestionView, typed: string): boolean {
  * The off-roster offer's answer ("use <name>", or yes right after "Reply **use <name>**") is read from the server's name
  * question record (`latestTurnKeepsOrUsesTyped`), never from the reply's text (QA's review of #1064, 16 Nov 2026).
  */
+
+/** The edited fields an edit_form result lists as stated by this message (stated_this_turn). */
+const STATED_EDIT_FIELDS: ReadonlySet<string> = new Set(["warning_type", "payroll_deduct", PAYROLL_AMOUNT_KEY]);
 
 /**
  * The text names this person: their full name as words, and not as the start of a longer roster name ("Test Employee"
@@ -1789,6 +1829,39 @@ const ACCOUNT_FORMS = {
   },
 };
 
+/** PR 6 item 1: what propose_form's own name lookup found: one person to card, find_staff's result to hand back, or nothing to do. */
+type CardLookup = { kind: "none" } | { kind: "person"; person: RosterEmployee; facts: Record<string, unknown> } | { kind: "ask"; result: ToolResult };
+
+/**
+ * PR 6 item 1: a typed name looked up for a card with find_staff's own code. One match and nothing to ask → that person,
+ * with find_staff's facts (name_from_staff_list, confirmed_by_manager, longer_names_on_roster, …) for the card's result.
+ * Otherwise find_staff's result itself, its reason code and facts unchanged, with card: null. "none" when the name is
+ * one find_staff would not look up (empty).
+ */
+async function lookUpForCard(context: ToolContext, effects: ToolEffects, typed: string, personEvidence: unknown, roster: readonly RosterEmployee[]): Promise<CardLookup> {
+  const found = await findStaff(context, { name: typed, person_evidence: personEvidence }, effects);
+  const record = found as Record<string, unknown>;
+  const matches = Array.isArray(record.matches) ? (record.matches as { employee_id?: unknown }[]) : [];
+  const asks = typeof record.reason_code === "string" || "error" in record || "did_you_mean" in record || record.unchecked === true || matches.length !== 1;
+  const person = !asks ? roster.find((row) => row.id === matches[0]!.employee_id) : undefined;
+  if (person) {
+    const { matches: _matches, note: _note, ...facts } = record;
+    void _matches;
+    void _note;
+    return { kind: "person", person, facts };
+  }
+  /*
+   * Nobody found and nothing for find_staff to say (no code, no Did you mean: the name reads as no one, or no
+   * person_evidence holds it): propose_form's own refusal answers, as before this lookup (the retry guard's not_on_roster
+   * with the use-<name> question, #1054), so its count over find_staff and propose_form for that name is unchanged.
+   */
+  if (record.reason_code === "missing_input" || (typeof record.reason_code !== "string" && matches.length === 0 && !("did_you_mean" in record) && !("error" in record) && record.unchecked !== true)) return { kind: "none" };
+  /* find_staff's result as it is (reason code, facts, note, ask_exactly), plus propose_form's own refusal: no card was made. */
+  const ask = typeof record.note === "string" ? record.note : "Ask the manager who the form is for.";
+  /* find_staff's reason_code when it gave one; a Did you mean (no code of its own) is name_to_confirm, so every refusal has a code. */
+  return { kind: "ask", result: { ...found, card: null, looked_up_by: "propose_form", reason_code: typeof record.reason_code === "string" ? record.reason_code : "name_to_confirm", ...("error" in record ? {} : { error: `No card was made: the name was looked up as find_staff does. ${ask}` }) } };
+}
+
 export async function proposeForm(
   context: ToolContext,
   effects: ToolEffects,
@@ -1798,6 +1871,7 @@ export async function proposeForm(
     template_key?: unknown;
     employee_id?: unknown;
     employee_name?: unknown;
+    person_evidence?: unknown;
     exit_evidence?: unknown;
     new_form_evidence?: unknown;
     request_evidence?: unknown;
@@ -1853,6 +1927,8 @@ export async function proposeForm(
   let offRosterName: string | null = null;
   /* fix-name, live s10: the card's name this proposal corrects (cardNameCorrection), for the name_corrected fact. */
   let nameCorrectedFrom: string | null = null;
+  /* PR 6 item 1: propose_form's own lookup of a typed name (find_staff's code), and the facts it carried. */
+  let lookedUp: CardLookup = { kind: "none" };
   if (read.kind === "read") {
     const id = typeof input.employee_id === "string" ? input.employee_id.trim() : "";
     const person = id ? read.roster.find((row) => row.id === id) : undefined;
@@ -1918,6 +1994,18 @@ export async function proposeForm(
       offRosterName = typed;
       /* The card's off_roster_name line asks the manager to check this name: recorded, so a full name next turn corrects it. */
       effects.nameQuestion ??= { offeredIds: [], typed, asksFullName: true };
+    }
+    /*
+     * REBUILD PLAN PR 6, ITEM 1 (speed: one model call fewer per card): a name with no employee_id is looked up here,
+     * with find_staff's own code (`findStaff`), so the card needs no find_staff step first. Exactly one person found
+     * and nothing to ask (an exact full name, the manager's confirmed answer, a whole first name only one person has):
+     * the card is made for them, with find_staff's facts on the result. Anything else (not_on_roster, ambiguous_person,
+     * did_you_mean) comes back exactly as find_staff gives it, with no card; a name find_staff finds no one for and says
+     * nothing about falls to propose_form's own not_on_roster refusal below, as before.
+     */
+    else if (typed && !id && (lookedUp = await lookUpForCard(context, effects, typed, input.person_evidence, read.roster)).kind !== "none") {
+      if (lookedUp.kind === "ask") return lookedUp.result;
+      employee = { name: nameAsSaid(lookedUp.person, managerTurns(context)), salonIds: lookedUp.person.salonIds, id: lookedUp.person.id };
     }
     else {
       /*
@@ -2141,6 +2229,13 @@ export async function proposeForm(
   const requestStart = ownRequestTurns.find((turn) => requestStarts.has(turn.id));
   const requestTurnIds = requestStart ? ownRequestTurns.filter((turn) => turn.index >= requestStart.index).map((turn) => turn.id) : [];
   let accountLost: string[] = [];
+  /*
+   * PR 6 (the Runner's live comparison, 16 Nov 2026: an exit card's account came back empty, or without the last day, once
+   * the card was one propose_form call): every card's account keeps the dates, times, amounts and figures the manager
+   * gave, the Employee Exit Form's too. Code compares formats only (`accountMissing`); the model writes the account.
+   */
+  const exitForm = template.key === appConfig().formKeys.exit;
+  if (exitForm && whatHappened) accountLost = accountMissing(withoutPayrollClauses(requestWords), whatHappened, null);
   if (whatHappened && ACCOUNT_FORMS.has(template.key)) {
     /* A message that is only a level or payroll answer (the model's evidence quotes the whole message) is not the incident's account. */
     const answerOnly = new Set(
@@ -2158,7 +2253,7 @@ export async function proposeForm(
    * cleaning or sanitation duty left undone is Other, never the Standards of Conduct; a Care and Cleaning policy the
    * manager names keeps that section; a cleaning duty beside another offense cites both.
    */
-  const manual = await manualFor(context.scopeId);
+  const manual = await turnManual(context);
   const askedPolicyWhole = typeof input.policy === "string" ? input.policy.trim() : "";
   /* A heading beside Other ("Late Opening; Other — beds not cleaned"): the heading is checked, Other is the model's topic. */
   const askedOther = /(?:^|;\s*)(other\b.*)$/i.exec(askedPolicyWhole)?.[1]?.trim() ?? "";
@@ -2350,6 +2445,12 @@ export async function proposeForm(
     !(answersThisMessage(levelCheck) && level !== null);
   if (payrollAnswerUnclear) payroll = null;
   const payrollQuestion = `Is payroll deduct applicable for **${employee.name}**? Yes or no.`;
+  const amountInThisMessage = (digits: string | null) => Boolean(digits && context.question.replace(/[^\d.]/g, " ").split(/\s+/).some((n) => n !== "" && Number(n) === Number(digits)));
+  const statedThisTurn = [
+    ...(level && answersThisMessage(levelCheck) ? ["warning_level"] : []),
+    ...(payroll && answersThisMessage(payrollCheck) ? ["payroll_deduct"] : []),
+    ...(payroll === "yes" && amountInThisMessage(amount) ? ["payroll_amount"] : []),
+  ];
   /*
    * Batch G (QA's design, 15 Nov 2026; Pau's standing approval): the MODEL decides this Corrective Action is a
    * termination (warning_level "termination", taught by the rules book's examples); code only LOCKS it. It is kept only
@@ -2589,12 +2690,26 @@ export async function proposeForm(
     ...(level || payroll || priorActions
       ? { stated: { ...(level ? { warning_level: level } : {}), ...(payroll ? { payroll_deduct: payroll } : {}), ...(payroll === "yes" && amount ? { payroll_amount: `$${amount.replace(/^\$/, "")}` } : {}), ...(priorActions ? { prior_actions: priorActions } : {}) } }
       : {}),
+    /*
+     * QA's live finding (16 Nov 2026): "as you said" only for what THIS message stated. The level and payroll whose
+     * evidence is the message being answered now, and an amount whose digits are in it; one stated earlier in the
+     * request is read back without "as you said".
+     */
+    ...(statedThisTurn.length > 0 ? { stated_this_turn: statedThisTurn } : {}),
     /* AMOUNT_UNKNOWN_ACK (batch H1): "I don't know the amount" leaves it blank for the manager, said once, never asked again. */
     ...(corrective && payroll === "yes" && !amount ? (saysAmountUnknown(context.question, context.history, { amountOpen: true }) ? { payroll_amount_unknown: true } : { payroll_amount_unset: true }) : {}),
     ...(datesGiven.length > 1 ? { dates_given: datesGiven, ...(date ? { date_chosen: date } : {}) } : {}),
     /* Batch G (G16): this chat already asked which date; a second ask is never made (the rules book: use the best reading). */
     ...(datesGiven.length > 1 && context.history.some((message) => message.role === "assistant" && /more than one date|which date goes on the form/i.test(String(message.content))) ? { dates_asked_before: true } : {}),
     ...(accountLost.length > 0 ? { account_words_missing: accountLost } : {}),
+    /* PR 6: an exit card with no account at all. A fact: the model puts the manager's own account in what_happened, or leaves it. */
+    ...(exitForm && !whatHappened ? { account_not_given: { note: "This exit card has no account. If the manager said how or when they left (\"resigned by text\", their last day), propose the card again with all of it in what_happened, in their own words." } } : {}),
+    /*
+     * PR 6 (the live comparison: a coaching card came back with no policy line once read_policy was no longer called first):
+     * a Corrective Action or Coaching card with an account and no policy. A fact, never a policy code picked: the model
+     * passes the heading (the system prompt lists them) or Other, or says no section fits.
+     */
+    ...(ACCOUNT_FORMS.has(template.key) && !awaiting && !askedPolicyWhole ? { policy_not_given: { note: "This card has no policy. Propose it again with policy: the one JBA Policy Manual heading that fits what happened (the headings are listed in your instructions), or \"Other — <short topic>\". If no section fits, say so in your reply." } } : {}),
     ...(accountGiven ? { request_words: untrusted(accountGiven) } : {}),
     ...(figuresNotSaid.length > 0 ? { figures_not_said: figuresNotSaid } : {}),
     ...(formatFigures.length > 0 ? { format_figures: formatFigures } : {}),
@@ -2665,6 +2780,8 @@ export async function proposeForm(
     ...(askedPayroll && !payroll && payrollCheck && !payrollCheck.ok ? { payroll_evidence: payrollCheck.reason } : {}),
     ...(payrollAnswerUnclear ? { ...(askedLevel && !level ? {} : { reason_code: "payroll_not_stated" }), payroll_evidence: "answer_to_two_questions" } : {}),
     ...(notOnCard.length > 0 ? { not_on_card: notOnCard } : {}),
+    /* PR 6 item 1: find_staff's facts from propose_form's own lookup (name_from_staff_list, confirmed_by_manager, longer_names_on_roster, …). */
+    ...(lookedUp.kind === "person" ? { ...lookedUp.facts, looked_up_by: "propose_form" } : {}),
     /* QA and Pau (16 Nov 2026): what the reply calls this person (the first name unless someone else shares it). */
     reply_name: replyNameFor(card.employeeName ?? employee.name, read.kind === "read" ? read.roster : [], extractEmployeeNames(managerTurns(context)), employee.id ?? null),
     card: {
@@ -3099,7 +3216,8 @@ export async function editForm(
           note: "Nothing was written and no new draft was opened. Say what was refused and why.",
         };
       }
-      return { ...revisedEdit, revision_draft: { id: draft.instanceId, from_id: id, form: draft.templateName, employee: draft.employeeName }, original_unchanged: true, note: "Say it is a new draft revising the finalized form, as the rules book's Editing lines teach." };
+      /* QA's live finding (16 Nov 2026): a revision draft already open is reused (opened false), never said to be new. */
+      return { ...revisedEdit, form_state: "revision_draft", revision_draft: { id: draft.instanceId, from_id: id, form: draft.templateName, employee: draft.employeeName, reused: !draft.opened }, original_unchanged: true, note: "Say it is a new draft revising the finalized form, as the rules book's Editing lines teach." };
     }
     /*
      * HARD GUARD, A REWORD KEEPS EVERY FACT (Pau via QA, 14 Nov 2026: "make it professional", "reword it", "clean it
@@ -3355,10 +3473,23 @@ export async function editForm(
     /* Batch G2 (item 1, EDIT_SEES_SAVED_FORM): the level the saved form holds now, read back, so the reply never claims it from the card or history. */
     const savedLevel = saved.values.find((row) => row.fieldKey === "warning_type")?.checked ?? [];
     const levelLabel: Record<string, string> = { verbal: "Verbal", written: "Written", termination: "Termination" };
+    /*
+     * QA's live finding (16 Nov 2026, case B): "tick payroll deduct" saved Payroll = Yes and the reply never asked the
+     * amount. Read from the saved form: payroll Yes, the form has an amount field, and it is still empty (and the manager
+     * did not say they don't know it): a fact, so the reply asks the amount in one question.
+     */
+    const savedPayroll = saved.values.find((row) => row.fieldKey === "payroll_deduct")?.checked ?? [];
+    const savedAmount = String(saved.values.find((row) => row.fieldKey === PAYROLL_AMOUNT_KEY)?.value ?? "").trim();
+    const amountMissing = savedPayroll.includes("yes") && documentFieldKeys(saved.version.document).has(PAYROLL_AMOUNT_KEY) && savedAmount === "" && !saysAmountUnknown(context.question, context.history, { amountOpen: true });
     return {
       updated,
       saved: savedChanges,
       refused,
+      /* QA's live finding (16 Nov 2026): what the change was saved on, so the reply never says "press Create" on a saved draft. */
+      form_state: "saved_draft",
+      /* "as you said" only for what this message stated (QA, 16 Nov 2026): an edit's level and payroll are this message's own. */
+      ...(updated.some((field) => STATED_EDIT_FIELDS.has(field)) ? { stated_this_turn: updated.filter((field) => STATED_EDIT_FIELDS.has(field)) } : {}),
+      ...(amountMissing ? { payroll_amount_missing: { ask_exactly: PAYROLL_AMOUNT_QUESTION } } : {}),
       /* QA's live finding: a field the writer refused carries the fix (the keys a direct edit takes, and the date's key). */
       ...(refused.length > 0 ? directEditFix(loaded, fieldKeys) : {}),
       ...(unchanged.length > 0 ? { unchanged } : {}),

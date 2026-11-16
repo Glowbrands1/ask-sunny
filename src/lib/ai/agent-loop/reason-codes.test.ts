@@ -18,6 +18,10 @@ const KNOWN = new Set([
   "salon_unknown", "not_stated", "name_correction_only", "date_after_today", "drafts_only", "unknown_field", "empty_account",
   "bad_level", "not_a_saved_form", "not_a_form_id", "write_failed", "finalized_revision_refused", "not_configured", "not_synced",
   "unknown_tool", "tool_threw",
+  // PR 6 item 3: an edit_form with no values refused when the turn has no room for the reviser and a reply.
+  "step_budget",
+  // PR 6 item 1: propose_form's own name lookup got find_staff's Did you mean (which carries no code of its own).
+  "name_to_confirm",
   // The rebuild plan's PR 1a (evidence args; QA's review of #1026): the privacy, exit and name-correction refusals.
   "privacy_not_this_person", "exit_not_stated", "name_evidence_missing", "name_correction_other_fields", "name_correction_no_name",
   "name_not_in_evidence", "name_correction_other_person", "name_correction_did_you_mean", "name_correction_needs_evidence",
