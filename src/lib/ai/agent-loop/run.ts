@@ -37,6 +37,9 @@ import {
   searchKnowledge,
   listStaffTool,
   findPastForms,
+  cardPersonReplyName,
+  otherPeopleNamed,
+  withLookupReplyName,
   findStaff,
   manualFor,
   turnManual,
@@ -645,8 +648,8 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   /* What one reviser run costs at least: its patch call, and a check round when EDIT_SEES_SAVED_FORM is on. */
   const reviserModelCalls = () => (editSeesSavedFormEnabled() ? 2 : 1);
   const handlers: Record<string, (args: Record<string, unknown>) => Promise<ToolResult>> = {
-    find_staff: (args) => findStaff(context, args, effects),
-    find_past_forms: (args) => findPastForms(context, args, effects),
+    find_staff: async (args) => withLookupReplyName(context, await findStaff(context, args, effects), undefined),
+    find_past_forms: async (args) => withLookupReplyName(context, await findPastForms(context, args, effects), (args as { employee_name?: unknown }).employee_name),
     read_form: (args) => readForm(context, args, effects),
     read_policy: (args) => readPolicy(context, args, effects),
     propose_form: (args) => proposeForm(context, effects, args),
@@ -1071,8 +1074,16 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
    * (`reply-pronouns.ts`; deterministic, no model call). Several people, or none: the reply is left as written.
    */
   let pronounsReplaced = 0;
-  if (replyNames.size === 1 && text) {
-    const named = withoutPersonPronouns(text, [...replyNames][0]!);
+  /*
+   * QA (16 Nov 2026, Runner 2's 266 re-run, 24 lines in 14 chats): a turn where no tool named anyone ("I'll start the
+   * Corrective Action Form for her now") uses the card's person, from the server's card record (`cardPersonReplyName`).
+   * Several people named by this turn's tools, or another person named in this message: the reply is left as written.
+   */
+  const pronounName = replyNames.size === 1 ? [...replyNames][0]! : replyNames.size === 0 && text ? await cardPersonReplyName(context).catch(() => null) : null;
+  if (pronounName && text) {
+    const others = await otherPeopleNamed(context, text, pronounName).catch(() => [] as string[]);
+    const managerWords = [...input.history.filter((turn) => turn.role === "user").map((turn) => String(turn.content ?? "")), input.question].join("\n");
+    const named = withoutPersonPronouns(text, pronounName, others, managerWords);
     text = named.text;
     pronounsReplaced = named.replaced;
   }

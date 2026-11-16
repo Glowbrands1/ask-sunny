@@ -1784,6 +1784,73 @@ export function replyNameFor(name: string, roster: readonly RosterEmployee[], me
   return [...onRoster, ...typed].some((other) => firstOf(other) === first) ? full : words[0]!;
 }
 
+/**
+ * QA (16 Nov 2026, Runner 2's 266 re-run: "I'll start the Corrective Action Form for her now" on a turn with no tool):
+ * what the reply calls the card's person when no tool named anyone this turn. The card on screen, else the chat's
+ * latest card, by the server's record (one-way keys: the roster person by id, or a name not on the roster found again
+ * in the manager's turns by its key). Null when this message names someone else (the pronoun may be theirs), or the
+ * record's person cannot be found.
+ */
+export async function cardPersonReplyName(context: ToolContext): Promise<string | null> {
+  const card = context.cardOnScreen ?? context.earlierCard ?? null;
+  if (!card || (!card.employeeKey && !card.nameKey)) return null;
+  const read = await rosterFor(context.actor.scope);
+  const roster = read.kind === "read" ? read.roster : [];
+  const mentioned = extractEmployeeNames(managerTurns(context));
+  const row = card.employeeKey ? roster.find((candidate) => personKey(candidate.id) === card.employeeKey) : undefined;
+  const typed = !row && card.nameKey
+    ? [...(context.history as ChatMessage[]).filter((turn) => turn.role === "user").map((turn) => String(turn.content ?? "")), context.question]
+        .flatMap((said) => extractEmployeeNames(said))
+        .find((name) => personKey(name) === card.nameKey) ?? null
+    : null;
+  const name = row ? displayName(row) : typed?.replace(/(^|[\s'-])(\p{Ll})/gu, (_all, lead: string, letter: string) => lead + letter.toUpperCase()) ?? null;
+  if (!name) return null;
+  // Someone else named in this message: the pronoun may be theirs, so the reply is left as written.
+  const rosterNames = roster.map(displayName);
+  const others = [...extractEmployeeNames(context.question), ...rosterNames.filter((other) => mentionsPerson(context.question, other, rosterNames))]
+    .filter((other) => !samePerson(other, name) && !namesAPlace(other) && !(row && fullNamesOf(row).some((full) => samePerson(full, other))));
+  if (others.length > 0) return null;
+  return replyNameFor(name, roster, mentioned, row?.id ?? null);
+}
+
+/**
+ * The other people named around this reply, for the pronoun pass's sentence rule (`reply-pronouns.ts`): roster people the
+ * reply or the manager's message names (full or first name), and the names the app's name reader reads in the manager's
+ * message, other than the person the reply is about.
+ */
+export async function otherPeopleNamed(context: ToolContext, reply: string, person: string): Promise<string[]> {
+  const read = await rosterFor(context.actor.scope);
+  const roster = read.kind === "read" ? read.roster : [];
+  const rosterNames = roster.map(displayName);
+  const own = (name: string) => samePerson(name, person) || name.trim().toLowerCase() === person.trim().toLowerCase() || person.toLowerCase().split(/\s+/).includes(name.trim().toLowerCase());
+  const named = [
+    ...rosterNames.filter((name) => mentionsPerson(reply, name, rosterNames) || mentionsPerson(context.question, name, rosterNames)),
+    ...roster.flatMap((row) => [row.firstName, row.preferredFirstName ?? ""]).filter((first) => first && holdsPhrase(reply, first)),
+    ...extractEmployeeNames(context.question),
+  ];
+  const ownRow = roster.find((row) => fullNamesOf(row).some((full) => samePerson(full, person)) || [row.firstName, row.preferredFirstName].some((first) => first && first.toLowerCase() === person.trim().toLowerCase()));
+  // Runner 2 (c150, c198 T3: "At <salon>, she was late again"): a salon or city is no other person.
+  return [...new Set(named.filter((name) => !own(name) && !namesAPlace(name) && !isJobTitlePhrase(name) && !(ownRow && (fullNamesOf(ownRow).some((full) => samePerson(full, name)) || [ownRow.firstName, ownRow.preferredFirstName].includes(name)))))];
+}
+
+/**
+ * QA (16 Nov 2026, Runner 2's c019 T1: "I'll start the Corrective Action Form for her now" after a forms-on-file lookup
+ * found nothing): a lookup that settles ONE roster person (find_staff with one match, find_past_forms for one person's
+ * name) says what the reply calls them, as the card results do (`replyNameFor`). A refusal or several people: unchanged.
+ */
+export async function withLookupReplyName(context: ToolContext, result: ToolResult, typed: unknown): Promise<ToolResult> {
+  const out = result as { reply_name?: unknown; reason_code?: unknown; matches?: Array<{ employee_id?: string }> };
+  if (out.reply_name !== undefined || typeof out.reason_code === "string") return result;
+  const read = await rosterFor(context.actor.scope);
+  if (read.kind !== "read") return result;
+  const byMatch = Array.isArray(out.matches) && out.matches.length === 1 ? read.roster.find((row) => row.id === out.matches![0]!.employee_id) : undefined;
+  const byName = !byMatch && typeof typed === "string" && typed.trim() ? read.roster.filter((row) => fullNamesOf(row).some((full) => samePerson(full, typed))) : [];
+  const row = byMatch ?? (byName.length === 1 ? byName[0] : undefined);
+  if (!row) return result;
+  // As the card names them (the name the manager used: "Jo Quill" for Josephine Quill), so the turn has one reply_name.
+  return { ...result, reply_name: replyNameFor(nameAsSaid(row, managerTurns(context)), read.roster, extractEmployeeNames(managerTurns(context)), row.id) };
+}
+
 /** edit_form's results name the form's person too: reply_name for the form that was written (`replyNameFor`). */
 export async function withEditReplyName(context: ToolContext, effects: ToolEffects, result: ToolResult): Promise<ToolResult> {
   const record = result as { error?: unknown; revision_draft?: { id?: unknown } };

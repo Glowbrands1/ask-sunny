@@ -1,5 +1,5 @@
 import { personPronoun } from "./reply-checks";
-import { ACCOUNT_LINE } from "@/lib/ai/agent-loop/reply-pronouns";
+import { extractEmployeeNames, samePerson } from "@/lib/forms/proposal";
 import { PROGRESS_HEADER, PROGRESS_STREAM, STREAM_HEADER, readStreamedLines, unwrapStreamed } from "@/lib/api/streamed-response";
 import { createHash, randomUUID } from "node:crypto";
 
@@ -727,10 +727,31 @@ class Thread {
      * never a pronoun (quoted words aside). The judge is the live-run checker (`reply-checks.ts`); the app's own pass is
      * `agent-loop/reply-pronouns.ts`.
      */
-    // The loop's own cards only (production's flags turn the loop on for its users; the old path's replies quote accounts).
-    if ((payload.formProposal as { fromAgentLoop?: boolean } | undefined)?.fromAgentLoop && payload.formProposal?.employeeName) {
-      const unquoted = (payload.content ?? "").replace(/"[^"\n]*"|“[^”\n]*”/g, "").replace(ACCOUNT_LINE, "");
-      expect(personPronoun(unquoted), `a pronoun for the card's person:\n${payload.content}`).toBeNull();
+    /*
+     * The loop's own cards only (production's flags turn the loop on for its users; the old path's replies quote accounts):
+     * a card this turn, or (QA, Runner 2's 266 re-run) a loop card on screen from the last reply and none this turn. The
+     * account line counts (Sunny's paraphrase); only the manager's quoted words and a message naming someone else don't.
+     */
+    const lastShown = [...this.messages].reverse().find((message) => message.role === "assistant")?.formProposal as { fromAgentLoop?: boolean; employeeName?: string | null } | undefined;
+    const cardShown = (payload.formProposal as { fromAgentLoop?: boolean } | undefined)?.fromAgentLoop ? payload.formProposal : !payload.formProposal && lastShown?.fromAgentLoop ? lastShown : null;
+    const othersNamed = extractEmployeeNames(question).some((named) => !samePerson(named, cardShown?.employeeName ?? "") && !(cardShown?.employeeName ?? "").toLowerCase().split(/\s+/).includes(named.toLowerCase()));
+    if (cardShown?.employeeName && !othersNamed) {
+      /*
+       * As the app's rule (`reply-pronouns.ts`): a sentence that names another person before its pronoun is left as
+       * written (G15: "<A> failed to have <C> complete … during her onboarding" — "her" is <C>'s).
+       */
+      const unquoted = (payload.content ?? "").replace(/"[^"\n]*"|“[^”\n]*”/g, "");
+      const own = (cardShown.employeeName ?? "").toLowerCase().split(/\s+/);
+      const judged = unquoted
+        .split(/(?<=[.!?])\s+|\n+/)
+        .filter((sentence) => {
+          const pronoun = /\b(?:he|him|his|she|her|hers|himself|herself|they|them|their)\b/i.exec(sentence);
+          if (!pronoun) return true;
+          const before = sentence.slice(0, pronoun.index).replace(/\*\*/g, "");
+          return !extractEmployeeNames(before).some((named) => !named.toLowerCase().split(/\s+/).every((word) => own.includes(word)));
+        })
+        .join("\n");
+      expect(personPronoun(judged), `a pronoun for the card's person:\n${payload.content}`).toBeNull();
     }
     // EVERY REPLY (QA, 3 Nov 2026): "I still need …" is never said unless the reply asks who, which location or which date.
     if (/^I still need\b/m.test(payload.content ?? "")) {
