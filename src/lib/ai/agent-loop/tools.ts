@@ -112,6 +112,13 @@ export interface ToolContext {
   readonly earlierCard?: CardRecord | null;
   /** Fix batch items 4 and 3: the "Did you mean" questions this chat's find_staff gave, from the server's record. */
   readonly nameQuestions?: readonly NameQuestionRecord[];
+  /** Rebuild plan PR 6: what this turn already read, read once per turn (`turnManual`). A tool called outside a turn reads fresh. */
+  readonly turn?: TurnReads;
+}
+
+/** PR 6: reads held for one turn only (the policy manual), never past it. */
+export interface TurnReads {
+  manual?: Promise<ManualRead>;
 }
 
 /** The recorded name questions and the roster, for `confirmed-spelling.ts`. */
@@ -660,6 +667,9 @@ function namesAPlace(typed: string): boolean {
  */
 const ALSO_ASK_ACCOUNT = "If so, tell me what happened.";
 
+/** find_staff lists at most this many people (PR 6: and says when it cut the list). */
+export const FIND_STAFF_LIMIT = 10;
+
 export async function findStaff(context: ToolContext, input: { name?: unknown; person_evidence?: unknown }, effects?: ToolEffects): Promise<ToolResult> {
   const typed = typeof input.name === "string" ? input.name.trim() : "";
   if (typed === "") return { reason_code: "missing_input", error: "Give the name to look for." };
@@ -667,7 +677,10 @@ export async function findStaff(context: ToolContext, input: { name?: unknown; p
   const read = await rosterFor(context.actor.scope);
   if (read.kind === "failed") return { reason_code: "roster_failed", error: ROSTER_FAILED };
   if (read.kind === "unchecked") return { unchecked: true, note: ROSTER_UNCHECKED };
-  let found = rosterMatches(typed, read.roster).slice(0, 10);
+  /* Rebuild plan PR 6: the list is cut at 10; more_matches says so, so a cut list is never read as everyone. */
+  const allMatches = rosterMatches(typed, read.roster);
+  const cut = allMatches.length > FIND_STAFF_LIMIT ? { more_matches: true, total_matches: allMatches.length } : null;
+  let found = allMatches.slice(0, FIND_STAFF_LIMIT);
   /* The roster's exact full name wins over people whose names only start the same ("Test Employee" vs "Test Employee Two"). */
   const exact = found.filter((person) => samePerson(displayName(person), typed) && words(displayName(person)).length === words(typed).length);
   /* r3 (right-persons-account): the longer names are a fact, so a manager's "<A> Two" is never lost to "<A>". */
@@ -795,6 +808,7 @@ export async function findStaff(context: ToolContext, input: { name?: unknown; p
   const shared = new Set(found.map((person) => displayName(person).toLowerCase())).size < found.length;
   return {
     matches: found.map(staffRow),
+    ...(cut && exact.length === 0 ? { ...cut, more_note: `Only the first ${FIND_STAFF_LIMIT} of ${cut.total_matches} people are listed. Ask the manager for the full name.` } : {}),
     ...(found.length > 1 ? { reason_code: "ambiguous_person" } : {}),
     ...(longer.length > 0 ? { longer_names_on_roster: longer, longer_note: "Other people's names start with this one. If the manager wrote one of these longer names, look that one up instead." } : {}),
     ...(found.length > 1 ? { note: shared ? "Several people share this name: ask the manager which one (by salon) before proposing a form." : "Several people match: ask the manager which one." } : {}),
@@ -873,7 +887,7 @@ export function accountSubjectChanged(managerWords: string, account: string, emp
 
 /** Batch G (G18): "Corrective Action citing **<heading>** (p.<page>). Who is it for?", for a policy the manager named in this chat. */
 async function policyQuestion(context: ToolContext, formName: string): Promise<string | null> {
-  const manual = await manualFor(context.scopeId);
+  const manual = await turnManual(context);
   if (!manual) return null;
   const said = managerTurns(context);
   /* The phrases today's reader names, then the words right before "policy" ("cite the animals in the workplace policy"), longest first. */
@@ -1167,12 +1181,14 @@ type ManualRead = {
   /** The manual's own row, for its source card (QA's live-app item 9). */
   readonly document?: { readonly id: string; readonly title: string; readonly category: string };
 } | null;
-const manualCache = new Map<string, Promise<ManualRead>>();
-
+/**
+ * THE POLICY MANUAL IS READ ONCE PER TURN (rebuild plan PR 6; bug 6 of the plan's status list: the cache lived until the
+ * server restarted, so a manual re-synced in Woven was not read until a redeploy). Each call reads it fresh; a turn
+ * holds its own copy (`turnManual`), so the system prompt, read_policy and propose_form share one read, and the next
+ * turn reads again. A failed read is null for that turn only.
+ */
 export function manualFor(scopeId: string): Promise<ManualRead> {
-  const cached = manualCache.get(scopeId);
-  if (cached) return cached;
-  const pending = (async (): Promise<ManualRead> => {
+  return (async (): Promise<ManualRead> => {
     try {
       const manual = await new SupabaseKnowledgeProvider().fetchOfficialPolicyManual(scopeId);
       if (!manual.ok) return null;
@@ -1185,18 +1201,17 @@ export function manualFor(scopeId: string): Promise<ManualRead> {
       return null;
     }
   })();
-  manualCache.set(scopeId, pending);
-  // A failed read is not kept: the next turn tries again.
-  void pending.then((read) => {
-    if (read === null) manualCache.delete(scopeId);
-  });
-  return pending;
 }
 
-/** Tests only. */
-export function forgetAgentLoopManualForTests(): void {
-  manualCache.clear();
+/** This turn's one read of the manual (PR 6); outside a turn (a tool's unit test), a fresh read. */
+export function turnManual(context: Pick<ToolContext, "scopeId" | "turn">): Promise<ManualRead> {
+  if (!context.turn) return manualFor(context.scopeId);
+  context.turn.manual ??= manualFor(context.scopeId);
+  return context.turn.manual;
 }
+
+/** Tests only. Nothing outlives a turn any more (PR 6), so there is nothing to forget; kept for the replay pack's reset. */
+export function forgetAgentLoopManualForTests(): void {}
 
 /** A heading as words: case, punctuation and the word "policy" set aside. */
 function headingKey(text: string): string {
@@ -1212,7 +1227,7 @@ function headingOf(headings: readonly string[], asked: string): string | null {
 
 export async function readPolicy(context: ToolContext, input: { heading?: unknown }, effects?: ToolEffects): Promise<ToolResult> {
   const asked = typeof input.heading === "string" ? input.heading.trim() : "";
-  const manual = await manualFor(context.scopeId);
+  const manual = await turnManual(context);
   if (!manual) return { reason_code: "read_failed", error: "The JBA Policy Manual could not be read just now. Say so; do not answer from memory." };
   const heading = headingOf(manual.headings, asked);
   if (!heading) {
@@ -1559,6 +1574,33 @@ const ACCOUNT_FORMS = {
   },
 };
 
+/** PR 6 item 1: what propose_form's own name lookup found: one person to card, find_staff's result to hand back, or nothing to do. */
+type CardLookup = { kind: "none" } | { kind: "person"; person: RosterEmployee; facts: Record<string, unknown> } | { kind: "ask"; result: ToolResult };
+
+/**
+ * PR 6 item 1: a typed name looked up for a card with find_staff's own code. One match and nothing to ask → that person,
+ * with find_staff's facts (name_from_staff_list, confirmed_by_manager, longer_names_on_roster, …) for the card's result.
+ * Otherwise find_staff's result itself, its reason code and facts unchanged, with card: null. "none" when the name is
+ * one find_staff would not look up (empty).
+ */
+async function lookUpForCard(context: ToolContext, effects: ToolEffects, typed: string, personEvidence: unknown, roster: readonly RosterEmployee[]): Promise<CardLookup> {
+  const found = await findStaff(context, { name: typed, person_evidence: personEvidence }, effects);
+  const record = found as Record<string, unknown>;
+  const matches = Array.isArray(record.matches) ? (record.matches as { employee_id?: unknown }[]) : [];
+  const asks = typeof record.reason_code === "string" || "error" in record || "did_you_mean" in record || record.unchecked === true || matches.length !== 1;
+  const person = !asks ? roster.find((row) => row.id === matches[0]!.employee_id) : undefined;
+  if (person) {
+    const { matches: _matches, note: _note, ...facts } = record;
+    void _matches;
+    void _note;
+    return { kind: "person", person, facts };
+  }
+  if (record.reason_code === "missing_input") return { kind: "none" };
+  /* find_staff's result as it is (reason code, facts, note), plus propose_form's own refusal: no card was made. */
+  const ask = typeof record.note === "string" ? record.note : "Ask the manager who the form is for.";
+  return { kind: "ask", result: { ...found, card: null, looked_up_by: "propose_form", ...("error" in record ? {} : { error: `No card was made: the name was looked up as find_staff does. ${ask}` }) } };
+}
+
 export async function proposeForm(
   context: ToolContext,
   effects: ToolEffects,
@@ -1568,6 +1610,7 @@ export async function proposeForm(
     template_key?: unknown;
     employee_id?: unknown;
     employee_name?: unknown;
+    person_evidence?: unknown;
     exit_evidence?: unknown;
     new_form_evidence?: unknown;
     request_evidence?: unknown;
@@ -1622,6 +1665,8 @@ export async function proposeForm(
   let offRosterName: string | null = null;
   /* fix-name, live s10: the card's name this proposal corrects (cardNameCorrection), for the name_corrected fact. */
   let nameCorrectedFrom: string | null = null;
+  /* PR 6 item 1: propose_form's own lookup of a typed name (find_staff's code), and the facts it carried. */
+  let lookedUp: CardLookup = { kind: "none" };
   if (read.kind === "read") {
     const id = typeof input.employee_id === "string" ? input.employee_id.trim() : "";
     const person = id ? read.roster.find((row) => row.id === id) : undefined;
@@ -1662,6 +1707,17 @@ export async function proposeForm(
     else if (typed && !rosterMatches(typed, read.roster).length && !namesAPlace(typed) && (offRosterConfirmed(context, typed) || (offRosterTyped(typed, `for ${typed}`, read.roster.map(displayName)) && matchEmployeeName(typed, read.roster).kind !== "confirm"))) {
       employee = { name: typed, salonIds: [] };
       offRosterName = typed;
+    }
+    /*
+     * REBUILD PLAN PR 6, ITEM 1 (speed: one model call fewer per card): a name with no employee_id is looked up here,
+     * with find_staff's own code (`findStaff`), so the card needs no find_staff step first. Exactly one person found
+     * and nothing to ask (an exact full name, the manager's confirmed answer, a whole first name only one person has):
+     * the card is made for them, with find_staff's facts on the result. Anything else (not_on_roster, ambiguous_person,
+     * did_you_mean, a word that is no person) comes back exactly as find_staff gives it, with no card.
+     */
+    else if (typed && !id && (lookedUp = await lookUpForCard(context, effects, typed, input.person_evidence, read.roster)).kind !== "none") {
+      if (lookedUp.kind === "ask") return lookedUp.result;
+      employee = { name: nameAsSaid(lookedUp.person, managerTurns(context)), salonIds: lookedUp.person.salonIds, id: lookedUp.person.id };
     }
     else {
       /*
@@ -1849,7 +1905,7 @@ export async function proposeForm(
    * cleaning or sanitation duty left undone is Other, never the Standards of Conduct; a Care and Cleaning policy the
    * manager names keeps that section; a cleaning duty beside another offense cites both.
    */
-  const manual = await manualFor(context.scopeId);
+  const manual = await turnManual(context);
   const askedPolicyWhole = typeof input.policy === "string" ? input.policy.trim() : "";
   /* A heading beside Other ("Late Opening; Other — beds not cleaned"): the heading is checked, Other is the model's topic. */
   const askedOther = /(?:^|;\s*)(other\b.*)$/i.exec(askedPolicyWhole)?.[1]?.trim() ?? "";
@@ -2331,6 +2387,8 @@ export async function proposeForm(
     ...(askedPayroll && !payroll && payrollCheck && !payrollCheck.ok ? { payroll_evidence: payrollCheck.reason } : {}),
     ...(payrollAnswerUnclear ? { ...(askedLevel && !level ? {} : { reason_code: "payroll_not_stated" }), payroll_evidence: "answer_to_two_questions" } : {}),
     ...(notOnCard.length > 0 ? { not_on_card: notOnCard } : {}),
+    /* PR 6 item 1: find_staff's facts from propose_form's own lookup (name_from_staff_list, confirmed_by_manager, longer_names_on_roster, …). */
+    ...(lookedUp.kind === "person" ? { ...lookedUp.facts, looked_up_by: "propose_form" } : {}),
     card: {
       form: card.templateName,
       employee: card.employeeName,

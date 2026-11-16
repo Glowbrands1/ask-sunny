@@ -81,6 +81,8 @@ const state = vi.hoisted(() => ({
   knowledgeQueries: [] as string[],
   normalizerIntent: null as string | null,
   fullManualLoads: false,
+  /** PR 6 item 2: reads of the official policy manual this case (once per loop turn). */
+  manualReads: 0,
   /** The grounding block the answering model was last given (`lastGrounding`). */
   lastGrounding: "",
   /** What the slot model (record_intent_slots) reads this turn, when a case sets it — as a production trace shows. */
@@ -124,6 +126,8 @@ vi.mock("@/lib/forms/form-patch-call", () => ({
   FORM_PATCH_DEFAULT_TIMEOUT_MS: 5_000,
   formPatchTimeoutMs: () => 5_000,
   callFormPatchModel: async (input?: { prompt?: string }) => {
+    /* PR 6: a model call made inside a loop tool counts toward the step limit, as the real call notes itself. */
+    (await import("@/lib/ai/model-call-scope")).noteModelCall();
     /*
      * EDIT_SEES_SAVED_FORM_ENABLED (coding 6, 13 Nov 2026): a check round (the prompt holds "SAVED AFTER YOUR LAST
      * PATCH") never takes a reading from the script above. It answers `t.patchChecks([...])` in order; past the end,
@@ -291,6 +295,8 @@ vi.mock("@/lib/ai/call-claude", () => ({
    * lone first name: the name exactly as typed, with its sentence as evidence.
    */
   callClaudeToolTimed: async (input: { messages?: { content?: unknown }[] }) => {
+    /* PR 6: a model call made inside a loop tool counts toward the step limit, as the real call notes itself. */
+    (await import("@/lib/ai/model-call-scope")).noteModelCall();
     state.toolCalls += 1;
     const text = JSON.stringify(input.messages ?? []);
     const manager = (text.split("Manager: ").pop() ?? "").split("\n")[0]!.replace(/\\"/g, '"').replace(/"\}.*$/, "");
@@ -307,6 +313,8 @@ vi.mock("@/lib/ai/call-claude", () => ({
     };
   },
   callClaude: async (input?: { system?: string; grounding?: string; formEditTool?: { data: string; onToolUse: (call: unknown) => void } | null }) => {
+    /* PR 6: a model call made inside a loop tool counts toward the step limit, as the real call notes itself. */
+    (await import("@/lib/ai/model-call-scope")).noteModelCall();
     state.chatModelCalls += 1;
     state.lastGrounding = String(input?.grounding ?? "");
     // REPLAY_RECORD (QA, 10 Nov 2026): the system prompt each answer was asked with, as a hash, so two versions of the
@@ -344,6 +352,8 @@ vi.mock("@/lib/ai/call-claude", () => ({
     return said.answer ?? ANSWER;
   },
   callClaudeTool: async (input: { tool?: { name?: string }; messages?: { content?: unknown }[] }) => {
+    /* PR 6: a model call made inside a loop tool counts toward the step limit, as the real call notes itself. */
+    (await import("@/lib/ai/model-call-scope")).noteModelCall();
     state.toolCalls += 1;
     if (input.tool?.name === "store_summary") return summaries.reply === null ? null : { summary: summaries.reply };
     if (input.tool?.name === "extract_form_fields") {
@@ -408,6 +418,8 @@ vi.mock("@/lib/ai/anthropic", () => ({
   getAnthropicClient: () => ({
     messages: {
       create: async (request: { tool_choice?: { name?: string } }) => {
+        /* PR 6: a model call made inside a loop tool counts toward the step limit, as the real call notes itself. */
+      (await import("@/lib/ai/model-call-scope")).noteModelCall();
         const revising = request.tool_choice?.name === "revise_form_fields";
         if (!revising) {
           state.draftCalls += 1;
@@ -480,6 +492,7 @@ vi.mock("@/lib/knowledge/providers/supabase", () => ({
       };
     }
     async fetchOfficialPolicyManual() {
+      state.manualReads += 1;
       return {
         ok: true,
         documentId: "doc-manual",
@@ -776,6 +789,7 @@ beforeEach(async () => {
   state.knowledgeQueries = [];
   state.normalizerIntent = null;
   state.fullManualLoads = false;
+  state.manualReads = 0;
   state.lastGrounding = "";
   state.readerEmployee = null;
   state.slotsOnlyIfSaid = false;
@@ -959,6 +973,7 @@ function context(): ReplayContext {
     normalizerReads: (intent) => {
       state.normalizerIntent = intent;
     },
+    manualReads: () => state.manualReads,
     fullManualLoads: () => {
       state.fullManualLoads = true;
     },

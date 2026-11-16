@@ -63,6 +63,14 @@ export const NOV16_AGENT_LOOP_THREE_SAVED_EDITS_CASES: ReplayCase[] = [
     fixFlags: [FLAG],
     async run(t) {
       if (!t.loopOn?.()) return;
+      /*
+       * PR 6 (changed on purpose): the reviser's own 2 model calls now count toward AGENT_LOOP_MAX_STEPS, so this turn is
+       * 5 loop calls + 2 = 7. QA sets AGENT_LOOP_MAX_STEPS=8 in production with PR 6 (the code default stays 6); this case
+       * runs at production's 8. At 6 the reviser is refused instead and the turn still ends with a reply
+       * (nov16-pr6-step-budget-keeps-the-reply).
+       */
+      vi.stubEnv("AGENT_LOOP_MAX_STEPS", "8");
+      try {
       const { thread, id } = await remyDraft(t);
       // The reviser's edit (no values): the form-patch model adds the sentence the manager gave, quoted from this message.
       t.patchWrites([{ turn: "this_form", set: [{ field: "observation", value: ADDED, how: "add", evidence: "she said her car broke down" }], clear: [] }]);
@@ -101,6 +109,11 @@ export const NOV16_AGENT_LOOP_THREE_SAVED_EDITS_CASES: ReplayCase[] = [
       // The reply names all three saved changes, and the turn's update carries all three fields.
       for (const field of ["warning_type", "form_date", "observation"]) expect(reply.content, `the reply leaves out ${field}:\n${reply.content}`).toContain(field);
       expect(reply.formUpdate?.updated ?? [], summary).toEqual(expect.arrayContaining(["warning_type", "form_date", "observation"]));
+      // PR 6: the reviser's calls are counted against the limit.
+      expect(trace!.steps_used, summary).toBe(7);
+      } finally {
+        vi.unstubAllEnvs();
+      }
     },
   },
 ];

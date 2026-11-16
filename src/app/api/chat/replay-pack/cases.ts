@@ -61,6 +61,8 @@ export interface ReplayContext {
   searches?(): string[];
   normalizerReads?(intent: "policy_question" | "form_command" | "other"): void;
   fullManualLoads?(): void;
+  /** PR 6 item 2: how many times the official policy manual was read this case (the agent loop reads it once per turn). */
+  manualReads?(): number;
   /** The grounding block the answering model was given on its last answer. */
   lastGrounding?(): string;
   /** What the revision model writes on the next revision. */
