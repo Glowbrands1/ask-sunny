@@ -43,6 +43,10 @@ import { rulesBookText } from "./rules-book";
  * conversation" / "make it a <form> instead" for the same person and incident is the same request, not
  * new_form_evidence. It names no app, place, staff system or form key; nothing else changed.
  *
+ * Updated on purpose on 16 Nov 2026 (Pau's MSB ruling): the conduct line is split; a guest complaint stays the Standards
+ * of Conduct, and "MSB" / "must see behaviors" is "Other — Must See Behaviors". One line; it names no app, place, staff
+ * system or form key.
+ *
  * Updated on purpose on 16 Nov 2026 (QA's live findings: the reply says what the code did): the finalized-form line
  * words the reply from revision_draft.reused (a reused revision draft is never called new), and a new line teaches
  * edit_form's form_state ("It's saved on the draft", never "press Create"); the payroll line adds edit_form's
