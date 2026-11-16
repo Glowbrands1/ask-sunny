@@ -102,7 +102,8 @@ export const NOV15_AGENT_LOOP_BATCH_F_CASES: ReplayCase[] = [
       const reply = await thread.say(SAID);
       expect(reply.content, "the step limit said it couldn't finish over a ready card").not.toBe(STEP_LIMIT_REPLY);
       expect(reply.content).toMatch(/Here is the \*\*.+\*\* for \*\*Remy Calder\*\* for you to review\./);
-      expect(reply.content).toMatch(/What's the one thing still left\?/);
+      // Changed on purpose (QA's live finding, 16 Nov 2026): the code-written step-limit reply states only what the records show.
+      expect(reply.content).toMatch(/Nothing else was saved yet\. Please send the change you still need again, and I'll make it\.$/);
       expect(reply.formProposal?.employeeName).toBe("Remy Calder");
     },
   },

@@ -214,7 +214,8 @@ export const NOV14_AGENT_LOOP_BATCH_B_CASES: ReplayCase[] = [
         // Changed on purpose (batch E, E8): a reply to a new card that cites a policy ends with its whole Policy line, as the rules book teaches; without it the self-review hands the reply back.
         const card = lastResult(view, "propose_form")?.card as { policy?: string | null } | undefined;
         if (card) return { text: `Here's the card for **Tamsin Orwell**.${card.policy ? `\n\n**Policy:** ${card.policy}` : ""}` };
-        if (/must see/i.test(said)) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, policy: headingWith(view, /standards of conduct/i) ?? "Standards of Conduct" } };
+        // Changed on purpose (Pau's ruling, 16 Nov 2026): MSB / must see behaviors is "Other — Must See Behaviors", not the Standards of Conduct; the rules book now teaches that. What this checks is unchanged: with no account, the model's policy stays.
+        if (/must see/i.test(said)) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, policy: "Other — Must See Behaviors" } };
         if (/beds/i.test(said)) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, what_happened: "Tamsin Orwell was late on 11/12 and did not clean the beds.", policy: `${headingWith(view, /attendance/i) ?? "Attendance"}; Other — beds not cleaned` } };
         return { tool: "propose_form", input: { template_key: "dpoa", employee_id: TAMSIN.id, what_happened: "Tamsin Orwell was late on 11/12.", prior_actions: "Verbal CA — 10/02/2026" } };
       });
@@ -223,7 +224,7 @@ export const NOV14_AGENT_LOOP_BATCH_B_CASES: ReplayCase[] = [
       const msb = t.thread();
       await msb.say("create a ca for must see behaviors for tamsin orwell");
       expect(results(model.views, "propose_form").at(-1), "an MSB request does not count as naming the policy").toMatch(/"policy_named_by_manager":true/);
-      expect((msb.proposal as { policyLine?: string | null } | undefined)?.policyLine ?? "", "the MSB card lost its policy").toMatch(/Standards of Conduct/);
+      expect((msb.proposal as { policyLine?: string | null } | undefined)?.policyLine ?? "", "the MSB card lost its policy").toBe("Other — Must See Behaviors");
 
       const both = t.thread();
       await both.say("ca for tamsin orwell, she was late on 11/12 and didn't clean the beds");

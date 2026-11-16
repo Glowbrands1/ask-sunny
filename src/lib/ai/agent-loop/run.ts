@@ -30,6 +30,7 @@ import {
   appHelp,
   coachTeam,
   editForm,
+  withEditReplyName,
   openForm,
   searchKnowledge,
   listStaffTool,
@@ -120,9 +121,15 @@ export function partialReply(done: string, stopped: "timeout" | "error"): string
   return `${done} ${stopped === "timeout" ? "I ran out of time before finishing the rest of that answer" : "Something went wrong before I could finish the rest of that answer"}, so please check it and send anything still missing again.`;
 }
 
-/** F2: the step limit with a card ready or a saved edit: name it, then ask for the one thing left. */
-export function stepLimitReply(done: string | null): string {
-  return done ? `${done} I couldn't finish everything else in one message. What's the one thing still left?` : STEP_LIMIT_REPLY;
+/**
+ * F2: the step limit with a card ready, a form opened or a saved edit. QA's live finding (16 Nov 2026): this reply is
+ * code-written, so it states only what the turn's records show: what `doneThisTurn` read from the effects (the fields
+ * the form really holds changed, from saved), or that nothing else was saved yet; then it asks the manager to send the
+ * change again. It never reads the manager's message and never guesses what is "left".
+ */
+export function stepLimitReply(done: string | null, saved = false): string {
+  if (!done) return STEP_LIMIT_REPLY;
+  return `${done} ${saved ? "" : "Nothing else was saved yet. "}Please send the change you still need again, and I'll make it.`;
 }
 
 export interface AgentLoopStep {
@@ -428,7 +435,7 @@ function buildAgentLoopTools(config: AppConfig) {
   {
     name: "edit_form",
     description:
-      "Change a form. Leave values out to have the form's own reviser apply the manager's latest message (dates, details, the policy line); give values (field key to exact text) only for text the manager dictated word for word. A warning level or payroll answer (\"make it a written\", \"yes payroll, $20\") is a targeted edit: values warning_type (verbal/written), payroll_deduct (yes/no), payroll_deduct_amount only. A finalized form is never changed: this opens a new draft revising it and applies the change there.",
+      "Change a form. The form's date is a direct field edit, never the reviser: values form_date (MM/DD/YYYY), the date the manager typed for this request. Leave values out to have the form's own reviser apply the manager's latest message (details, the policy line); give values (field key to exact text) only for text the manager dictated word for word. A warning level or payroll answer (\"make it a written\", \"yes payroll, $20\") is a targeted edit: values warning_type (verbal/written), payroll_deduct (yes/no), payroll_deduct_amount only. A finalized form is never changed: this opens a new draft revising it and applies the change there.",
     input_schema: object(
       {
         instance_id: { type: "string" },
@@ -564,7 +571,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   /* PR 6: the turn's one read of the policy manual starts first, beside the chat's record read (`turnManual`). */
   const turn: TurnReads = {};
   turn.manual = manualFor(input.scopeId, turn);
-  const { cards: records, nameQuestions, personAsked } = await readLoopRecords(input.conversationId, input.actor.subject);
+  const { cards: records, nameQuestions, personAsked, turns: turnRecords } = await readLoopRecords(input.conversationId, input.actor.subject);
   const cards = cardTurns(input.history, records);
   const lastReplyIndex = input.history.findLastIndex((turn) => turn.role === "assistant" && !turn.error);
   const cardOnScreen = !input.openFormId && lastReplyIndex >= 0 ? (cards.get(lastReplyIndex) ?? null) : null;
@@ -584,10 +591,14 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     cardOnScreen,
     earlierCard: records.at(-1) ?? null,
     turn,
+    /* QA (16 Nov 2026): no name question before there is a form (find_staff's off-roster offer). */
+    formChosen: Boolean(input.openFormId) || records.length > 0 || whoAsked !== null,
     nameQuestions,
     /* QA (16 Nov 2026; c158, c208): every card and "who is it for?" this chat's loop gave, for where THIS request started. */
     cardRecords: records,
     personAskedRecords: personAsked,
+    /* QA's review of #1062: what each earlier loop turn finished (saved fields, a card), for a request left open. */
+    turnRecords,
   };
   const effects: ToolEffects = { proposal: null, formUpdate: null };
   /* The open form as saved before the turn, for the no-false-"updated" guard below (FORM_EDIT_NOOP_GUARD's snapshot). */
@@ -620,13 +631,13 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
      * AND the reply after it; otherwise it is refused with reason_code step_budget and a fact, so the model replies
      * with what is saved. Code never writes the reply here.
      */
-    edit_form: (args) => {
+    edit_form: async (args) => {
       const reviser = !args.values || typeof args.values !== "object" || Object.keys(args.values as object).length === 0;
       const needs = reviserModelCalls() + 1;
       if (reviser && callsUsed() + needs > limit) {
-        return Promise.resolve({ reason_code: "step_budget", error: "There is no room left in this message for the form's reviser and a reply. Nothing more was written. Say what was saved this turn, and ask the manager to send the rest again.", step_budget: { model_calls_left: Math.max(0, limit - callsUsed()), reviser_and_reply_need: needs } });
+        return { reason_code: "step_budget", error: "There is no room left in this message for the form's reviser and a reply. Nothing more was written. Say what was saved this turn, and ask the manager to send the rest again.", step_budget: { model_calls_left: Math.max(0, limit - callsUsed()), reviser_and_reply_need: needs } };
       }
-      return editForm(context, effects, args);
+      return withEditReplyName(context, effects, await editForm(context, effects, args));
     },
     open_form: (args) => openForm(context, effects, args),
     search_knowledge: (args) => searchKnowledge(context, effects, args),
@@ -1013,7 +1024,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
    * backs and policy line are facts on propose_form's result, worded by the rules book's Card replies.
    */
   let content = (
-    stoppedAt === "timeout" || stoppedAt === "error" ? partialReply(done!, stoppedAt) : stoppedAt === "step_limit" ? stepLimitReply(done) : text
+    stoppedAt === "timeout" || stoppedAt === "error" ? partialReply(done!, stoppedAt) : stoppedAt === "step_limit" ? stepLimitReply(done, Boolean(effects.formUpdate && effects.formUpdate.updated.length > 0)) : text
   ).trim();
   if (content === "") content = done ?? STEP_LIMIT_REPLY;
   /*

@@ -121,10 +121,18 @@ export const NOV16_AGENT_LOOP_PR6_SPEED_CASES: ReplayCase[] = [
     async run(t) {
       if (!t.loopOn?.()) return;
       setUp(t);
-      await expectSameAsFindStaff(t, "an exit for wrenna, she quit", "wrenna", "an exit for wrenna", (staff) => {
-        expect(staff.reason_code, JSON.stringify(staff)).toBe("not_on_roster");
-        expect(String(staff.note)).toMatch(/use wrenna/i);
-      });
+      /*
+       * Changed on purpose (#1060, no guessing): find_staff in a chat with no form chosen yet asks what to make
+       * (form_not_chosen), never "use <name>". propose_form always has a form, so its own lookup offers "use <name>",
+       * with find_staff's not_on_roster code and words. The two differ here by #1060's rule, so this case checks each.
+       */
+      const { staff, proposed, reply } = await lookupBothWays(t, "an exit for wrenna, she quit", "wrenna", "an exit for wrenna");
+      expect(staff.form_not_chosen, JSON.stringify(staff)).toBe(true);
+      expect(proposed.reason_code, JSON.stringify(proposed)).toBe("not_on_roster");
+      expect(proposed.form_not_chosen ?? false).toBe(false);
+      expect(String(proposed.ask_exactly ?? proposed.note)).toMatch(/use wrenna/i);
+      expect(proposed.card).toBeNull();
+      expect(reply.formProposal ?? null).toBeNull();
     },
   },
   {
@@ -198,7 +206,11 @@ export const NOV16_AGENT_LOOP_PR6_SPEED_CASES: ReplayCase[] = [
       t.loopModel!(mixed);
       await t.thread().say("ca for odalis, late on 11/12");
       const mixedOuts = all(mixed.views).map((result) => [result.tool, (result.output as Out).reason_code, Boolean((result.output as Out).stop_retrying)]);
-      expect(mixedOuts.slice(0, 2), JSON.stringify(mixedOuts)).toEqual([["find_staff", "not_on_roster", false], ["propose_form", "not_on_roster", true]]);
+      /*
+       * Changed on purpose (#1060): find_staff before any form asks what to make (form_not_chosen, no error, no question
+       * to count), so it is not a refusal for the retry guard; the two propose_form refusals for the name then stop.
+       */
+      expect(mixedOuts.slice(0, 3), JSON.stringify(mixedOuts)).toEqual([["find_staff", "not_on_roster", false], ["propose_form", "not_on_roster", false], ["propose_form", "not_on_roster", true]]);
     },
   },
   {
@@ -294,6 +306,45 @@ export const NOV16_AGENT_LOOP_PR6_SPEED_CASES: ReplayCase[] = [
         expect(reply.formProposal?.issue ?? "", `${label}: ${JSON.stringify(reply.formProposal)}`).toMatch(/resigned by text/);
         expect(reply.formProposal?.issue ?? "").toMatch(/11\/13/);
       }
+    },
+  },
+  {
+    id: "nov16-pr6-propose-lookup-no-guessing",
+    title: "PR 6 item 1 with the no-guessing rules (#1060; QA): a card made through propose_form's own lookup carries reply_name (Remy, the first name nobody else shares); and an off-roster name through propose_form is offered \"use <name>\" (a form is chosen), while find_staff alone before any form gets form_not_chosen",
+    report: REPORT,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      setUp(t);
+      // reply_name on the card made by propose_form's own lookup.
+      const carded = loopStandIn((view): LoopDecision => (lastResult(view, "propose_form")
+        ? { text: "Here's the Corrective Action Form for **Remy Calder**." }
+        : { tool: "propose_form", input: { template_key: "dpoa", employee_name: "remy calder", person_evidence: evidenceFrom(view, "ca for remy calder"), policy: "Attendance", what_happened: "Remy Calder was 20 minutes late on 11/12.", incident_date: "2026-11-12" } }));
+      t.loopModel!(carded);
+      const reply = await t.thread().say("ca for remy calder, she was 20 minutes late on 11/12");
+      const result = firstResult(carded.views, "propose_form")!;
+      expect(reply.formProposal?.employeeName).toBe("Remy Calder");
+      expect(result.looked_up_by).toBe("propose_form");
+      expect(result.reply_name, JSON.stringify(result)).toBe("Remy");
+
+      // An off-roster name: through propose_form a form is chosen, so the use-<name> offer; find_staff alone, no form yet, form_not_chosen.
+      const viaPropose = loopStandIn((view): LoopDecision => (lastResult(view, "propose_form")
+        ? { text: "Asked." }
+        : { tool: "propose_form", input: { template_key: "dpoa", employee_name: "Odalis", person_evidence: evidenceFrom(view, "ca for odalis"), what_happened: "She was late on 11/12.", incident_date: "2026-11-12" } }));
+      t.loopModel!(viaPropose);
+      await t.thread().say("ca for odalis, late on 11/12");
+      const proposed = firstResult(viaPropose.views, "propose_form")!;
+      expect(proposed.reason_code, JSON.stringify(proposed)).toBe("not_on_roster");
+      expect(proposed.form_not_chosen ?? false).toBe(false);
+      expect(String(proposed.ask_exactly)).toContain("Reply **use Odalis**");
+      expect(proposed.card).toBeNull();
+
+      const alone = loopStandIn((view): LoopDecision => (lastResult(view, "find_staff") ? { text: "Asked." } : { tool: "find_staff", input: { name: "Odalis", person_evidence: evidenceFrom(view, "odalis") } }));
+      t.loopModel!(alone);
+      await t.thread().say("odalis was late on 11/12");
+      const staff = firstResult(alone.views, "find_staff")!;
+      expect(staff.form_not_chosen, JSON.stringify(staff)).toBe(true);
     },
   },
   {
