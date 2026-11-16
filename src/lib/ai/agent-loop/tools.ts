@@ -1897,6 +1897,41 @@ async function closeSpellingOfRoster(context: ToolContext, effects: ToolEffects 
   };
 }
 
+/**
+ * QA (16 Nov 2026, live group E on main 63ba4c48): an EDIT asked for a form type (a Corrective Action) while this person's
+ * card on screen is another type (a Coaching Form, not created) and forms of the asked type are on file: never a new card
+ * of that type. The which-one question, the card on screen first, as find_past_forms asks it. Read only when the
+ * manager's words ask to edit or open a form (`mayAskToReopen`, the reopen path's own reading): the latest message, or,
+ * when it answers this chat's recorded name question ("yes"), the message that question was about.
+ */
+async function editAskedFormsOnFile(context: ToolContext, effects: ToolEffects, template: { key: string; name: string }, person: RosterEmployee, roster: readonly RosterEmployee[], newFormEvidence: unknown): Promise<ToolResult | null> {
+  const shown = context.cardOnScreen ?? context.earlierCard ?? null;
+  if (!shown || shown.employeeKey !== personKey(person.id) || shown.templateKey === template.key) return null;
+  if (verifyEvidence(newFormEvidence, identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId), { thisTurnOnly: true }).ok) return null;
+  const { mayAskToReopen } = await import("@/lib/forms/reopen-cue");
+  const managerSaid = (context.history as ChatMessage[]).filter((turn) => turn.role === "user").map((turn) => String(turn.content ?? ""));
+  const answersNameQuestion = answeredNameQuestions(nameQuestionView(context, roster)).some((asked) => asked.latest);
+  const asked = [context.question, ...(answersNameQuestion && managerSaid.length > 0 ? [managerSaid.at(-1)!] : [])];
+  if (!asked.some((said) => mayAskToReopen(said, true))) return null;
+  const actor = await chatFormsActor(context.actor).catch(() => undefined);
+  if (!actor) return null;
+  const names = fullNamesOf(person);
+  const nameWords = [...new Set(names.flatMap(candidateNameWords))];
+  const onFile = visibleInstances(actor, await listInstances("all", 200, { ...instanceListFilterFor(actor), employeeNameWords: nameWords }).catch(() => []))
+    .filter((row) => row.templateKey === template.key && (names.some((full) => samePerson(full, row.employeeName)) || sameRosterPerson(row.employeeName, displayName(person), roster)));
+  if (onFile.length === 0) return null;
+  const cardForm = shown.templateName ?? "card";
+  const dated = onFile.slice(0, 6).map((row) => `${row.templateName}${row.formDate ? ` from ${row.formDate}` : ""}`);
+  const files = dated.length === 1 ? `the ${dated[0]} on file` : `one of the ${onFile.length} ${template.name}s on file (${dated.join("; ")})`;
+  effects.openRequested ??= displayName(person);
+  return {
+    reason_code: "edit_asked_forms_on_file", error: `The manager asked to edit a ${template.name}, and this person's ${cardForm} card is on screen (not created) while ${template.name}s are on file. No new card was made. End your reply with ask_exactly, exactly: the card on screen picked is changed (propose_form again); a dated form picked is opened with open_form.`,
+    card_on_screen: { form: cardForm, created: false },
+    forms: onFile.slice(0, 6).map((row) => ({ instance_id: row.id, form: row.templateName, status: row.status, form_date: row.formDate })),
+    ask_exactly: `Which one: the ${cardForm} on screen, or ${files}?`,
+  };
+}
+
 /** A roster person's full names: the Woven preferred name with the surname, and the legal one (batch G, QA). */
 export function fullNamesOf(person: Pick<RosterEmployee, "firstName" | "lastName" | "preferredFirstName">): string[] {
   const last = person.lastName?.trim() ?? "";
@@ -2390,6 +2425,11 @@ export async function proposeForm(
   /* Batch G (G4; QA's ruling 3): an open request for THIS person's form on file is never a new card for them (code may refuse). */
   if (effects.openRequested && samePerson(effects.openRequested, employee.name)) {
     return { error: "The manager asked to open a form on file for this person, not to make one. Open it with open_form.", reason_code: "open_requested" };
+  }
+  {
+    const onScreenPerson = employee.id && read.kind === "read" ? read.roster.find((row) => row.id === employee.id) : undefined;
+    const editAsked = onScreenPerson && read.kind === "read" ? await editAskedFormsOnFile(context, effects, template, onScreenPerson, read.roster, input.new_form_evidence) : null;
+    if (editAsked) return editAsked;
   }
   /* The manager's own name is never the employee (as MANAGER_NAME_NOT_EMPLOYEE does on the old path). */
   if (context.actor.displayName && samePerson(context.actor.displayName, employee.name)) {
