@@ -114,6 +114,11 @@ export interface ToolContext {
   readonly earlierCard?: CardRecord | null;
   /** Fix batch items 4 and 3: the "Did you mean" questions this chat's find_staff gave, from the server's record. */
   readonly nameQuestions?: readonly NameQuestionRecord[];
+  /**
+   * QA (16 Nov 2026, the live check of the pasted-script rule): a form is chosen in this conversation before this turn
+   * (a card was made, a form is open, or the app asked who a form is for). No name question is asked before there is a form.
+   */
+  readonly formChosen?: boolean;
   /** QA (16 Nov 2026; c158, c208): every card this chat's loop made, and every "who is it for?" it asked, oldest first. */
   readonly cardRecords?: readonly CardRecord[];
   readonly personAskedRecords?: readonly PersonAskedRecord[];
@@ -522,6 +527,8 @@ export interface ToolEffects {
   staffLookedUp?: boolean;
   /** Fix batch items 4 and 3: this turn's last "Did you mean" (the roster ids offered, the name typed), for the record. */
   nameQuestion?: { offeredIds: string[]; typed: string; offeredNames?: string[]; asksFullName?: boolean };
+  /** QA (16 Nov 2026): propose_form ran for a form this turn, so a form is chosen (find_staff may ask the name). */
+  formChosen?: boolean;
   /** Batch G (G4), by the rebuild plan's PR 1b: find_past_forms found forms on file to open (open: true) for this person. */
   openRequested?: string;
   /** PR 2: the roster id of the card's person (the card record); null for a team card or a name not on the roster. */
@@ -687,7 +694,11 @@ async function rosterPrimarySalon(scope: AccessScope, id: string): Promise<strin
   }
 }
 
-/** The name the manager just said no to, after this chat's own "Did you mean **<A>**?" / "Is this for **<A>**?". */
+/**
+ * The name the manager just said no to, after this chat's own "Did you mean **<A>**?" / "Is this for **<A>**?". It reads
+ * the name back from the reply, so those questions keep the full name (the rules book's first-name line says so); never
+ * shorten them to a first name or reply_name.
+ */
 function turnedDownName(context: Pick<ToolContext, "question" | "history">): string | null {
   if (!/^\s*(?:no|nope|nah|not\s+(?:her|him|them|that))\b/i.test(context.question)) return null;
   const last = [...context.history].reverse().find((turn) => turn.role === "assistant");
@@ -803,6 +814,15 @@ export async function findStaff(context: ToolContext, input: { name?: unknown; p
          * The answer bridge (QA's ruling, 16 Nov 2026; Pau: every answer is used): this offer asks for the full name, so it
          * is recorded like a Did-you-mean, and a full name given in the next message confirms <shown> as that person.
          */
+        /*
+         * No name question before there is a form (QA, 16 Nov 2026: the live check of the pasted-script rule; in 4 of 12 runs
+         * this offer became the reply's only question and the manager was never asked what to make). Until a form is chosen
+         * (before this turn, or by propose_form this turn) the result says so and carries no question; propose_form's own
+         * refusal asks the name once the form is chosen.
+         */
+        if (!context.formChosen && !effects?.formChosen) {
+          return { reason_code: "not_on_roster", matches: [], not_on_roster: shown, form_not_chosen: true, note: `Not on the ${staffSystem()} staff list. No form is chosen yet: if the manager has not said what they want made, your one question is that (ending with "?"). Ask about the name only once a form is chosen (propose_form will give the question).` };
+        }
         if (effects) effects.nameQuestion = { offeredIds: [], typed: shown, asksFullName: true };
         return { reason_code: "not_on_roster", matches: [], not_on_roster: shown, ask_exactly: offRosterNameQuestion(shown), note: `Not on the ${staffSystem()} staff list. Ask the manager, in these words: ${offRosterNameQuestion(shown)}` };
       }
@@ -1464,6 +1484,36 @@ export function fullNamesOf(person: Pick<RosterEmployee, "firstName" | "lastName
 }
 
 /**
+ * reply_name (QA and Pau, 16 Nov 2026): what the reply calls the card's person, decided by code, not by the model's
+ * reading of a rule. The first word of the card's name, unless someone else shares that first name: another person on
+ * the manager's staff list (the roster the tool read, the person's own roster row aside), or another full name the
+ * manager typed in this conversation. Then the full name. The roster and the conversation decide; no word list.
+ */
+export function replyNameFor(name: string, roster: readonly RosterEmployee[], mentioned: readonly string[], ownId?: string | null): string {
+  const full = name.replace(/\s+/g, " ").trim();
+  const words = full.split(" ");
+  if (words.length < 2) return full;
+  const first = words[0]!.toLowerCase();
+  const firstOf = (other: string) => other.trim().split(/\s+/)[0]!.toLowerCase();
+  const onRoster = roster.filter((row) => row.id !== ownId).flatMap(fullNamesOf).filter((other) => !samePerson(other, full));
+  const typed = mentioned.filter((other) => other.trim().split(/\s+/).length > 1 && !samePerson(other, full));
+  return [...onRoster, ...typed].some((other) => firstOf(other) === first) ? full : words[0]!;
+}
+
+/** edit_form's results name the form's person too: reply_name for the form that was written (`replyNameFor`). */
+export async function withEditReplyName(context: ToolContext, effects: ToolEffects, result: ToolResult): Promise<ToolResult> {
+  const record = result as { error?: unknown; revision_draft?: { id?: unknown } };
+  const id = typeof record.revision_draft?.id === "string" ? record.revision_draft.id : effects.formUpdate?.instanceId;
+  if (typeof record.error === "string" || !id) return result;
+  const person = await authorizeInstance(context.request, id, "view").then(({ loaded }) => loaded.instance.employeeName).catch(() => null);
+  if (!person) return result;
+  const read = await rosterFor(context.actor.scope);
+  const roster = read.kind === "read" ? read.roster : [];
+  const own = roster.find((row) => fullNamesOf(row).some((other) => samePerson(other, person)));
+  return { ...result, reply_name: replyNameFor(person, roster, extractEmployeeNames(managerTurns(context)), own?.id) };
+}
+
+/**
  * Batch G (QA's addition 2, 15 Nov 2026; Pau: "Preferred name is fine let it be flexible"): two names are one person
  * when they are the same name, or when each is a full name (preferred or legal) of exactly one roster person, and it is
  * the same person. "Jo Quill" and "Josephine Quill" are one person when Woven has Josephine "Jo" Quill; two different
@@ -1666,6 +1716,7 @@ export async function proposeForm(
   if (!templates) return { reason_code: "read_failed", error: "The forms library could not be read just now." };
   const template = templates.find((row) => row.key === key);
   if (!template) return { reason_code: "scope", error: "This manager cannot create that form. Use one of these template keys.", templates: templates.map((row) => ({ key: row.key, name: row.name })) };
+  effects.formChosen = true;
 
   /* The person: a roster id from find_staff, or (district / region logins only) the name as typed. */
   const read = await rosterFor(context.actor.scope);
@@ -1727,6 +1778,8 @@ export async function proposeForm(
        * the refusal says what to ask (find_staff's own use-<name> line), so the model asks instead of retrying.
        */
       const shown = typed.replace(/\s+/g, " ").trim();
+      /* The answer bridge: this refusal asks for the full name, so it is recorded (the next message's full name confirms it). */
+      if (shown) effects.nameQuestion = { offeredIds: [], typed: shown, asksFullName: true };
       return {
         reason_code: "not_on_roster", error: "Give the employee_id find_staff returned for this person (call find_staff first). A name not on the roster goes on a form only after the manager answers the \"reply **use <name>**\" offer.",
         ...(shown ? { not_on_roster: shown, ask_exactly: offRosterNameQuestion(shown) } : {}),
@@ -2428,6 +2481,8 @@ export async function proposeForm(
     ...(askedPayroll && !payroll && payrollCheck && !payrollCheck.ok ? { payroll_evidence: payrollCheck.reason } : {}),
     ...(payrollAnswerUnclear ? { ...(askedLevel && !level ? {} : { reason_code: "payroll_not_stated" }), payroll_evidence: "answer_to_two_questions" } : {}),
     ...(notOnCard.length > 0 ? { not_on_card: notOnCard } : {}),
+    /* QA and Pau (16 Nov 2026): what the reply calls this person (the first name unless someone else shares it). */
+    reply_name: replyNameFor(card.employeeName ?? employee.name, read.kind === "read" ? read.roster : [], extractEmployeeNames(managerTurns(context)), employee.id ?? null),
     card: {
       form: card.templateName,
       employee: card.employeeName,

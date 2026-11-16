@@ -39,6 +39,15 @@ import { rulesBookText } from "./rules-book";
  * propose_form's name_corrected fact ("I changed the name on the card from <from> to <to>; nothing else changed.").
  * It names no app, place, staff system or form key; nothing else in either text changed.
  *
+ * Re-taken on purpose on 16 Nov 2026 (never guess, QA): a Replies line (never guess a pronoun) and a Which form line
+ * (pasted text with no ask gets one question) were added, and the termination-offense line now says "the manager tells
+ * in their own words". All read the same under every config; nothing else changed. The same day (Pau): the pronoun line
+ * became "the employee by first name every time" (full names when two share a first name), and title_differs' template
+ * says <first name> instead of <them>. Then (QA, after the live runs): "never the full name in your words (the card shows
+ * it)", the full name only when two people share a first name; the card reply's first line names the employee in bold by
+ * first name (it said **<employee>**, which contradicted the rule), and the lines that say which person it is keep the full
+ * name. Then (QA and Pau): both lines say <reply_name>, which code decides (propose_form / edit_form's reply_name).
+ *
  * Re-taken on purpose on 16 Nov 2026 (QA, c019 in #1056): one line in "Which form" teaches that "Create a <form> from this
  * conversation" / "make it a <form> instead" for the same person and incident is the same request, not
  * new_form_evidence. It names no app, place, staff system or form key; nothing else changed.

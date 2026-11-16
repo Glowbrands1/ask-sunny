@@ -29,6 +29,7 @@ import {
   appHelp,
   coachTeam,
   editForm,
+  withEditReplyName,
   openForm,
   searchKnowledge,
   listStaffTool,
@@ -581,6 +582,8 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     openFormId: input.openFormId,
     cardOnScreen,
     earlierCard: records.at(-1) ?? null,
+    /* QA (16 Nov 2026): no name question before there is a form (find_staff's off-roster offer). */
+    formChosen: Boolean(input.openFormId) || records.length > 0 || whoAsked !== null,
     nameQuestions,
     /* QA (16 Nov 2026; c158, c208): every card and "who is it for?" this chat's loop gave, for where THIS request started. */
     cardRecords: records,
@@ -603,7 +606,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     read_form: (args) => readForm(context, args),
     read_policy: (args) => readPolicy(context, args, effects),
     propose_form: (args) => proposeForm(context, effects, args),
-    edit_form: (args) => editForm(context, effects, args),
+    edit_form: async (args) => withEditReplyName(context, effects, await editForm(context, effects, args)),
     open_form: (args) => openForm(context, effects, args),
     search_knowledge: (args) => searchKnowledge(context, effects, args),
     list_staff: (args) => listStaffTool(context, effects, args),
