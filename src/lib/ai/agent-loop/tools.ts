@@ -882,7 +882,7 @@ export async function findStaff(context: ToolContext, input: { name?: unknown; p
    */
   if (typed && (latestTurnKeepsOrUsesTyped(nameQuestionView(context, read.roster), typed) || typedNameSettled(context, read.roster, typed))) {
     /* QA (16 Nov 2026): what the reply calls this person, decided by code (`replyNameFor`), as on every card result. */
-    return { matches: [], kept_as_typed: typed, reply_name: replyNameFor(typed, read.roster, extractEmployeeNames(managerTurns(context)), null), note: `The manager kept "${typed}" as typed (their answer to your question). Do not ask again: propose the card now with employee_name "${typed}", with this request's account from the earlier turns.` };
+    return { matches: [], kept_as_typed: shownAsTyped(typed), reply_name: replyNameFor(shownAsTyped(typed), read.roster, extractEmployeeNames(managerTurns(context)), null), note: `The manager kept "${typed}" as typed (their answer to your question). Do not ask again: propose the card now with employee_name "${typed}", with this request's account from the earlier turns.` };
   }
   /* Rebuild plan PR 6: the list is cut at 10; more_matches says so, so a cut list is never read as everyone. */
   const allMatches = rosterMatches(typed, read.roster);
@@ -1966,6 +1966,19 @@ export function fullNamesOf(person: Pick<RosterEmployee, "firstName" | "lastName
  * the manager's staff list (the roster the tool read, the person's own roster row aside), or another full name the
  * manager typed in this conversation. Then the full name. The roster and the conversation decide; no word list.
  */
+/**
+ * QA (16 Nov 2026, train 5): a name taken as typed with no capital letter ("test testy", typed off the roster) is shown in
+ * title case everywhere ("Test Testy"): the card's name, reply_name, the pronoun pass and the account. Each word's first
+ * letter, and the letter after a hyphen or apostrophe, is capitalised. A name typed with any capital ("McKenzie",
+ * "DeShawn", "test Testy") is kept exactly as typed, and a roster match keeps the roster's spelling (not called for it).
+ * Only the display: records key names case-blind (`personKey`).
+ */
+export function shownAsTyped(name: string): string {
+  const tidy = name.replace(/\s+/g, " ").trim();
+  if (/\p{Lu}/u.test(tidy)) return tidy;
+  return tidy.replace(/(^|[\s'-])(\p{Ll})/gu, (_all, lead: string, letter: string) => lead + letter.toUpperCase());
+}
+
 export function replyNameFor(name: string, roster: readonly RosterEmployee[], mentioned: readonly string[], ownId?: string | null): string {
   const full = name.replace(/\s+/g, " ").trim();
   const words = full.split(" ");
@@ -2453,6 +2466,11 @@ export async function proposeForm(
     if (!typedName && !effects.staffLookedUp) return askWhoFor(context, template, effects);
     if (!typedName) return { reason_code: "missing_input", error: "Give the employee's name as the manager typed it." };
     employee = { name: typedName, salonIds: [] };
+  }
+  /* QA (train 5): a name taken as typed is shown in title case when typed all lowercase (`shownAsTyped`). */
+  if (offRosterName) {
+    offRosterName = shownAsTyped(offRosterName);
+    employee = { ...employee, name: offRosterName };
   }
   /*
    * HARD GUARD: the draft on screen keeps the manager's turns (OPEN_DRAFT_KEEPS_TURNS; a report of lost typing). With a
