@@ -34,7 +34,8 @@ import type { AskResponse } from "@/lib/ai/types";
 import { findManualSection, manualSectionHeadings, type ManualChunk } from "@/lib/forms/official-policy-manual";
 import { sectionWording } from "@/lib/forms/policy-citation";
 import { buildProposal, extractEmployeeNames, extractJobTitle, isJobTitlePhrase, managerContext, samePerson, tidyTypedName } from "@/lib/forms/proposal";
-import { cleaningUndonePhrase, namesCareAndCleaning } from "@/lib/forms/ca-policy";
+import { cleaningUndonePhrase, namesCareAndCleaning, readCaPolicy } from "@/lib/forms/ca-policy";
+import { citesMustSee, dressCodeFit, saysMustSee } from "./policy-fit";
 import { fieldStates, mergeSaved, refusedFields, savedDiff, type SavedChange } from "@/lib/ai/agent-loop/saved-diff";
 import { turnsFromThisPersonsRequest } from "@/lib/forms/this-persons-turns";
 import { closeHeadingReading, closePolicyQuestion, namedPolicies, namesHeading } from "@/lib/forms/named-policy-section";
@@ -2776,6 +2777,29 @@ export async function proposeForm(
     const saysLateOpening = (lateOpen.lateOpenOn() && lateOpen.LATE_TO_OPEN.test(requestWords)) || lateOpen.saysFailureToOpen(requestWords);
     if (lateOpening && saysLateOpening && headingKey(policyHeading) === headingKey("Attendance") && !lateOpen.describesAttendanceToo(requestWords)) {
       return { reason_code: "wrong_heading", error: `The manager's words ("late to open", a failure to open) are the manual's ${lateOpening} section, not Attendance. Propose the card again with policy "${lateOpening}".` };
+    }
+  }
+  /*
+   * THE POLICY FITS WHAT HAPPENED (QA, the 266 audit by Runner 2, train 4 on main 6d0b4ab1; `policy-fit.ts`).
+   * c261/c263: a coat or the wrong top worn during a shift ("out of dresscode") was cited as the Standards of Conduct.
+   * When the manager's words describe a dress-code offense, a heading that is not one of the manual's Dress Code headings
+   * (or Other alone) is refused, with those headings as the fit, unless the manager named another policy themselves.
+   * c207: "Other — Must See Behaviors" with no MSB said is refused (Pau's ruling, 16 Nov 2026: MSB only when said).
+   */
+  if (manual && template.key === appConfig().formKeys.corrective) {
+    const dressFits = dressCodeFit(requestWords, manual.headings);
+    const reading = readCaPolicy(requestWords);
+    const namedAnother = (reading.source === "stated" && reading.stated !== null && reading.stated !== "dress_code") ||
+      namedPolicies(requestWords).some((named) => !dressFits?.some((heading) => namesHeading(named.phrase, heading)));
+    const otherOnly = !policyHeading && /^other\b/i.test(askedPolicyWhole) && !saysMustSee(requestWords) && !cleaningUndonePhrase(requestWords);
+    if (dressFits && !namedAnother && ((policyHeading && !dressFits.includes(policyHeading)) || otherOnly)) {
+      return { reason_code: "dress_code_heading", error: `The manager's words describe a dress-code offense (dress code, or clothing worn on shift), which the manual's Dress Code section covers, not "${askedPolicyWhole}". Propose the card again with policy "${dressFits[0]}"${dressFits.length > 1 ? ` (or ${dressFits.slice(1).map((heading) => `"${heading}"`).join(", ")})` : ""}.`, fits_headings: dressFits };
+    }
+    if (citesMustSee(askedPolicyWhole) && !saysMustSee(requestWords)) {
+      const conduct = manual.headings.find((heading) => headingKey(heading) === headingKey("Standards of Conduct"));
+      const performance = /\bunder[- ]?perform(?:ance|ing)\b|\bperform[a-z]*\b|\bnumbers\b|\bgoals?\b|\bsales\b/i.test(requestWords) || new RegExp(ACCOUNT_METRIC.source, "i").test(requestWords);
+      const fits = topicHeadings(requestWords) ?? (performance && conduct ? [conduct] : null);
+      return { reason_code: "msb_not_said", error: `"Other — Must See Behaviors" is cited only when the manager says MSB or must see behaviors, and these words do not.${fits ? ` Propose the card again with policy "${fits[0]}"${performance ? " (sales or performance below target is the Standards of Conduct)" : ""}.` : " Propose the card again with the heading that fits what happened."}`, ...(fits ? { fits_headings: fits } : {}) };
     }
   }
   /*
