@@ -13,6 +13,8 @@ import { holdsPhrase, identifiedTurns, verifyEvidence, withoutMessageIdTags, typ
 import { answerNamesSomeoneElse, isConfirmedSpelling, latestTurnAnswersFor, latestTurnConfirms, latestTurnKeepsTyped, spellingKeysConfirmedFor, spellingKeysConfirmedForName, type NameQuestionView } from "./confirmed-spelling";
 import { displayName, editDistance, matchEmployeeName, nameConfirmationQuestion, readNameConfirmation, type RosterEmployee } from "@/lib/forms/employee-match";
 import { offRosterTyped } from "@/lib/forms/roster-only-names";
+import { parseFormDocument } from "@/lib/forms/document";
+import { draftableCheckboxGroups, draftableFields } from "@/lib/forms/responsibility";
 import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
 import type { DirectoryRosterRow } from "@/lib/forms/employee-roster";
 import { inlineDraftVariantKey, supportsInlineDraft } from "@/lib/forms/inline-draft";
@@ -52,7 +54,7 @@ import { redactSensitiveDefaults } from "@/lib/ai/sensitive-defaults";
 import { expandPolicyQuery } from "@/lib/knowledge/policy-retrieval";
 import type { SourceCitation } from "@/types";
 import type { AccessScope, ChatFormProposal, ChatMessage, Role } from "@/types";
-import { personKey, type CardRecord, type NameQuestionRecord, type PersonAskedRecord } from "@/lib/ai/agent-loop/card-record";
+import { personKey, type CardRecord, type NameQuestionRecord, type PersonAskedRecord, type TurnRecord } from "@/lib/ai/agent-loop/card-record";
 
 /**
  * ============================================================================
@@ -112,9 +114,16 @@ export interface ToolContext {
   readonly earlierCard?: CardRecord | null;
   /** Fix batch items 4 and 3: the "Did you mean" questions this chat's find_staff gave, from the server's record. */
   readonly nameQuestions?: readonly NameQuestionRecord[];
+  /**
+   * QA (16 Nov 2026, the live check of the pasted-script rule): a form is chosen in this conversation before this turn
+   * (a card was made, a form is open, or the app asked who a form is for). No name question is asked before there is a form.
+   */
+  readonly formChosen?: boolean;
   /** QA (16 Nov 2026; c158, c208): every card this chat's loop made, and every "who is it for?" it asked, oldest first. */
   readonly cardRecords?: readonly CardRecord[];
   readonly personAskedRecords?: readonly PersonAskedRecord[];
+  /** QA's review of #1062: each earlier loop turn's record (saved fields, a card), oldest first. */
+  readonly turnRecords?: readonly TurnRecord[];
 }
 
 /** The recorded name questions and the roster, for `confirmed-spelling.ts`. */
@@ -518,6 +527,8 @@ export interface ToolEffects {
   staffLookedUp?: boolean;
   /** Fix batch items 4 and 3: this turn's last "Did you mean" (the roster ids offered, the name typed), for the record. */
   nameQuestion?: { offeredIds: string[]; typed: string; offeredNames?: string[]; asksFullName?: boolean };
+  /** QA (16 Nov 2026): propose_form ran for a form this turn, so a form is chosen (find_staff may ask the name). */
+  formChosen?: boolean;
   /** Batch G (G4), by the rebuild plan's PR 1b: find_past_forms found forms on file to open (open: true) for this person. */
   openRequested?: string;
   /** PR 2: the roster id of the card's person (the card record); null for a team card or a name not on the roster. */
@@ -683,7 +694,11 @@ async function rosterPrimarySalon(scope: AccessScope, id: string): Promise<strin
   }
 }
 
-/** The name the manager just said no to, after this chat's own "Did you mean **<A>**?" / "Is this for **<A>**?". */
+/**
+ * The name the manager just said no to, after this chat's own "Did you mean **<A>**?" / "Is this for **<A>**?". It reads
+ * the name back from the reply, so those questions keep the full name (the rules book's first-name line says so); never
+ * shorten them to a first name or reply_name.
+ */
 function turnedDownName(context: Pick<ToolContext, "question" | "history">): string | null {
   if (!/^\s*(?:no|nope|nah|not\s+(?:her|him|them|that))\b/i.test(context.question)) return null;
   const last = [...context.history].reverse().find((turn) => turn.role === "assistant");
@@ -799,6 +814,15 @@ export async function findStaff(context: ToolContext, input: { name?: unknown; p
          * The answer bridge (QA's ruling, 16 Nov 2026; Pau: every answer is used): this offer asks for the full name, so it
          * is recorded like a Did-you-mean, and a full name given in the next message confirms <shown> as that person.
          */
+        /*
+         * No name question before there is a form (QA, 16 Nov 2026: the live check of the pasted-script rule; in 4 of 12 runs
+         * this offer became the reply's only question and the manager was never asked what to make). Until a form is chosen
+         * (before this turn, or by propose_form this turn) the result says so and carries no question; propose_form's own
+         * refusal asks the name once the form is chosen.
+         */
+        if (!context.formChosen && !effects?.formChosen) {
+          return { reason_code: "not_on_roster", matches: [], not_on_roster: shown, form_not_chosen: true, note: `Not on the ${staffSystem()} staff list. No form is chosen yet: if the manager has not said what they want made, your one question is that (ending with "?"). Ask about the name only once a form is chosen (propose_form will give the question).` };
+        }
         if (effects) effects.nameQuestion = { offeredIds: [], typed: shown, asksFullName: true };
         return { reason_code: "not_on_roster", matches: [], not_on_roster: shown, ask_exactly: offRosterNameQuestion(shown), note: `Not on the ${staffSystem()} staff list. Ask the manager, in these words: ${offRosterNameQuestion(shown)}` };
       }
@@ -1460,6 +1484,36 @@ export function fullNamesOf(person: Pick<RosterEmployee, "firstName" | "lastName
 }
 
 /**
+ * reply_name (QA and Pau, 16 Nov 2026): what the reply calls the card's person, decided by code, not by the model's
+ * reading of a rule. The first word of the card's name, unless someone else shares that first name: another person on
+ * the manager's staff list (the roster the tool read, the person's own roster row aside), or another full name the
+ * manager typed in this conversation. Then the full name. The roster and the conversation decide; no word list.
+ */
+export function replyNameFor(name: string, roster: readonly RosterEmployee[], mentioned: readonly string[], ownId?: string | null): string {
+  const full = name.replace(/\s+/g, " ").trim();
+  const words = full.split(" ");
+  if (words.length < 2) return full;
+  const first = words[0]!.toLowerCase();
+  const firstOf = (other: string) => other.trim().split(/\s+/)[0]!.toLowerCase();
+  const onRoster = roster.filter((row) => row.id !== ownId).flatMap(fullNamesOf).filter((other) => !samePerson(other, full));
+  const typed = mentioned.filter((other) => other.trim().split(/\s+/).length > 1 && !samePerson(other, full));
+  return [...onRoster, ...typed].some((other) => firstOf(other) === first) ? full : words[0]!;
+}
+
+/** edit_form's results name the form's person too: reply_name for the form that was written (`replyNameFor`). */
+export async function withEditReplyName(context: ToolContext, effects: ToolEffects, result: ToolResult): Promise<ToolResult> {
+  const record = result as { error?: unknown; revision_draft?: { id?: unknown } };
+  const id = typeof record.revision_draft?.id === "string" ? record.revision_draft.id : effects.formUpdate?.instanceId;
+  if (typeof record.error === "string" || !id) return result;
+  const person = await authorizeInstance(context.request, id, "view").then(({ loaded }) => loaded.instance.employeeName).catch(() => null);
+  if (!person) return result;
+  const read = await rosterFor(context.actor.scope);
+  const roster = read.kind === "read" ? read.roster : [];
+  const own = roster.find((row) => fullNamesOf(row).some((other) => samePerson(other, person)));
+  return { ...result, reply_name: replyNameFor(person, roster, extractEmployeeNames(managerTurns(context)), own?.id) };
+}
+
+/**
  * Batch G (QA's addition 2, 15 Nov 2026; Pau: "Preferred name is fine let it be flexible"): two names are one person
  * when they are the same name, or when each is a full name (preferred or legal) of exactly one roster person, and it is
  * the same person. "Jo Quill" and "Josephine Quill" are one person when Woven has Josephine "Jo" Quill; two different
@@ -1662,6 +1716,7 @@ export async function proposeForm(
   if (!templates) return { reason_code: "read_failed", error: "The forms library could not be read just now." };
   const template = templates.find((row) => row.key === key);
   if (!template) return { reason_code: "scope", error: "This manager cannot create that form. Use one of these template keys.", templates: templates.map((row) => ({ key: row.key, name: row.name })) };
+  effects.formChosen = true;
 
   /* The person: a roster id from find_staff, or (district / region logins only) the name as typed. */
   const read = await rosterFor(context.actor.scope);
@@ -1723,6 +1778,8 @@ export async function proposeForm(
        * the refusal says what to ask (find_staff's own use-<name> line), so the model asks instead of retrying.
        */
       const shown = typed.replace(/\s+/g, " ").trim();
+      /* The answer bridge: this refusal asks for the full name, so it is recorded (the next message's full name confirms it). */
+      if (shown) effects.nameQuestion = { offeredIds: [], typed: shown, asksFullName: true };
       return {
         reason_code: "not_on_roster", error: "Give the employee_id find_staff returned for this person (call find_staff first). A name not on the roster goes on a form only after the manager answers the \"reply **use <name>**\" offer.",
         ...(shown ? { not_on_roster: shown, ask_exactly: offRosterNameQuestion(shown) } : {}),
@@ -1755,7 +1812,8 @@ export async function proposeForm(
     if (open && open.status === "draft" && open.templateKey === key && samePerson(open.employeeName, employee.name)) {
       return {
         reason_code: "draft_open", error: `The ${open.templateName} draft for ${open.employeeName} is open on screen: put this on that draft with edit_form (instance_id ${open.id}). Propose a new card only if the manager asks for another or a new one.`,
-        ...(mustSeeNotConduct ? { must_see_behaviors: "Must See Behaviors is part of the Standards of Conduct policy (the JBA Policy Manual has no Must See Behaviors section), so the form keeps that policy." } : {}),
+        /* Pau's ruling (16 Nov 2026): MSB / must see behaviors is Other — Must See Behaviors, not the Standards of Conduct. */
+        ...(mustSeeNotConduct ? { must_see_behaviors: "Must See Behaviors is recorded as \"Other — Must See Behaviors\", not the Standards of Conduct (Pau's ruling, 16 Nov 2026): put that policy on the draft with edit_form." } : {}),
       };
     }
   }
@@ -2423,6 +2481,8 @@ export async function proposeForm(
     ...(askedPayroll && !payroll && payrollCheck && !payrollCheck.ok ? { payroll_evidence: payrollCheck.reason } : {}),
     ...(payrollAnswerUnclear ? { ...(askedLevel && !level ? {} : { reason_code: "payroll_not_stated" }), payroll_evidence: "answer_to_two_questions" } : {}),
     ...(notOnCard.length > 0 ? { not_on_card: notOnCard } : {}),
+    /* QA and Pau (16 Nov 2026): what the reply calls this person (the first name unless someone else shares it). */
+    reply_name: replyNameFor(card.employeeName ?? employee.name, read.kind === "read" ? read.roster : [], extractEmployeeNames(managerTurns(context)), employee.id ?? null),
     card: {
       form: card.templateName,
       employee: card.employeeName,
@@ -2594,7 +2654,13 @@ export async function editForm(
     fromShownCard = true;
   }
   /* Rebuild plan, PR 1 (bug 2: edit_form had no privacy gate): a form that is not the one open on screen, nor the card on screen once created, is a form on file. */
-  if (id !== context.openFormId && !fromShownCard) {
+  /*
+   * QA's live finding (16 Nov 2026, "the 11/10 one"): a form THIS turn already put on the manager's screen (open_form,
+   * after its own privacy check, or the revision draft edit_form opened) is the open form, not a form on file: editing it
+   * is never privacy_not_asked. The record of what this turn opened, never the words.
+   */
+  const openedThisTurn = effects.formOpened?.instanceId ?? null;
+  if (id !== context.openFormId && id !== openedThisTurn && !fromShownCard) {
     const refused = await formOnFileRefusal(context, id, input.forms_on_file_evidence);
     if (refused) return refused;
   }
@@ -2745,7 +2811,20 @@ export async function editForm(
      * for the document is theirs to set, after today or not (the reply says so). Only a date read from the account is
      * never after today.
      */
-    const typedDates = readDates(context.question);
+    /*
+     * QA's live finding (16 Nov 2026): "…, change the date to 11/9", the app asked "Which one?", "the 11/10 one": the date
+     * the manager typed for THIS request is in the message before the answer. A date typed in the message being answered
+     * or in the manager message right before it is theirs to set; the model's own date never is (the date parser only).
+     */
+    const lastManagerTurn = [...(context.history as ChatMessage[])].reverse().find((turn) => turn.role === "user");
+    /*
+     * QA's review of #1062: only when that request was left OPEN. The loop's turn that answered it saved no field and made
+     * no card (its trace record; a "Which one?" or "Who is it for?" turn). A finished request's date ("…dated 11/3" on
+     * another form) is never settable on the next request; with no record, only this message counts.
+     */
+    const leftOpen = lastManagerTurn?.id ? (context.turnRecords ?? []).some((turn) => turn.messageId === lastManagerTurn.id && !turn.saved && !turn.card) : false;
+    const previousManagerTurn = leftOpen ? lastManagerTurn : undefined;
+    const typedDates = [...readDates(context.question), ...readDates(String(previousManagerTurn?.content ?? ""))];
     /*
      * QA's design (15 Nov 2026): on an incident form (CA, coaching), form_date and incident_date after today are always
      * refused, with one question, however the message names them. Only the follow-up date and an exit's last day or
@@ -2917,7 +2996,7 @@ export async function editForm(
     /* Batch B (code-check #27): no field is renamed for the model; an unknown one is refused with the form's own keys. */
     const unknown = Object.keys(values).filter((field) => !fieldKeys.has(field) && field !== "warning_type" && field !== "employee_name");
     if (unknown.length > 0) {
-      return { reason_code: "unknown_field", error: `${unknown.join(", ")} ${unknown.length === 1 ? "is not a field" : "are not fields"} of this form; nothing was written. Its fields: ${[...fieldKeys].join(", ")}.${accountField ? ` The account goes in ${accountField}.` : ""}` };
+      return { reason_code: "unknown_field", error: `${unknown.join(", ")} ${unknown.length === 1 ? "is not a field" : "are not fields"} of this form; nothing was written. Its fields: ${[...fieldKeys].join(", ")}.${accountField ? ` The account goes in ${accountField}.` : ""}`, ...directEditFix(loaded, fieldKeys) };
     }
     /* HARD GUARD, NEVER AN EMPTY ACCOUNT (QA, 16:17Z): the account field is never cleared by an edit. */
     if (accountField && accountField in values && values[accountField]!.trim() === "") {
@@ -3019,12 +3098,18 @@ export async function editForm(
      * stated fact). Any other form_date value stays with the assistant's writer, which never drafts the Date.
      */
     let documentDate: string | null = null;
+    /* The manager's message the date was typed in (this one, or the one before it): the correction's reader checks the date there. */
+    let documentDateSaid = context.question;
     if (values.form_date) {
       const iso = isoDate(values.form_date, editToday);
       const [year, month, day] = (iso ?? "").split("-").map(Number) as [number, number, number];
       if (iso && typedDates.some((typed) => sameDate(typed, { month, day, year }))) {
         documentDate = iso;
+        if (!readDates(context.question).some((typed) => sameDate(typed, { month, day, year }))) documentDateSaid = String(previousManagerTurn?.content ?? context.question);
         delete values.form_date;
+      } else {
+        /* QA's live finding: never handed to the drafting writer ("system fields are not drafted"); said plainly, with the fix. */
+        return { reason_code: "date_not_stated", error: `${values.form_date} is not a date the manager typed for this request (this message or the one before it). Nothing was written. Ask which date, then write it with values form_date.`, ...directEditFix(loaded, fieldKeys) };
       }
     }
     /*
@@ -3064,7 +3149,7 @@ export async function editForm(
     if (documentDate !== null && written.rejected.length === 0) {
       const fresh = (await authorizeInstance(context.request, id, "edit")).loaded;
       if (formEditSingleWriterEnabled()) {
-        await (await import("@/lib/forms/form-write")).correctionWrite({ instanceId: id, loaded: fresh, stated: { values: { form_date: documentDate }, checked: {} }, actorId: context.actor.subject, said: context.question, today: editToday });
+        await (await import("@/lib/forms/form-write")).correctionWrite({ instanceId: id, loaded: fresh, stated: { values: { form_date: documentDate }, checked: {} }, actorId: context.actor.subject, said: documentDateSaid, today: editToday });
       } else {
         await (await import("@/lib/forms/instances")).applyStatedFacts(id, { values: { form_date: documentDate }, checked: {} }, context.actor.subject, new Set(["form_date"]));
       }
@@ -3090,6 +3175,8 @@ export async function editForm(
       updated,
       saved: savedChanges,
       refused,
+      /* QA's live finding: a field the writer refused carries the fix (the keys a direct edit takes, and the date's key). */
+      ...(refused.length > 0 ? directEditFix(loaded, fieldKeys) : {}),
       ...(unchanged.length > 0 ? { unchanged } : {}),
       ...(loaded.instance.templateKey === appConfig().formKeys.corrective ? { saved_level: savedLevel.length > 0 ? savedLevel.map((key) => levelLabel[key] ?? key).join(", ") : null } : {}),
       ...rewordFacts,
@@ -3284,6 +3371,22 @@ const REWORD_PAUSED = { updated: [], reword_paused: true, note: "Rewording is pa
 export const REWORD_REQUEST = /\b(?:make (?:it|this|that)(?: sound)? (?:more )?(?:professional|better|cleaner)|re-?word|re-?phrase|clean (?:it|this|that) up|sound (?:more )?(?:professional|better)|professional(?:ly)? word|(?:a )?(?:more )?professional tone)/i;
 /** Fields a reword never touches. */
 const REWORD_KEEPS = new Set(["warning_type", "payroll_deduct", "payroll_deduct_amount", "form_date", "employee_name", "job_title", "policy_violated", "direct_policy"]);
+
+/**
+ * QA's live finding (16 Nov 2026: four edit_form calls on one date, each refused for another reason): every refusal about
+ * a field carries the fix, so the model never guesses a key. The keys this form takes in a direct value edit (keys only,
+ * from its template: the fields and tick boxes the assistant may write, and the manager-stated ones it has), and where
+ * the form's date goes.
+ */
+function directEditFix(loaded: { readonly version: { readonly document: unknown }; readonly instance: { readonly variantKey: string | null } }, fieldKeys: ReadonlySet<string>): { editable_fields: string[]; form_date_field: string } {
+  const document = parseFormDocument(loaded.version.document);
+  const draftable = [...draftableFields(document, loaded.instance.variantKey).map((field) => field.key), ...draftableCheckboxGroups(document, loaded.instance.variantKey).map((group) => group.key)];
+  const stated = ["form_date", "warning_type", "payroll_deduct", PAYROLL_AMOUNT_KEY].filter((key) => fieldKeys.has(key));
+  return {
+    editable_fields: [...new Set([...draftable, ...stated])],
+    form_date_field: "The form's date is the field form_date: edit_form with values { form_date: \"MM/DD/YYYY\" }, the date the manager typed (never the reviser).",
+  };
+}
 
 /** The form's own field keys, from its template document. */
 function documentFieldKeys(document: unknown): Set<string> {

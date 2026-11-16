@@ -32,7 +32,16 @@ describe("what this turn already did (F1, F2)", () => {
     expect(partialReply(done, "error")).toMatch(/^I saved the change on the form: observation\. Something went wrong before I could finish the rest/);
     expect(partialReply(done, "timeout")).toMatch(/I ran out of time before finishing the rest/);
     expect(partialReply(done, "error")).not.toMatch(/Nothing was saved/);
-    expect(stepLimitReply(done)).toMatch(/What's the one thing still left\?$/);
+    // Changed on purpose (QA's live finding, 16 Nov 2026): the code-written step-limit reply states only what was saved, then asks for the change again.
+    expect(stepLimitReply(done, true)).toBe("I saved the change on the form: observation. Please send the change you still need again, and I'll make it.");
+  });
+
+  it("the step limit names the saved fields from the effects, or says nothing else was saved yet (QA's live finding)", () => {
+    const saved = doneThisTurn({ proposal: null, formOpened: { instanceId: "r", templateName: "Corrective Action Form", revisesInstanceId: "f" }, formUpdate: { instanceId: "r", updated: ["form_date"], saved: [{ field: "form_date", before: "2026-11-10", after: "2026-11-09" }] } });
+    expect(stepLimitReply(saved, true)).toMatch(/^I opened a new draft revising the finalized form; the original stays as it was\. I saved the change on the form: .+\. Please send the change you still need again, and I'll make it\.$/);
+    expect(stepLimitReply(saved, true)).not.toMatch(/Nothing else was saved|couldn't finish|one thing still left/);
+    const openedOnly = doneThisTurn({ proposal: null, formOpened: { instanceId: "r", templateName: "Corrective Action Form", revisesInstanceId: "f" }, formUpdate: null });
+    expect(stepLimitReply(openedOnly, false)).toBe("I opened a new draft revising the finalized form; the original stays as it was. Nothing else was saved yet. Please send the change you still need again, and I'll make it.");
   });
 });
 

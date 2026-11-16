@@ -218,7 +218,11 @@ export const NOV15_PR1_EVIDENCE_CASES: ReplayCase[] = [
           return { text: "Here's the Employee Exit Form for **Wrenna**." };
         }
         if (!staff) return { tool: "find_staff", input: { name: "Wrenna", person_evidence: evidenceFrom(view, "an exit for Wrenna") } };
-        const asked = /Ask the manager, in these words: ([\s\S]+)$/.exec(staff.note ?? "")?.[1];
+        // Changed on purpose (QA, 16 Nov 2026: no name question before there is a form): find_staff gives form_not_chosen
+        // and no offer; the exit the manager asked for is proposed, and propose_form's refusal carries the use-<name> offer.
+        const card = lastResult(view, "propose_form") as { ask_exactly?: string } | null;
+        if (!card) return { tool: "propose_form", input: { template_key: "stc-exit", employee_name: "Wrenna", effective_date: "11/14", exit_evidence: { ...evidenceFrom(view, "put together an exit for Wrenna"), kind: "asks_for_exit_form" } } };
+        const asked = card.ask_exactly ?? /Ask the manager, in these words: ([\s\S]+)$/.exec(staff.note ?? "")?.[1];
         return { text: asked ?? "Who is this Resignation/Exit Form for?" };
       });
       t.loopModel!(model);
