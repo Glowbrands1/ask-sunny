@@ -31,10 +31,15 @@ export interface CardRecord {
    * only, never values. Empty for an older record.
    */
   readonly asked: readonly string[];
+  /**
+   * QA (16 Nov 2026; c208, Pau's "every answer is used"): the warning level the card held, kept on the manager's evidence
+   * ("verbal" / "written"), so a rebuild of the same card keeps it. A value of the form, never a name. Null when none.
+   */
+  readonly level?: "verbal" | "written" | null;
 }
 
 /** What a turn writes into `slots.agent_loop.card`. */
-export type CardSlot = Omit<CardRecord, "messageId" | "asked"> & { readonly asked?: readonly string[] };
+export type CardSlot = Omit<CardRecord, "messageId" | "asked" | "level"> & { readonly asked?: readonly string[]; readonly level?: "verbal" | "written" };
 
 function isCardSlot(value: unknown): value is CardSlot {
   const row = value as Partial<CardSlot> | null;
@@ -53,6 +58,13 @@ export interface NameQuestionSlot {
   readonly offeredKeys: readonly string[];
   /** `personKey` of the name the manager typed (as find_staff was given it). */
   readonly typedKey: string;
+  /**
+   * Item 5 follow-up (Pau, 16 Nov 2026): `personKey` of each offered name that is nobody on the roster (the card's person
+   * typed by the manager, beside a roster person with a near first name). Absent on older records.
+   */
+  readonly offeredNameKeys?: readonly string[];
+  /** The answer bridge (QA, 16 Nov 2026): the question asked for the full name ("I can't find **<A'>** … give me the full name"). */
+  readonly asksFullName?: boolean;
 }
 
 export interface NameQuestionRecord extends NameQuestionSlot {
@@ -99,12 +111,14 @@ export async function readLoopRecords(conversationId: string | undefined, userId
       cards: rows.flatMap((row) => {
         const card = row.slots?.agent_loop?.card;
         return isCardSlot(card)
-          ? [{ proposalId: card.proposalId, employeeKey: card.employeeKey ?? null, nameKey: card.nameKey ?? null, templateKey: card.templateKey, templateName: card.templateName ?? null, messageId: row.message_id, asked: Array.isArray(card.asked) ? card.asked.filter((field): field is string => typeof field === "string") : [] }]
+          ? [{ proposalId: card.proposalId, employeeKey: card.employeeKey ?? null, nameKey: card.nameKey ?? null, templateKey: card.templateKey, templateName: card.templateName ?? null, messageId: row.message_id, asked: Array.isArray(card.asked) ? card.asked.filter((field): field is string => typeof field === "string") : [], level: card.level === "verbal" || card.level === "written" ? card.level : null }]
           : [];
       }),
       nameQuestions: rows.flatMap((row) => {
         const asked = row.slots?.agent_loop?.name_question;
-        return isNameQuestionSlot(asked) ? [{ offeredKeys: [...asked.offeredKeys], typedKey: asked.typedKey, messageId: row.message_id }] : [];
+        return isNameQuestionSlot(asked)
+          ? [{ offeredKeys: [...asked.offeredKeys], typedKey: asked.typedKey, ...(Array.isArray(asked.offeredNameKeys) ? { offeredNameKeys: asked.offeredNameKeys.filter((key): key is string => typeof key === "string") } : {}), ...(asked.asksFullName === true ? { asksFullName: true } : {}), messageId: row.message_id }]
+          : [];
       }),
       personAsked: rows.flatMap((row) => {
         const asked = row.slots?.agent_loop?.person_asked as Partial<PersonAskedSlot> | undefined;

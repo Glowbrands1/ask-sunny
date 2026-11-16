@@ -10,7 +10,7 @@ import { appConfig } from "./app-config";
 import { isoDate, monthDayToIso, readDates, sameDate, withoutDates } from "./dates";
 import { candidateNameWords, chatFormsActor } from "@/lib/forms/chat-form-records";
 import { holdsPhrase, identifiedTurns, verifyEvidence, withoutMessageIdTags, type IdentifiedTurn } from "./evidence";
-import { answerNamesSomeoneElse, isConfirmedSpelling, latestTurnAnswersFor, latestTurnConfirms, latestTurnKeepsTyped, spellingKeysConfirmedFor, type NameQuestionView } from "./confirmed-spelling";
+import { answerNamesSomeoneElse, isConfirmedSpelling, latestTurnAnswersFor, latestTurnConfirms, latestTurnKeepsTyped, spellingKeysConfirmedFor, spellingKeysConfirmedForName, type NameQuestionView } from "./confirmed-spelling";
 import { displayName, editDistance, matchEmployeeName, nameConfirmationQuestion, readNameConfirmation, type RosterEmployee } from "@/lib/forms/employee-match";
 import { offRosterTyped } from "@/lib/forms/roster-only-names";
 import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
@@ -52,7 +52,7 @@ import { redactSensitiveDefaults } from "@/lib/ai/sensitive-defaults";
 import { expandPolicyQuery } from "@/lib/knowledge/policy-retrieval";
 import type { SourceCitation } from "@/types";
 import type { AccessScope, ChatFormProposal, ChatMessage, Role } from "@/types";
-import { personKey, type CardRecord, type NameQuestionRecord } from "@/lib/ai/agent-loop/card-record";
+import { personKey, type CardRecord, type NameQuestionRecord, type PersonAskedRecord } from "@/lib/ai/agent-loop/card-record";
 
 /**
  * ============================================================================
@@ -112,6 +112,9 @@ export interface ToolContext {
   readonly earlierCard?: CardRecord | null;
   /** Fix batch items 4 and 3: the "Did you mean" questions this chat's find_staff gave, from the server's record. */
   readonly nameQuestions?: readonly NameQuestionRecord[];
+  /** QA (16 Nov 2026; c158, c208): every card this chat's loop made, and every "who is it for?" it asked, oldest first. */
+  readonly cardRecords?: readonly CardRecord[];
+  readonly personAskedRecords?: readonly PersonAskedRecord[];
 }
 
 /** The recorded name questions and the roster, for `confirmed-spelling.ts`. */
@@ -188,6 +191,11 @@ async function formsOnFileAskedFor(context: ToolContext, evidence: unknown, pers
   return { ok: false, reason: "evidence_other_person", reasonCode: "privacy_not_this_person" };
 }
 
+/** find_staff's offer for a name not on the staff list (the propose_form refusal gives the same line). */
+export function offRosterNameQuestion(name: string): string {
+  return `I can't find **${name}** on your staff list. Reply **use ${name}** to put the name on the form as you typed it, or give me the full name.`;
+}
+
 /** What the model says its exit_evidence quote is (fix batch item 1); null when it said nothing or something else. */
 export type ExitEvidenceKind = "asks_for_exit_form" | "yes_to_exit_offer" | "resignation_told";
 export function exitEvidenceKind(value: unknown): ExitEvidenceKind | null {
@@ -229,28 +237,46 @@ export function requestTurns(
   person: string,
   rosterNames: readonly string[],
   kind: "request_evidence" | "account_evidence",
-): { ok: true; ids: string[]; quotes: string[]; texts: string[] } | { ok: false; result: ToolResult } {
+  /** `personKey`s of typed spellings the manager confirmed as this person (the name question record). */
+  confirmedTypedKeys: readonly string[] = [],
+): { ok: true; ids: string[]; quotes: string[]; texts: string[] } | { ok: false; result: ToolResult; near?: { typed: string; others: string[] } } {
   /*
    * Fix batch item 5 (QA's 266 shadow replay, c219; QA's ruling, 16 Nov 2026): a pasted script names the form's person by a
    * one-letter-off first name (<A'>) and another roster person as a party (<B>, the director). The turn is still THIS
    * person's when it also names them, so <B> is a party there, not its owner. "Names them": the exact first name, or a
    * word one edit from the card's first name that is no active roster person's first name. Limits (QA): (a) only once the
-   * manager named the card's person in full in this request; (b) a word one edit from two or more people's first names
-   * is ambiguous and keeps today's refusal. Code compares spellings with the roster; it never reads what the words mean.
+   * manager named the card's person in full in this request; (b) a word one edit from another active person's first name
+   * too is ambiguous: no automatic match, and the refusal asks which (near_name_ambiguous). Code compares spellings with
+   * the roster; it never reads what the words mean.
    */
   const firstOf = (name: string) => name.trim().split(/\s+/)[0]!.toLowerCase();
   const personFirst = firstOf(person);
-  const othersFirsts = rosterNames.filter((name) => !samePerson(name, person)).map(firstOf);
+  const others = rosterNames.filter((name) => !samePerson(name, person));
   const namedInFull = person.trim().split(/\s+/).length >= 2 && turns.some((turn) => turn.role === "user" && holdsPhrase(turn.content, person));
-  const namesThisPerson = (clean: string): boolean => {
-    if (!namedInFull || personFirst.length < 3) return false;
-    const tokens = [...new Set(clean.toLowerCase().match(/[\p{L}'’-]{3,}/gu) ?? [])];
-    return tokens.some((token) => {
-      const near = othersFirsts.filter((first) => first === token || editDistance(first, token) <= 1);
-      if (token === personFirst) return near.length === 0;
-      return editDistance(token, personFirst) === 1 && !othersFirsts.includes(token) && near.length === 0;
-    });
+  /*
+   * How the turn names the card's person, if it does: "this" (the exact first name, or one edit from it and from no active
+   * roster person's first name), or "ambiguous" (one edit from it AND from another active person <C>'s first name: QA's
+   * strict limit (b) holds, and the refusal asks which, 16 Nov 2026). Words are letters only, so "<A'>'s" reads as <A'>
+   * (the 266 re-run's c219 shape). A spelling comparison with the roster, never a reading of the words.
+   */
+  const nearName = (clean: string): { kind: "this" } | { kind: "ambiguous"; typed: string; others: string[] } | null => {
+    if (!namedInFull || personFirst.length < 3) return null;
+    let ambiguous: { kind: "ambiguous"; typed: string; others: string[] } | null = null;
+    for (const word of new Set(clean.match(/\p{L}{3,}/gu) ?? [])) {
+      const token = word.toLowerCase();
+      // The manager confirmed this spelling as this person in answer to the app's own question (Pau, 16 Nov 2026).
+      // A spelling the manager confirmed as this person, answering the app's own question: any spelling (the answer bridge).
+      if (confirmedTypedKeys.includes(personKey(word))) return { kind: "this" };
+      const near = others.filter((name) => firstOf(name) === token || editDistance(firstOf(name), token) <= 1);
+      if (token === personFirst && near.length === 0) return { kind: "this" };
+      if (token !== personFirst && editDistance(token, personFirst) === 1) {
+        if (near.length === 0) return { kind: "this" };
+        if (!near.some((name) => firstOf(name) === token)) ambiguous ??= { kind: "ambiguous", typed: word, others: near };
+      }
+    }
+    return ambiguous;
   };
+  const namesThisPerson = (clean: string): boolean => nearName(clean)?.kind === "this";
   const namesOther = (text: string) => {
     const clean = withoutMessageIdTags(text);
     if (namesThisPerson(clean)) return null;
@@ -267,6 +293,12 @@ export function requestTurns(
     const check = verifyEvidence(claim, turns);
     if (!check.ok) return { ok: false, result: { error: `${kind} must quote the manager's own messages in this chat. Nothing was written.`, reason_code: `${kind}_invalid`, evidence: check.reason } };
     const other = namesOther(check.turn.content);
+    const near = other ? nearName(withoutMessageIdTags(check.turn.content)) : null;
+    if (near?.kind === "ambiguous") {
+      const choices = [person, ...near.others].map((name) => `**${name}**`);
+      const ask = `In your message, is ${near.typed} ${choices.slice(0, -1).join(", ")} or ${choices.at(-1)}?`;
+      return { ok: false, near: { typed: near.typed, others: near.others }, result: { error: `That message names ${near.typed}, one letter from ${person} and from ${near.others.join(", ")} on the staff list: ask which. Nothing was written.`, reason_code: "near_name_ambiguous", ask_exactly: ask } };
+    }
     if (other) return { ok: false, result: { error: `That message is about ${other}, not ${person}: it is not this person's request. Nothing was written.`, reason_code: `${kind}_other_person` } };
     if (check.turn.index <= boundary) return { ok: false, result: { error: `That message is from an earlier request, before the manager turned to someone else. Cite only this request's messages. Nothing was written.`, reason_code: `${kind}_not_this_request` } };
     if (ids.includes(check.turn.id)) continue;
@@ -333,6 +365,8 @@ function answerEvidence(
   evidence: unknown,
   scope: "this_message" | "request" | { readonly card: string },
   person?: EvidencePerson,
+  /** QA (16 Nov 2026; c158): with scope "request", the earlier manager turns of THIS request a level may be quoted from. */
+  options: { readonly requestTurnIds?: readonly string[] } = {},
 ): AnswerEvidence {
   const turns = identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId);
   const check = verifyEvidence(evidence, turns, scope === "this_message" ? { thisTurnOnly: true } : {});
@@ -346,7 +380,14 @@ function answerEvidence(
     // An evidence turn that names another roster person (full, preferred or first name) is that person's message, not this card's.
     if (otherPersonNamed(said, person)) return { ok: false, reason: "other_person" };
   }
-  if (scope === "request" && !current) {
+  if (scope === "request" && !current && options.requestTurnIds?.includes(check.turn.id)) {
+    /*
+     * QA (16 Nov 2026; c158, Pau's "every answer is used"): a turn of THIS request (this person's own request turns, from
+     * the turn the app answered with this form's card or its "who is it for?", by the server's records) is where the level
+     * was stated: "I need to create a verbal corrective action form", then the name. Another person's turn was refused
+     * above; a turn before the request started, or before a new request's boundary, is not in the list.
+     */
+  } else if (scope === "request" && !current) {
     /*
      * The manager message before this one counts only when the app's reply between the two showed THIS card (the card was
      * proposed in reply to it): "she was written up before" followed by an unrelated reply and then "ca for <name>" is no
@@ -476,13 +517,15 @@ export interface ToolEffects {
   /** find_staff ran this turn: a person was named, so a card without one is not "nobody named" (item 6). */
   staffLookedUp?: boolean;
   /** Fix batch items 4 and 3: this turn's last "Did you mean" (the roster ids offered, the name typed), for the record. */
-  nameQuestion?: { offeredIds: string[]; typed: string };
+  nameQuestion?: { offeredIds: string[]; typed: string; offeredNames?: string[]; asksFullName?: boolean };
   /** Batch G (G4), by the rebuild plan's PR 1b: find_past_forms found forms on file to open (open: true) for this person. */
   openRequested?: string;
   /** PR 2: the roster id of the card's person (the card record); null for a team card or a name not on the roster. */
   proposalEmployeeId?: string | null;
   /** Fix batch item 7: the CA-only fields this turn's card asks about, for the card record (`card-record.ts` asked). */
   proposalAsked?: readonly string[];
+  /** QA (c208): the warning level this turn's card holds (verbal / written), for the card record, so a rebuild keeps it. */
+  proposalLevel?: "verbal" | "written" | null;
   /**
    * Every source a tool read this turn, numbered from 1 in the order read: the model cites one as [S<n>] (`addSource`).
    * Only the ones the reply cites become source cards (run.ts, QA's live-app item 12), as today's grounded path does.
@@ -752,7 +795,12 @@ export async function findStaff(context: ToolContext, input: { name?: unknown; p
       const holdsName = named.ok && !isJobTitlePhrase(typed) && holdsPhrase(String((input.person_evidence as { quote: string }).quote), typed);
       if (holdsName) {
         const shown = typed.replace(/\s+/g, " ").trim();
-        return { reason_code: "not_on_roster", matches: [], not_on_roster: shown, note: `Not on the ${staffSystem()} staff list. Ask the manager, in these words: I can't find **${shown}** on your staff list. Reply **use ${shown}** to put the name on the form as you typed it, or give me the full name.` };
+        /*
+         * The answer bridge (QA's ruling, 16 Nov 2026; Pau: every answer is used): this offer asks for the full name, so it
+         * is recorded like a Did-you-mean, and a full name given in the next message confirms <shown> as that person.
+         */
+        if (effects) effects.nameQuestion = { offeredIds: [], typed: shown, asksFullName: true };
+        return { reason_code: "not_on_roster", matches: [], not_on_roster: shown, ask_exactly: offRosterNameQuestion(shown), note: `Not on the ${staffSystem()} staff list. Ask the manager, in these words: ${offRosterNameQuestion(shown)}` };
       }
     }
     if (!person) {
@@ -1670,8 +1718,14 @@ export async function proposeForm(
        * names it with its heading and page.
        */
       if (!typed && !id && !effects.staffLookedUp) return askWhoFor(context, template, effects);
+      /*
+       * The retry guard (QA, 16 Nov 2026; the 266 re-run's c219 turn 3 ran propose_form five times): with a typed name,
+       * the refusal says what to ask (find_staff's own use-<name> line), so the model asks instead of retrying.
+       */
+      const shown = typed.replace(/\s+/g, " ").trim();
       return {
         reason_code: "not_on_roster", error: "Give the employee_id find_staff returned for this person (call find_staff first). A name not on the roster goes on a form only after the manager answers the \"reply **use <name>**\" offer.",
+        ...(shown ? { not_on_roster: shown, ask_exactly: offRosterNameQuestion(shown) } : {}),
       };
     }
   } else {
@@ -1750,8 +1804,17 @@ export async function proposeForm(
    * join the request for the exit check and the account, and never unlock a level, payroll or termination by themselves.
    */
   const conversation = identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId);
-  const cited = requestTurns(conversation, input.request_evidence, employee.name, rosterNames, "request_evidence");
-  if (!cited.ok) return cited.result;
+  /* Item 5 follow-up (Pau, 16 Nov 2026): a near name the manager confirmed as this person, by the name question record. */
+  const typedConfirmed = read.kind === "read" ? (employee.id ? confirmedKeys : spellingKeysConfirmedForName(nameQuestionView(context, read.roster), employee.name)) : [];
+  const cited = requestTurns(conversation, input.request_evidence, employee.name, rosterNames, "request_evidence", typedConfirmed);
+  if (!cited.ok) {
+    /* The "is <A'> <A> or <C>?" question is recorded like a Did-you-mean, so the manager's answer is read next turn. */
+    if (cited.near && read.kind === "read") {
+      const offered = read.roster.filter((row) => cited.near!.others.some((name) => samePerson(name, displayName(row))));
+      effects.nameQuestion = { offeredIds: [...(employee.id ? [employee.id] : []), ...offered.map((row) => row.id)], typed: cited.near.typed, ...(employee.id ? {} : { offeredNames: [employee.name] }) };
+    }
+    return cited.result;
+  }
   const citedRequestIds = cited.ids;
   /*
    * QA's ruling 5: a new request (new_form_evidence) starts from this turn, and earlier turns of this person's request
@@ -1832,11 +1895,28 @@ export async function proposeForm(
   }
   /* Batch C (code-check #16): what the manager said that the account leaves out, as a fact for the model to put back. */
   const evidencePerson = evidencePersonFor(employee.name, read);
+  /*
+   * A WARNING LEVEL STATED FOR THIS REQUEST STAYS ON THE CARD (QA, 16 Nov 2026; c158 and c208; Pau's "every answer is used").
+   * This card, by the server's records (never the reply's text): the same form, and the same person by roster id (by the
+   * typed name's key off the roster). THIS request's turns for a level: this person's own request turns (`sourceIds`, the
+   * set the account uses; a new request's boundary keeps only this turn), from the first one the app answered with this
+   * card or with "who is it for?" for this form. Before that turn (a remark like "she was written up before" earlier in
+   * the chat) never counts; with no such record, only this message counts, as before.
+   */
+  const isThisCard = (record: CardRecord | null | undefined): record is CardRecord =>
+    Boolean(record && record.templateKey === template.key && (employee.id ? record.employeeKey === personKey(employee.id) : !record.employeeKey && record.nameKey === personKey(employee.name)));
+  const requestStarts = new Set([
+    ...(context.cardRecords ?? []).filter(isThisCard).map((record) => record.messageId),
+    ...(context.personAskedRecords ?? []).filter((record) => record.templateKey === template.key).map((record) => record.messageId),
+  ].filter((id): id is string => Boolean(id)));
+  const ownRequestTurns = conversation.filter((turn) => turn.role === "user" && sourceIds.includes(turn.id));
+  const requestStart = ownRequestTurns.find((turn) => requestStarts.has(turn.id));
+  const requestTurnIds = requestStart ? ownRequestTurns.filter((turn) => turn.index >= requestStart.index).map((turn) => turn.id) : [];
   let accountLost: string[] = [];
   if (whatHappened && ACCOUNT_FORMS.has(template.key)) {
     /* A message that is only a level or payroll answer (the model's evidence quotes the whole message) is not the incident's account. */
     const answerOnly = new Set(
-      [answerEvidence(context, input.level_evidence, "request", evidencePerson), answerEvidence(context, input.payroll_evidence, { card: employee.name }, evidencePerson)].flatMap((check) => (check.ok && check.wholeMessage ? [check.turnId] : [])),
+      [answerEvidence(context, input.level_evidence, "request", evidencePerson, { requestTurnIds }), answerEvidence(context, input.payroll_evidence, { card: employee.name }, evidencePerson)].flatMap((check) => (check.ok && check.wholeMessage ? [check.turnId] : [])),
     );
     const accountWords = asked.messages
       .filter((message) => (sourceIds.includes(message.id ?? "") || citedRequestIds.includes(message.id ?? "")) && !answerOnly.has(message.id ?? ""))
@@ -1996,11 +2076,22 @@ export async function proposeForm(
     ? incidentDates(requestWords, null).find((given) => monthDayToIso(given, today) === date) ?? null
     : null;
   const askedLevel = input.warning_level === "verbal" || input.warning_level === "written" ? input.warning_level : null;
-  const levelAnswer = caOnlyFields && askedLevel ? answerEvidence(context, input.level_evidence, "request", evidencePerson) : null;
+  const levelAnswer = caOnlyFields && askedLevel ? answerEvidence(context, input.level_evidence, "request", evidencePerson, { requestTurnIds }) : null;
   /* Fix batch item 2: the quote must name the option ("final warning" names none: level_not_in_evidence, and ask which). */
   const levelUnnamed = Boolean(levelAnswer?.ok && askedLevel && !levelNamedInEvidence(input.level_evidence, askedLevel));
   const levelCheck: AnswerEvidence | null = levelUnnamed ? { ok: false, reason: "level_not_in_evidence" } : levelAnswer;
-  const level = askedLevel && levelCheck?.ok ? askedLevel : null;
+  /*
+   * The carry (c208: "redo the outline" rebuilt the card with no level, and it stayed unset): the card on screen, or this
+   * chat's latest card, is THIS card and this is not a new request, so the level it held (its record) stays unless this
+   * turn's evidence states one. The model leaving warning_level out, or claiming another level with no evidence, never
+   * drops it. c019 (QA): the form switched away and back for the same person and incident ("Create a Coaching Form from
+   * this conversation", then "Create a Corrective Action Form from this conversation"): the latest record of THIS card
+   * inside this request's turns still holds the level, so it returns. A new request (new_form_evidence) starts fresh.
+   */
+  const inRequest = (record: CardRecord) => Boolean(record.messageId && requestTurnIds.includes(record.messageId));
+  const carriedRecord = [...(context.cardRecords ?? [])].reverse().find((record) => isThisCard(record) && inRequest(record) && record.level) ?? [context.cardOnScreen, context.earlierCard].find(isThisCard) ?? null;
+  const carriedLevel = caOnlyFields && !asksNewForm ? (carriedRecord?.level ?? null) : null;
+  const level = askedLevel && levelCheck?.ok ? askedLevel : carriedLevel;
   /*
    * Fix batch item 7 (QA's targeted re-run, c163: a bare "yes" after "Payroll deduct and warning level aren't set" set
    * payroll). The card on screen asked two things in one line (its record's `asked`), and this message is one word, quoted
@@ -2229,6 +2320,7 @@ export async function proposeForm(
   const unset = corrective && !awaiting ? [...(payroll ? [] : ["payroll_deduct"]), ...(level || terminationStated ? [] : ["warning_level"])] : [];
   /* Fix batch item 7: what this card's reply asks (the next turn's card record): payroll alone after an unclear answer. */
   effects.proposalAsked = payrollAnswerUnclear ? ["payroll_deduct"] : unset;
+  effects.proposalLevel = level;
   const salonNames = (ids: readonly string[] | undefined) => (ids ?? []).map((id) => ({ id, name: rosterSalonName(id) ?? id }));
   /*
    * Batch K4 (QA's 266 shadow replay, c137/c134: a pasted account about <Y>, off the roster, went on <X>'s card; the
@@ -2318,7 +2410,7 @@ export async function proposeForm(
    */
   const notOnCard: { field: string; reason_code: string }[] = [
     ...(dateFromAnotherRequest ? [{ field: "incident_date", reason_code: "date_from_another_request" }] : []),
-    ...((askedLevel && !level) ? [{ field: "warning_level", reason_code: caOnlyFields ? "level_not_stated" : "not_on_this_form" }] : []),
+    ...((askedLevel && level !== askedLevel) ? [{ field: "warning_level", reason_code: caOnlyFields ? "level_not_stated" : "not_on_this_form" }] : []),
     ...((askedTermination && !loopTermination) ? [{ field: "warning_level", reason_code: "termination_not_stated" }] : []),
     ...((askedPayroll && !payroll) ? [{ field: "payroll_deduct", reason_code: caOnlyFields ? "payroll_not_stated" : "not_on_this_form" }] : []),
     ...((typedAmount && !amount) ? [{ field: "payroll_amount", reason_code: caOnlyFields ? "amount_not_stated" : "not_on_this_form" }] : []),
@@ -2328,7 +2420,7 @@ export async function proposeForm(
     ...(datesAsked.length > 0 ? [{ field: "form_date", reason_code: "several_dates_not_chosen" }] : []),
   ];
   return {
-    ...(askedLevel && !level && levelCheck && !levelCheck.ok ? { reason_code: "level_not_stated", level_evidence: levelCheck.reason } : askedPayroll && !payroll && payrollCheck && !payrollCheck.ok ? { reason_code: "payroll_not_stated" } : {}),
+    ...(askedLevel && level !== askedLevel && levelCheck && !levelCheck.ok ? { reason_code: "level_not_stated", level_evidence: levelCheck.reason } : askedPayroll && !payroll && payrollCheck && !payrollCheck.ok ? { reason_code: "payroll_not_stated" } : {}),
     ...(askedPayroll && !payroll && payrollCheck && !payrollCheck.ok ? { payroll_evidence: payrollCheck.reason } : {}),
     ...(payrollAnswerUnclear ? { ...(askedLevel && !level ? {} : { reason_code: "payroll_not_stated" }), payroll_evidence: "answer_to_two_questions" } : {}),
     ...(notOnCard.length > 0 ? { not_on_card: notOnCard } : {}),
