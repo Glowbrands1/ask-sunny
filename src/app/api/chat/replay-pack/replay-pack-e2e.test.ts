@@ -727,7 +727,8 @@ class Thread {
      * never a pronoun (quoted words aside). The judge is the live-run checker (`reply-checks.ts`); the app's own pass is
      * `agent-loop/reply-pronouns.ts`.
      */
-    if (process.env.AGENT_LOOP_ENABLED === "true" && payload.formProposal?.employeeName) {
+    // The loop's own cards only (production's flags turn the loop on for its users; the old path's replies quote accounts).
+    if ((payload.formProposal as { fromAgentLoop?: boolean } | undefined)?.fromAgentLoop && payload.formProposal?.employeeName) {
       const unquoted = (payload.content ?? "").replace(/"[^"\n]*"|“[^”\n]*”/g, "").replace(ACCOUNT_LINE, "");
       expect(personPronoun(unquoted), `a pronoun for the card's person:\n${payload.content}`).toBeNull();
     }
