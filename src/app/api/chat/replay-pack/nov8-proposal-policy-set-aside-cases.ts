@@ -119,7 +119,7 @@ export const NOV8_PROPOSAL_POLICY_SET_ASIDE_CASES: ReplayCase[] = [
   },
   {
     id: "nov8-policy-set-aside-coaching-create",
-    title: "…Coaching Create: the Details carry no \"Policy reference: Attendance …\" line",
+    title: "…Coaching Create: the Details carry the card's policy line (Pau, 17 Nov 2026), and never the take-off sentence",
     report: REPORT,
     // Changed on purpose (8 Nov 2026): fixed in production by PROPOSAL_POLICY_SET_ASIDE_ENABLED + PROPOSAL_MAKE_IT_ABOUT_ENABLED, QA round 5, 8 Nov 2026; it now holds with production's flags.
     status: "fixed",
@@ -130,7 +130,13 @@ export const NOV8_PROPOSAL_POLICY_SET_ASIDE_CASES: ReplayCase[] = [
       await thread.say(SAID);
       const id = await thread.create();
       const details = t.values(id).coaching_details ?? "";
-      expect(details, "the Details cite Attendance").not.toMatch(/Policy reference:[^\n]*attendance/i);
+      /*
+       * Changed on purpose (Pau, 17 Nov 2026, ~7:25 AM PHT, via QA: "Coaching Forms always have the policy and page"):
+       * this case asserted the Details carry no "Policy reference: Attendance …" line after the take-off. A Coaching Form
+       * now always carries the policy line under its Details, so the line is asserted instead. The take-off sentence
+       * still never reaches the Details (below).
+       */
+      expect(details, "the Details carry no policy line").toMatch(/\n\nPolicy reference: [^\n]+$/);
       expect(details, "the Details hold the take-off").not.toMatch(/off the form/i);
     },
   },

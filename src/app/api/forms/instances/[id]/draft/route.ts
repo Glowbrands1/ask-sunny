@@ -97,6 +97,7 @@ import {
   enforceResponsibilities,
 } from "@/lib/forms/responsibility";
 import { stripPlaceholdersFromDraft } from "@/lib/forms/drafted-text";
+import { splitAppCitationLine } from "@/lib/forms/app-citation-line";
 import {
   FOLLOW_UP_TIMEFRAME_RULES,
   guardFollowUpTimeframe,
@@ -318,6 +319,8 @@ interface DraftBody {
    * pinned manual has that heading. See `lib/forms/card-policy.ts`.
    */
   cardPolicy?: string;
+  /** Pau (17 Nov 2026): the card's whole policy line, written under a Coaching Form's Details (`cardPolicyLineFor`). */
+  cardPolicyLine?: string;
   /**
    * SAME_FORM_COPY_NEW_PERSON_ENABLED: the form the card was asked to copy
    * ("the same draft that we did with <name>"). Re-checked: this account's
@@ -2614,6 +2617,25 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         notes,
         employeeName: loaded.instance.employeeName,
       }) as typeof draftedPayload.values;
+    }
+    /*
+     * COACHING FORMS ALWAYS HAVE THE POLICY AND PAGE (Pau's ruling, 17 Nov 2026, ~7:25 AM PHT). The Coaching Form has no
+     * policy field; the app's citation line under the Details ("Policy reference: <Heading> Policy, JBA Policy Manual p.N",
+     * `policy-citation-fields.ts`) was read from the manager's words only, so a card whose policy those words do not name
+     * saved none. The card's own policy line is the form's: it is that last line, in the same house format, in place of
+     * one read otherwise. A card with no policy (none cited, or the manager took it off) changes nothing.
+     */
+    const coachingPolicyLine =
+      isCoachingFamily && cardPolicyToDraftEnabled() && typeof body.cardPolicyLine === "string" && body.cardPolicyLine.trim()
+        ? body.cardPolicyLine.trim().slice(0, 200)
+        : null;
+    const detailsKey = narrativeTargets[0];
+    if (coachingPolicyLine && detailsKey && !keeps(detailsKey)) {
+      const details = draftedPayload.values[detailsKey] ?? "";
+      if (details.trim() !== "") {
+        const { body: account } = splitAppCitationLine(details);
+        draftedPayload.values = { ...draftedPayload.values, [detailsKey]: `${account}\n\nPolicy reference: ${coachingPolicyLine}` };
+      }
     }
     const kept = draftMergeEnabled()
       ? retainFilledFields({

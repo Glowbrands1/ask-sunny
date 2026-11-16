@@ -66,3 +66,49 @@ export const NOV17_FULL_WRITE_UP_CASES: ReplayCase[] = ([
     if (field === "observation") expect((values.action_plan ?? "").length, "no Action Plan").toBeGreaterThan(40);
   },
 }));
+
+/*
+ * COACHING FORMS ALWAYS HAVE THE POLICY AND PAGE (Pau's ruling via QA, 17 Nov 2026, ~7:25 AM PHT): the Coaching Form has
+ * no policy field, so the saved Details end with the card's policy line, after Observed / Expectation / Going Forward.
+ */
+NOV17_FULL_WRITE_UP_CASES.push({
+  id: "nov17-coaching-details-carry-the-policy",
+  title: "A loop Coaching card citing Attendance Policy, JBA Policy Manual p.14, Create: the saved Details end \"Policy reference: Attendance Policy, JBA Policy Manual p.14\", after the three sections",
+  report: "Pau's ruling via QA (17 Nov 2026, ~7:25 AM PHT): Coaching Forms always have the policy and page",
+  status: "fixed",
+  fixFlags: [FLAG],
+  async run(t) {
+    if (!t.loopOn?.() || !offline) return;
+    start(t);
+    const values = await created(
+      t,
+      "coaching for Remy Calder, she was 20 minutes late to her shift on 11/14",
+      { template_key: "coaching", what_happened: "Remy was 20 minutes late to her shift on 11/14.", policy: "Attendance", incident_date: "2026-11-14" },
+      "coaching_details",
+      "Remy was 20 minutes late to her shift on November 14, 2026.",
+    );
+    const details = values.coaching_details ?? "";
+    hasAllThree(details);
+    expect(details.trimEnd(), "the Details do not end with the card's policy and page").toMatch(/\n\nPolicy reference: Attendance Policy, JBA Policy Manual p\.14$/);
+  },
+});
+
+NOV17_FULL_WRITE_UP_CASES.push({
+  id: "nov17-coaching-details-carry-the-cards-policy-not-the-words",
+  title: "A loop Coaching card citing Standards of Conduct for \"she did not greet guests at the door\" (words no section reads), Create: the saved Details still end with the card's \"Policy reference: Standards of Conduct …\"",
+  report: "Pau's ruling via QA (17 Nov 2026, ~7:25 AM PHT): Coaching Forms always have the policy and page",
+  status: "fixed",
+  fixFlags: [FLAG],
+  async run(t) {
+    if (!t.loopOn?.() || !offline) return;
+    start(t);
+    const values = await created(
+      t,
+      "coaching for Remy Calder, she did not greet guests at the door on 11/14",
+      { template_key: "coaching", what_happened: "Remy did not greet guests at the door on 11/14.", policy: "Standards of Conduct", incident_date: "2026-11-14" },
+      "coaching_details",
+      "Remy did not greet guests at the door on November 14, 2026.",
+    );
+    expect((values.coaching_details ?? "").trimEnd(), "the Details do not carry the card's policy").toMatch(/\n\nPolicy reference: Standards of Conduct[^\n]*JBA Policy Manual p\.\d+$/);
+  },
+});
