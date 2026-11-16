@@ -1847,7 +1847,8 @@ export async function withLookupReplyName(context: ToolContext, result: ToolResu
   const byName = !byMatch && typeof typed === "string" && typed.trim() ? read.roster.filter((row) => fullNamesOf(row).some((full) => samePerson(full, typed))) : [];
   const row = byMatch ?? (byName.length === 1 ? byName[0] : undefined);
   if (!row) return result;
-  return { ...result, reply_name: replyNameFor(displayName(row), read.roster, extractEmployeeNames(managerTurns(context)), row.id) };
+  // As the card names them (the name the manager used: "Jo Quill" for Josephine Quill), so the turn has one reply_name.
+  return { ...result, reply_name: replyNameFor(nameAsSaid(row, managerTurns(context)), read.roster, extractEmployeeNames(managerTurns(context)), row.id) };
 }
 
 /** edit_form's results name the form's person too: reply_name for the form that was written (`replyNameFor`). */
