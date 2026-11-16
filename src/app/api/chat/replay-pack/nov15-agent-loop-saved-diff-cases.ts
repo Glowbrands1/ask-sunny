@@ -19,7 +19,7 @@ const REPORT = "The owner's audit, PR 3: tools return exactly what was saved (15
 
 type Saved = { field: string; before: string; after: string };
 type Refused = { field: string; reason_code: string };
-type EditResult = { saved?: Saved[]; refused?: Refused[]; unchanged?: string[]; updated?: string[]; revision_draft?: { id?: string; from_id?: string } };
+type EditResult = { saved?: Saved[]; refused?: Refused[]; unchanged?: string[]; already_set?: { field: string; value: string }[]; updated?: string[]; revision_draft?: { id?: string; from_id?: string } };
 
 const stepsOf = (t: ReplayContext) => {
   const row = [...(t.rows?.("chat_traces") ?? [])].reverse().find((entry) => (entry.slots as { agent_loop?: unknown } | undefined)?.agent_loop);
@@ -96,7 +96,7 @@ export const NOV15_AGENT_LOOP_SAVED_DIFF_CASES: ReplayCase[] = [
   },
   {
     id: "nov15-pr3-same-value-is-unchanged-not-refused",
-    title: "PR 3: a write that leaves a field as it was (the same text again) is listed as unchanged, not refused, and is not in saved",
+    title: "PR 3: a write that leaves a field as it was (the same text again) is listed as already set (already_set; it was unchanged before #1085), not refused, and is not in saved",
     report: REPORT,
     status: "fixed",
     fixFlags: [FLAG],
@@ -112,7 +112,12 @@ export const NOV15_AGENT_LOOP_SAVED_DIFF_CASES: ReplayCase[] = [
       await thread.say("put the observation on the form");
       const result = lastResult({ results: model.views.at(-1)!.results } as LoopView, "edit_form") as EditResult;
       expect((result.saved ?? []).map((change) => change.field), JSON.stringify(result)).not.toContain("observation");
-      expect(result.unchanged, JSON.stringify(result)).toContain("observation");
+      /*
+       * Changed on purpose (QA's dateedit r2, #1085): a field asked for the value the draft already holds is reported as
+       * already_set {field, value}, never as unchanged ("didn't update"). It is still never refused and never in saved.
+       */
+      expect((result.already_set ?? []).map((row) => row.field), JSON.stringify(result)).toContain("observation");
+      expect(result.unchanged ?? [], JSON.stringify(result)).not.toContain("observation");
       expect(result.refused ?? [], JSON.stringify(result)).toEqual([]);
     },
   },
