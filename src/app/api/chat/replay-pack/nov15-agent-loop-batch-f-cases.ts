@@ -1,3 +1,4 @@
+import { agentLoopStepLimit } from "@/lib/ai/agent-loop/switch";
 import { expect, vi } from "vitest";
 
 import { LOOP_FAILED_REPLY, STEP_LIMIT_REPLY } from "@/lib/ai/agent-loop/replies";
@@ -205,7 +206,8 @@ export const NOV15_AGENT_LOOP_BATCH_F_CASES: ReplayCase[] = [
       );
       t.loopModel!(model);
       const reply = await thread.say(SAID);
-      expect(model.calls, "the turn's model calls passed the step cap (6)").toBeLessThanOrEqual(6);
+      // PR 6 (changed on purpose): the cap as configured (AGENT_LOOP_MAX_STEPS; code default 6, production 8 from PR 6), not a hard-coded 6.
+      expect(model.calls, "the turn's model calls passed the step cap").toBeLessThanOrEqual(agentLoopStepLimit());
       expect(reply.content, "the unchecked claim reached the manager").not.toMatch(/\*\*Type of Warning:\*\* Written/);
     },
   },

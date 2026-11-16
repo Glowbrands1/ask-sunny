@@ -300,11 +300,18 @@ export interface AskResponse {
  * `ClaudeProvider` implements it later. Nothing in `features/chat/` imports an
  * SDK, a model name, or an API key.
  */
+/** Per-call options for `AIProvider.ask` that never go to the server as data. */
+export interface AskOptions {
+  /** A short status while the answer is made ("Looking up <name>…"); for the screen only, never the history. */
+  readonly onProgress?: (status: string) => void;
+}
+
 export interface AIProvider {
   readonly name: string;
   /** False whenever the provider is a stand-in. Surfaced honestly in the UI. */
   readonly connected: boolean;
-  ask(request: ClientAskRequest): Promise<AskResponse>;
+  /** `options.onProgress`: short statuses while the answer is made (PR 6 item 5); display only, never stored. */
+  ask(request: ClientAskRequest, options?: AskOptions): Promise<AskResponse>;
   /** Short title for the conversation history sidebar. */
   titleForConversation(firstMessage: string): string;
 }

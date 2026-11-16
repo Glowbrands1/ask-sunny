@@ -39,6 +39,11 @@ export interface ReplayThread {
   cardReads(line: string): void;
   readonly proposal: ReplayAnswer["formProposal"] | null;
   readonly instanceId: string | null;
+  /** PR 6 item 5: from now on the thread asks for progress lines (the browser's `x-chat-progress: 1`), as the chat screen does. */
+  askProgress?(): void;
+  /** PR 6 item 5: the statuses the last turn streamed, in order, and its stream version (`x-chat-stream`: "1", "2" or null when not streamed). */
+  readonly lastProgress?: readonly string[];
+  readonly lastStreamVersion?: string | null;
 }
 
 export interface ReplayContext {
@@ -61,6 +66,10 @@ export interface ReplayContext {
   searches?(): string[];
   normalizerReads?(intent: "policy_question" | "form_command" | "other"): void;
   fullManualLoads?(): void;
+  /** PR 6 item 2: how many times the official policy manual was read this case (the agent loop reads it once per turn). */
+  manualReads?(): number;
+  /** PR 6: how many times the agent loop checked which document is the manual and its version (once per turn). */
+  manualVersionChecks?(): number;
   /** The grounding block the answering model was given on its last answer. */
   lastGrounding?(): string;
   /** What the revision model writes on the next revision. */

@@ -3,6 +3,7 @@ import "server-only";
 import { FORM_PATCH_TIMEOUT_DEFAULT_MS, formPatchTimeoutMs } from "@/lib/config/ai-timeouts";
 import { CLAUDE_READER_MODEL } from "@/lib/config/models";
 import { requireEnv } from "@/lib/config/server-env";
+import { noteModelCall } from "@/lib/ai/model-call-scope";
 import { activeSpendMeter } from "@/lib/ai/spend-meter";
 import { logAiFailure, logAiTimeout } from "@/lib/ai/time-limit";
 
@@ -76,6 +77,8 @@ export async function callFormPatchModel(input: FormPatchCallInput): Promise<For
     const { generateObject, jsonSchema, NoObjectGeneratedError } = await import("ai");
     const { createAnthropic } = await import("@ai-sdk/anthropic");
     const anthropic = createAnthropic({ apiKey: requireEnv("ANTHROPIC_API_KEY") });
+    /* Agent loop PR 6: inside a loop tool (the reviser) this call counts toward the step limit; nothing otherwise. */
+    noteModelCall();
     try {
       const result = await generateObject({
         model: anthropic(CLAUDE_READER_MODEL),

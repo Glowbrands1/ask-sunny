@@ -4,7 +4,8 @@ import { cardTurns, personKey, readLoopRecords, replyTurns, type CardRecord, typ
 import { CLAUDE_EFFORT, CLAUDE_MAX_TOKENS, CLAUDE_MODEL } from "@/lib/config/models";
 import { MissingConfigurationError, requireEnv } from "@/lib/config/server-env";
 import { mainAnswerTimeoutMs, streamGapTimeoutMs } from "@/lib/config/ai-timeouts";
-import { chatTraceEnabled } from "@/lib/config/chat-quality-flags";
+import { chatTraceEnabled, editSeesSavedFormEnabled } from "@/lib/config/chat-quality-flags";
+import { countModelCalls } from "../model-call-scope";
 import { authorizedSalonIds } from "@/lib/forms/location-scope";
 import { rosterSalonName } from "@/lib/forms/salon-mention";
 import type { ChatFormProposal, ChatMessage } from "@/types";
@@ -25,6 +26,7 @@ import { appConfig, SUNNY_CONFIG, type AppConfig } from "./app-config";
 import { agentLoopRules, agentLoopSystem } from "./prompt";
 import { generatedId, identifiedTurns, messageIdTag, withoutMessageIdTags } from "./evidence";
 import { agentLoopStepLimit } from "./switch";
+import { progressStatus } from "./progress";
 import {
   appHelp,
   coachTeam,
@@ -36,6 +38,8 @@ import {
   findPastForms,
   findStaff,
   manualFor,
+  turnManual,
+  type TurnReads,
   proposeForm,
   readForm,
   readPolicy,
@@ -53,7 +57,7 @@ import {
  * ============================================================================
  *
  * The L10 assistant's stack and pattern (`features/l10/assistant/assistant.server.ts`):
- * the Vercel AI SDK's streamText with tools and `stopWhen: stepCountIs(n)`.
+ * the Vercel AI SDK's streamText with tools and a `stopWhen` step budget (PR 6: loop steps plus the tools' own model calls).
  * The model asks for a tool, the code runs it as the signed-in manager
  * (`tools.ts`), the result goes back to the model, and so on until it writes
  * the reply — which is returned AS WRITTEN: no reply rewrites, no intent
@@ -61,7 +65,8 @@ import {
  * limit, the spend guard and daily cap (checked before this is reached), the
  * turn record.
  *
- *   steps        AGENT_LOOP_MAX_STEPS, default 6, never more than 10
+ *   steps        AGENT_LOOP_MAX_STEPS, default 6, never more than 10: the loop's model calls plus the model
+ *                calls its tools make (the reviser's; PR 6), with room kept for the reply
  *   time         Part 1's stream limits on each step (45 s to its first
  *                token, then 30 s between chunks: a long answer that keeps
  *                streaming is never cut); the whole loop 100 s, and never
@@ -181,6 +186,8 @@ export interface AgentTurnInput {
   readonly openFormId: string | null;
   /** PR 4: the names of the tools the turn called, once it has finished (the route logs the turn's category from them). */
   readonly onTools?: (tools: readonly string[]) => void;
+  /** PR 6 item 5: a short status as each tool starts, for the screen only (`progress.ts`); never the reply, history or trace. */
+  readonly onProgress?: (status: string) => void;
 }
 
 const count = (value: unknown): number => (typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0);
@@ -191,6 +198,25 @@ const count = (value: unknown): number => (typeof value === "number" && Number.i
  * (and the history's own card data is the browser's, so it is not read: `parseHistory`), so a reply that reads as a
  * card's (its Policy line or its account line) gets an app-written note.
  */
+/**
+ * The model's final text written as a response object instead of a reply: `{"content": "<reply>", ...}`, bare or in a
+ * ```json fence (or the streamed `{"status", "body": {"content"}}` shape). Returns the reply string; null for any other
+ * text, including a reply that merely contains braces.
+ */
+export function unwrapReplyEnvelope(text: string): string | null {
+  const bare = text.trim().replace(/^```(?:json)?\s*\n?([\s\S]*?)\n?```$/i, "$1").trim();
+  if (!bare.startsWith("{") || !bare.endsWith("}")) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(bare);
+  } catch {
+    return null;
+  }
+  const record = parsed && typeof parsed === "object" ? (parsed as { content?: unknown; body?: { content?: unknown } }) : null;
+  const content = typeof record?.content === "string" ? record.content : typeof record?.body?.content === "string" ? record.body.content : null;
+  return content !== null && content.trim() !== "" ? content.trim() : null;
+}
+
 export const CARD_NOTE = "[app note: this reply showed a card built with propose_form]";
 
 /**
@@ -387,7 +413,8 @@ function buildAgentLoopTools(config: AppConfig) {
       {
         template_key: { type: "string" },
         employee_id: { type: "string", description: "From find_staff. Leave it out when nobody is named yet: the result's ask_exactly is the question to ask." },
-        employee_name: { type: "string", description: "Only when find_staff said the roster cannot be searched." },
+        employee_name: { type: "string", description: "The person's name as the manager typed it, when you have no employee_id: propose_form looks it up as find_staff does and makes the card when exactly one person fits; otherwise it hands back find_staff's facts (ask as they say). Also the name as typed when find_staff said the roster cannot be searched or not_on_roster." },
+        person_evidence: evidence("With employee_name: the manager's words naming this person as the form's person, as find_staff's person_evidence."),
         exit_evidence: {
           ...evidence("Employee Exit Form only: the manager's words that ask for the exit form (or say yes to your offer of it), and what they are."),
           properties: {
@@ -406,11 +433,11 @@ function buildAgentLoopTools(config: AppConfig) {
           description: "Earlier messages of this request the name lookup missed (the manager typed the name differently there, and this message gives it).",
         },
         new_form_evidence: evidence("Only when this message asks for another or a new form (a second form for the person on the open draft, or a new request after an earlier card): its words."),
-        policy: { type: "string", description: "One JBA Policy Manual heading, exactly; or \"Other — <short topic>\"; or both, \"<heading>; Other — <topic>\" (a cleaning or sanitation duty left undone is Other, as the rules book says)." },
+        policy: { type: "string", description: "Always on a Corrective Action or Coaching card. One JBA Policy Manual heading, exactly; or \"Other — <short topic>\"; or both, \"<heading>; Other — <topic>\" (a cleaning or sanitation duty left undone is Other, as the rules book says)." },
         what_happened: {
           type: "string",
           description:
-            "This incident's account in the manager's own words, all of it, with work areas and names kept as typed. Spelling, spacing and capitals cleaned; never names, dates, numbers, amounts or quoted words. No instructions (\"create a CA\", \"make it about\", \"the policy is\"), no level or payroll words, nothing invented. Leave out when the manager has not said what happened.",
+            "This incident's account in the manager's own words, all of it, with work areas and names kept as typed. Spelling, spacing and capitals cleaned, but never change a name, date, number, amount or quoted word. Every date, time and amount the manager gave stays in it as typed (\"on 11/10\"), even when the date also goes in incident_date. No instructions (\"create a CA\", \"make it about\", \"the policy is\"), no level or payroll words, nothing invented. Leave out when the manager has not said what happened.",
         },
         incident_date: { type: "string", description: "YYYY-MM-DD, the " + place + "'s local date." },
         level_evidence: evidence("With warning_level verbal or written: the manager message and the words from it that state this form's level, from the message being answered or the one before it. \"She was written up before\" is not this form's level."),
@@ -563,6 +590,9 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
    * showed a card not yet created. A fact for the model (batch A); the rules book says what the reply says about it.
    */
   /* PR 2: which earlier replies showed a card, and whose, from the server's card record (never the reply's text). */
+  /* PR 6: the turn's one read of the policy manual starts first, beside the chat's record read (`turnManual`). */
+  const turn: TurnReads = {};
+  turn.manual = manualFor(input.scopeId, turn);
   const { cards: records, nameQuestions, personAsked, turns: turnRecords } = await readLoopRecords(input.conversationId, input.actor.subject);
   const cards = cardTurns(input.history, records);
   const lastReplyIndex = input.history.findLastIndex((turn) => turn.role === "assistant" && !turn.error);
@@ -582,6 +612,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     openFormId: input.openFormId,
     cardOnScreen,
     earlierCard: records.at(-1) ?? null,
+    turn,
     /* QA (16 Nov 2026): no name question before there is a form (find_staff's off-roster offer). */
     formChosen: Boolean(input.openFormId) || records.length > 0 || whoAsked !== null,
     nameQuestions,
@@ -600,13 +631,36 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   const calledThisTurn = (tool: string) => steps.some((step) => step.tool === tool);
   /* Each model call's tokens and ms, for the trace (numbers only). */
   const modelSteps: { step: number; ms: number; stop: string | null; input_tokens: number; output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number }[] = [];
+  /*
+   * PR 6 item 3: ONE BUDGET FOR THE TURN'S MODEL CALLS. AGENT_LOOP_MAX_STEPS counts the loop's own calls AND the model
+   * calls a tool made (the reviser's form-patch call and check rounds; `model-call-scope.ts`). noop.replyFromSavedDiff
+   * reads the database only (no model call), so it costs nothing here.
+   */
+  let hiddenCalls = 0;
+  /* Calls used so far, the loop step running now included (stepNumber is the current step until it finishes). */
+  const callsUsed = () => stepNumber + hiddenCalls;
+  /* What one reviser run costs at least: its patch call, and a check round when EDIT_SEES_SAVED_FORM is on. */
+  const reviserModelCalls = () => (editSeesSavedFormEnabled() ? 2 : 1);
   const handlers: Record<string, (args: Record<string, unknown>) => Promise<ToolResult>> = {
     find_staff: (args) => findStaff(context, args, effects),
     find_past_forms: (args) => findPastForms(context, args, effects),
     read_form: (args) => readForm(context, args, effects),
     read_policy: (args) => readPolicy(context, args, effects),
     propose_form: (args) => proposeForm(context, effects, args),
-    edit_form: async (args) => withEditReplyName(context, effects, await editForm(context, effects, args)),
+    /*
+     * PR 6 item 3: an edit with no values runs the form's reviser, which makes its own model calls. It runs only when
+     * the turn's budget (AGENT_LOOP_MAX_STEPS, loop steps plus every model call a tool made) has room for the reviser
+     * AND the reply after it; otherwise it is refused with reason_code step_budget and a fact, so the model replies
+     * with what is saved. Code never writes the reply here.
+     */
+    edit_form: async (args) => {
+      const reviser = !args.values || typeof args.values !== "object" || Object.keys(args.values as object).length === 0;
+      const needs = reviserModelCalls() + 1;
+      if (reviser && callsUsed() + needs > limit) {
+        return { reason_code: "step_budget", error: "There is no room left in this message for the form's reviser and a reply. Nothing more was written. Say what was saved this turn, and ask the manager to send the rest again.", step_budget: { model_calls_left: Math.max(0, limit - callsUsed()), reviser_and_reply_need: needs } };
+      }
+      return withEditReplyName(context, effects, await editForm(context, effects, args));
+    },
     open_form: (args) => openForm(context, effects, args),
     search_knowledge: (args) => searchKnowledge(context, effects, args),
     list_staff: (args) => listStaffTool(context, effects, args),
@@ -638,15 +692,26 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   const runTool = async (step: number, name: string, args: unknown): Promise<ToolResult> => {
     const started = performance.now();
     let result: ToolResult;
+    let toolCalls = 0;
     const asked = personArg(name, args);
     const stopped = stoppedTools.get(name) ?? (asked ? stoppedPeople.get(asked) : undefined);
     if (stopped) {
       retriesBlocked += 1;
       result = { reason_code: "stop_retrying", error: `${name} was refused twice this turn for ${stopped.reason_code}; it was not run again. Reply to the manager now${stopped.ask_exactly ? ", ending with ask_exactly" : ""}.`, stop_retrying: stopped, ...(stopped.ask_exactly ? { ask_exactly: stopped.ask_exactly } : {}) };
     } else {
+      /* PR 6 item 5: the screen's status as the tool starts (a call the retry guard stops never runs, so it shows none). */
+      try {
+        input.onProgress?.(progressStatus(name, args));
+      } catch {
+        // A screen status never changes the turn.
+      }
       try {
         const handler = handlers[name];
-        result = handler ? await handler((args && typeof args === "object" ? args : {}) as Record<string, unknown>) : { reason_code: "unknown_tool", error: `There is no tool named ${name}.` };
+        /* PR 6 item 3: the model calls the tool made itself (the reviser's), counted toward the turn's step budget. */
+        const counted = handler ? await countModelCalls(() => handler((args && typeof args === "object" ? args : {}) as Record<string, unknown>)) : null;
+        toolCalls = counted ? counted.calls : 0;
+        hiddenCalls += toolCalls;
+        result = counted ? counted.value : { reason_code: "unknown_tool", error: `There is no tool named ${name}.` };
       } catch {
         result = { reason_code: "tool_threw", error: "That lookup failed just now." };
       }
@@ -668,11 +733,12 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
         }
       }
     }
-    steps.push({ step, tool: name, ms: Math.round(performance.now() - started), resultChars: JSON.stringify(result).length, ok: !("error" in result), ...stepReason(result, name) });
+    steps.push({ step, tool: name, ms: Math.round(performance.now() - started), resultChars: JSON.stringify(result).length, ok: !("error" in result), ...(toolCalls > 0 ? { model_calls: toolCalls } : {}), ...stepReason(result, name) });
     return result;
   };
 
-  const [templates, manual] = await Promise.all([templateChoices(input.actor.role), manualFor(input.scopeId)]);
+  /* PR 6: the turn's one read of the policy manual, shared with read_policy and propose_form (`turnManual`). */
+  const [templates, manual] = await Promise.all([templateChoices(input.actor.role), turnManual(context)]);
   const dynamic = agentLoopSystem({
     cardOpen: cardOpenAtStart,
     managerName: input.actor.displayName,
@@ -685,7 +751,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     answeringWhoQuestion: whoAsked ? (templates.find((row) => row.key === whoAsked.templateKey)?.name ?? "form") : null,
   });
 
-  const { jsonSchema, stepCountIs, streamText, tool } = await import("ai");
+  const { jsonSchema, streamText, tool } = await import("ai");
   const model = modelForTests ?? (await import("@ai-sdk/anthropic")).createAnthropic({ apiKey: requireEnv("ANTHROPIC_API_KEY") })(CLAUDE_MODEL);
   let stepNumber = 1;
   const tools = Object.fromEntries(
@@ -703,6 +769,14 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   const started = performance.now();
   let firstTokenMs: number | null = null;
   let text = "";
+  /* Never JSON to a manager (`unwrapReplyEnvelope`): set when the model's text was a response object, for the trace. */
+  let replyUnwrapped = false;
+  const unwrapReply = (said: string): string => {
+    const reply = unwrapReplyEnvelope(said);
+    if (reply === null) return said;
+    replyUnwrapped = true;
+    return reply;
+  };
   let stoppedAt = "step_limit" as "reply" | "step_limit" | "timeout" | "error";
   const usage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
   let modelCalls = 0;
@@ -726,7 +800,8 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
         ],
         messages: conversationOf(input.history, input.question, input.questionMessageId, cards) as never,
         tools,
-        stopWhen: stepCountIs(limit),
+        /* PR 6 item 3: the loop stops when its steps and the tools' own model calls reach the limit. */
+        stopWhen: ({ steps: done }) => done.length + hiddenCalls >= limit,
         prepareStep: ({ messages }) => ({ messages: withLastMessageCached(messages) }),
         maxOutputTokens: CLAUDE_MAX_TOKENS.standard,
         maxRetries: timed.maxRetries,
@@ -776,7 +851,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
        * tools, so nothing is called twice.
        */
       /* F4 (QA, batch F): ONE STEP BUDGET FOR THE TURN. A retry or hand-back gets only the steps left under the cap. */
-      const stepsLeft = () => Math.max(0, limit - (stepNumber - 1));
+      const stepsLeft = () => Math.max(0, limit - (stepNumber - 1) - hiddenCalls);
       if (last?.finishReason === "length" && stepsLeft() === 0) {
         text = "";
         stoppedAt = "step_limit";
@@ -819,6 +894,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
       const handBack = async (note: string): Promise<string> => {
         const left = stepsLeft();
         if (left === 0) return "";
+        const hiddenBefore = hiddenCalls;
         const proposalBefore = effects.proposal;
         const response = await result.response;
         const review = streamText({
@@ -829,7 +905,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
           ],
           messages: [...(conversationOf(input.history, input.question, input.questionMessageId, cards) as never[]), ...(response.messages as never[]), { role: "user", content: note } as never],
           tools,
-          stopWhen: stepCountIs(Math.min(4, left)),
+          stopWhen: ({ steps: done }) => done.length + (hiddenCalls - hiddenBefore) >= Math.min(4, left),
           /*
            * Batch J8 (the J6 speed report: a hand-back read 3838 input tokens with nothing from the cache): it asks as the
            * turn's own calls do, the same thinking and effort and the last message marked, so the same prefix is cached.
@@ -860,6 +936,8 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
         if (!finished) effects.proposal = proposalBefore;
         return finished;
       };
+      /* Unwrapped before the reply is checked against the card, so the checks read the reply, not the envelope. */
+      text = unwrapReply(text);
       /*
        * QA (16 Nov 2026, c219 live): the card check, and its "That change isn't on the card yet" hand-back, run only with a
        * card on screen this turn: the card proposed this turn, else the last reply's card (by the server's record). With no
@@ -963,6 +1041,12 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     if (stoppedAt === "error") logAiFailure("agent_loop", performance.now() - started, error);
   }
 
+  /*
+   * NEVER JSON TO A MANAGER (QA's live finding, 16 Nov 2026, conv_mwin8fc82kk8c7i): the reply was the response envelope
+   * {"content": "...", "citations": [], ...} as text. A format check, not a word list: a final text that is wholly one
+   * JSON object (bare, or in a ```json fence) with a string "content" is that string; the trace says reply_unwrapped.
+   */
+  text = unwrapReply(text);
   const latencyMs = Math.round(performance.now() - started);
   noteModelCall({
     model: CLAUDE_MODEL,
@@ -988,7 +1072,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     trace.firstTokenMs = firstTokenMs;
     trace.slots = {
       ...(trace.slots ?? {}),
-      agent_loop: { ...(cardSlot ? { card: cardSlot } : {}), ...(nameQuestionSlot ? { name_question: nameQuestionSlot } : {}), ...(personAskedSlot ? { person_asked: personAskedSlot } : {}), steps, model_steps: modelSteps, model_calls: modelCalls, step_limit: limit, steps_used: stepNumber - 1, stopped: stoppedAt, ms: latencyMs, first_token_ms: firstTokenMs, ...(selfReview ? { self_review: selfReview } : {}), ...(draftReview ? { draft_review: draftReview } : {}), ...(levelReview ? { level_review: levelReview } : {}), ...(retriesBlocked > 0 ? { stop_retrying: retriesBlocked } : {}) },
+      agent_loop: { ...(cardSlot ? { card: cardSlot } : {}), ...(nameQuestionSlot ? { name_question: nameQuestionSlot } : {}), ...(personAskedSlot ? { person_asked: personAskedSlot } : {}), steps, model_steps: modelSteps, model_calls: modelCalls, ...(turn.manualRead ? { manual_read: turn.manualRead } : {}), step_limit: limit, steps_used: stepNumber - 1 + hiddenCalls, ...(hiddenCalls > 0 ? { tool_model_calls: hiddenCalls } : {}), stopped: stoppedAt, ms: latencyMs, first_token_ms: firstTokenMs, ...(selfReview ? { self_review: selfReview } : {}), ...(draftReview ? { draft_review: draftReview } : {}), ...(levelReview ? { level_review: levelReview } : {}), ...(replyUnwrapped ? { reply_unwrapped: true } : {}), ...(retriesBlocked > 0 ? { stop_retrying: retriesBlocked } : {}) },
     };
   }
 
