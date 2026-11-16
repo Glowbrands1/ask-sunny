@@ -110,4 +110,35 @@ export const NOV16_AGENT_LOOP_OTHER_POLICY_CASES: ReplayCase[] = [
       }
     },
   },
+  {
+    id: "nov16-other-policy-controls-c156-c241-shapes",
+    title: "Controls in the re-run's shapes (QA): c156, a written CA \"on performance\" cited Standards of Conduct, then \"the policy would be must see behaviors on woven\" keeps \"Other — Must See Behaviors\" (Pau's ruling); c241, a CA \"for not following cleaning procedures\" keeps \"Other — cleaning procedures\"; neither gets fits_headings",
+    report: `${REPORT}; controls c156, c163 (must see behaviors named) and c241 (cleaning procedures)`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      setUp(t);
+      // c156's shape, two turns: the performance CA, then the manager names must see behaviors.
+      const thread = t.thread();
+      const ca = (view: LoopView, policy: string) => ({ tool: "propose_form", input: { template_key: "dpoa", employee_name: "marnie holloway", person_evidence: evidenceFrom(view, "ca for marnie holloway", view.turns.filter((turn) => turn.role === "user").length > 1 ? 1 : 0), warning_level: "written", what_happened: "She had 24 tans and was below in PPTA, Club Close% and Spa%.", policy } });
+      t.loopModel!(oneCard((view) => ca(view, "Standards of Conduct").input));
+      const first = await thread.say("can you make a written ca for marnie holloway on performance, she had 24 tans and was below in PPTA, Club Close% and Spa%");
+      expect(policyOf(first)).toMatch(/Standards of Conduct/);
+      const named = oneCard((view) => ca(view, "Other — Must See Behaviors").input);
+      t.loopModel!(named);
+      const msb = await thread.say("the policy would be must see behaviors on woven");
+      const msbResult = firstResult(named.views, "propose_form")!;
+      expect(factsOf(msbResult).fits_headings, JSON.stringify(msbResult)).toBeUndefined();
+      expect(policyOf(msb), JSON.stringify(msb.formProposal)).toMatch(/Other — Must See Behaviors/);
+
+      // c241's shape: a CA for not following cleaning procedures stays Other.
+      const cleaning = oneCard((view) => ({ template_key: "dpoa", employee_name: "remy calder", person_evidence: evidenceFrom(view, "ca for remy calder"), what_happened: "She did not follow cleaning procedures.", policy: "Other — cleaning procedures" }));
+      t.loopModel!(cleaning);
+      const reply = await t.thread().say("i need a ca for remy calder for not following cleaning procedures");
+      const result = firstResult(cleaning.views, "propose_form")!;
+      expect(factsOf(result).fits_headings, JSON.stringify(result)).toBeUndefined();
+      expect(policyOf(reply), JSON.stringify(reply.formProposal)).toMatch(/Other — cleaning procedures/);
+    },
+  },
 ];
