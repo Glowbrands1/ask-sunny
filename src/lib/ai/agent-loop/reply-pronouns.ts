@@ -46,7 +46,19 @@ function quotedSpans(text: string, managerWords?: string): Array<[number, number
      * Runner 2's c020 T6: Sunny quoted its own card line ("She completed onboarding …"). Only what the manager typed is
      * kept as typed: with the manager's words given, a quote they do not hold is Sunny's wording and is named too.
      */
-    if (said !== null && !said.includes(flat(match[0]))) continue;
+    if (said !== null && !said.includes(flat(match[0]))) {
+      /*
+       * Runner 2's c152 T1: the manager's words quoted back with a small difference ("sent her immediate resignation to
+       * management") are still theirs: most of the quote's words (80%) and every pronoun in it are in what they typed.
+       * c020 T6's quote holds a "She" the manager never typed, so it is Sunny's wording.
+       */
+      const saidWords = new Set(said.split(" "));
+      const quoteWords = flat(match[0]).split(" ").filter(Boolean);
+      const pronouns = quoteWords.filter((word) => /^(?:he|him|his|she|her|hers|himself|herself|they|them|their|theirs)$/.test(word));
+      const held = quoteWords.filter((word) => saidWords.has(word)).length;
+      const theirs = quoteWords.length > 0 && held / quoteWords.length >= 0.8 && pronouns.every((word) => saidWords.has(word));
+      if (!theirs) continue;
+    }
     spans.push([match.index!, match.index! + match[0].length]);
   }
   return spans;

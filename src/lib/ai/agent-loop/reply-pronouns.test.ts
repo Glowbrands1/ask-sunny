@@ -55,6 +55,11 @@ describe("withoutPersonPronouns", () => {
     const theirs = 'You wrote "sent her immediate resignation to management".';
     expect(withoutPersonPronouns(theirs, "Tamsin", [], "exit form for tamsin orwell, she sent her immediate resignation to management").text).toBe(theirs);
   });
+  it("keeps the manager's words quoted back with a small difference (Runner 2's c152 T1)", () => {
+    const close = 'You said she "sent her immediate resignation to management".';
+    expect(withoutPersonPronouns(close, "Tamsin", [], "exit form for tamsin orwell, she sent her immediate resignation to the management team").text)
+      .toBe('You said Tamsin "sent her immediate resignation to management".');
+  });
   it("leaves a reply with no pronoun alone", () => {
     const plain = "Here's the Corrective Action Form for **Tamsin**. Tamsin's shift was on 11/14.";
     expect(withoutPersonPronouns(plain, "Tamsin")).toEqual({ text: plain, replaced: 0 });

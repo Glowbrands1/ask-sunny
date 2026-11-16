@@ -1830,7 +1830,7 @@ export async function otherPeopleNamed(context: ToolContext, reply: string, pers
   ];
   const ownRow = roster.find((row) => fullNamesOf(row).some((full) => samePerson(full, person)) || [row.firstName, row.preferredFirstName].some((first) => first && first.toLowerCase() === person.trim().toLowerCase()));
   // Runner 2 (c150, c198 T3: "At <salon>, she was late again"): a salon or city is no other person.
-  return [...new Set(named.filter((name) => !own(name) && !namesAPlace(name) && !(ownRow && (fullNamesOf(ownRow).some((full) => samePerson(full, name)) || [ownRow.firstName, ownRow.preferredFirstName].includes(name)))))];
+  return [...new Set(named.filter((name) => !own(name) && !namesAPlace(name) && !isJobTitlePhrase(name) && !(ownRow && (fullNamesOf(ownRow).some((full) => samePerson(full, name)) || [ownRow.firstName, ownRow.preferredFirstName].includes(name)))))];
 }
 
 /**
