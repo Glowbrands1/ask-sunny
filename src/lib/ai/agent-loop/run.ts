@@ -408,7 +408,7 @@ function buildAgentLoopTools(config: AppConfig) {
         what_happened: {
           type: "string",
           description:
-            "This incident's account in the manager's own words, all of it, with work areas and names kept as typed. Spelling, spacing and capitals cleaned; never names, dates, numbers, amounts or quoted words. No instructions (\"create a CA\", \"make it about\", \"the policy is\"), no level or payroll words, nothing invented. Leave out when the manager has not said what happened.",
+            "This incident's account in the manager's own words, all of it, with work areas and names kept as typed. Spelling, spacing and capitals cleaned, but never change a name, date, number, amount or quoted word. Every date, time and amount the manager gave stays in it as typed (\"on 11/10\"), even when the date also goes in incident_date. No instructions (\"create a CA\", \"make it about\", \"the policy is\"), no level or payroll words, nothing invented. Leave out when the manager has not said what happened.",
         },
         incident_date: { type: "string", description: "YYYY-MM-DD, the " + place + "'s local date." },
         level_evidence: evidence("With warning_level verbal or written: the manager message and the words from it that state this form's level, from the message being answered or the one before it. \"She was written up before\" is not this form's level."),
