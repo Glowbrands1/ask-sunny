@@ -10,7 +10,7 @@ import { appConfig } from "./app-config";
 import { isoDate, monthDayToIso, readDates, sameDate, withoutDates } from "./dates";
 import { candidateNameWords, chatFormsActor } from "@/lib/forms/chat-form-records";
 import { holdsPhrase, identifiedTurns, verifyEvidence, withoutMessageIdTags, type IdentifiedTurn } from "./evidence";
-import { answerNamesSomeoneElse, isConfirmedSpelling, latestTurnConfirms, spellingKeysConfirmedFor, type NameQuestionView } from "./confirmed-spelling";
+import { answerNamesSomeoneElse, isConfirmedSpelling, latestTurnConfirms, spellingKeysConfirmedFor, spellingKeysConfirmedForName, type NameQuestionView } from "./confirmed-spelling";
 import { displayName, editDistance, matchEmployeeName, nameConfirmationQuestion, readNameConfirmation, type RosterEmployee } from "@/lib/forms/employee-match";
 import { offRosterTyped } from "@/lib/forms/roster-only-names";
 import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
@@ -234,7 +234,9 @@ export function requestTurns(
   person: string,
   rosterNames: readonly string[],
   kind: "request_evidence" | "account_evidence",
-): { ok: true; ids: string[]; quotes: string[]; texts: string[] } | { ok: false; result: ToolResult } {
+  /** `personKey`s of typed spellings the manager confirmed as this person (the name question record). */
+  confirmedTypedKeys: readonly string[] = [],
+): { ok: true; ids: string[]; quotes: string[]; texts: string[] } | { ok: false; result: ToolResult; near?: { typed: string; others: string[] } } {
   /*
    * Fix batch item 5 (QA's 266 shadow replay, c219; QA's ruling, 16 Nov 2026): a pasted script names the form's person by a
    * one-letter-off first name (<A'>) and another roster person as a party (<B>, the director). The turn is still THIS
@@ -259,6 +261,8 @@ export function requestTurns(
     let ambiguous: { kind: "ambiguous"; typed: string; others: string[] } | null = null;
     for (const word of new Set(clean.match(/\p{L}{3,}/gu) ?? [])) {
       const token = word.toLowerCase();
+      // The manager confirmed this spelling as this person in answer to the app's own question (Pau, 16 Nov 2026).
+      if (token !== personFirst && editDistance(token, personFirst) === 1 && confirmedTypedKeys.includes(personKey(word))) return { kind: "this" };
       const near = others.filter((name) => firstOf(name) === token || editDistance(firstOf(name), token) <= 1);
       if (token === personFirst && near.length === 0) return { kind: "this" };
       if (token !== personFirst && editDistance(token, personFirst) === 1) {
@@ -289,7 +293,7 @@ export function requestTurns(
     if (near?.kind === "ambiguous") {
       const choices = [person, ...near.others].map((name) => `**${name}**`);
       const ask = `In your message, is ${near.typed} ${choices.slice(0, -1).join(", ")} or ${choices.at(-1)}?`;
-      return { ok: false, result: { error: `That message names ${near.typed}, one letter from ${person} and from ${near.others.join(", ")} on the staff list: ask which. Nothing was written.`, reason_code: "near_name_ambiguous", ask_exactly: ask } };
+      return { ok: false, near: { typed: near.typed, others: near.others }, result: { error: `That message names ${near.typed}, one letter from ${person} and from ${near.others.join(", ")} on the staff list: ask which. Nothing was written.`, reason_code: "near_name_ambiguous", ask_exactly: ask } };
     }
     if (other) return { ok: false, result: { error: `That message is about ${other}, not ${person}: it is not this person's request. Nothing was written.`, reason_code: `${kind}_other_person` } };
     if (check.turn.index <= boundary) return { ok: false, result: { error: `That message is from an earlier request, before the manager turned to someone else. Cite only this request's messages. Nothing was written.`, reason_code: `${kind}_not_this_request` } };
@@ -500,7 +504,7 @@ export interface ToolEffects {
   /** find_staff ran this turn: a person was named, so a card without one is not "nobody named" (item 6). */
   staffLookedUp?: boolean;
   /** Fix batch items 4 and 3: this turn's last "Did you mean" (the roster ids offered, the name typed), for the record. */
-  nameQuestion?: { offeredIds: string[]; typed: string };
+  nameQuestion?: { offeredIds: string[]; typed: string; offeredNames?: string[] };
   /** Batch G (G4), by the rebuild plan's PR 1b: find_past_forms found forms on file to open (open: true) for this person. */
   openRequested?: string;
   /** PR 2: the roster id of the card's person (the card record); null for a team card or a name not on the roster. */
@@ -776,7 +780,7 @@ export async function findStaff(context: ToolContext, input: { name?: unknown; p
       const holdsName = named.ok && !isJobTitlePhrase(typed) && holdsPhrase(String((input.person_evidence as { quote: string }).quote), typed);
       if (holdsName) {
         const shown = typed.replace(/\s+/g, " ").trim();
-        return { reason_code: "not_on_roster", matches: [], not_on_roster: shown, note: `Not on the ${staffSystem()} staff list. Ask the manager, in these words: ${offRosterNameQuestion(shown)}` };
+        return { reason_code: "not_on_roster", matches: [], not_on_roster: shown, ask_exactly: offRosterNameQuestion(shown), note: `Not on the ${staffSystem()} staff list. Ask the manager, in these words: ${offRosterNameQuestion(shown)}` };
       }
     }
     if (!person) {
@@ -1609,7 +1613,7 @@ export async function proposeForm(
       const shown = typed.replace(/\s+/g, " ").trim();
       return {
         reason_code: "not_on_roster", error: "Give the employee_id find_staff returned for this person (call find_staff first). A name not on the roster goes on a form only after the manager answers the \"reply **use <name>**\" offer.",
-        ...(shown ? { ask_exactly: offRosterNameQuestion(shown) } : {}),
+        ...(shown ? { not_on_roster: shown, ask_exactly: offRosterNameQuestion(shown) } : {}),
       };
     }
   } else {
@@ -1687,8 +1691,17 @@ export async function proposeForm(
    * join the request for the exit check and the account, and never unlock a level, payroll or termination by themselves.
    */
   const conversation = identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId);
-  const cited = requestTurns(conversation, input.request_evidence, employee.name, rosterNames, "request_evidence");
-  if (!cited.ok) return cited.result;
+  /* Item 5 follow-up (Pau, 16 Nov 2026): a near name the manager confirmed as this person, by the name question record. */
+  const typedConfirmed = read.kind === "read" ? (employee.id ? confirmedKeys : spellingKeysConfirmedForName(nameQuestionView(context, read.roster), employee.name)) : [];
+  const cited = requestTurns(conversation, input.request_evidence, employee.name, rosterNames, "request_evidence", typedConfirmed);
+  if (!cited.ok) {
+    /* The "is <A'> <A> or <C>?" question is recorded like a Did-you-mean, so the manager's answer is read next turn. */
+    if (cited.near && read.kind === "read") {
+      const offered = read.roster.filter((row) => cited.near!.others.some((name) => samePerson(name, displayName(row))));
+      effects.nameQuestion = { offeredIds: [...(employee.id ? [employee.id] : []), ...offered.map((row) => row.id)], typed: cited.near.typed, ...(employee.id ? {} : { offeredNames: [employee.name] }) };
+    }
+    return cited.result;
+  }
   const citedRequestIds = cited.ids;
   /*
    * QA's ruling 5: a new request (new_form_evidence) starts from this turn, and earlier turns of this person's request

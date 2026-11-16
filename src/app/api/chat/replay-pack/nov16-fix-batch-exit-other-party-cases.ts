@@ -166,4 +166,53 @@ export const NOV16_FIX_BATCH_EXIT_OTHER_PARTY_CASES: ReplayCase[] = [
       expect(proposeCount(standIn.views)).toBe(1);
     },
   },
+  ...([
+    ["the person typed in full", "Odalys Fenwick", "Odalys Fenwick"],
+    ["the other person typed in full", "Odalie Brandt", "Odalie Brandt"],
+    ["neither", "not sure, the one from the script", null],
+  ] as const).map(([label, answer, carded]): ReplayCase => ({
+    id: `nov16-fix-batch-5-near-name-question-answered-${label.replace(/\s+/g, "-")}`,
+    title: `Item 5 follow-up (Pau, 16 Nov 2026: the answer must be used): with Odalie Brandt on the roster, T3 asks "In your message, is Odalis **Odalys Fenwick** or **Odalie Brandt**?"; the answer "${answer}" ${carded ? `makes the exit card for ${carded} with the script's turns` : "names neither, so the question is asked again and nothing is guessed"}`,
+    report: `${REPORT}; Pau's addition: the answer to the which-person question is used (name question record)`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      start(t, [{ id: "e-9", firstName: "Odalie", lastName: "Brandt", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" }]);
+      const QUESTION = "In your message, is Odalis **Odalys Fenwick** or **Odalie Brandt**?";
+      const standIn = loopStandIn((view): LoopDecision => {
+        const said = lastSaid(view);
+        const card = lastResult(view, "propose_form") as { reason_code?: string; ask_exactly?: string } | null;
+        if (card) return { text: card.ask_exactly ?? card.reason_code ?? "Here's the Resignation/Exit Form." };
+        const t3 = /^For Odalys Fenwick/i.test(said);
+        const back = t3 ? 0 : 1;
+        const exit = (person: Record<string, unknown>) => ({
+          tool: "propose_form" as const,
+          input: {
+            template_key: "stc-exit", exit_type: "termination", effective_date: "11/5", ...person,
+            exit_evidence: { ...evidenceFrom(view, ASK, 1 + back), kind: "asks_for_exit_form" },
+            request_evidence: [evidenceFrom(view, "this meeting is about the text you sent", 2 + back), evidenceFrom(view, ASK, 1 + back)],
+          },
+        });
+        if (/^Odalie Brandt/i.test(said)) {
+          if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "Odalie Brandt" } };
+          return exit({ employee_id: "e-9" });
+        }
+        if (t3 || /^Odalys Fenwick|^not sure/i.test(said)) return exit({ employee_name: "Odalys Fenwick" });
+        return { text: "I can't find **Odalis** on your staff list. Who is this for?" };
+      });
+      t.loopModel!(standIn);
+      const { thread, reply } = await c219AtT3(t, "Odalis");
+      expect(reply.content, "T3 did not ask which person").toBe(QUESTION);
+      expect(thread.proposal ?? null).toBeNull();
+      const after = await thread.say(answer);
+      if (carded) {
+        expect(thread.proposal?.templateKey, `the answer was not used:\n${after.content}`).toBe("stc-exit");
+        expect(thread.proposal?.employeeName).toBe(carded);
+      } else {
+        expect(thread.proposal ?? null, "a person was guessed").toBeNull();
+        expect(after.content).toBe(QUESTION);
+      }
+    },
+  })),
 ];

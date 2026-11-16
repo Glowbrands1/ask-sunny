@@ -59,7 +59,8 @@ export function answeredNameQuestions(view: NameQuestionView): AnsweredNameQuest
     const offered = record.offeredKeys.flatMap((key) => view.roster.filter((row) => personKey(row.id) === key));
     let confirmed: RosterEmployee | null = null;
     let by: AnsweredNameQuestion["by"] = null;
-    if (offered.length === 1 && AFFIRMATIVE.test(answer)) {
+    // A bare yes confirms only a question that offered one person (an offered name off the roster counts as one).
+    if (offered.length === 1 && (record.offeredNameKeys?.length ?? 0) === 0 && AFFIRMATIVE.test(answer)) {
       confirmed = offered[0]!;
       by = "yes";
     } else {
@@ -77,6 +78,21 @@ export function answeredNameQuestions(view: NameQuestionView): AnsweredNameQuest
 /** The typed-name keys the manager confirmed as this roster person: a name with one of these keys is this person. */
 export function spellingKeysConfirmedFor(view: NameQuestionView, employeeId: string): string[] {
   return answeredNameQuestions(view).filter((asked) => asked.confirmed?.id === employeeId).map((asked) => asked.record.typedKey);
+}
+
+/**
+ * Item 5 follow-up (Pau, 16 Nov 2026): the typed-name keys the manager confirmed as a person who is NOT on the roster: a
+ * recorded question offered this name (by key), and the manager's answer holds it in full as whole words.
+ */
+export function spellingKeysConfirmedForName(view: NameQuestionView, name: string): string[] {
+  const key = personKey(name);
+  return [...replyTurns(view.history, view.records)]
+    .filter(([, record]) => record.offeredNameKeys?.includes(key))
+    .flatMap(([reply, record]) => {
+      const next = view.history.findIndex((turn, at) => at > reply && turn.role === "user");
+      const answer = next < 0 ? view.question : String(view.history[next]!.content ?? "");
+      return name.trim().split(/\s+/).length > 1 && holdsPhrase(answer, name) ? [record.typedKey] : [];
+    });
 }
 
 /** A name read from the manager's words is one the manager confirmed as this person. */

@@ -121,4 +121,32 @@ export const NOV16_AGENT_LOOP_RETRY_GUARD_CASES: ReplayCase[] = [
       expect(thread.proposal?.employeeName, "the right third call made no card").toBe("Remy Calder");
     },
   },
+  {
+    id: "nov16-retry-guard-c134-alternating-lookups-of-one-name-stop-by-call-3",
+    title: "Retry guard (the timed re-run's c134 T3): a first name nobody has (\"Tavi\"), looked up and proposed in turn (find_staff, propose_form, find_staff \"use Tavi\" …): not_on_roster counts across both tools for that name, and the turn ends with \"Reply **use Tavi**\" by call 3",
+    report: `${REPORT}; c134 T3 called find_staff and propose_form 7 times, all not_on_roster`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      start(t);
+      const USE_TAVI = "I can't find **Tavi** on your staff list. Reply **use Tavi** to put the name on the form as you typed it, or give me the full name.";
+      const calls = ["find_staff", "propose_form", "find_staff", "propose_form", "find_staff", "propose_form", "find_staff"] as const;
+      const model = loopStandIn((view): LoopDecision => {
+        const results = view.results;
+        const latest = results.at(-1)?.output as Out | undefined;
+        if (latest?.stop_retrying) return { text: `Tavi isn't on your staff list yet. ${latest.stop_retrying.ask_exactly ?? ""}`.trim() };
+        const next = calls[results.length];
+        if (!next) return { text: "Who is this for?" };
+        if (next === "find_staff") return { tool: "find_staff", input: { name: results.length >= 2 ? "use Tavi" : "Tavi", person_evidence: evidenceFrom(view, "for tavi") } };
+        return { tool: "propose_form", input: { template_key: "dpoa", employee_name: "Tavi", what_happened: "She was late on 11/12.", incident_date: "2026-11-12" } };
+      });
+      t.loopModel!(model);
+      const reply = await t.thread().say("ca for tavi, late on 11/12");
+      const all = model.views.reduce<{ tool: string; output: unknown }[]>((most, view) => (view.results.length > most.length ? [...view.results] : most), []);
+      const ranCalls = all.filter((result) => (result.output as Out).reason_code !== "stop_retrying");
+      expect(ranCalls.length, `the lookups of one name went on: ${JSON.stringify(all.map((result) => [result.tool, (result.output as Out).reason_code]))}`).toBeLessThanOrEqual(3);
+      expect(reply.content).toContain(USE_TAVI);
+    },
+  },
 ];

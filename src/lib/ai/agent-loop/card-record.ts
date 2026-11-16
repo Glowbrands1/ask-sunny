@@ -53,6 +53,11 @@ export interface NameQuestionSlot {
   readonly offeredKeys: readonly string[];
   /** `personKey` of the name the manager typed (as find_staff was given it). */
   readonly typedKey: string;
+  /**
+   * Item 5 follow-up (Pau, 16 Nov 2026): `personKey` of each offered name that is nobody on the roster (the card's person
+   * typed by the manager, beside a roster person with a near first name). Absent on older records.
+   */
+  readonly offeredNameKeys?: readonly string[];
 }
 
 export interface NameQuestionRecord extends NameQuestionSlot {
@@ -104,7 +109,9 @@ export async function readLoopRecords(conversationId: string | undefined, userId
       }),
       nameQuestions: rows.flatMap((row) => {
         const asked = row.slots?.agent_loop?.name_question;
-        return isNameQuestionSlot(asked) ? [{ offeredKeys: [...asked.offeredKeys], typedKey: asked.typedKey, messageId: row.message_id }] : [];
+        return isNameQuestionSlot(asked)
+          ? [{ offeredKeys: [...asked.offeredKeys], typedKey: asked.typedKey, ...(Array.isArray(asked.offeredNameKeys) ? { offeredNameKeys: asked.offeredNameKeys.filter((key): key is string => typeof key === "string") } : {}), messageId: row.message_id }]
+          : [];
       }),
       personAsked: rows.flatMap((row) => {
         const asked = row.slots?.agent_loop?.person_asked as Partial<PersonAskedSlot> | undefined;
