@@ -185,9 +185,9 @@ export const NOV16_AGENT_LOOP_CLOSE_SPELLING_SETTLED_CASES: ReplayCase[] = [
        * so (card_on_screen), so the reply offers to change that card instead of only "nothing on file".
        */
       const answered = loopStandIn((view): LoopDecision => {
-        const found = lastResult(view, "find_past_forms") as { forms?: unknown[]; reason_code?: string; card_on_screen?: { form: string } } | null;
+        const found = lastResult(view, "find_past_forms") as { forms?: unknown[]; reason_code?: string; card_on_screen?: { form: string }; ask_exactly?: string } | null;
         if (!found) return { tool: "find_past_forms", input: { employee_name: "Tamsin Orwell", form: "CA", open: true, forms_on_file_evidence: evidenceFrom(view, "edit tamsen orwel ca", 1) } };
-        if (found.card_on_screen) return { text: `That's the ${found.card_on_screen.form} card on screen for Tamsin, not saved yet. Want me to change it? Tell me what to change.` };
+        if (found.card_on_screen) return { text: `That's the ${found.card_on_screen.form} card on screen for Tamsin, not saved yet.\n\n${found.ask_exactly ?? ""}` };
         return { text: found.reason_code ?? "No Corrective Action on file for Tamsin." };
       });
       t.loopModel!(answered);
@@ -195,7 +195,8 @@ export const NOV16_AGENT_LOOP_CLOSE_SPELLING_SETTLED_CASES: ReplayCase[] = [
       const after = answered.views.flatMap((view) => view.results).find((result) => result.tool === "find_past_forms")?.output as { reason_code?: string; card_on_screen?: unknown } | undefined;
       expect(after?.reason_code, "the yes was asked again").toBeUndefined();
       expect(after?.card_on_screen, "find_past_forms did not say the card on screen is this person's").toEqual({ form: "Corrective Action Form", created: false });
-      expect(yes.content, `the reply did not offer to change the card on screen:\n${yes.content}`).toMatch(/Want me to change it\?/);
+      expect((after as { ask_exactly?: string } | undefined)?.ask_exactly, "the offer is not code's question").toBe("Want me to change the Corrective Action Form card for Tamsin? Tell me what to change.");
+      expect(yes.content, `the reply did not offer to change the card on screen:\n${yes.content}`).toContain("Want me to change the Corrective Action Form card for Tamsin? Tell me what to change.");
     },
   },
 ];

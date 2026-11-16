@@ -1191,10 +1191,14 @@ export async function findPastForms(context: ToolContext, input: { employee_name
       const holder = holders.length === 1 ? holders[0]! : null;
       const onScreen = card && ((holder && card.employeeKey === personKey(holder.id)) || (!card.employeeKey && card.nameKey === personKey(typed)));
       if (onScreen) {
+        /* The Runner's live re-run on ee48ded: the model said "nothing on file to open" and never asked; the question is code's. */
+        const form = card.templateName ?? "card";
+        const first = replyNameFor(holder ? displayName(holder) : typed, people, extractEmployeeNames(managerTurns(context)), holder?.id ?? null);
         return {
           forms,
-          card_on_screen: { form: card.templateName ?? "card", created: false },
-          note: `Nothing is on file: the ${card.templateName ?? "card"} for this person is the card on screen, not created yet. The manager means that card: offer to change it (ask what to change), as the rules book's card_on_screen line says. Never say only that nothing is on file.`,
+          card_on_screen: { form, created: false },
+          ask_exactly: `Want me to change the ${form} card for ${first}? Tell me what to change.`,
+          note: `Nothing is on file: the ${form} for this person is the card on screen, not created yet. Say that in one short line, then end your reply with ask_exactly, exactly, once.`,
         };
       }
       return { forms, note: "None on file. If the manager asked you to create or draw up a form, propose it now with their account and date, and say no earlier form was found on file." };
