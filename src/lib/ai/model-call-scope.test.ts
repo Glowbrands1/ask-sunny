@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { countModelCalls, countedClient, noteModelCall } from "./model-call-scope";
+import { countModelCalls, countedClient, inModelCallScope, noteModelCall } from "./model-call-scope";
 
 /** Agent loop PR 6 item 3: the model calls a loop tool makes itself (the reviser's) are counted; nothing outside a tool. */
 describe("model-call-scope", () => {
@@ -54,5 +54,25 @@ describe("model-call-scope", () => {
     expect(counted.other).toBe(7);
     // Outside a scope the client works as before.
     expect(counted.messages.create({ c: 3 })).toEqual({ id: "msg-1" });
+  });
+
+  it("inModelCallScope is true only inside countModelCalls", async () => {
+    expect(inModelCallScope()).toBe(false);
+    const { value } = await countModelCalls(async () => inModelCallScope());
+    expect(value).toBe(true);
+    expect(inModelCallScope()).toBe(false);
+  });
+
+  it("getAnthropicClient: the same client object outside a loop tool; counted inside one", async () => {
+    const { __setAnthropicClient, getAnthropicClient } = await import("./anthropic");
+    const client = { messages: { create: async () => ({ id: "msg-1" }) } };
+    __setAnthropicClient(client as never);
+    try {
+      expect(getAnthropicClient(), "today's path got a different client").toBe(client);
+      const { calls } = await countModelCalls(async () => getAnthropicClient().messages.create({} as never));
+      expect(calls).toBe(1);
+    } finally {
+      __setAnthropicClient(null);
+    }
   });
 });

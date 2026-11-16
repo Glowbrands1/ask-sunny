@@ -21,6 +21,11 @@ export async function countModelCalls<T>(work: () => Promise<T>): Promise<{ valu
   return { value, calls: scope.calls };
 }
 
+/** True inside `countModelCalls` (a loop tool running). Outside, callers get exactly what they got before. */
+export function inModelCallScope(): boolean {
+  return storage.getStore() !== undefined;
+}
+
 /** One model call, counted when it runs inside `countModelCalls`; nothing otherwise. */
 export function noteModelCall(): void {
   const scope = storage.getStore();
