@@ -23,7 +23,6 @@ function start(t: ReplayContext) {
   t.as("salon_director", KEARNEY);
 }
 const userTurns = (view: LoopView) => view.turns.filter((turn) => turn.role === "user");
-const lastSaid = (view: LoopView) => userTurns(view).at(-1)?.text ?? "";
 type Out = { note?: string; ask_exactly?: string; reason_code?: string; matches?: { employee_id: string }[]; kept_as_typed?: string; card?: unknown } | null;
 
 /** The live model: every turn it looks the typed name up (quoting the first message), then proposes the coaching card by name. */
