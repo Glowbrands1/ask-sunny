@@ -98,6 +98,8 @@ export interface ReplayContext {
   cardCheckCalls?(): number;
   /** Fault injection (QA, 9 Nov 2026): from now on, a save of the form's values that includes this field fails (the save throws). */
   failSavesOf?(field: string): void;
+  /** Fault injection (PR 4, the owner's additions): from now on, deleting a row of this table fails (the delete returns an error). */
+  failDeletesOf?(table: string): void;
   /** The long-context summary model's answer (QA, 10 Nov 2026); unscripted, the summary call fails and nothing is saved. */
   summaryWrites?(summary: string): void;
   /** The rows a table holds now (`user_memory`, `chat_context_summaries`, …). */
