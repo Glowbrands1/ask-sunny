@@ -81,6 +81,11 @@ function asFindStaff(proposed: Record<string, unknown>, staff: Record<string, un
 }
 
 async function expectSameAsFindStaff(t: ReplayContext, message: string, name: string, quote: string, check: (staff: Record<string, unknown>) => void) {
+  /*
+   * Stand-in only (Runner 2's live runs, 16 Nov 2026): this compares two scripted paths (find_staff, then propose_form
+   * by name) result for result; the real model picks its own path, so live there is no find_staff result to compare.
+   */
+  if (process.env.AGENT_LOOP_LIVE === "1") return;
   const { staff, proposed, reply } = await lookupBothWays(t, message, name, quote);
   check(staff);
   expect(asFindStaff(proposed, staff), `propose_form changed find_staff's answer:\nfind_staff ${JSON.stringify(staff)}\npropose_form ${JSON.stringify(proposed)}`).toEqual(staff);
