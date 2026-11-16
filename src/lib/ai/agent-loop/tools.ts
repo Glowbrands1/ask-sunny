@@ -10,8 +10,8 @@ import { appConfig } from "./app-config";
 import { isoDate, monthDayToIso, readDates, sameDate, withoutDates } from "./dates";
 import { candidateNameWords, chatFormsActor } from "@/lib/forms/chat-form-records";
 import { holdsPhrase, identifiedTurns, verifyEvidence, withoutMessageIdTags, type IdentifiedTurn } from "./evidence";
-import { answerNamesSomeoneElse, isConfirmedSpelling, latestTurnConfirms, spellingKeysConfirmedFor, type NameQuestionView } from "./confirmed-spelling";
-import { displayName, matchEmployeeName, nameConfirmationQuestion, readNameConfirmation, type RosterEmployee } from "@/lib/forms/employee-match";
+import { answerNamesSomeoneElse, isConfirmedSpelling, latestTurnAnswersFor, latestTurnConfirms, latestTurnKeepsTyped, spellingKeysConfirmedFor, type NameQuestionView } from "./confirmed-spelling";
+import { displayName, editDistance, matchEmployeeName, nameConfirmationQuestion, readNameConfirmation, type RosterEmployee } from "@/lib/forms/employee-match";
 import { offRosterTyped } from "@/lib/forms/roster-only-names";
 import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
 import type { DirectoryRosterRow } from "@/lib/forms/employee-roster";
@@ -188,6 +188,35 @@ async function formsOnFileAskedFor(context: ToolContext, evidence: unknown, pers
   return { ok: false, reason: "evidence_other_person", reasonCode: "privacy_not_this_person" };
 }
 
+/** What the model says its exit_evidence quote is (fix batch item 1); null when it said nothing or something else. */
+export type ExitEvidenceKind = "asks_for_exit_form" | "yes_to_exit_offer" | "resignation_told";
+export function exitEvidenceKind(value: unknown): ExitEvidenceKind | null {
+  const kind = value && typeof value === "object" ? (value as { kind?: unknown }).kind : null;
+  return kind === "asks_for_exit_form" || kind === "yes_to_exit_offer" || kind === "resignation_told" ? kind : null;
+}
+
+/**
+ * Fix batch item 2 (QA's live re-test, 16 Nov 2026; Pau's ruling): "final warning CA" was ticked Written and read back
+ * "as you said". The form's Type of Warning options are Verbal Warning, Written Warning and Termination; there is no
+ * Final. A level is kept only when the manager's quoted words name that option ("final written" names Written), as
+ * name_evidence must hold the name. A check of the form's own option word in the quote (as typed, or one spelling edit
+ * off it), never a reading of the message.
+ */
+export function levelNamedInEvidence(evidence: unknown, level: "verbal" | "written"): boolean {
+  const quote = evidence && typeof evidence === "object" ? (evidence as { quote?: unknown }).quote : null;
+  if (typeof quote !== "string") return false;
+  // The option word as typed, or one spelling edit off it ("writen", "verbl"; the phrasing table's typo rows).
+  return holdsPhrase(quote, level) || (quote.toLowerCase().match(/[\p{L}]+/gu) ?? []).some((word) => word.length >= 4 && editDistance(word, level) === 1);
+}
+
+/** The question when no level option was named (Pau's ruling, fix batch item 2). */
+export const LEVEL_QUESTION = "Which is it: Verbal Warning, Written Warning or Termination?";
+
+/** A message of one word (punctuation aside): a format check, never a reading of which word (fix batch item 7). */
+export function oneWord(text: string): boolean {
+  return text.trim().split(/\s+/).filter((word) => /[\p{L}\p{N}]/u.test(word)).length === 1;
+}
+
 /**
  * QA's review of PR 1b, ruling 4: turns the model cites as this person's request (request_evidence) or account
  * (account_evidence). Each is a real manager turn of this conversation, names no other roster person, and is in THIS
@@ -201,8 +230,30 @@ export function requestTurns(
   rosterNames: readonly string[],
   kind: "request_evidence" | "account_evidence",
 ): { ok: true; ids: string[]; quotes: string[]; texts: string[] } | { ok: false; result: ToolResult } {
+  /*
+   * Fix batch item 5 (QA's 266 shadow replay, c219; QA's ruling, 16 Nov 2026): a pasted script names the form's person by a
+   * one-letter-off first name (<A'>) and another roster person as a party (<B>, the director). The turn is still THIS
+   * person's when it also names them, so <B> is a party there, not its owner. "Names them": the exact first name, or a
+   * word one edit from the card's first name that is no active roster person's first name. Limits (QA): (a) only once the
+   * manager named the card's person in full in this request; (b) a word one edit from two or more people's first names
+   * is ambiguous and keeps today's refusal. Code compares spellings with the roster; it never reads what the words mean.
+   */
+  const firstOf = (name: string) => name.trim().split(/\s+/)[0]!.toLowerCase();
+  const personFirst = firstOf(person);
+  const othersFirsts = rosterNames.filter((name) => !samePerson(name, person)).map(firstOf);
+  const namedInFull = person.trim().split(/\s+/).length >= 2 && turns.some((turn) => turn.role === "user" && holdsPhrase(turn.content, person));
+  const namesThisPerson = (clean: string): boolean => {
+    if (!namedInFull || personFirst.length < 3) return false;
+    const tokens = [...new Set(clean.toLowerCase().match(/[\p{L}'’-]{3,}/gu) ?? [])];
+    return tokens.some((token) => {
+      const near = othersFirsts.filter((first) => first === token || editDistance(first, token) <= 1);
+      if (token === personFirst) return near.length === 0;
+      return editDistance(token, personFirst) === 1 && !othersFirsts.includes(token) && near.length === 0;
+    });
+  };
   const namesOther = (text: string) => {
     const clean = withoutMessageIdTags(text);
+    if (namesThisPerson(clean)) return null;
     const typed = extractEmployeeNames(clean).filter((name) => rosterNames.some((roster) => samePerson(roster, name)) && !samePerson(name, person));
     const listed = rosterNames.filter((name) => !samePerson(name, person) && mentionsPerson(clean, name, rosterNames) && !mentionsPerson(clean, person, rosterNames));
     return [...typed, ...listed][0] ?? null;
@@ -430,6 +481,8 @@ export interface ToolEffects {
   openRequested?: string;
   /** PR 2: the roster id of the card's person (the card record); null for a team card or a name not on the roster. */
   proposalEmployeeId?: string | null;
+  /** Fix batch item 7: the CA-only fields this turn's card asks about, for the card record (`card-record.ts` asked). */
+  proposalAsked?: readonly string[];
   /**
    * Every source a tool read this turn, numbered from 1 in the order read: the model cites one as [S<n>] (`addSource`).
    * Only the ones the reply cites become source cards (run.ts, QA's live-app item 12), as today's grounded path does.
@@ -1234,6 +1287,81 @@ export function incidentDates(managerWords: string, priorActions: string | null)
 }
 
 /**
+ * fix-name, live s10 (Pau's ruling, 16 Nov 2026; QA's handoff open question 3): on a card NOT yet created, "fix her last
+ * name" may change the card's name, but only through the same roster check as a new name. Today a typed name that
+ * missed the roster went on the card as typed (the off-roster shortcut below), with no check at all.
+ *
+ * It applies when the card the last reply showed (the server's card record), or, right after the manager's "no" to
+ * this chat's own "Did you mean", the latest card this chat made, is this form (for a roster person or a name not on
+ * the roster), and the model now
+ * gives a typed name (no employee_id) that is not that person but shares their first or last name: a correction of
+ * the card's name, not another person's request. Names are compared as names; the manager's words are never read.
+ *
+ * - The typed name is exactly one roster person's: that person is used.
+ * - The manager said "no" to this chat's "Did you mean" (ruling A, keep-as-typed), or answered the "reply **use
+ *   <name>**" offer: the name goes on as typed.
+ * - A close spelling of a roster person: "Did you mean <name>?" (ruling A: a near miss is never seated).
+ * - No match: said so; the card keeps its name.
+ * Null when this is not a correction of the card's name (every other path is unchanged).
+ */
+function cardNameCorrection(
+  context: ToolContext,
+  effects: ToolEffects,
+  templateKey: string,
+  typed: string,
+  roster: readonly RosterEmployee[],
+): { person: RosterEmployee; from: string } | { asTyped: true; from: string } | { refusal: ToolResult } | null {
+  if (context.openFormId) return null;
+  /*
+   * After #1051 (QA): this check's "Did you mean" is recorded like find_staff's (effects.nameQuestion), and the answer is
+   * read through `confirmed-spelling.ts` from the server's record, never from the reply's text. A "no" keeps the name as
+   * typed; a yes or the offered full name typed back comes back as that roster person's exact name (used below).
+   */
+  const view = nameQuestionView(context, roster);
+  const declined = latestTurnKeepsTyped(view, typed);
+  /* The card on screen; after this chat's Did-you-mean or "reply **use <name>**" offer (no card shown), the chat's latest card. */
+  const card = context.cardOnScreen ?? (latestTurnAnswersFor(view, typed) || answeredByFullName(view, typed) || offRosterConfirmed(context, typed) ? (context.earlierCard ?? null) : null);
+  if (!card || card.templateKey !== templateKey) return null;
+  /*
+   * The card's name: its roster person (the record's employeeKey), or, for a name not on the roster (live s10's card
+   * was one), the name in this chat's earlier manager turns whose key is the record's nameKey. The record holds only
+   * one-way keys, so a name is taken only when its key matches; the name reader is the app's own (`extractEmployeeNames`).
+   */
+  const cardPerson = card.employeeKey ? roster.find((row) => personKey(row.id) === card.employeeKey) : undefined;
+  const offRosterCardName = !card.employeeKey && card.nameKey
+    ? (context.history as ChatMessage[])
+        .filter((turn) => turn.role === "user")
+        .flatMap((turn) => extractEmployeeNames(String(turn.content ?? "")))
+        .find((name) => personKey(name) === card.nameKey) ?? null
+    : null;
+  /* A name read from the manager's typing is shown with capitals, as the card shows it ("quill fenwick" → "Quill Fenwick"). */
+  const cardName = cardPerson ? displayName(cardPerson) : offRosterCardName?.replace(/(^|[\s'-])(\p{Ll})/gu, (_all, lead: string, letter: string) => lead + letter.toUpperCase()) ?? null;
+  if (!cardName) return null;
+  if ((cardPerson ? fullNamesOf(cardPerson) : [cardName]).some((full) => samePerson(full, typed))) return null;
+  const said = words(typed);
+  const own = cardPerson ? { first: words([cardPerson.firstName, cardPerson.preferredFirstName ?? ""].join(" ")), last: words(cardPerson.lastName) } : { first: words(cardName).slice(0, 1), last: words(cardName).slice(-1) };
+  const sharesAName = said.length >= 2 && (own.first.includes(said[0]!) || own.last.includes(said.at(-1)!));
+  if (!sharesAName) return null;
+  const holders = roster.filter((row) => fullNamesOf(row).some((full) => samePerson(full, typed)));
+  if (holders.length === 1) return { person: holders[0]!, from: cardName };
+  if (holders.length > 1) {
+    return { refusal: { reason_code: "ambiguous_person", error: `More than one person on the staff list is ${typed}. The card was not changed. Call find_staff with this name and ask which one.` } };
+  }
+  if (declined || offRosterConfirmed(context, typed)) return { asTyped: true, from: cardName };
+  const close = matchEmployeeName(typed, roster);
+  const candidates = close.kind === "confirm" ? close.candidates.map((candidate) => candidate.name) : [];
+  if (candidates.length > 0 && close.kind === "confirm") {
+    effects.nameQuestion = { offeredIds: close.candidates.slice(0, 5).map((candidate) => candidate.employee.id), typed };
+    return { refusal: { reason_code: "name_correction_did_you_mean", error: `${typed} is not on the staff list as typed. The card was not changed. Ask the manager, in these words: ${nameConfirmationQuestion(typed, candidates.slice(0, 5))}` } };
+  }
+  return {
+    refusal: {
+      reason_code: "name_correction_not_on_roster", error: `${typed} is not on the ${staffSystem()} staff list. The card was not changed and is still for ${cardName}. Say so; it goes on the card as typed only if the manager replies **use ${typed}**.`,
+    },
+  };
+}
+
+/**
  * Fix batch item 6 (c124, c165; QA's review of #1051): nobody is named for the form (no employee, and no find_staff ran
  * this turn: a person looked up but not yet chosen keeps the employee_id refusal). The question is always ask_exactly
  * (with the policy when one was named: batch G18), and the turn records that it asked (`person_asked`), so the next
@@ -1243,6 +1371,12 @@ async function askWhoFor(context: ToolContext, template: { key: string; name: st
   const ask = (await policyQuestion(context, template.name)) ?? `Who is this ${template.name} for?`;
   effects.personAsked = { templateKey: template.key };
   return { reason_code: "missing_input", error: "Nobody is named for this form yet. End your reply with ask_exactly, exactly, once.", ask_exactly: ask };
+}
+
+/** fix-name, live s10: the message being answered now confirms, in answer to a recorded name question, the roster person this typed name is. */
+function answeredByFullName(view: NameQuestionView, typed: string): boolean {
+  const person = view.roster.filter((row) => fullNamesOf(row).some((full) => samePerson(full, typed)));
+  return person.length === 1 && latestTurnConfirms(view, person[0]!.id) !== null;
 }
 
 /** The manager accepted the off-roster offer for this name ("use <name>", or yes right after the offer). */
@@ -1486,6 +1620,8 @@ export async function proposeForm(
   if (read.kind === "failed") return { reason_code: "roster_failed", error: ROSTER_FAILED };
   let employee: { name: string; salonIds: readonly string[]; id?: string };
   let offRosterName: string | null = null;
+  /* fix-name, live s10: the card's name this proposal corrects (cardNameCorrection), for the name_corrected fact. */
+  let nameCorrectedFrom: string | null = null;
   if (read.kind === "read") {
     const id = typeof input.employee_id === "string" ? input.employee_id.trim() : "";
     const person = id ? read.roster.find((row) => row.id === id) : undefined;
@@ -1509,7 +1645,16 @@ export async function proposeForm(
         reason_code: "right_person", error: `The manager's answer to "Did you mean ${displayName(person)}?" names ${elsewhere.others.join(", ")}, not ${displayName(person)}: that is not a yes. Never put ${displayName(person)} on the card from it. Look up ${other} with find_staff; if the form's person is still unclear, ask: "Is this form for **${other}** or **${displayName(person)}**?"`,
       };
     }
-    if (person) employee = { name: nameAsSaid(person, managerTurns(context)), salonIds: person.salonIds, id: person.id };
+    /* fix-name, live s10 (Pau's ruling, 16 Nov 2026): a typed name that corrects the card's person goes through the roster check. */
+    const corrected = !person && typed ? cardNameCorrection(context, effects, key, typed, read.roster) : null;
+    if (corrected && "refusal" in corrected) return corrected.refusal;
+    if (corrected) nameCorrectedFrom = corrected.from;
+    if (corrected && "person" in corrected) employee = { name: displayName(corrected.person), salonIds: corrected.person.salonIds, id: corrected.person.id };
+    else if (corrected && "asTyped" in corrected) {
+      employee = { name: typed, salonIds: [] };
+      offRosterName = typed;
+    }
+    else if (person) employee = { name: nameAsSaid(person, managerTurns(context)), salonIds: person.salonIds, id: person.id };
     /*
      * OFF_ROSTER_CONFIRM (as today): a person not in Woven yet goes on the form by the name the manager typed, only
      * after the app offered "reply **use <name>**" and the manager said so. Never a name nobody confirmed.
@@ -1610,6 +1755,9 @@ export async function proposeForm(
   /*
    * QA's ruling 5: a new request (new_form_evidence) starts from this turn, and earlier turns of this person's request
    * the model cites still count (the account is never dropped). Termination still reads only the person's own turns.
+   * QA's ruling for fix batch item 5 (16 Nov 2026): a cited turn unlocks the termination only when the manager confirmed
+   * its name as this person in this chat's own Did-you-mean (the name question record): that turn is then one of the
+   * person's own turns (`sameAsThisPerson` above). A citation alone, or a turn naming another roster person, never does.
    */
   const ownSourceIds = sourceIds;
   const requestIds = [...new Set([...sourceIds, ...citedRequestIds])];
@@ -1636,7 +1784,22 @@ export async function proposeForm(
     const check = verifyEvidence(input.exit_evidence, turns);
     const inRequest = check.ok && (check.turn.index === turns.length - 1 || sourceIds.includes(check.turn.id) || citedRequestIds.includes(check.turn.id));
     if (!inRequest) {
-      return { exit_not_stated: true, reason_code: "exit_not_stated", evidence: check.ok ? "evidence_not_this_turn" : check.reason, note: "No exit_evidence from this person's request: the manager's words asking for the Employee Exit Form or telling a resignation. An offense told with a termination is the Corrective Action Form with warning_level termination, citing the offense and its date; then offer the exit form in one line (the rules book's Which form lines)." };
+      return { exit_not_stated: true, reason_code: "exit_not_stated", evidence: check.ok ? "evidence_not_this_turn" : check.reason, note: "No exit_evidence from this person's request: the manager's words asking for the Employee Exit Form, or their yes to your offer of it. An offense told with a termination is the Corrective Action Form with warning_level termination, citing the offense and its date; then offer the exit form in one line (the rules book's Which form lines)." };
+    }
+    /*
+     * Fix batch item 1 (QA's live re-test, 16 Nov 2026: "ugh <D> quit yesterday, short staffed again" built an exit card
+     * nobody asked for). The quote is real, but a resignation told in passing is not an ask. The model says which its
+     * quote is (exit_evidence.kind); code checks only the kind and where the quote sits, never what the words mean.
+     */
+    const kind = exitEvidenceKind(input.exit_evidence);
+    const offer = `Want the ${template.name} for **${employee.name}**?`;
+    if (kind === "resignation_told") {
+      return { exit_not_asked: true, reason_code: "exit_not_asked", ask_exactly: offer, note: "The manager told a resignation but did not ask for the exit form. Make no card: say what you understood in a few words and end the reply with ask_exactly. Propose the exit card only when they say yes (exit_evidence kind yes_to_exit_offer)." };
+    }
+    /* A yes to the offer is this message, answering the app reply right before it. */
+    const answersOffer = kind === "yes_to_exit_offer" && check.ok && check.turn.index === turns.length - 1 && turns[turns.length - 2]?.role === "assistant";
+    if (kind !== "asks_for_exit_form" && !answersOffer) {
+      return { exit_not_stated: true, reason_code: "exit_not_stated", evidence: kind === null ? "exit_kind_missing" : "exit_offer_not_answered", ask_exactly: offer, note: "exit_evidence needs its kind: asks_for_exit_form (the manager's words ask for the exit form or its paperwork), yes_to_exit_offer (this message says yes to your offer of it, right after you asked), or resignation_told (a resignation told, no ask: make no card and end the reply with ask_exactly)." };
     }
   }
   /*
@@ -1771,7 +1934,7 @@ export async function proposeForm(
   const caOnlyFields = template.key === appConfig().formKeys.corrective;
   const askedPayroll = (input.payroll_deduct === "yes" || input.payroll_deduct === "no") ? input.payroll_deduct : null;
   const payrollCheck = caOnlyFields && askedPayroll ? answerEvidence(context, input.payroll_evidence, { card: employee.name }, evidencePerson) : null;
-  const payroll = askedPayroll && payrollCheck?.ok ? askedPayroll : null;
+  let payroll: "yes" | "no" | null = askedPayroll && payrollCheck?.ok ? askedPayroll : null;
   const typedAmount = typeof input.payroll_amount === "string" && /\d/.test(input.payroll_amount) ? input.payroll_amount.replace(/[^\d.]/g, "") : null;
   /* The amount the manager stated, read as today reads it (`payrollAmountFromConversation`) when the model left it out. */
   const statedAmount = payroll === "yes" ? payrollAmountFromConversation(conversationTurns(context), { payrollAnswer: "yes" })?.replace(/[^\d.]/g, "") ?? null : null;
@@ -1832,8 +1995,28 @@ export async function proposeForm(
     ? incidentDates(requestWords, null).find((given) => monthDayToIso(given, today) === date) ?? null
     : null;
   const askedLevel = input.warning_level === "verbal" || input.warning_level === "written" ? input.warning_level : null;
-  const levelCheck = caOnlyFields && askedLevel ? answerEvidence(context, input.level_evidence, "request", evidencePerson) : null;
+  const levelAnswer = caOnlyFields && askedLevel ? answerEvidence(context, input.level_evidence, "request", evidencePerson) : null;
+  /* Fix batch item 2: the quote must name the option ("final warning" names none: level_not_in_evidence, and ask which). */
+  const levelUnnamed = Boolean(levelAnswer?.ok && askedLevel && !levelNamedInEvidence(input.level_evidence, askedLevel));
+  const levelCheck: AnswerEvidence | null = levelUnnamed ? { ok: false, reason: "level_not_in_evidence" } : levelAnswer;
   const level = askedLevel && levelCheck?.ok ? askedLevel : null;
+  /*
+   * Fix batch item 7 (QA's targeted re-run, c163: a bare "yes" after "Payroll deduct and warning level aren't set" set
+   * payroll). The card on screen asked two things in one line (its record's `asked`), and this message is one word, quoted
+   * whole as the payroll evidence, with no level: one word answering two questions says neither ("yes payroll deduct"
+   * names which, and is kept). Payroll is not kept and the reply asks
+   * payroll alone (ask_exactly). Code compares the card record and where the quote sits; it never reads the words.
+   */
+  const onScreen = context.cardOnScreen;
+  const sameCard = Boolean(onScreen && onScreen.templateKey === template.key && ((employee.id && onScreen.employeeKey === personKey(employee.id)) || onScreen.nameKey === personKey(employee.name)));
+  const conversationTurnsNow = identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId);
+  const answersThisMessage = (check: AnswerEvidence | null): check is AnswerEvidence & { ok: true } => Boolean(check?.ok && check.turnId === conversationTurnsNow.at(-1)!.id);
+  const payrollAnswerUnclear =
+    payroll !== null && sameCard && onScreen!.asked.includes("payroll_deduct") && onScreen!.asked.includes("warning_level") &&
+    answersThisMessage(payrollCheck) && payrollCheck.wholeMessage && oneWord(withoutMessageIdTags(conversationTurnsNow.at(-1)!.content)) &&
+    !(answersThisMessage(levelCheck) && level !== null);
+  if (payrollAnswerUnclear) payroll = null;
+  const payrollQuestion = `Is payroll deduct applicable for **${employee.name}**? Yes or no.`;
   /*
    * Batch G (QA's design, 15 Nov 2026; Pau's standing approval): the MODEL decides this Corrective Action is a
    * termination (warning_level "termination", taught by the rules book's examples); code only LOCKS it. It is kept only
@@ -2014,7 +2197,9 @@ export async function proposeForm(
    * stays creatable (`earlierCardKept`), and the model is told so as the earlier_card fact.
    */
   const earlier = context.earlierCard ?? null;
+  /* fix-name, live s10: a corrected name REPLACES the earlier card (the same card, its name changed); it is not kept beside it. */
   const earlierKept =
+    nameCorrectedFrom === null &&
     earlier !== null &&
     card.employeeName !== null &&
     (earlier.employeeKey && employee.id ? earlier.employeeKey !== personKey(employee.id) : earlier.nameKey !== null && earlier.nameKey !== personKey(card.employeeName));
@@ -2041,6 +2226,8 @@ export async function proposeForm(
   /* QA's third review: in the loop only the model decides (locked above); main's reader never decides a loop card. */
   const terminationStated = loopTermination;
   const unset = corrective && !awaiting ? [...(payroll ? [] : ["payroll_deduct"]), ...(level || terminationStated ? [] : ["warning_level"])] : [];
+  /* Fix batch item 7: what this card's reply asks (the next turn's card record): payroll alone after an unclear answer. */
+  effects.proposalAsked = payrollAnswerUnclear ? ["payroll_deduct"] : unset;
   const salonNames = (ids: readonly string[] | undefined) => (ids ?? []).map((id) => ({ id, name: rosterSalonName(id) ?? id }));
   /*
    * Batch K4 (QA's 266 shadow replay, c137/c134: a pasted account about <Y>, off the roster, went on <X>'s card; the
@@ -2058,9 +2245,13 @@ export async function proposeForm(
     .slice(0, 3)
     .map(({ name, sentence }) => ({ name: untrusted(name), sentence: untrusted(sentence) }));
   const facts = {
+    /* fix-name, live s10: the card's name changed from → to, so the reply can say so (the person may be another roster person, by exact match). */
+    ...(nameCorrectedFrom !== null ? { name_corrected: { from: nameCorrectedFrom, to: employee.name } } : {}),
     ...(earlierKept ? { earlier_card: { kept: true, ...(earlierRow ? { employee: displayName(earlierRow) } : {}), form: earlier!.templateName ?? earlier!.templateKey } } : {}),
     ...(otherNamed.length > 0 ? { account_names_other_person: { named: otherNamed, card_person: employee.name } } : {}),
-    ...(unset.length > 0 ? { unset } : {}),
+    ...(unset.length > 0 && !payrollAnswerUnclear ? { unset } : {}),
+    ...(payrollAnswerUnclear ? { payroll_answer_unclear: { ask_exactly: payrollQuestion } } : {}),
+    ...(levelUnnamed ? { level_not_named: { ask_exactly: LEVEL_QUESTION } } : {}),
     ...(level || payroll || priorActions
       ? { stated: { ...(level ? { warning_level: level } : {}), ...(payroll ? { payroll_deduct: payroll } : {}), ...(payroll === "yes" && amount ? { payroll_amount: `$${amount.replace(/^\$/, "")}` } : {}), ...(priorActions ? { prior_actions: priorActions } : {}) } }
       : {}),
@@ -2138,6 +2329,7 @@ export async function proposeForm(
   return {
     ...(askedLevel && !level && levelCheck && !levelCheck.ok ? { reason_code: "level_not_stated", level_evidence: levelCheck.reason } : askedPayroll && !payroll && payrollCheck && !payrollCheck.ok ? { reason_code: "payroll_not_stated" } : {}),
     ...(askedPayroll && !payroll && payrollCheck && !payrollCheck.ok ? { payroll_evidence: payrollCheck.reason } : {}),
+    ...(payrollAnswerUnclear ? { ...(askedLevel && !level ? {} : { reason_code: "payroll_not_stated" }), payroll_evidence: "answer_to_two_questions" } : {}),
     ...(notOnCard.length > 0 ? { not_on_card: notOnCard } : {}),
     card: {
       form: card.templateName,
@@ -2362,9 +2554,11 @@ export async function editForm(
         continue;
       }
       const levelCheck = answerEvidence(context, input.level_evidence, "this_message", editPerson);
-      if (!levelCheck.ok) {
+      /* Fix batch item 2: the quote must name the option the model chose ("final warning" names none). */
+      const named = levelNamedInEvidence(input.level_evidence, kind);
+      if (!levelCheck.ok || !named) {
         unstated.push(field);
-        unstatedCodes.set(field, { reason_code: "level_not_stated", evidence_reason: levelCheck.reason });
+        unstatedCodes.set(field, { reason_code: "level_not_stated", evidence_reason: levelCheck.ok ? "level_not_in_evidence" : levelCheck.reason });
       }
     } else if (field === "payroll_deduct") {
       const answer = /^\s*yes/i.test(value) ? "yes" : /^\s*no/i.test(value) ? "no" : null;
@@ -2379,7 +2573,7 @@ export async function editForm(
     }
   }
   if (unstated.length > 0) {
-    return { reason_code: (unstated.length === 1 ? unstatedCodes.get(unstated[0]!)?.reason_code : undefined) ?? "not_stated", ...(unstated.length === 1 && unstatedCodes.get(unstated[0]!) ? { evidence_reason: unstatedCodes.get(unstated[0]!)!.evidence_reason } : {}), error: `${unstated.join(", ")} must come from the manager's own words, and this message does not state ${unstated.length === 1 ? "it" : "them"}. Nothing was written. Ask, or leave it for the manager.` };
+    return { ...(unstatedCodes.get("warning_type")?.evidence_reason === "level_not_in_evidence" ? { ask_exactly: LEVEL_QUESTION } : {}), reason_code: (unstated.length === 1 ? unstatedCodes.get(unstated[0]!)?.reason_code : undefined) ?? "not_stated", ...(unstated.length === 1 && unstatedCodes.get(unstated[0]!) ? { evidence_reason: unstatedCodes.get(unstated[0]!)!.evidence_reason } : {}), error: `${unstated.join(", ")} must come from the manager's own words, and this message does not state ${unstated.length === 1 ? "it" : "them"}. Nothing was written. Ask, or leave it for the manager.` };
   }
   /*
    * A payroll or level answer ("yes payroll, $20", "make it a written") changes only those fields (Pau, 15:05Z): the
@@ -2403,6 +2597,8 @@ export async function editForm(
   // A reword's own guard refuses a change of person (below, with reword_paused); the name gate is for everything else.
   const renames = !rewordAsked && ("employee_name" in values || input.intent === "correct_name");
   let nameQuote: string | null = null;
+  /* The manager's message the name was quoted from (this one, or the turn before after a "no" to Did-you-mean). */
+  let nameSaid = "";
   /* "no" to this chat's own Did-you-mean keeps the name as typed (ruling A): the name is then quoted from the turn before. */
   const keepAsTyped = readNameConfirmation([...(context.history as ChatMessage[]).map((turn) => ({ role: turn.role, content: String(turn.content ?? "") })), { role: "user", content: context.question }])?.kind === "declined";
   if (renames) {
@@ -2422,6 +2618,7 @@ export async function editForm(
       return { error: "A name correction writes the new name: call edit_form with values for employee_name only, and name_evidence. Nothing was written.", reason_code: "name_correction_no_name" };
     }
     nameQuote = (input.name_evidence as { quote: string }).quote;
+    nameSaid = check.turn.content;
   }
   try {
     const { loaded } = await authorizeInstance(context.request, id, "edit");
@@ -2592,6 +2789,31 @@ export async function editForm(
     }
     if (loaded.instance.status !== "draft") {
       return { reason_code: "drafts_only", error: `This form is ${loaded.instance.status}, so it cannot be edited here. Tell the manager.` };
+    }
+    /*
+     * fix-name (the rebuild plan, PR 1's last step; QA's handoff, 15 Nov 2026): a name correction that passed every check
+     * above (name_evidence from this message whose quote holds the changed words, employee_name only, the roster checks
+     * and "Did you mean <name>?") is SAVED: only the Employee Name line and the form's subject column, written as the
+     * manager's correction (`nameCorrectionWrite`, as today's chat writes "fix her last name …"). Nothing else changes.
+     */
+    if (nameQuote !== null) {
+      const newName = values.employee_name!.trim();
+      /* The one writer (FORM_EDIT_SINGLE_WRITER_ENABLED, on in production); off, as today's chat correction saves a name: the manager's save, then the subject. */
+      const written = formEditSingleWriterEnabled()
+        ? await (await import("@/lib/forms/form-write")).nameCorrectionWrite(id, newName, { actorId: context.actor.subject, said: nameSaid, today: editToday, loaded })
+        : await managerNameSave(id, newName, context.actor.subject);
+      const reasons = new Map(written.rejected.map((row) => [row.key, row.reason] as const));
+      const claimed = [...Object.keys(written.accepted.values), ...written.rejected.map((row) => row.key)];
+      const { saved: savedChanges, refused, unchanged } = await recordSaved(claimed.length > 0 ? claimed : ["employee_name"], reasons);
+      return {
+        updated: savedChanges.map((change) => change.field),
+        saved: savedChanges,
+        refused,
+        ...(unchanged.length > 0 ? { unchanged } : {}),
+        note: savedChanges.length > 0
+          ? "Saved: only the employee's name changed. Tell the manager the new name, from saved. Claim nothing else."
+          : "The name was not saved. Say plainly that the name was not changed.",
+      };
     }
     /*
      * THE ACCOUNT FIELD BY ITS OWN KEY (the live re-run's make-that-update: values for "observation", "what_happened",
@@ -2841,6 +3063,22 @@ export function nameCorrectionRefusal(formsName: string, newName: string, quote:
     }
   }
   return null;
+}
+
+/**
+ * fix-name with FORM_EDIT_SINGLE_WRITER off (QA's review): the name as today's chat correction saves it off the one
+ * writer: the manager's save of employee_name only (via chat), then the form's subject column, and the column ONLY when
+ * the save took the name. The caller (edit_form) calls it after `authorizeInstance(…, "edit")` passed and every name check.
+ */
+export async function managerNameSave(id: string, newName: string, actor: string): Promise<{ accepted: { values: Record<string, string>; checked: Record<string, string[]> }; rejected: { key: string; reason: string }[] }> {
+  /* Only the one writer's flag-off path (form-write-one-writer.test.ts, QA condition 1); with it on, nameCorrectionWrite saves the name. */
+  const save = formEditSingleWriterEnabled() ? null : await (await import("@/lib/forms/instances")).saveInstanceValues(id, { values: { employee_name: newName }, checked: {} }, actor, { via: "chat" });
+  if (!save) throw new Error("managerNameSave is the flag-off path: with FORM_EDIT_SINGLE_WRITER on, the name is saved by nameCorrectionWrite.");
+  const rejected = save.rejected.filter((row) => row.key === "employee_name");
+  if (rejected.length > 0) return { accepted: { values: {}, checked: {} }, rejected };
+  const { error } = await (await import("@/lib/supabase/server")).getSupabaseAdmin().from("form_instances").update({ employee_name: newName }).eq("id", id);
+  if (error) throw new Error(`Could not save the form's employee name: ${error.message}`);
+  return { accepted: { values: { employee_name: newName }, checked: {} }, rejected: [] };
 }
 
 /**

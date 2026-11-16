@@ -189,7 +189,9 @@ export const NOV15_AGENT_LOOP_PR1C_CASES: ReplayCase[] = [
       t.loopModel!(standIn);
       const thread = t.thread();
       await thread.say("ca for remy calder, late on 11/12");
-      await thread.say("yes");
+      // Changed on purpose (fix batch item 7, c163): a bare "yes" to "Payroll deduct and warning level aren't set" sets
+      // neither; the answer says which, so this case still checks whose card a payroll answer belongs to.
+      await thread.say("yes, payroll deduct");
       const remy = proposeOutputs(standIn.views).at(-1)!;
       expect((remy.card as { payroll_deduct?: unknown }).payroll_deduct, JSON.stringify(remy)).toBe("yes");
       await thread.say("do the same for juno paxton");
@@ -360,7 +362,9 @@ export const NOV15_AGENT_LOOP_PR1C_CASES: ReplayCase[] = [
       t.loopModel!(standIn);
       const thread = t.thread();
       await thread.say("ca for remy calder, late on 11/12");
-      await thread.say("yes");
+      // Changed on purpose (fix batch item 7, c163): a bare "yes" to "Payroll deduct and warning level aren't set" sets
+      // neither; the answer says which, so this case still checks whose card a payroll answer belongs to.
+      await thread.say("yes, payroll deduct");
       expect(((proposeOutputs(standIn.views).at(-1)!.card) as { payroll_deduct?: unknown }).payroll_deduct, "Remy's own answer").toBe("yes");
       await thread.say("thanks");
       await thread.say("another ca for remy calder, late on 11/14 too");

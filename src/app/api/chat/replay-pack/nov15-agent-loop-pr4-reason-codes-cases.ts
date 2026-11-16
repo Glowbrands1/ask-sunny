@@ -197,6 +197,52 @@ export const NOV15_AGENT_LOOP_PR4_CASES: ReplayCase[] = [
       expect(revisions().map((row) => row.id), "the already-open revision draft was deleted").toEqual(before);
     },
   },
+  {
+    id: "nov15-agent-loop-pr4-refused-edit-failed-cleanup-is-logged",
+    title: "PR 4 (Pau, the owner's additions): when the revision draft a refused edit opened cannot be deleted, the refusal says revision_cleanup failed, the failure is logged (the form id only, never a name), the original is unchanged, and nothing claims the draft is gone",
+    report: `${REPORT}: a failed cleanup must be logged, never silent`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.() || !offline) return;
+      start(t);
+      let finalizedId = "";
+      const standIn = loopStandIn((view): LoopDecision => {
+        const said = view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "";
+        if (/\bchange\b/i.test(said)) {
+          return lastResult(view, "edit_form") ? { text: "That field isn't on the form." } : { tool: "edit_form", input: { instance_id: finalizedId, forms_on_file_evidence: evidenceFrom(view), values: { not_a_field_on_this_form: "anything" } } };
+        }
+        if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: "Remy Calder was late on 11/12.", incident_date: "2026-11-12" } };
+        return { text: "Here is the card." };
+      });
+      t.loopModel!(standIn);
+      const thread = t.thread();
+      await thread.say("ca for remy calder, late on 11/12");
+      t.draftWrites({ observation: "Observed:\nRemy Calder arrived 20 minutes late for her shift on 11/12/26." });
+      finalizedId = await thread.create();
+      Object.assign(t.forms().find((row) => row.id === finalizedId)!, { status: "finalized" });
+      const original = JSON.stringify(t.values(finalizedId));
+      t.failDeletesOf!("form_instances");
+      const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        await thread.say("change the not a field on this form on remy calder's ca");
+        const edit = results(standIn.views, "edit_form").at(-1)!;
+        expect(edit.reason_code, JSON.stringify(edit)).toBe("finalized_revision_refused");
+        expect(edit.refused_reason_code).toBe("unknown_field");
+        expect(edit.revision_cleanup, "a failed delete was reported as deleted").toBe("failed");
+        const leftover = t.forms().filter((row) => row.revises_instance_id === finalizedId);
+        expect(leftover, "the case needs the delete to really fail").toHaveLength(1);
+        const cleanupLog = logged.mock.calls.find((call) => String(call[0]).includes("refused revision's draft could not be deleted"));
+        expect(cleanupLog, "the failed cleanup was not logged").toBeTruthy();
+        expect(cleanupLog![1]).toMatchObject({ instanceId: leftover[0]!.id });
+        expect(JSON.stringify(cleanupLog), "the log names a person").not.toMatch(/remy|calder/i);
+        expect(JSON.stringify(t.values(finalizedId)), "the finalized original changed").toBe(original);
+      } finally {
+        logged.mockRestore();
+      }
+    },
+  },
   ...[
     ["a card", "ca for remy calder, late on 11/12", "corrective_action"],
     ["chat", "what can you do?", "general_guidance"],

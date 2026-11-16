@@ -454,7 +454,7 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
         if (/^(?:ca|coaching|exit)/.test(said)) {
           if (template === "coaching" && !/tamsin/.test(said)) return { text: "Who is the coaching for?" };
           // Changed on purpose (rebuild plan PR 1a): an exit card needs exit_evidence, the manager's words asking for it.
-          const exitAsked = template === "stc-exit" ? { exit_evidence: evidenceFrom(view, "exit form for tamsin orwell") } : {};
+          const exitAsked = template === "stc-exit" ? { exit_evidence: { ...evidenceFrom(view, "exit form for tamsin orwell"), kind: "asks_for_exit_form" } } : {};
           if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: template, employee_id: TAMSIN.id, ...exitAsked } };
           return { text: template === "stc-exit" ? "Exit form for Tamsin Orwell. What was her last day?" : "Corrective Action for Tamsin Orwell. What happened?" };
         }
@@ -467,7 +467,7 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
               employee_id: TAMSIN.id,
               ...(template === "dpoa" ? { what_happened: "She was late on Tuesday." } : {}),
               ...(template === "coaching" ? { what_happened: "She skipped the spray booth check." } : {}),
-              ...(template === "stc-exit" ? { what_happened: "She resigned; her last day was Friday.", incident_date: "2026-11-13", exit_evidence: evidenceFrom(view, "exit form for tamsin orwell", 1) } : {}),
+              ...(template === "stc-exit" ? { what_happened: "She resigned; her last day was Friday.", incident_date: "2026-11-13", exit_evidence: { ...evidenceFrom(view, "exit form for tamsin orwell", 1), kind: "asks_for_exit_form" } } : {}),
             },
           };
         }
@@ -786,8 +786,8 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
         }
         if (/liora quenby/i.test(said)) {
           if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "msb" } };
-          if (tries === 0) return { tool: "propose_form", input: { level_evidence: evidenceFrom(view), template_key: "dpoa", employee_id: LIORA.id, policy: "Standards of Conduct", warning_level: "verbal", what_happened: "Liora Quenby was below in PPTA, LPSVA, Average Club, CC%, Spa%." } };
-          if (tries === 1) return { tool: "propose_form", input: { level_evidence: evidenceFrom(view), template_key: "dpoa", employee_id: LIORA.id, policy: "Standards of Conduct", warning_level: "verbal", what_happened: accountB } };
+          if (tries === 0) return { tool: "propose_form", input: { level_evidence: evidenceFrom(view, "verbal"), template_key: "dpoa", employee_id: LIORA.id, policy: "Standards of Conduct", warning_level: "verbal", what_happened: "Liora Quenby was below in PPTA, LPSVA, Average Club, CC%, Spa%." } };
+          if (tries === 1) return { tool: "propose_form", input: { level_evidence: evidenceFrom(view, "verbal"), template_key: "dpoa", employee_id: LIORA.id, policy: "Standards of Conduct", warning_level: "verbal", what_happened: accountB } };
           return { text: "Here's the card." };
         }
         return { text: "Who is this Corrective Action Form for?" };
