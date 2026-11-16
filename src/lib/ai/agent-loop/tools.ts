@@ -1131,6 +1131,21 @@ export async function findPastForms(context: ToolContext, input: { employee_name
   if (!asked.ok) return privacyRefusal(asked.reason, asked.reasonCode);
   const closeSpelled = await closeSpellingRefusal(context, effects, typed);
   if (closeSpelled) return closeSpelled;
+  /*
+   * QA (16 Nov 2026, the Coordinator's live re-test, group E): "edit <typo> ca" with forms on file for the person the typo
+   * is close to listed those forms ("Which one should I open?") for a name nobody has. When the person the typo is close
+   * to has the card on screen (or the chat's latest card), the manager most likely means that card: the Did-you-mean
+   * comes first, before any form is read; after "yes", the confirmed name is read (and card_on_screen offers the card).
+   * With no such card, G4 (REOPEN_CLOSE_SPELLING) opens the one form on file under a close spelling, as before.
+   */
+  const shownCard = context.cardOnScreen ?? context.earlierCard ?? null;
+  if (shownCard?.employeeKey) {
+    const read = await rosterFor(context.actor.scope);
+    const close = read.kind === "read" ? matchEmployeeName(typed, read.roster) : null;
+    const cardIsClose = close?.kind === "confirm" && close.candidates.some((candidate) => personKey(candidate.employee.id) === shownCard.employeeKey);
+    const typedClose = cardIsClose ? await closeSpellingOfRoster(context, effects, typed) : null;
+    if (typedClose) return typedClose;
+  }
   const actor = await chatFormsActor(context.actor).catch(() => undefined);
   if (actor === undefined) return { reason_code: "read_failed", error: "Form Monitoring could not be read just now. Say so; do not say there are no forms." };
   if (actor === null) return { reason_code: "scope", error: "This manager's role cannot view Form Monitoring, so past forms cannot be listed." };
