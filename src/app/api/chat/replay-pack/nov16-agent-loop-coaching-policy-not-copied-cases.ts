@@ -36,7 +36,7 @@ const ACCOUNT = "She did not complete her Woven courses by the deadline.";
 export const NOV16_AGENT_LOOP_COACHING_POLICY_NOT_COPIED_CASES: ReplayCase[] = [
   {
     id: "nov16-coaching-policy-not-copied-c014",
-    title: "c014 T6: a verbal CA for not completing Woven courses (the model picks Standards of Conduct), then \"Create a Coaching Form from this conversation.\" with the CA's policy copied: the coaching card has no policy (policy_not_for_this_card)",
+    title: "c014 T6: a verbal CA for not completing Woven courses (the model picks Standards of Conduct), then \"Create a Coaching Form from this conversation.\" with the CA's policy copied: the copied heading is refused (policy_not_for_this_card, policy_copied) and the coaching card cites its own (Pau, 17 Nov: coaching always has a policy)",
     report: REPORT,
     status: "fixed",
     fixFlags: [FLAG],
@@ -45,18 +45,23 @@ export const NOV16_AGENT_LOOP_COACHING_POLICY_NOT_COPIED_CASES: ReplayCase[] = [
       start(t);
       const results: Record<string, unknown>[] = [];
       t.loopModel!(loopStandIn((view): LoopDecision => {
-        const done = lastResult(view, "propose_form");
-        if (done) { results.push(done); return { text: "Here's the card for **Remy Calder**." }; }
+        const done = view.results.filter((result) => result.tool === "propose_form").map((result) => result.output);
         const coaching = /coaching form from this conversation/i.test(said(view));
-        return { tool: "propose_form", input: { template_key: coaching ? "coaching" : "dpoa", employee_name: "Remy Calder", person_evidence: quoted(view, "Remy Calder"), what_happened: ACCOUNT, policy: "Standards of Conduct", ...(coaching ? {} : { warning_level: "verbal", level_evidence: quoted(view, "This would be a verbal") }) } };
+        const base = { template_key: coaching ? "coaching" : "dpoa", employee_name: "Remy Calder", person_evidence: quoted(view, "Remy Calder"), what_happened: ACCOUNT, ...(coaching ? {} : { warning_level: "verbal", level_evidence: quoted(view, "This would be a verbal") }) };
+        // Pau, 17 Nov: coaching always has policy and page. Told the copied heading is not this card's, the model picks its own.
+        if (done.length === 1 && (done[0]!.facts as { policy_copied?: unknown } | undefined)?.policy_copied) return { tool: "propose_form", input: { ...base, policy: "Other — Woven courses not completed" } };
+        if (done.length > 0) { results.push(...done); return { text: "Here's the card for **Remy Calder**." }; }
+        return { tool: "propose_form", input: { ...base, policy: "Standards of Conduct" } };
       }));
       const thread = t.thread();
       const ca = await thread.say("Please create another corrective action for Remy Calder. This would be a verbal due to not completing her woven courses by the deadline");
       expect(policyOf(ca.formProposal), "the CA keeps the policy the model chose (CA cards always carry one)").toMatch(/Standards of Conduct/);
       const coaching = await thread.say("Create a Coaching Form from this conversation.");
       expect((coaching.formProposal as ChatFormProposal | undefined)?.templateKey).toBe("coaching");
-      expect(policyOf(coaching.formProposal), `the coaching card copied the CA's policy: ${JSON.stringify(results.at(-1))}`).toBeNull();
-      expect(JSON.stringify(results.at(-1))).toContain("policy_not_for_this_card");
+      // Pau, 17 Nov: coaching always has policy and page (this case expected none before): never the copied CA heading.
+      expect(JSON.stringify(results), "the copied heading was not refused").toContain("policy_not_for_this_card");
+      expect(policyOf(coaching.formProposal) ?? "", `the coaching card has no policy: ${JSON.stringify(results.at(-1))}`).not.toBe("");
+      expect(policyOf(coaching.formProposal), "the coaching card kept the copied CA heading").not.toMatch(/Standards of Conduct/);
     },
   },
   {
@@ -73,6 +78,27 @@ export const NOV16_AGENT_LOOP_COACHING_POLICY_NOT_COPIED_CASES: ReplayCase[] = [
         : { tool: "propose_form", input: { template_key: "coaching", employee_name: "Remy Calder", person_evidence: quoted(view, "Remy Calder"), what_happened: "She was late on 11/14.", incident_date: "2026-11-14", policy: "Attendance" } })));
       const reply = await t.thread().say("coaching for Remy Calder, she violated the attendance policy by being late on 11/14");
       expect(policyOf(reply.formProposal)).toMatch(/Attendance/);
+    },
+  },
+  {
+    id: "nov17-coaching-always-cites-a-policy-greeting-guests",
+    title: "Pau, 17 Nov: \"coaching for Remy Calder on greeting guests\" with a model that leaves the policy out: propose_form says policy_not_given, and the card cites the fitting heading with its page",
+    report: "Pau's ruling via QA, 17 Nov 2026: coaching cards always cite a policy and page, chosen like a CA's",
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      start(t);
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        const done = view.results.filter((result) => result.tool === "propose_form").map((result) => result.output);
+        const base = { template_key: "coaching", employee_name: "Remy Calder", person_evidence: quoted(view, "Remy Calder"), what_happened: "Did not greet guests at the front desk." };
+        if (done.length === 0) return { tool: "propose_form", input: base };
+        if (done.length === 1 && (done[0]!.facts as { policy_not_given?: unknown } | undefined)?.policy_not_given) return { tool: "propose_form", input: { ...base, policy: "Standards of Conduct" } };
+        return { text: "Here's the Coaching Form for **Remy Calder**." };
+      }));
+      const reply = await t.thread().say("coaching for Remy Calder on greeting guests");
+      expect((reply.formProposal as ChatFormProposal | undefined)?.templateKey).toBe("coaching");
+      expect(policyOf(reply.formProposal), "the coaching card has no policy and page").toMatch(/^Standards of Conduct Policy, JBA Policy Manual p\.\d+/);
     },
   },
 ];
