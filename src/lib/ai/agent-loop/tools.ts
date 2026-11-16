@@ -2924,16 +2924,25 @@ export async function proposeForm(
    * payroll). The card on screen asked two things in one line (its record's `asked`), and this message is one word, quoted
    * whole as the payroll evidence, with no level: one word answering two questions says neither ("yes payroll deduct"
    * names which, and is kept). Payroll is not kept and the reply asks
-   * payroll alone (ask_exactly). Code compares the card record and where the quote sits; it never reads the words.
+   * which the answer is for and the amount (ask_exactly; E r2 below). Code compares the card record and where the quote sits; it never reads the words.
    */
   const onScreen = context.cardOnScreen;
   const sameCard = Boolean(onScreen && onScreen.templateKey === template.key && ((employee.id && onScreen.employeeKey === personKey(employee.id)) || onScreen.nameKey === personKey(employee.name)));
   const conversationTurnsNow = identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId);
   const answersThisMessage = (check: AnswerEvidence | null): check is AnswerEvidence & { ok: true } => Boolean(check?.ok && check.turnId === conversationTurnsNow.at(-1)!.id);
+  const asksBoth = sameCard && onScreen!.asked.includes("payroll_deduct") && onScreen!.asked.includes("warning_level");
+  const bareWord = oneWord(withoutMessageIdTags(conversationTurnsNow.at(-1)!.content));
   const payrollAnswerUnclear =
-    payroll !== null && sameCard && onScreen!.asked.includes("payroll_deduct") && onScreen!.asked.includes("warning_level") &&
-    answersThisMessage(payrollCheck) && payrollCheck.wholeMessage && oneWord(withoutMessageIdTags(conversationTurnsNow.at(-1)!.content)) &&
+    payroll !== null && asksBoth && answersThisMessage(payrollCheck) && payrollCheck.wholeMessage && bareWord &&
     !(answersThisMessage(levelCheck) && level !== null);
+  /*
+   * QA's pre-launch live re-test (16 Nov 2026, E r2: the card asked payroll and level, the manager typed "yes", and the
+   * reply claimed payroll $20): the same one word quoted whole as the LEVEL answer is refused for the same reason
+   * (answer_to_two_questions, not level_not_named), and either refusal asks which the answer is for and, for payroll, the
+   * amount, in one question. A one-word level that names an option ("written") passes the level check and is kept.
+   */
+  const levelAnswerUnclear = Boolean(askedLevel && levelUnnamed && asksBoth && bareWord && answersThisMessage(levelAnswer) && levelAnswer.wholeMessage);
+  const answerUnclear = payrollAnswerUnclear || levelAnswerUnclear;
   if (payrollAnswerUnclear) payroll = null;
   /*
    * PAYROLL STATED FOR THIS REQUEST STAYS ON THE CARD (QA, 16 Nov 2026; c022: "payroll is deductable" put Yes on the card,
@@ -2944,11 +2953,12 @@ export async function proposeForm(
    * person's card or another form. Never "as you said" for a carried answer (stated_this_turn lists this message's only).
    */
   const payrollRecord = caOnlyFields && !asksNewForm && isThisCard(context.cardOnScreen) && context.cardOnScreen.payroll ? context.cardOnScreen : null;
-  if (payroll === null && !payrollAnswerUnclear && payrollRecord?.payroll) {
+  if (payroll === null && !answerUnclear && payrollRecord?.payroll) {
     payroll = payrollRecord.payroll;
     if (payroll === "yes" && !amount && payrollRecord.payrollAmount) amount = payrollRecord.payrollAmount;
   }
-  const payrollQuestion = `Is payroll deduct applicable for **${employee.name}**? Yes or no.`;
+  /* One question for a one-word answer to two (`answerUnclear`): which it answers, and for payroll the amount. */
+  const payrollQuestion = `Which does that answer: payroll deduct, the warning level, or both? If payroll deduct applies for **${employee.name}**, how much?`;
   const amountInThisMessage = (digits: string | null) => Boolean(digits && context.question.replace(/[^\d.]/g, " ").split(/\s+/).some((n) => n !== "" && Number(n) === Number(digits)));
   const statedThisTurn = [
     ...(level && answersThisMessage(levelCheck) ? ["warning_level"] : []),
@@ -3186,8 +3196,8 @@ export async function proposeForm(
     : [];
   const levelNotGiven = namedOptions.length === 1 ? namedOptions[0]! : null;
   const unset = corrective && !awaiting ? [...(payroll ? [] : ["payroll_deduct"]), ...(level || terminationStated ? [] : ["warning_level"])] : [];
-  /* Fix batch item 7: what this card's reply asks (the next turn's card record): payroll alone after an unclear answer. */
-  effects.proposalAsked = payrollAnswerUnclear ? ["payroll_deduct"] : unset;
+  /* What this card's reply asks (the next turn's card record). After an unclear answer it still asks both (E r2). */
+  effects.proposalAsked = unset;
   effects.proposalLevel = level;
   effects.proposalPayroll = payroll;
   effects.proposalPayrollAmount = payroll === "yes" ? amount : null;
@@ -3214,9 +3224,9 @@ export async function proposeForm(
     ...(nameCorrectedFrom !== null ? { name_corrected: { from: nameCorrectedFrom, to: employee.name } } : {}),
     ...(earlierKept ? { earlier_card: { kept: true, ...(earlierRow ? { employee: displayName(earlierRow) } : {}), form: earlier!.templateName ?? earlier!.templateKey } } : {}),
     ...(otherNamed.length > 0 ? { account_names_other_person: { named: otherNamed, card_person: employee.name } } : {}),
-    ...(unset.length > 0 && !payrollAnswerUnclear ? { unset } : {}),
-    ...(payrollAnswerUnclear ? { payroll_answer_unclear: { ask_exactly: payrollQuestion } } : {}),
-    ...(levelUnnamed ? { level_not_named: { ask_exactly: LEVEL_QUESTION } } : {}),
+    ...(unset.length > 0 && !answerUnclear ? { unset } : {}),
+    ...(answerUnclear ? { payroll_answer_unclear: { ask_exactly: payrollQuestion } } : {}),
+    ...(levelUnnamed && !levelAnswerUnclear ? { level_not_named: { ask_exactly: LEVEL_QUESTION } } : {}),
     /*
      * QA's live re-test (16 Nov 2026): "written CA for <A>, late 11/14, payroll deduct $20" came back "Warning level isn't
      * set" (payroll kept), while "verbal ca for <A>, late on 11/13" ticked Verbal. The model sent no warning_level at all:
@@ -3321,6 +3331,7 @@ export async function proposeForm(
     ...(modelLevel && level !== modelLevel && levelCheck && !levelCheck.ok ? { reason_code: "level_not_stated", level_evidence: levelCheck.reason } : askedPayroll && !payroll && payrollCheck && !payrollCheck.ok ? { reason_code: "payroll_not_stated" } : {}),
     ...(askedPayroll && !payroll && payrollCheck && !payrollCheck.ok ? { payroll_evidence: payrollCheck.reason } : {}),
     ...(payrollAnswerUnclear ? { ...(modelLevel && !level ? {} : { reason_code: "payroll_not_stated" }), payroll_evidence: "answer_to_two_questions" } : {}),
+    ...(levelAnswerUnclear ? { level_evidence: "answer_to_two_questions" } : {}),
     ...(notOnCard.length > 0 ? { not_on_card: notOnCard } : {}),
     /* PR 6 item 1: find_staff's facts from propose_form's own lookup (name_from_staff_list, confirmed_by_manager, longer_names_on_roster, …). */
     ...(lookedUp.kind === "person" ? { ...lookedUp.facts, looked_up_by: "propose_form" } : {}),
