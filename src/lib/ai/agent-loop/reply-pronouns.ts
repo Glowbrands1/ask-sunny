@@ -130,8 +130,18 @@ export function withoutPersonPronouns(
     const clause = before.split(/[,;:]/).at(-1) ?? before;
     const verb = REPORTING.exec(clause);
     if (!verb) return null;
-    // A reporter who is a pronoun ("she said her checklist …"): it may be the speaker's own.
-    if (/\b(?:he|she|they|him|her|them|his|their)\b/.test(clause.slice(0, verb.index))) return "untrusted";
+    /*
+     * A reporter who is a pronoun: it is the card's person exactly when that pronoun is replaced itself ("She said her car
+     * broke down": both are the person's; train 4's pr6 case), else it may be the speaker's own ("<M> came in, and she said
+     * her checklist …"). The reporter pronoun sits earlier in the sentence, so this ends.
+     */
+    const reporterPronouns = [...clause.slice(0, verb.index).matchAll(/\b(?:he|she|they)\b/g)];
+    if (reporterPronouns.length > 0) {
+      const sentenceStart = at - before.length;
+      const clauseStart = sentenceStart + before.length - clause.length;
+      return keepsOwn(clauseStart + reporterPronouns.at(-1)!.index!) ? "untrusted" : "trusted";
+    }
+    if (/\b(?:him|her|them|his|their)\b/.test(clause.slice(0, verb.index))) return "untrusted";
     const verbAt = before.length - clause.length + verb.index;
     const upToVerb = before.slice(0, verbAt);
     const hits = knownKeys.flatMap((key) => [...upToVerb.matchAll(nameRe(key, "gu"))].map((match) => ({ key, from: match.index!, to: match.index! + match[0].length })));
