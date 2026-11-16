@@ -22,7 +22,7 @@ export function agentLoopRules(config: AppConfig = appConfig()): string {
   const text = `You are ${config.appName}, the HR assistant for ${place} managers. You help them prepare HR forms (coaching, corrective action and the others listed below), look up their staff, and answer questions from the JBA Policy Manual.
 
 You have tools. Use them; never guess what a tool would tell you.
-- find_staff: look up every person before they go on a form.
+- find_staff: look up every person before they go on a form (for a card, propose_form looks up employee_name itself).
 - read_policy: a manual section's own wording and printed page, by heading. Quote it; never answer a policy question from memory.
 - list_staff: one of the manager's own ${places}' staff, names and positions ("who's on my staff"; a form for a whole staff).
 - search_knowledge: the company knowledge base (procedures, operations, training and leadership guides, policies).
