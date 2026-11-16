@@ -240,22 +240,35 @@ export function requestTurns(
    * one-letter-off first name (<A'>) and another roster person as a party (<B>, the director). The turn is still THIS
    * person's when it also names them, so <B> is a party there, not its owner. "Names them": the exact first name, or a
    * word one edit from the card's first name that is no active roster person's first name. Limits (QA): (a) only once the
-   * manager named the card's person in full in this request; (b) a word one edit from two or more people's first names
-   * is ambiguous and keeps today's refusal. Code compares spellings with the roster; it never reads what the words mean.
+   * manager named the card's person in full in this request; (b) a word one edit from another active person's first name
+   * too is ambiguous: no automatic match, and the refusal asks which (near_name_ambiguous). Code compares spellings with
+   * the roster; it never reads what the words mean.
    */
   const firstOf = (name: string) => name.trim().split(/\s+/)[0]!.toLowerCase();
   const personFirst = firstOf(person);
-  const othersFirsts = rosterNames.filter((name) => !samePerson(name, person)).map(firstOf);
+  const others = rosterNames.filter((name) => !samePerson(name, person));
   const namedInFull = person.trim().split(/\s+/).length >= 2 && turns.some((turn) => turn.role === "user" && holdsPhrase(turn.content, person));
-  const namesThisPerson = (clean: string): boolean => {
-    if (!namedInFull || personFirst.length < 3) return false;
-    const tokens = [...new Set(clean.toLowerCase().match(/[\p{L}'’-]{3,}/gu) ?? [])];
-    return tokens.some((token) => {
-      const near = othersFirsts.filter((first) => first === token || editDistance(first, token) <= 1);
-      if (token === personFirst) return near.length === 0;
-      return editDistance(token, personFirst) === 1 && !othersFirsts.includes(token) && near.length === 0;
-    });
+  /*
+   * How the turn names the card's person, if it does: "this" (the exact first name, or one edit from it and from no active
+   * roster person's first name), or "ambiguous" (one edit from it AND from another active person <C>'s first name: QA's
+   * strict limit (b) holds, and the refusal asks which, 16 Nov 2026). Words are letters only, so "<A'>'s" reads as <A'>
+   * (the 266 re-run's c219 shape). A spelling comparison with the roster, never a reading of the words.
+   */
+  const nearName = (clean: string): { kind: "this" } | { kind: "ambiguous"; typed: string; others: string[] } | null => {
+    if (!namedInFull || personFirst.length < 3) return null;
+    let ambiguous: { kind: "ambiguous"; typed: string; others: string[] } | null = null;
+    for (const word of new Set(clean.match(/\p{L}{3,}/gu) ?? [])) {
+      const token = word.toLowerCase();
+      const near = others.filter((name) => firstOf(name) === token || editDistance(firstOf(name), token) <= 1);
+      if (token === personFirst && near.length === 0) return { kind: "this" };
+      if (token !== personFirst && editDistance(token, personFirst) === 1) {
+        if (near.length === 0) return { kind: "this" };
+        if (!near.some((name) => firstOf(name) === token)) ambiguous ??= { kind: "ambiguous", typed: word, others: near };
+      }
+    }
+    return ambiguous;
   };
+  const namesThisPerson = (clean: string): boolean => nearName(clean)?.kind === "this";
   const namesOther = (text: string) => {
     const clean = withoutMessageIdTags(text);
     if (namesThisPerson(clean)) return null;
@@ -272,6 +285,12 @@ export function requestTurns(
     const check = verifyEvidence(claim, turns);
     if (!check.ok) return { ok: false, result: { error: `${kind} must quote the manager's own messages in this chat. Nothing was written.`, reason_code: `${kind}_invalid`, evidence: check.reason } };
     const other = namesOther(check.turn.content);
+    const near = other ? nearName(withoutMessageIdTags(check.turn.content)) : null;
+    if (near?.kind === "ambiguous") {
+      const choices = [person, ...near.others].map((name) => `**${name}**`);
+      const ask = `In your message, is ${near.typed} ${choices.slice(0, -1).join(", ")} or ${choices.at(-1)}?`;
+      return { ok: false, result: { error: `That message names ${near.typed}, one letter from ${person} and from ${near.others.join(", ")} on the staff list: ask which. Nothing was written.`, reason_code: "near_name_ambiguous", ask_exactly: ask } };
+    }
     if (other) return { ok: false, result: { error: `That message is about ${other}, not ${person}: it is not this person's request. Nothing was written.`, reason_code: `${kind}_other_person` } };
     if (check.turn.index <= boundary) return { ok: false, result: { error: `That message is from an earlier request, before the manager turned to someone else. Cite only this request's messages. Nothing was written.`, reason_code: `${kind}_not_this_request` } };
     if (ids.includes(check.turn.id)) continue;

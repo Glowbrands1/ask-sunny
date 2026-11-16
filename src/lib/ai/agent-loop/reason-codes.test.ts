@@ -33,6 +33,8 @@ const KNOWN = new Set([
   "exit_not_asked",
   // The retry guard (QA, 16 Nov 2026): a third call of a tool refused twice this turn for one reason_code is not run.
   "stop_retrying",
+  // Item 5 follow-up (the 266 re-run's c219): a near name one edit from the card's person and another active person.
+  "near_name_ambiguous",
 ]);
 
 /** A line that returns a refusal: `error:` followed by a string, a template or a named message (not `error: Boolean(...)`). */
