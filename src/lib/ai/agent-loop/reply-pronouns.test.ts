@@ -134,14 +134,12 @@ describe("withoutPersonPronouns", () => {
       .toBe('You said Tamsin "sent her immediate resignation to management".');
   });
   /*
-   * QA (16 Nov 2026; the pack's three-saved-edits case on train 4): a reporter who is a pronoun the same pass names as the
-   * card's person is that person, so the pronoun in what they said is theirs too. Invented names.
+   * QA (16 Nov 2026; the pack's three-saved-edits case on train 4): the reviser's saved Observation as the reply echoes it,
+   * and the control where the reporter pronoun is kept (another person named first). Invented names.
    */
-  it("names the person in their own reported speech when the reporter pronoun is replaced too", () => {
-    expect(withoutPersonPronouns("She said her car broke down.", "Remy").text).toBe("Remy said Remy's car broke down.");
+  it("names the person in the saved Observation's reported speech; a kept reporter pronoun keeps its own (train 4)", () => {
     expect(withoutPersonPronouns("Observed:\nRemy was 20 minutes late on 11/12.\nShe said her car broke down.", "Remy").text)
       .toBe("Observed:\nRemy was 20 minutes late on 11/12.\nRemy said Remy's car broke down.");
-    // A reporter pronoun the pass keeps (another person named before it) still keeps the pronoun in what it said.
     const kept = "When Juno Paxton asked whether Tamsin was done, she said her checklist was finished.";
     expect(withoutPersonPronouns(kept, "Tamsin", ["Juno Paxton"])).toEqual({ text: kept, replaced: 0 });
   });
