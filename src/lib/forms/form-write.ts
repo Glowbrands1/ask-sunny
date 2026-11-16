@@ -848,6 +848,38 @@ export async function dictatedPlanWrite(instanceId: string, plan: string, actorI
   return { saved: result.rejected.some((row) => row.key === "action_plan") ? null : (result.values.action_plan ?? plan) };
 }
 
+/**
+ * The agent loop's name correction (`edit_form` intent "correct_name", the rebuild plan's `fix-name`): ONLY the
+ * Employee Name line, written as the manager's correction (path "correction", via chat, as today's chat writes "fix
+ * her last name …"), and the form's subject column moves with it so the card, Form Monitoring and the printed form
+ * read the new name. The caller has already checked the name against this message's name_evidence and the roster
+ * ("Did you mean <name>?"); this takes no other key, so nothing else on the form can change with it. `said` is the
+ * manager's message the name was quoted from: the correction's reducer keeps every word of the old name the manager
+ * did not replace (`drops_words`).
+ */
+export async function nameCorrectionWrite(
+  instanceId: string,
+  name: string,
+  context: { readonly actorId: string; readonly said: string; readonly today?: string; readonly loaded?: LoadedInstance },
+): Promise<{ accepted: DraftValues; rejected: { key: string; reason: string }[]; result: FormWriteResult }> {
+  const newName = name.trim();
+  if (newName === "") {
+    const saved = emptySaved([{ key: "employee_name", reason: "would_blank" }]);
+    return { accepted: saved.accepted, rejected: saved.rejected, result: { changed: [], refused: [], handoff: "refused", saved } };
+  }
+  const result = await writeFormEdits(instanceId, [{ op: "set", field: "employee_name", value: newName, by: "manager" }], {
+    path: "correction",
+    actorId: context.actorId,
+    latest: context.said,
+    via: "chat",
+    employeeColumn: newName,
+    readerValues: [newName],
+    ...(context.today ? { today: context.today } : {}),
+    ...(context.loaded ? { loaded: context.loaded } : {}),
+  });
+  return { accepted: result.saved.accepted, rejected: result.saved.rejected, result };
+}
+
 /* -------------------------------- the old writers' shapes, through here ---- */
 
 type PathContext = Omit<FormEditRules, "actorId">;

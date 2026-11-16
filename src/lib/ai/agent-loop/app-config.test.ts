@@ -31,6 +31,10 @@ import { rulesBookText } from "./rules-book";
  *
  * Re-taken on purpose on 16 Nov 2026 (fix batch item 2, "final warning", Pau's ruling): one Card replies line was added
  * for level_not_named. It reads the same under every config; nothing else changed.
+ *
+ * Updated on purpose on 16 Nov 2026 (fix-name, live s10; QA's review of #1050): one line in the card replies teaches
+ * propose_form's name_corrected fact ("I changed the name on the card from <from> to <to>; nothing else changed.").
+ * It names no app, place, staff system or form key; nothing else in either text changed.
  */
 
 const fixture = (name: string): string => readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), "utf8");

@@ -15,9 +15,9 @@ import { BEHAVIOURS, PHRASING_KINDS } from "./phrasing-table";
  * the same outcome on saved data and structured tool results. No assertion reads an English phrase. This file
  * checks the table is complete and the generated cases match it.
  *
- * TODO(PR1): evidence arguments ({message_id, quote}; Coding-7's evidence.ts) replace the word lists the tools read the
- * manager's message with. Then the mocked model passes each phrasing's evidence, `OPEN_UNTIL_PR1` empties, and the
- * fix-name case asserts the corrected name saved by `edit_form` intent "correct_name".
+ * Evidence arguments ({message_id, quote}; `evidence.ts`) replaced the word lists the tools read the manager's message
+ * with (PR 1): the mocked model passes each phrasing's evidence, and the fix-name case asserts the corrected name saved
+ * by `edit_form` intent "correct_name" (fix-name) and nothing else changed.
  */
 
 const BEHAVIOUR_KEYS = ["write-account", "answer-level", "answer-payroll", "fix-name", "exit-form", "forms-on-file", "undo-level", "nothing-changed"];
