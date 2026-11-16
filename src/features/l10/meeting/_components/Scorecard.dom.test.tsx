@@ -83,6 +83,15 @@ describe("Bloom-style scorecard (the owner's feedback)", () => {
   });
 });
 
+describe("the Bloom-style header (the owner, 16 Nov 2026: \"this kinda hurts my eyes the yellow\")", () => {
+  it("is white text on black, not yellow", () => {
+    render(<Harness />);
+    const head = screen.getByTestId("bloom-scorecard-head");
+    expect(head.className).toContain("text-white");
+    expect(head.className).not.toContain("text-gold-head");
+  });
+});
+
 describe("Scorecard accents in Ask Sunny's yellow (inside .hub-l10)", () => {
   const css = readFileSync(path.join(process.cwd(), "src/app/globals.css"), "utf8");
   const at = css.indexOf("THE SCORECARD'S ACCENTS");
@@ -118,7 +127,10 @@ describe("Scorecard accents in Ask Sunny's yellow (inside .hub-l10)", () => {
       [card, amber],
       [amber, card],
       [ink, mix(y, card, 0.18)], // a figure in the current week's column
-      [card, mix(y, ink, 0.3)], // the current week's header
+      // Changed on purpose 16 Nov 2026: the header is white on black (the owner's choice), so this week's head is the
+      // slate --approved-border-band behind white text, not a yellow-and-ink mix.
+      [card, hex("approved-border-band")], // the current week's header
+      [card, ink], // the other headers: white on black
     ];
     for (const [fg, bg] of pairs) expect(contrast(fg, bg), `${fg} on ${bg}`).toBeGreaterThanOrEqual(4.5);
   });

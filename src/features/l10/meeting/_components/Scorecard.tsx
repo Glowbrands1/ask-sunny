@@ -184,6 +184,8 @@ export function Scorecard({ doc, edit, people, bloom = false, today = "" }: { do
 }
 
 const tableHead = "bg-ink text-xs font-bold tracking-[0.06em] text-gold-head";
+/** The Bloom-style header: white on black (the owner found the yellow header hard on the eyes, 16 Nov 2026). */
+const bloomHead = "bg-ink text-xs font-bold tracking-[0.06em] text-white";
 
 /**
  * The scorecard as Bloom Growth lays it out (the DM L10s; the owner's request, 15 Nov 2026): Who (the owner's initials,
@@ -198,7 +200,7 @@ function BloomTable({ doc, edit, order, today }: { doc: MeetingDoc; edit: (fn: (
     <div className="overflow-x-auto rounded-[10px] border border-line bg-white shadow-card" data-testid="bloom-scorecard">
       <table className="w-full border-collapse text-sm">
         <thead>
-          <tr className={tableHead}>
+          <tr className={bloomHead} data-testid="bloom-scorecard-head">
             <th scope="col" className="sticky left-0 z-10 w-12 bg-ink px-3 py-2.5 text-left">
               Who
             </th>
