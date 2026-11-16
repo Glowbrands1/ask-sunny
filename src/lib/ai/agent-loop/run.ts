@@ -1,6 +1,6 @@
 import "server-only";
 
-import { cardTurns, personKey, readLoopRecords, replyTurns, type CardRecord, type CardSlot, type NameQuestionSlot, type PersonAskedSlot } from "./card-record";
+import { cardTurns, MAX_OPEN_QUESTIONS, personKey, readLoopRecords, replyTurns, type CardRecord, type CardSlot, type NameQuestionSlot, type OpenQuestion, type PersonAskedSlot } from "./card-record";
 import { CLAUDE_EFFORT, CLAUDE_MAX_TOKENS, CLAUDE_MODEL } from "@/lib/config/models";
 import { MissingConfigurationError, requireEnv } from "@/lib/config/server-env";
 import { mainAnswerTimeoutMs, streamGapTimeoutMs } from "@/lib/config/ai-timeouts";
@@ -41,6 +41,7 @@ import {
   salonLabel,
   templateChoices,
   accountWordKind,
+  askedQuestion,
   type ToolContext,
   type ToolEffects,
   type ToolResult,
@@ -184,6 +185,14 @@ const count = (value: unknown): number => (typeof value === "number" && Number.i
  * (and the history's own card data is the browser's, so it is not read: `parseHistory`), so a reply that reads as a
  * card's (its Policy line or its account line) gets an app-written note.
  */
+/** A tool result asks the manager something: `ask_exactly` at its top, or inside one of its facts. */
+function carriesAskExactly(result: ToolResult): boolean {
+  const record = result as Record<string, unknown>;
+  if (typeof record.ask_exactly === "string") return true;
+  const nested = [record, record.facts].filter((value): value is Record<string, unknown> => Boolean(value) && typeof value === "object");
+  return nested.some((value) => Object.values(value).some((fact) => Boolean(fact) && typeof fact === "object" && typeof (fact as { ask_exactly?: unknown }).ask_exactly === "string"));
+}
+
 export const CARD_NOTE = "[app note: this reply showed a card built with propose_form]";
 
 /**
@@ -556,13 +565,17 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
    * showed a card not yet created. A fact for the model (batch A); the rules book says what the reply says about it.
    */
   /* PR 2: which earlier replies showed a card, and whose, from the server's card record (never the reply's text). */
-  const { cards: records, nameQuestions, personAsked } = await readLoopRecords(input.conversationId, input.actor.subject);
+  const { cards: records, nameQuestions, personAsked, openQuestions: openQuestionRecords } = await readLoopRecords(input.conversationId, input.actor.subject);
   const cards = cardTurns(input.history, records);
   const lastReplyIndex = input.history.findLastIndex((turn) => turn.role === "assistant" && !turn.error);
   const cardOnScreen = !input.openFormId && lastReplyIndex >= 0 ? (cards.get(lastReplyIndex) ?? null) : null;
   const cardOpenAtStart = cardOnScreen !== null;
   /* Fix batch item 6 (c124, c165): the last reply's propose_form asked who the form is for (the record, never the reply's text). */
   const whoAsked = lastReplyIndex >= 0 ? (replyTurns(input.history, personAsked).get(lastReplyIndex) ?? null) : null;
+  /* The open question record (Pau, 16 Nov 2026): what the last reply's tools asked, and every kind this chat asked before. */
+  const askedByReply = replyTurns(input.history, openQuestionRecords);
+  const lastAsked = lastReplyIndex >= 0 ? (askedByReply.get(lastReplyIndex)?.questions ?? []) : [];
+  const askedBefore = [...new Set([...askedByReply.values()].flatMap((record) => record.questions.map((question) => question.kind)))];
   const context: ToolContext = {
     request: input.request,
     actor: input.actor,
@@ -576,6 +589,8 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     cardOnScreen,
     earlierCard: records.at(-1) ?? null,
     nameQuestions,
+    openQuestions: lastAsked,
+    askedBefore,
   };
   const effects: ToolEffects = { proposal: null, formUpdate: null };
   /* The open form as saved before the turn, for the no-false-"updated" guard below (FORM_EDIT_NOOP_GUARD's snapshot). */
@@ -604,6 +619,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   /* One tool call, timed and counted for the trace: its name, ms and result size; never its values. */
   const runTool = async (step: number, name: string, args: unknown): Promise<ToolResult> => {
     const started = performance.now();
+    const askedBeforeCall = effects.openQuestions?.length ?? 0;
     let result: ToolResult;
     try {
       const handler = handlers[name];
@@ -612,6 +628,8 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
       result = { reason_code: "tool_threw", error: "That lookup failed just now." };
     }
     steps.push({ step, tool: name, ms: Math.round(performance.now() - started), resultChars: JSON.stringify(result).length, ok: !("error" in result), ...stepReason(result, name) });
+    /* Any other question a tool result asks (ask_exactly, at its top or inside one fact) is recorded as kind "ask". */
+    if ((effects.openQuestions?.length ?? 0) === askedBeforeCall && carriesAskExactly(result)) askedQuestion(effects, { kind: "ask" });
     return result;
   };
 
@@ -626,6 +644,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     headings: manual?.headings ?? [],
     openFormId: input.openFormId,
     answeringWhoQuestion: whoAsked ? (templates.find((row) => row.key === whoAsked.templateKey)?.name ?? "form") : null,
+    answeringQuestions: lastAsked.map((question) => ({ kind: question.kind, options: question.optionKeys?.length ?? 0 })),
   });
 
   const { jsonSchema, stepCountIs, streamText, tool } = await import("ai");
@@ -903,12 +922,22 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     ? { offeredKeys: effects.nameQuestion.offeredIds.map(personKey), typedKey: personKey(effects.nameQuestion.typed) }
     : null;
   /* Fix batch item 6: propose_form asked who the form is for, for the next turn's person asked record (no names). */
+  /*
+   * The open question record: the card's own questions first (payroll, the level: the card record's `asked`, with its
+   * proposalId), then the tools' other questions, one per kind, at most MAX_OPEN_QUESTIONS. No names or values.
+   */
+  const cardQuestions: OpenQuestion[] = effects.proposal
+    ? (effects.proposalAsked ?? []).flatMap((field): OpenQuestion[] => (field === "payroll_deduct" ? [{ kind: "payroll", proposalId: effects.proposal!.proposalId }] : field === "warning_level" ? [{ kind: "level", proposalId: effects.proposal!.proposalId }] : []))
+    : [];
+  const openQuestionSlot = stoppedAt === "reply"
+    ? [...cardQuestions, ...(effects.openQuestions ?? [])].filter((question, at, all) => all.findIndex((other) => other.kind === question.kind) === at).slice(0, MAX_OPEN_QUESTIONS)
+    : [];
   const personAskedSlot: PersonAskedSlot | null = effects.personAsked && stoppedAt === "reply" && !effects.proposal ? { templateKey: effects.personAsked.templateKey } : null;
   if (trace) {
     trace.firstTokenMs = firstTokenMs;
     trace.slots = {
       ...(trace.slots ?? {}),
-      agent_loop: { ...(cardSlot ? { card: cardSlot } : {}), ...(nameQuestionSlot ? { name_question: nameQuestionSlot } : {}), ...(personAskedSlot ? { person_asked: personAskedSlot } : {}), steps, model_steps: modelSteps, model_calls: modelCalls, step_limit: limit, steps_used: stepNumber - 1, stopped: stoppedAt, ms: latencyMs, first_token_ms: firstTokenMs, ...(selfReview ? { self_review: selfReview } : {}), ...(draftReview ? { draft_review: draftReview } : {}), ...(levelReview ? { level_review: levelReview } : {}) },
+      agent_loop: { ...(cardSlot ? { card: cardSlot } : {}), ...(nameQuestionSlot ? { name_question: nameQuestionSlot } : {}), ...(personAskedSlot ? { person_asked: personAskedSlot } : {}), ...(openQuestionSlot.length > 0 ? { open_question: openQuestionSlot } : {}), steps, model_steps: modelSteps, model_calls: modelCalls, step_limit: limit, steps_used: stepNumber - 1, stopped: stoppedAt, ms: latencyMs, first_token_ms: firstTokenMs, ...(selfReview ? { self_review: selfReview } : {}), ...(draftReview ? { draft_review: draftReview } : {}), ...(levelReview ? { level_review: levelReview } : {}) },
     };
   }
 

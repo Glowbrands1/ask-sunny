@@ -52,7 +52,7 @@ import { redactSensitiveDefaults } from "@/lib/ai/sensitive-defaults";
 import { expandPolicyQuery } from "@/lib/knowledge/policy-retrieval";
 import type { SourceCitation } from "@/types";
 import type { AccessScope, ChatFormProposal, ChatMessage, Role } from "@/types";
-import { personKey, type CardRecord, type NameQuestionRecord } from "@/lib/ai/agent-loop/card-record";
+import { MAX_OPEN_QUESTIONS, personKey, type CardRecord, type NameQuestionRecord, type OpenQuestion, type OpenQuestionKind } from "@/lib/ai/agent-loop/card-record";
 
 /**
  * ============================================================================
@@ -112,6 +112,23 @@ export interface ToolContext {
   readonly earlierCard?: CardRecord | null;
   /** Fix batch items 4 and 3: the "Did you mean" questions this chat's find_staff gave, from the server's record. */
   readonly nameQuestions?: readonly NameQuestionRecord[];
+  /** The open question record (`card-record.ts`): the questions the last reply's tools asked, which this message may answer. */
+  readonly openQuestions?: readonly OpenQuestion[];
+  /** Every kind of question this chat's earlier replies asked (a question already asked is not asked twice). */
+  readonly askedBefore?: readonly OpenQuestionKind[];
+}
+
+/** A question this tool result asks (the open question record): one per kind, at most MAX_OPEN_QUESTIONS per reply. */
+export function askedQuestion(effects: ToolEffects | undefined, question: OpenQuestion): void {
+  if (!effects) return;
+  const asked = effects.openQuestions ?? [];
+  if (asked.some((earlier) => earlier.kind === question.kind) || asked.length >= MAX_OPEN_QUESTIONS) return;
+  effects.openQuestions = [...asked, question];
+}
+
+/** The last reply's tools asked this kind of question (the record, never the reply's text). */
+function lastReplyAsked(context: Pick<ToolContext, "openQuestions">, kind: OpenQuestionKind): OpenQuestion | null {
+  return context.openQuestions?.find((question) => question.kind === kind) ?? null;
 }
 
 /** The recorded name questions and the roster, for `confirmed-spelling.ts`. */
@@ -475,6 +492,8 @@ export interface ToolEffects {
   personAsked?: { templateKey: string };
   /** find_staff ran this turn: a person was named, so a card without one is not "nobody named" (item 6). */
   staffLookedUp?: boolean;
+  /** The questions this turn's tool results asked, for the open question record (`askedQuestion`). */
+  openQuestions?: OpenQuestion[];
   /** Fix batch items 4 and 3: this turn's last "Did you mean" (the roster ids offered, the name typed), for the record. */
   nameQuestion?: { offeredIds: string[]; typed: string };
   /** Batch G (G4), by the rebuild plan's PR 1b: find_past_forms found forms on file to open (open: true) for this person. */
@@ -1702,11 +1721,16 @@ export async function proposeForm(
     const kind = exitEvidenceKind(input.exit_evidence);
     const offer = `Want the ${template.name} for **${employee.name}**?`;
     if (kind === "resignation_told") {
+      askedQuestion(effects, { kind: "exit_offer" });
       return { exit_not_asked: true, reason_code: "exit_not_asked", ask_exactly: offer, note: "The manager told a resignation but did not ask for the exit form. Make no card: say what you understood in a few words and end the reply with ask_exactly. Propose the exit card only when they say yes (exit_evidence kind yes_to_exit_offer)." };
     }
-    /* A yes to the offer is this message, answering the app reply right before it. */
-    const answersOffer = kind === "yes_to_exit_offer" && check.ok && check.turn.index === turns.length - 1 && turns[turns.length - 2]?.role === "assistant";
+    /*
+     * A yes to the offer is this message, answering a reply whose tools offered the exit form: the open question record
+     * (Pau, 16 Nov 2026), never where the turns sit.
+     */
+    const answersOffer = kind === "yes_to_exit_offer" && check.ok && check.turn.index === turns.length - 1 && lastReplyAsked(context, "exit_offer") !== null;
     if (kind !== "asks_for_exit_form" && !answersOffer) {
+      askedQuestion(effects, { kind: "exit_offer" });
       return { exit_not_stated: true, reason_code: "exit_not_stated", evidence: kind === null ? "exit_kind_missing" : "exit_offer_not_answered", ask_exactly: offer, note: "exit_evidence needs its kind: asks_for_exit_form (the manager's words ask for the exit form or its paperwork), yes_to_exit_offer (this message says yes to your offer of it, right after you asked), or resignation_told (a resignation told, no ask: make no card and end the reply with ask_exactly)." };
     }
   }
@@ -2134,6 +2158,13 @@ export async function proposeForm(
   const unset = corrective && !awaiting ? [...(payroll ? [] : ["payroll_deduct"]), ...(level || terminationStated ? [] : ["warning_level"])] : [];
   /* Fix batch item 7: what this card's reply asks (the next turn's card record): payroll alone after an unclear answer. */
   effects.proposalAsked = payrollAnswerUnclear ? ["payroll_deduct"] : unset;
+  /* The open question record: which date (several stated, none chosen), and the exit offer after a termination. */
+  if (payrollAnswerUnclear) askedQuestion(effects, { kind: "payroll" });
+  if (levelUnnamed) askedQuestion(effects, { kind: "level" });
+  if (datesAsked.length > 0) askedQuestion(effects, { kind: "date", optionKeys: [...new Set(datesAsked.map((given) => monthDayToIso(given, today)))].map(personKey) });
+  const exitTemplate = terminationStated ? templates.find((row) => row.key === appConfig().formKeys.exit) : undefined;
+  const exitOffer = exitTemplate ? `Want the ${exitTemplate.name} for **${employee.name}** too?` : null;
+  if (exitOffer) askedQuestion(effects, { kind: "exit_offer" });
   const salonNames = (ids: readonly string[] | undefined) => (ids ?? []).map((id) => ({ id, name: rosterSalonName(id) ?? id }));
   /*
    * Batch K4 (QA's 266 shadow replay, c137/c134: a pasted account about <Y>, off the roster, went on <X>'s card; the
@@ -2163,7 +2194,7 @@ export async function proposeForm(
     ...(corrective && payroll === "yes" && !amount ? (saysAmountUnknown(context.question, context.history, { amountOpen: true }) ? { payroll_amount_unknown: true } : { payroll_amount_unset: true }) : {}),
     ...(datesGiven.length > 1 ? { dates_given: datesGiven, ...(date ? { date_chosen: date } : {}) } : {}),
     /* Batch G (G16): this chat already asked which date; a second ask is never made (the rules book: use the best reading). */
-    ...(datesGiven.length > 1 && context.history.some((message) => message.role === "assistant" && /more than one date|which date goes on the form/i.test(String(message.content))) ? { dates_asked_before: true } : {}),
+    ...(datesGiven.length > 1 && (context.askedBefore ?? []).includes("date") ? { dates_asked_before: true } : {}),
     ...(accountLost.length > 0 ? { account_words_missing: accountLost } : {}),
     ...(accountGiven ? { request_words: untrusted(accountGiven) } : {}),
     ...(figuresNotSaid.length > 0 ? { figures_not_said: figuresNotSaid } : {}),
@@ -2203,6 +2234,8 @@ export async function proposeForm(
     ...(jobTitleTyped ? { job_title_from_your_words: card.employeeRole } : {}),
     ...(whichSalon ? { which_salon: true } : {}),
     ...(terminationStated ? { termination_stated: { approval: stated.TERMINATION_APPROVAL_LINE, plan_closing: stated.TERMINATION_PLAN_SENTENCE } } : {}),
+    /* The exit offer after a termination is a recorded question, so the manager's yes is read from the record. */
+    ...(terminationStated && exitOffer ? { offer_exit: { ask_exactly: exitOffer } } : {}),
     /*
      * Batch G2 (item 3, QA's live run part 2: the hedge line was missing on 5 of 7): the manager's words name a
      * termination but the model chose none for this form, so code informs; the rules book gives the line exactly.
@@ -2477,6 +2510,7 @@ export async function editForm(
     }
   }
   if (unstated.length > 0) {
+    if (unstatedCodes.get("warning_type")?.evidence_reason === "level_not_in_evidence") askedQuestion(effects, { kind: "level" });
     return { ...(unstatedCodes.get("warning_type")?.evidence_reason === "level_not_in_evidence" ? { ask_exactly: LEVEL_QUESTION } : {}), reason_code: (unstated.length === 1 ? unstatedCodes.get(unstated[0]!)?.reason_code : undefined) ?? "not_stated", ...(unstated.length === 1 && unstatedCodes.get(unstated[0]!) ? { evidence_reason: unstatedCodes.get(unstated[0]!)!.evidence_reason } : {}), error: `${unstated.join(", ")} must come from the manager's own words, and this message does not state ${unstated.length === 1 ? "it" : "them"}. Nothing was written. Ask, or leave it for the manager.` };
   }
   /*

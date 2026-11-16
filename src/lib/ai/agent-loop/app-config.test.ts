@@ -31,6 +31,10 @@ import { rulesBookText } from "./rules-book";
  *
  * Re-taken on purpose on 16 Nov 2026 (fix batch item 2, "final warning", Pau's ruling): one Card replies line was added
  * for level_not_named. It reads the same under every config; nothing else changed.
+ *
+ * Updated on purpose on 16 Nov 2026 (the open question record): the termination line's exit offer is propose_form's
+ * offer_exit.ask_exactly, and a question a tool gave is answered from the record (answering_question). One line; it names
+ * no app, place, staff system or form key.
  */
 
 const fixture = (name: string): string => readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), "utf8");

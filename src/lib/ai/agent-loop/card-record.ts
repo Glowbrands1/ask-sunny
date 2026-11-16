@@ -78,10 +78,46 @@ export interface PersonAskedRecord extends PersonAskedSlot {
   readonly messageId: string | null;
 }
 
-type TraceRow = { message_id: string | null; slots: { agent_loop?: { card?: unknown; name_question?: unknown; person_asked?: unknown } } | null };
+/*
+ * THE OPEN QUESTION RECORD (Pau, 16 Nov 2026: every answer to a question Sunny asked is applied to that field; QA's plan
+ * review). Each question a tool result carried this turn (payroll, the level, which date, the policy, which form, the exit
+ * offer, which person, any other ask_exactly) is written to `slots.agent_loop.open_question`: up to MAX_OPEN_QUESTIONS, one
+ * per kind, so the answer to an earlier question is never lost to a later one. No names or values: `optionKeys` are
+ * one-way keys (`personKey`) of the options offered, matched again by the tools. The next turn is told the questions up
+ * front (`answering_question`), and the tools accept the manager's answer to that field from this record, never from the
+ * reply's text or from where a turn sits.
+ */
+export const OPEN_QUESTION_KINDS = ["payroll", "level", "date", "policy", "which_form", "exit_offer", "person_which", "ask"] as const;
+export type OpenQuestionKind = (typeof OPEN_QUESTION_KINDS)[number];
+export const MAX_OPEN_QUESTIONS = 3;
 
-type LoopRecords = { cards: CardRecord[]; nameQuestions: NameQuestionRecord[]; personAsked: PersonAskedRecord[] };
-const NO_RECORDS = (): LoopRecords => ({ cards: [], nameQuestions: [], personAsked: [] });
+export interface OpenQuestion {
+  readonly kind: OpenQuestionKind;
+  /** `personKey` of each option offered (an ISO date, a heading, a form instance id, a roster id), when there were options. */
+  readonly optionKeys?: readonly string[];
+  /** The card the question was about, when it was a card's field. */
+  readonly proposalId?: string;
+}
+
+export interface OpenQuestionRecord {
+  readonly questions: readonly OpenQuestion[];
+  readonly messageId: string | null;
+}
+
+export function readOpenQuestions(value: unknown): OpenQuestion[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((row): OpenQuestion[] => {
+    const question = row as Partial<OpenQuestion> | null;
+    if (!question || !OPEN_QUESTION_KINDS.includes(question.kind as OpenQuestionKind)) return [];
+    const optionKeys = Array.isArray(question.optionKeys) ? question.optionKeys.filter((key): key is string => typeof key === "string") : undefined;
+    return [{ kind: question.kind as OpenQuestionKind, ...(optionKeys?.length ? { optionKeys } : {}), ...(typeof question.proposalId === "string" ? { proposalId: question.proposalId } : {}) }];
+  }).slice(0, MAX_OPEN_QUESTIONS);
+}
+
+type TraceRow = { message_id: string | null; slots: { agent_loop?: { card?: unknown; name_question?: unknown; person_asked?: unknown; open_question?: unknown } } | null };
+
+type LoopRecords = { cards: CardRecord[]; nameQuestions: NameQuestionRecord[]; personAsked: PersonAskedRecord[]; openQuestions: OpenQuestionRecord[] };
+const NO_RECORDS = (): LoopRecords => ({ cards: [], nameQuestions: [], personAsked: [], openQuestions: [] });
 
 /** This user's loop records in this conversation, oldest first, from one read. Empty without a conversation id, or if the read fails. */
 export async function readLoopRecords(conversationId: string | undefined, userId: string): Promise<LoopRecords> {
@@ -109,6 +145,10 @@ export async function readLoopRecords(conversationId: string | undefined, userId
       personAsked: rows.flatMap((row) => {
         const asked = row.slots?.agent_loop?.person_asked as Partial<PersonAskedSlot> | undefined;
         return asked && typeof asked.templateKey === "string" ? [{ templateKey: asked.templateKey, messageId: row.message_id }] : [];
+      }),
+      openQuestions: rows.flatMap((row) => {
+        const questions = readOpenQuestions(row.slots?.agent_loop?.open_question);
+        return questions.length > 0 ? [{ questions, messageId: row.message_id }] : [];
       }),
     };
   } catch {

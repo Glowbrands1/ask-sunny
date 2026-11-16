@@ -54,6 +54,8 @@ export function agentLoopSystem(input: {
   readonly cardOpen?: boolean;
   /** Fix batch item 6: the last reply's propose_form asked who this form is for (the server's record); its name. */
   readonly answeringWhoQuestion?: string | null;
+  /** The open question record: the questions the last reply's tools asked (kind, and how many options were offered). */
+  readonly answeringQuestions?: readonly { readonly kind: string; readonly options: number }[];
 }): string {
   const config = appConfig();
   const place = config.locationWord;
@@ -73,6 +75,9 @@ export function agentLoopSystem(input: {
     input.cardOpen ? "A card is open: your last reply showed a card the manager has not created yet; it is still on their screen." : "",
     input.answeringWhoQuestion
       ? `answering_who_question: your last reply asked who the ${input.answeringWhoQuestion} is for, and this message answers it. Look the name up with find_staff (person_evidence: the manager's words) before anything else; a first name alone is a name, never an acronym, a topic or a product.`
+      : "",
+    input.answeringQuestions && input.answeringQuestions.length > 0
+      ? `answering_question: your last reply asked ${JSON.stringify(input.answeringQuestions)}. If this message answers one of them, use the answer for that field (pass the manager's words as that field's evidence) and do not ask it again. If it answers none of them (a new request, another subject), leave them and handle the message as it is.`
       : "",
   ];
   return lines.filter(Boolean).join("\n\n");
