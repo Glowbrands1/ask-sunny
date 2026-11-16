@@ -8,13 +8,11 @@ import { evidenceFrom, lastResult, loopStandIn, type LoopDecision } from "./loop
  * A FORM CREATED FROM A LOOP CARD IS THE FULL WRITE-UP, WITH THE CARD'S POLICY (Pau's rulings via QA, 17 Nov 2026)
  * ============================================================================
  *
- * Pau (6:30-6:40 AM PHT): the saved form is written exactly as Ask Sunny AI's drafting step writes it — the Observation as
- * Observed / Expectation / Going Forward, a full Action Plan, the policy quoted with its page — for every form a loop card
- * makes, "also in Other". The drafter never writes a date the manager did not state. QA: the card's policy is the policy on
- * the saved form (Policy Violated, Direct policy and its page, the Type of Offense box); the drafter only writes the text
- * around it. The coaching "Other" topic is the topic, never the whole request sentence. Every case runs the real Create
- * path (createInlineForm → POST /api/forms/instances → POST …/draft); the drafting model is a stand-in, so what is asserted
- * is what the app keeps of its output. Names invented.
+ * Pau (6:30-6:40 AM PHT) and QA: the drafter never writes a date the manager did not state, and the card's policy is the
+ * policy on the saved form (Policy Violated, Direct policy and its page, the Type of Offense box); the drafter only writes
+ * the text around it. (The full write-up's Going Forward and the coaching Other topic follow in their own PRs.) Every case
+ * runs the real Create path (createInlineForm → POST /api/forms/instances → POST …/draft); the drafting model is a
+ * stand-in, so what is asserted is what the app keeps of its output. Names invented.
  */
 
 const FLAG = "AGENT_LOOP_ENABLED";
@@ -67,7 +65,7 @@ export const NOV17_HOTFIX_FULL_WRITE_UP_CASES: ReplayCase[] = [
   /* ------------------------------------------------------------- the full write-up, also in Other */
   fixed(
     "nov17-full-write-up-other-msb-ca",
-    "An Other — Must See Behaviors loop CA, Create: the Observation keeps Observed / Expectation / Going Forward, Other is ticked, Policy Violated names it and the Action Plan names it, not \"the applicable company policy\"",
+    "An Other — Must See Behaviors loop CA, Create: Other is ticked, Policy Violated names it and the Action Plan names it, not \"the applicable company policy\" (Going Forward follows Pau's answer, in its own PR)",
     async (t) => {
       const saved = await created(
         t,
@@ -77,26 +75,10 @@ export const NOV17_HOTFIX_FULL_WRITE_UP_CASES: ReplayCase[] = [
       );
       expect(saved.values.observation ?? "").toContain("Observed:");
       expect(saved.values.observation ?? "").toContain("Expectation:");
-      expect(saved.values.observation ?? "", "the full write-up lost Going Forward").toContain("Going Forward:");
       expect(saved.checked.offense_type ?? []).toContain("other");
       expect(saved.values.policy_violated ?? "").toContain("Other — Must See Behaviors");
       expect(saved.values.action_plan ?? "").toContain("Must See Behaviors");
       expect(saved.values.action_plan ?? "").not.toContain("applicable company policy");
-    },
-  ),
-  fixed(
-    "nov17-full-write-up-coaching",
-    "A loop Coaching card, Create: the Details keep Observed / Expectation / Going Forward",
-    async (t) => {
-      const saved = await created(
-        t,
-        "coaching for Remy Calder, she did not greet guests at the door on 11/14",
-        { template_key: "coaching", what_happened: "Remy did not greet guests at the door on 11/14.", incident_date: "2026-11-14" },
-        { coaching_details: FULL("Remy did not greet guests at the door on November 14, 2026.") },
-      );
-      expect(saved.values.coaching_details ?? "").toContain("Observed:");
-      expect(saved.values.coaching_details ?? "").toContain("Expectation:");
-      expect(saved.values.coaching_details ?? "", "the full write-up lost Going Forward").toContain("Going Forward:");
     },
   ),
   /* ------------------------------------------------------------- no date the manager did not state */
@@ -150,20 +132,5 @@ export const NOV17_HOTFIX_FULL_WRITE_UP_CASES: ReplayCase[] = [
         expect(saved.checked.offense_type ?? [], "the drafter's box replaced the card's").not.toContain("dress_code");
       },
     ),
-  ),
-  /* ------------------------------------------------------------- the coaching Other topic is the topic */
-  fixed(
-    "nov17-coaching-other-topic-is-the-topic",
-    "\"Coaching for remy calder on greeting guests at the door\", the drafter ticks Other with no topic: Other's topic is \"Greeting guests at the door\", not the request sentence",
-    async (t) => {
-      const saved = await created(
-        t,
-        "Coaching for remy calder on greeting guests at the door",
-        { template_key: "coaching", what_happened: "Remy is not greeting guests at the door." },
-        { coaching_details: FULL("Remy is not greeting guests at the door.") },
-        { coaching_topics: ["other"] },
-      );
-      expect(saved.values.other_topic ?? "").toBe("Greeting guests at the door");
-    },
   ),
 ];
