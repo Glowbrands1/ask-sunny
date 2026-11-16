@@ -2449,15 +2449,13 @@ export async function proposeForm(
   if (payrollAnswerUnclear) payroll = null;
   /*
    * PAYROLL STATED FOR THIS REQUEST STAYS ON THE CARD (QA, 16 Nov 2026; c022: "payroll is deductable" put Yes on the card,
-   * and the next turn's rebuild dropped it), exactly as a stated level does (c208, c019). The latest record of THIS card
-   * inside this request's turns (else the card on screen or the chat's latest card, when it is this card) holds the answer
-   * and its amount; with no payroll from this turn's evidence, they stay. A new request (new_form_evidence) starts fresh;
-   * an answer still counts only for the card it answered (PR 1c): another person's or another form's card is never this
-   * card's record. Never "as you said" for a carried answer (stated_this_turn lists this message's only).
+   * and the next turn's rebuild dropped it). A rebuild of the card ON SCREEN (the last reply showed this card, by the
+   * server's record) keeps the payroll answer and amount that card held, when this turn's evidence states none. Only the
+   * card on screen: an answer belongs to the card it answered (PR 1c), so a card shown again after a turn with no card
+   * ("yes", "thanks", "another ca for <name>") never gets it, nor does a new request (new_form_evidence), another
+   * person's card or another form. Never "as you said" for a carried answer (stated_this_turn lists this message's only).
    */
-  const payrollRecord = caOnlyFields && !asksNewForm
-    ? ([...(context.cardRecords ?? [])].reverse().find((record) => isThisCard(record) && inRequest(record) && record.payroll) ?? [context.cardOnScreen, context.earlierCard].find((record): record is CardRecord => isThisCard(record) && Boolean(record.payroll)) ?? null)
-    : null;
+  const payrollRecord = caOnlyFields && !asksNewForm && isThisCard(context.cardOnScreen) && context.cardOnScreen.payroll ? context.cardOnScreen : null;
   if (payroll === null && !payrollAnswerUnclear && payrollRecord?.payroll) {
     payroll = payrollRecord.payroll;
     if (payroll === "yes" && !amount && payrollRecord.payrollAmount) amount = payrollRecord.payrollAmount;
