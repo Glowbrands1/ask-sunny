@@ -603,7 +603,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   const handlers: Record<string, (args: Record<string, unknown>) => Promise<ToolResult>> = {
     find_staff: (args) => findStaff(context, args, effects),
     find_past_forms: (args) => findPastForms(context, args, effects),
-    read_form: (args) => readForm(context, args),
+    read_form: (args) => readForm(context, args, effects),
     read_policy: (args) => readPolicy(context, args, effects),
     propose_form: (args) => proposeForm(context, effects, args),
     edit_form: async (args) => withEditReplyName(context, effects, await editForm(context, effects, args)),

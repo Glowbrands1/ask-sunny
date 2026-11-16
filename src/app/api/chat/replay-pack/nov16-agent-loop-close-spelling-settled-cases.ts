@@ -113,4 +113,48 @@ export const NOV16_AGENT_LOOP_CLOSE_SPELLING_SETTLED_CASES: ReplayCase[] = [
       }
     },
   },
+  {
+    id: "nov16-close-spelling-forms-on-file-asked",
+    title: "The Runner's live set on 1a53042: after Tamsin Orwell's card, \"edit tamsen orwel ca\" with the model going to the forms on file for the card's person (find_past_forms \"Tamsin Orwell\"), never find_staff: the close spelling is asked (Did you mean), nothing is listed as hers",
+    report: `${REPORT}; the Runner (16 Nov 2026): in 6/6 the model answered through the past-forms path ("No Corrective Action on file for <Ta> – nothing saved yet")`,
+    status: "fixed",
+    fixFlags: [FLAG, NEAR_MISS],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      start(t);
+      t.loopModel!(model());
+      const thread = t.thread();
+      await thread.say("ca for tamsin orwell, she was late to her shift on 11/14");
+      expect(thread.proposal?.employeeName).toBe("Tamsin Orwell");
+      const past = loopStandIn((view): LoopDecision => {
+        const found = lastResult(view, "find_past_forms") as { ask_exactly?: string; forms?: unknown[] } | null;
+        if (!found) return { tool: "find_past_forms", input: { employee_name: "Tamsin Orwell", forms_on_file_evidence: evidenceFrom(view, "edit tamsen orwel ca") } };
+        return { text: found.ask_exactly ?? "No Corrective Action on file for Tamsin – nothing saved yet." };
+      });
+      t.loopModel!(past);
+      const edit = await thread.say("edit tamsen orwel ca");
+      const out = past.views.flatMap((view) => view.results).find((result) => result.tool === "find_past_forms")?.output as { reason_code?: string } | undefined;
+      expect(out?.reason_code, "the forms on file were read for the card's person from a close spelling").toBe("close_spelling_not_confirmed");
+      expect(edit.content).toMatch(ASKED);
+    },
+  },
+  {
+    id: "nov16-close-spelling-card-person-id-asked",
+    title: "Coding-B's shape: after a coaching card for \"Tamsin Orwell\", \"also a CA for tamsen orwel for the same thing\" with the model passing the card's employee_id to propose_form: asked (Did you mean **Tamsin Orwell**?), no CA card",
+    report: REPORT,
+    status: "fixed",
+    fixFlags: [FLAG, NEAR_MISS],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      start(t);
+      t.loopModel!(model());
+      const thread = t.thread();
+      await thread.say("ca for Tamsin Orwell, she was late to her shift on 11/14");
+      expect(thread.proposal?.employeeName).toBe("Tamsin Orwell");
+      t.loopModel!(model({ direct: true }));
+      const also = await thread.say("also a CA for tamsen orwel for the same thing");
+      expect(also.content, `the card's person was seated from a close spelling:\n${also.content}`).toMatch(ASKED);
+      expect(also.formProposal ?? null, "a new card was made from a close spelling").toBeNull();
+    },
+  },
 ];

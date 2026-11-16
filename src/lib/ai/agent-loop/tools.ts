@@ -1095,6 +1095,8 @@ export async function findPastForms(context: ToolContext, input: { employee_name
   if (typed === "") return { reason_code: "missing_input", error: "Give the employee's name." };
   const asked = await formsOnFileAskedFor(context, input.forms_on_file_evidence, typed);
   if (!asked.ok) return privacyRefusal(asked.reason, asked.reasonCode);
+  const closeSpelled = await closeSpellingRefusal(context, effects, typed);
+  if (closeSpelled) return closeSpelled;
   const actor = await chatFormsActor(context.actor).catch(() => undefined);
   if (actor === undefined) return { reason_code: "read_failed", error: "Form Monitoring could not be read just now. Say so; do not say there are no forms." };
   if (actor === null) return { reason_code: "scope", error: "This manager's role cannot view Form Monitoring, so past forms cannot be listed." };
@@ -1208,7 +1210,7 @@ export async function findPastForms(context: ToolContext, input: { employee_name
 
 const VALUES_LIMIT = 6_000;
 
-export async function readForm(context: ToolContext, input: { instance_id?: unknown; forms_on_file_evidence?: unknown }): Promise<ToolResult> {
+export async function readForm(context: ToolContext, input: { instance_id?: unknown; forms_on_file_evidence?: unknown }, effects?: ToolEffects): Promise<ToolResult> {
   const id = typeof input.instance_id === "string" ? input.instance_id.trim() : "";
   if (id === "") return { reason_code: "missing_input", error: "Give the form's instance_id (from find_past_forms or the open form)." };
   if (id !== context.openFormId) {
@@ -1217,6 +1219,8 @@ export async function readForm(context: ToolContext, input: { instance_id?: unkn
   }
   try {
     const { loaded } = await authorizeInstance(context.request, id, "view");
+    const closeSpelled = loaded.instance.employeeName ? await closeSpellingRefusal(context, effects, loaded.instance.employeeName) : null;
+    if (closeSpelled) return closeSpelled;
     const values: Record<string, { untrusted_text: string }> = {};
     let size = 0;
     for (const row of loaded.values) {
@@ -1572,6 +1576,26 @@ function closeSpellingNotSettled(
     if (close) return confirmed.includes(personKey(close)) ? null : close;
   }
   return null;
+}
+
+/**
+ * QA (16 Nov 2026, the Runner's live set on 1a53042): the model read "tamsen orwel" as the open card's person and went to
+ * the forms on file, never calling find_staff or propose_form. A form tool given a person (find_past_forms' name, or the
+ * person on the form open_form / read_form opens) asks the Did-you-mean when the manager's words hold only a close
+ * spelling of that person (`closeSpellingNotSettled`), and records it so the answer is read next turn.
+ */
+async function closeSpellingRefusal(context: ToolContext, effects: ToolEffects | undefined, personName: string): Promise<ToolResult | null> {
+  const read = await rosterFor(context.actor.scope);
+  if (read.kind !== "read") return null;
+  const holders = read.roster.filter((row) => fullNamesOf(row).some((full) => samePerson(full, personName)));
+  if (holders.length !== 1) return null;
+  const spelled = closeSpellingNotSettled(context, holders[0]!, read.roster, undefined);
+  if (!spelled) return null;
+  if (effects) effects.nameQuestion = { offeredIds: [holders[0]!.id], typed: spelled };
+  return {
+    reason_code: "close_spelling_not_confirmed", error: `The manager typed "${spelled}", not ${displayName(holders[0]!)}. Nothing was looked up or opened. Ask exactly ask_exactly, once.`,
+    ask_exactly: nameConfirmationQuestion(spelled, [displayName(holders[0]!)]),
+  };
 }
 
 /** A roster person's full names: the Woven preferred name with the surname, and the legal one (batch G, QA). */
@@ -2212,7 +2236,20 @@ export async function proposeForm(
    */
   const caOnlyFields = template.key === appConfig().formKeys.corrective;
   const askedPayroll = (input.payroll_deduct === "yes" || input.payroll_deduct === "no") ? input.payroll_deduct : null;
-  const payrollCheck = caOnlyFields && askedPayroll ? answerEvidence(context, input.payroll_evidence, { card: employee.name, aliases }, evidencePerson) : null;
+  /*
+   * QA (16 Nov 2026, the Runner's live set on 1a53042: "and payroll"): payroll stated in the message that asked for THIS
+   * card (the turn its card record answered: "I need a written CA, payroll deduct $20") stays on it, as a stated level does
+   * (c158), a corrected card's request under its earlier name included. A later answer still belongs only to the card it
+   * answered (QA's PR 1c: an older "yes" never reaches "another ca for <name>").
+   */
+  const payrollCheck = caOnlyFields && askedPayroll
+    ? (() => {
+        const byCard = answerEvidence(context, input.payroll_evidence, { card: employee.name, aliases }, evidencePerson);
+        if (byCard.ok || !requestStart) return byCard;
+        const byRequest = answerEvidence(context, input.payroll_evidence, "request", evidencePerson, { requestTurnIds: [requestStart.id] });
+        return byRequest.ok && byRequest.turnId === requestStart.id ? byRequest : byCard;
+      })()
+    : null;
   let payroll: "yes" | "no" | null = askedPayroll && payrollCheck?.ok ? askedPayroll : null;
   const typedAmount = typeof input.payroll_amount === "string" && /\d/.test(input.payroll_amount) ? input.payroll_amount.replace(/[^\d.]/g, "") : null;
   /* The amount the manager stated, read as today reads it (`payrollAmountFromConversation`) when the model left it out. */
@@ -3553,6 +3590,8 @@ export async function openForm(context: ToolContext, effects: ToolEffects, input
   try {
     const { loaded } = await authorizeInstance(context.request, id, "view");
     const instance = loaded.instance;
+    const closeSpelled = instance.employeeName ? await closeSpellingRefusal(context, effects, instance.employeeName) : null;
+    if (closeSpelled) return closeSpelled;
     effects.formOpened = { instanceId: instance.id, templateName: instance.templateName, revisesInstanceId: null };
     return {
       opened: true,
