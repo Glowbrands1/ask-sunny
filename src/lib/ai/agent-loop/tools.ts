@@ -1310,8 +1310,28 @@ export async function findPastForms(context: ToolContext, input: { employee_name
      * the turn opens one of them, so a card proposed earlier this turn for the SAME person is withdrawn (a fact) and no new
      * card for them is proposed. Never on an error path or "None on file"; another person's card stays.
      */
+    /*
+     * QA (16 Nov 2026, the Coordinator's group E, after "yes"): the manager typed "ca" loosely while this person's card was
+     * on screen. With their card on screen (or the chat's latest card, not created) AND forms on file, the which-one
+     * question lists the card on screen FIRST; picking it changes that card, picking a dated form opens it. Code informs
+     * (card_on_screen, ask_exactly); the reply is the model's.
+     */
+    const shown = context.cardOnScreen ?? context.earlierCard ?? null;
+    const ownCard = input.open === true && shown && holders.length === 1 && shown.employeeKey === personKey(holders[0]!.id) ? shown : null;
+    const onScreenChoice = ownCard
+      ? (() => {
+          const cardForm = ownCard.templateName ?? "card";
+          const dated = forms.map((form) => `${form.form}${form.form_date ? ` from ${form.form_date}` : ""}`);
+          const onFile = dated.length === 1 ? `the ${dated[0]} on file` : `one of the ${dated.length} forms on file (${dated.join("; ")})`;
+          return {
+            card_on_screen: { form: cardForm, created: false },
+            ask_exactly: `Which one: the ${cardForm} on screen, or ${onFile}?`,
+            note: `This person's ${cardForm} is the card on screen, not created yet, and forms are on file too. End your reply with ask_exactly, exactly. If the manager picks the card on screen, change it (propose_form again with the change and everything it already has); if they pick a dated form, open it with open_form.`,
+          };
+        })()
+      : null;
     let withdrawn: string | null = null;
-    if (input.open === true && effects) {
+    if (input.open === true && effects && !onScreenChoice) {
       effects.openRequested = typed;
       if (effects.proposal && sameRosterPerson(effects.proposal.employeeName ?? "", typed, people)) {
         withdrawn = effects.proposal.templateName ?? "card";
@@ -1322,14 +1342,15 @@ export async function findPastForms(context: ToolContext, input: { employee_name
       forms,
       ...(withdrawn ? { card_withdrawn: `The ${withdrawn} card proposed earlier this turn was withdrawn: the manager asked to open a form on file, not to make one.` } : {}),
       ...(closeSpelling ? { close_spelling_of: { typed: untrusted(typed), on_file: closeSpelling } } : {}),
-      ...(forms.length === 1 && (described || closeSpelling) ? { best_match: forms[0]!.instance_id, note: "One form fits what the manager described. If they asked to open, edit or see it, open it now with open_form." } : {}),
+      ...(onScreenChoice ?? {}),
+      ...(!onScreenChoice && forms.length === 1 && (described || closeSpelling) ? { best_match: forms[0]!.instance_id, note: "One form fits what the manager described. If they asked to open, edit or see it, open it now with open_form." } : {}),
       /*
        * G4 follow-up (QA, 15 Nov 2026; the model decides, code only informs): several forms fit an open request, so the
        * model is told to compare them with the manager's description ("the one with no salon", "the draft") and to open
        * the one it singles out, asking WHICH_FORM_QUESTION only when the words still fit more than one.
        */
       /* The rebuild plan, PR 1b: OPEN_REQUEST (a word list) is gone; the model says it is opening one (open: true). */
-      ...(forms.length > 1 && input.open === true ? { which_form_question: WHICH_FORM_QUESTION, single_out: singleOutNote() } : {}),
+      ...(!onScreenChoice && forms.length > 1 && input.open === true ? { which_form_question: WHICH_FORM_QUESTION, single_out: singleOutNote() } : {}),
     };
   } catch {
     return { reason_code: "read_failed", error: "Form Monitoring could not be read just now. Say so; do not say there are no forms." };

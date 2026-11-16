@@ -97,7 +97,7 @@ export const NOV16_AGENT_LOOP_FIRST_TURN_HOME_ASK_CASES: ReplayCase[] = [
   },
   {
     id: "nov16-home-ask-e-typo-of-card-person-with-forms-on-file",
-    title: "E: T1 \"coaching for Tamsin Orwell on greeting guests\" from the home ask bar gives the card; with Corrective Actions on file for her, \"edit tamsin orwelx ca\" (find_past_forms with the typo) asks Did you mean **Tamsin Orwell**, never \"Which one should I open?\" for a name nobody has",
+    title: "E: T1 \"coaching for Tamsin Orwell on greeting guests\" from the home ask bar gives the card; with Corrective Actions on file for her, \"edit tamsin orwelx ca\" (find_past_forms with the typo) asks Did you mean **Tamsin Orwell**, never \"Which one should I open?\" for a name nobody has; \"yes\" then offers the Coaching Form on screen first, then the forms on file",
     report: REPORT,
     status: "fixed",
     fixFlags: [FLAG, NEAR_MISS],
@@ -134,6 +134,21 @@ export const NOV16_AGENT_LOOP_FIRST_TURN_HOME_ASK_CASES: ReplayCase[] = [
       t.loopModel!(live);
       const edit = await thread.say("edit tamsin orwelx ca");
       expect(edit.content, `the typo was answered with the forms on file:\n${edit.content}`).toMatch(/Did you mean \*\*Tamsin Orwell\*\*/);
+      /*
+       * QA (16 Nov 2026): "yes" confirms Tamsin; her Coaching Form card is on screen (not created) and two Corrective Actions
+       * are on file, so the which-one question offers the card on screen FIRST (card_on_screen, ask_exactly).
+       */
+      const answered = loopStandIn((view): LoopDecision => {
+        const found = lastResult(view, "find_past_forms") as (Out & { card_on_screen?: { form: string } }) | null;
+        if (!found) return { tool: "find_past_forms", input: { employee_name: "Tamsin Orwell", form: "CA", open: true, forms_on_file_evidence: evidenceFrom(view, "edit tamsin orwelx ca", 1) } };
+        return { text: found.ask_exactly ?? found.which_form_question ?? found.note ?? "" };
+      });
+      t.loopModel!(answered);
+      const yes = await thread.say("yes");
+      const out = answered.views.flatMap((view) => view.results).find((result) => result.tool === "find_past_forms")?.output as { card_on_screen?: unknown; ask_exactly?: string; which_form_question?: string } | undefined;
+      expect(out?.card_on_screen, "the card on screen was not offered").toEqual({ form: "Coaching Form", created: false });
+      expect(out?.which_form_question, "the plain which-one question was asked instead").toBeUndefined();
+      expect(yes.content, `the card on screen is not the first option:\n${yes.content}`).toMatch(/^Which one: the Coaching Form on screen, or one of the 2 forms on file \(Corrective Action Form from 2026-11-0\d; Corrective Action Form from 2026-11-0\d\)\?$/m);
     },
   },
 ];

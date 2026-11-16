@@ -143,14 +143,19 @@ export async function readLoopRecords(conversationId: string | undefined, userId
   try {
     const admin = getSupabaseAdmin();
     const read = async (by: "conversation" | "messages") => {
-      const query = admin.from("chat_traces").select("message_id, slots, created_at").eq("user_id", userId);
+      const query = admin.from("chat_traces").select("message_id, slots, created_at, conversation_id").eq("user_id", userId);
       const filtered = by === "conversation" ? query.eq("conversation_id", conversationId!) : query.in("message_id", ids);
       return filtered.order("created_at", { ascending: true });
     };
     const results = await Promise.all([...(conversationId ? [read("conversation")] : []), ...(ids.length > 0 ? [read("messages")] : [])]);
     if (results.some((result) => result.error)) return NO_RECORDS();
     const seen = new Set<string>();
-    const rows = (results.flatMap((result) => (result.data ?? []) as (TraceRow & { created_at?: string })[]))
+    /*
+     * QA's rule: a row read by message id counts only when its conversation_id is null (turn 1 from the home ask bar) or
+     * this conversation; another conversation's row with the same message id is never this chat's.
+     */
+    const rows = (results.flatMap((result) => (result.data ?? []) as (TraceRow & { created_at?: string; conversation_id?: string | null })[]))
+      .filter((row) => !row.conversation_id || !conversationId || row.conversation_id === conversationId)
       .filter((row) => {
         const key = `${row.message_id ?? ""}\u0000${row.created_at ?? ""}`;
         if (seen.has(key)) return false;
