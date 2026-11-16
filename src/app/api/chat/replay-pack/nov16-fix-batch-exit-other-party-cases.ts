@@ -218,7 +218,7 @@ export const NOV16_FIX_BATCH_EXIT_OTHER_PARTY_CASES: ReplayCase[] = [
   ...([true, false] as const).map((asked): ReplayCase => ({
     id: `nov16-fix-batch-5-answer-bridge-${asked ? "the-app-asked-for-the-full-name" : "control-the-app-never-asked"}`,
     title: asked
-      ? "The answer bridge (QA's ruling, 16 Nov 2026; Pau: every answer is used): the script names \"Lysa\" (no spelling rule reaches Odalys) and the director Juno Paxton; the app answers \"I can't find **Lysa** … give me the full name\" (recorded); \"For Odalys Fenwick\" right after confirms Lysa as Odalys Fenwick, so the FIRST propose_form makes the exit card from the script's turns"
+      ? "The answer bridge (QA's ruling, 16 Nov 2026; Pau: every answer is used): the script names \"Lysa\" (no spelling rule reaches Odalys) and the director Juno Paxton; the exit is asked and the app answers \"I can't find **Lysa** … give me the full name\" (recorded); \"For Odalys Fenwick\" right after confirms Lysa as Odalys Fenwick, so the FIRST propose_form makes the exit card from the script's turns"
       : "The answer bridge, control: the same chat where the app never asked about Lysa (no find_staff offer): nothing bridges, the cited script turns stay the director's (request_evidence_other_person), no card",
     report: `${REPORT}; the Runner's facts: <A'> is two edits from <A>'s 4-letter-or-longer first name, out of reach of any spelling rule`,
     status: "fixed",
@@ -240,9 +240,11 @@ export const NOV16_FIX_BATCH_EXIT_OTHER_PARTY_CASES: ReplayCase[] = [
             },
           };
         }
-        const staff = lastResult(view, "find_staff") as { ask_exactly?: string } | null;
-        if (asked && !staff) return { tool: "find_staff", input: { name: "Lysa", person_evidence: evidenceFrom(view, "Lysa") } };
-        return { text: staff?.ask_exactly ?? "Who is this exit form for?" };
+        // T1 (the script, no ask): no form is chosen, so no lookup (the rules book). T2 asks for the exit: propose_form is
+        // refused for "Lysa" with the use-<name> offer, which is the recorded question T3 answers (as in the Runner's re-run).
+        const card = lastResult(view, "propose_form") as { ask_exactly?: string } | null;
+        if (asked && said.startsWith(ASK) && !card) return { tool: "propose_form", input: { template_key: "stc-exit", employee_name: "Lysa", exit_type: "termination", effective_date: "11/5", exit_evidence: { ...evidenceFrom(view, ASK), kind: "asks_for_exit_form" } } };
+        return { text: card?.ask_exactly ?? "This is a termination meeting script. Do you want the Employee Exit Form, or a Corrective Action?" };
       });
       t.loopModel!(standIn);
       const { thread, reply } = await c219AtT3(t, "Lysa");

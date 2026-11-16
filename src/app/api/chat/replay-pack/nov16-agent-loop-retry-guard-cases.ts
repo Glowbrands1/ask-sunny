@@ -138,7 +138,8 @@ export const NOV16_AGENT_LOOP_RETRY_GUARD_CASES: ReplayCase[] = [
         if (latest?.stop_retrying) return { text: `Tavi isn't on your staff list yet. ${latest.stop_retrying.ask_exactly ?? ""}`.trim() };
         const next = calls[results.length];
         if (!next) return { text: "Who is this for?" };
-        if (next === "find_staff") return { tool: "find_staff", input: { name: results.length >= 2 ? "use Tavi" : "Tavi", person_evidence: evidenceFrom(view, "for tavi") } };
+        // The bare name, then "use Tavi" passed back as the name (both seen in c134); call 1 comes before any form is chosen.
+        if (next === "find_staff") return { tool: "find_staff", input: { name: results.length >= 4 ? "use Tavi" : "Tavi", person_evidence: evidenceFrom(view, "for tavi") } };
         return { tool: "propose_form", input: { template_key: "dpoa", employee_name: "Tavi", what_happened: "She was late on 11/12.", incident_date: "2026-11-12" } };
       });
       t.loopModel!(model);
