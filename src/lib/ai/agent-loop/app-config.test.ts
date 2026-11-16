@@ -44,7 +44,9 @@ import { rulesBookText } from "./rules-book";
  * in their own words". All read the same under every config; nothing else changed. The same day (Pau): the pronoun line
  * became "the employee by first name every time" (full names when two share a first name), and title_differs' template
  * says <first name> instead of <them>. Then (QA, after the live runs): "never the full name in your words (the card shows
- * it)", the full name only when two people share a first name.
+ * it)", the full name only when two people share a first name; the card reply's first line names the employee in bold by
+ * first name (it said **<employee>**, which contradicted the rule), and the lines that say which person it is keep the full
+ * name.
  */
 
 const fixture = (name: string): string => readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), "utf8");
