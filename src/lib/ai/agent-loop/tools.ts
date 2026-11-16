@@ -2303,6 +2303,41 @@ async function lookUpForCard(context: ToolContext, effects: ToolEffects, typed: 
 }
 
 /**
+ * HOTFIX (QA, 17 Nov 2026): `text` without the sentences that speak to the manager. A sentence (or a bracketed aside) with
+ * a second-person word is kept only when the manager typed that word with the same word after it (or before it, at the
+ * end), in their own messages: "Both Sundays, you were scheduled …" and "she told the guest 'you can wait'" are the
+ * manager's, "that's your words for the offense; add any details before you press Create" is not. Read against the
+ * manager's text, never a phrase list.
+ */
+export function withoutTextToManager(text: string, managerText: string): { text: string; removed: string[] } {
+  // Words, with quote marks around a word set aside ("'you can wait'" reads "you can wait").
+  const tokensOf = (words: string) => words.toLowerCase().replace(/[\u2018\u2019]/g, "'").replace(/[^\p{L}\p{N}']+/gu, " ").trim().split(" ").map((token) => token.replace(/^'+|'+$/g, "")).filter(Boolean);
+  const said = ` ${tokensOf(managerText).join(" ")} `;
+  const SECOND = /^(?:you|your|yours|yourself|yourselves|you're|you'd|you'll|you've)$/;
+  const speaksToManager = (part: string): boolean => {
+    const tokens = tokensOf(part);
+    return tokens.some((token, index) => {
+      if (!SECOND.test(token)) return false;
+      const pair = index + 1 < tokens.length ? `${token} ${tokens[index + 1]}` : index > 0 ? `${tokens[index - 1]} ${token}` : token;
+      return !said.includes(` ${pair} `);
+    });
+  };
+  const removed: string[] = [];
+  // Bracketed asides first ("(from the offense you named …)"), then sentences.
+  const withoutAsides = text.replace(/\s*\([^()]*\)/g, (aside) => {
+    if (!speaksToManager(aside)) return aside;
+    removed.push(aside.trim());
+    return "";
+  });
+  const kept = withoutAsides.split(/(?<=[.!?])\s+/).filter((sentence) => {
+    if (!sentence.trim() || !speaksToManager(sentence)) return true;
+    removed.push(sentence.trim());
+    return false;
+  });
+  return { text: removed.length > 0 ? kept.join(" ").trim() : text, removed };
+}
+
+/**
  * c019 (QA, 17 Nov 2026): the manual heading `heading` typed in the manager's words, as they typed it, and whether it is
  * typed as the policy itself ("the Attendance policy", "Late Opening section") rather than as what the employee did ("for
  * Late Opening"). The heading's own words, in order, from the manual; null when they are not in the words.
@@ -2551,7 +2586,18 @@ export async function proposeForm(
     return { reason_code: "right_person", error: "That is the signed-in manager's own name, not an employee. Ask who the form is about." };
   }
 
-  let whatHappened = typeof input.what_happened === "string" ? input.what_happened.trim().slice(0, 2_000) : "";
+  /*
+   * HOTFIX (QA, 17 Nov 2026; live on main d7042447): an account never holds text to the manager. Runner 2's c019 and the
+   * live tester's r2 saved the reply's helper line in the Observation ("Late Opening. — that's your words for the offense;
+   * add any details before you press Create."). A sentence of the account (or the prior actions) whose second-person words
+   * the manager never typed is taken out (`withoutTextToManager`, read against the manager's own messages).
+   */
+  const managerText = [...(context.history as ChatMessage[]).filter((turn) => turn.role === "user").map((turn) => String(turn.content ?? "")), context.question].join("\n");
+  const accountRead = withoutTextToManager(typeof input.what_happened === "string" ? input.what_happened : "", managerText);
+  const priorRead = withoutTextToManager(typeof input.prior_actions === "string" ? input.prior_actions : "", managerText);
+  if (typeof input.prior_actions === "string") input = { ...input, prior_actions: priorRead.text };
+  const toManagerRemoved = [...accountRead.removed, ...priorRead.removed];
+  let whatHappened = accountRead.text.trim().slice(0, 2_000);
   /* The incident's own words (this person's turns, read below) are checked against the account once they are known. */
   const asked = managerContext(context.history as ChatMessage[], { id: context.questionMessageId, content: context.question });
   /* THIS request's turns (QA, 14 Nov 2026; THIS_PERSONS_TURNS behaviour): an earlier incident in the chat never feeds this card. */
@@ -2779,9 +2825,16 @@ export async function proposeForm(
    */
   const typedHeading = policyHeading ? headingTypedIn(requestWords, policyHeading) : null;
   let accountFromNamedOffense: string | null = null;
-  if (!whatHappened && ACCOUNT_FORMS.has(template.key) && typedHeading && !typedHeading.asPolicy) {
-    whatHappened = `${typedHeading.typed.charAt(0).toUpperCase()}${typedHeading.typed.slice(1)}.`;
-    accountFromNamedOffense = whatHappened;
+  /*
+   * HOTFIX (QA, 17 Nov 2026): when the offense the manager named is the account, the account is exactly their words for it
+   * and a period. A model account that is only that offense (anything else in it was text to the manager, taken out
+   * above) is replaced by the same words, so nothing but the manager's words is saved.
+   */
+  const offenseAccount = ACCOUNT_FORMS.has(template.key) && typedHeading && !typedHeading.asPolicy ? `${typedHeading.typed.charAt(0).toUpperCase()}${typedHeading.typed.slice(1)}.` : null;
+  const sameWords = (a: string, b: string) => a.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim() === b.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  if (offenseAccount && (!whatHappened || sameWords(whatHappened, offenseAccount))) {
+    whatHappened = offenseAccount;
+    accountFromNamedOffense = offenseAccount;
   }
   /*
    * CLOSE_SPELLING (the manual's own reader): a policy the manager named with a misspelling that is not one confident
@@ -3348,7 +3401,9 @@ export async function proposeForm(
     ...(template.key === appConfig().formKeys.corrective && !awaiting && !askedPolicyWhole ? { policy_not_given: { note: "This card has no policy. Propose it again with policy: the one JBA Policy Manual heading that fits what happened (the headings are listed in your instructions). \"Other — <short topic>\" only for Must See Behaviors, a cleaning duty left undone, or when no section fits; then say so in your reply." } } : {}),
     ...(accountGiven ? { request_words: untrusted(accountGiven) } : {}),
     /* c019: the account is the offense the manager named (see headingTypedIn); the reply says so, never "What happened?" about it. */
-    ...(accountFromNamedOffense ? { account_from_named_offense: { account: untrusted(accountFromNamedOffense), note: "The manager named the offense, and their words for it are the card's account. Say so in one short line (they can add more before Create); never ask what happened about it." } } : {}),
+    ...(accountFromNamedOffense ? { account_from_named_offense: { account: untrusted(accountFromNamedOffense), note: "The manager named the offense, and their words for it are the card's account, exactly as shown. Say so in one short line of your reply (they can add more before Create); never ask what happened about it, and never write that line into what_happened." } } : {}),
+    /* HOTFIX: sentences addressed to the manager were taken out of the account; they belong in the reply, never on the form. */
+    ...(toManagerRemoved.length > 0 ? { account_text_to_manager_removed: { removed: toManagerRemoved.map(untrusted), note: "These sentences spoke to the manager, so they were taken out of the card's account. What happened holds only the manager's account; anything for the manager goes in your reply." } } : {}),
     ...(figuresNotSaid.length > 0 ? { figures_not_said: figuresNotSaid } : {}),
     ...(formatFigures.length > 0 ? { format_figures: formatFigures } : {}),
     ...(fitsHeadings ? { fits_headings: fitsHeadings } : {}),
