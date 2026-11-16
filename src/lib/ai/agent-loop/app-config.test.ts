@@ -34,6 +34,10 @@ import { rulesBookText } from "./rules-book";
  *
  * Re-taken on purpose on 16 Nov 2026 (the retry guard, QA): one Card replies line was added for stop_retrying. It reads
  * the same under every config; nothing else changed.
+ *
+ * Re-taken on purpose on 16 Nov 2026 (never guess, QA): a Replies line (never guess a pronoun) and a Which form line
+ * (pasted text with no ask gets one question) were added, and the termination-offense line now says "the manager tells
+ * in their own words". All read the same under every config; nothing else changed.
  */
 
 const fixture = (name: string): string => readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), "utf8");
