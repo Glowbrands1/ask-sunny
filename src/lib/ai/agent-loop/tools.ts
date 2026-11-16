@@ -259,6 +259,9 @@ export function requestTurns(
   const nearName = (clean: string): { kind: "this" } | { kind: "ambiguous"; typed: string; others: string[] } | null => {
     if (!namedInFull || personFirst.length < 3) return null;
     let ambiguous: { kind: "ambiguous"; typed: string; others: string[] } | null = null;
+    // A confirmed spelling of two words (a corrected card's earlier full name) names this person too.
+    const allWords = clean.match(/\p{L}+/gu) ?? [];
+    if (allWords.some((word, at) => at > 0 && confirmedTypedKeys.includes(personKey(`${allWords[at - 1]} ${word}`)))) return { kind: "this" };
     for (const word of new Set(clean.match(/\p{L}{3,}/gu) ?? [])) {
       const token = word.toLowerCase();
       // The manager confirmed this spelling as this person in answer to the app's own question (Pau, 16 Nov 2026).
@@ -1353,6 +1356,8 @@ function cardNameCorrection(
   roster: readonly RosterEmployee[],
 ): { person: RosterEmployee; from: string } | { asTyped: true; from: string } | { refusal: ToolResult } | null {
   if (context.openFormId) return null;
+  /* A salon or city answer ("KS Manhattan" to the which-salon question) is never a person, so never a name correction. */
+  if (namesAPlace(typed)) return null;
   /*
    * After #1051 (QA): this check's "Did you mean" is recorded like find_staff's (effects.nameQuestion), and the answer is
    * read through `confirmed-spelling.ts` from the server's record, never from the reply's text. A "no" keeps the name as
@@ -1382,22 +1387,31 @@ function cardNameCorrection(
   const said = words(typed);
   const own = cardPerson ? { first: words([cardPerson.firstName, cardPerson.preferredFirstName ?? ""].join(" ")), last: words(cardPerson.lastName) } : { first: words(cardName).slice(0, 1), last: words(cardName).slice(-1) };
   const sharesAName = said.length >= 2 && (own.first.includes(said[0]!) || own.last.includes(said.at(-1)!));
-  if (!sharesAName) return null;
+  /*
+   * QA's live c219 re-ask (16 Nov 2026): a card for a name not on the roster asks the manager to check that name (its
+   * off_roster_name line; recorded as a name question). A different full name given in the next message answers it: a
+   * correction of the card's person, though the two names share no word. Read from the record, never the reply's text.
+   */
+  const answersCardCheck = !cardPerson && card.nameKey !== null && spellingKeysConfirmedForName(view, typed).includes(card.nameKey);
+  if (!sharesAName && !answersCardCheck) return null;
   const holders = roster.filter((row) => fullNamesOf(row).some((full) => samePerson(full, typed)));
   if (holders.length === 1) return { person: holders[0]!, from: cardName };
   if (holders.length > 1) {
     return { refusal: { reason_code: "ambiguous_person", error: `More than one person on the staff list is ${typed}. The card was not changed. Call find_staff with this name and ask which one.` } };
   }
-  if (declined || offRosterConfirmed(context, typed)) return { asTyped: true, from: cardName };
+  if (declined || offRosterConfirmed(context, typed) || latestTurnKeepsOrUsesTyped(view, typed)) return { asTyped: true, from: cardName };
   const close = matchEmployeeName(typed, roster);
   const candidates = close.kind === "confirm" ? close.candidates.map((candidate) => candidate.name) : [];
   if (candidates.length > 0 && close.kind === "confirm") {
     effects.nameQuestion = { offeredIds: close.candidates.slice(0, 5).map((candidate) => candidate.employee.id), typed };
     return { refusal: { reason_code: "name_correction_did_you_mean", error: `${typed} is not on the staff list as typed. The card was not changed. Ask the manager, in these words: ${nameConfirmationQuestion(typed, candidates.slice(0, 5))}` } };
   }
+  /* The answer bridge: this refusal asks for "use <typed>" or the full name; recorded so the answer is read next turn. */
+  effects.nameQuestion = { offeredIds: [], typed, asksFullName: true };
   return {
     refusal: {
       reason_code: "name_correction_not_on_roster", error: `${typed} is not on the ${staffSystem()} staff list. The card was not changed and is still for ${cardName}. Say so; it goes on the card as typed only if the manager replies **use ${typed}**.`,
+      ask_exactly: offRosterNameQuestion(typed),
     },
   };
 }
@@ -1712,6 +1726,8 @@ export async function proposeForm(
     else if (typed && !rosterMatches(typed, read.roster).length && !namesAPlace(typed) && (offRosterConfirmed(context, typed) || (offRosterTyped(typed, `for ${typed}`, read.roster.map(displayName)) && matchEmployeeName(typed, read.roster).kind !== "confirm"))) {
       employee = { name: typed, salonIds: [] };
       offRosterName = typed;
+      /* The card's off_roster_name line asks the manager to check this name: recorded, so a full name next turn corrects it. */
+      effects.nameQuestion ??= { offeredIds: [], typed, asksFullName: true };
     }
     else {
       /*
@@ -1807,7 +1823,9 @@ export async function proposeForm(
   const conversation = identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId);
   /* Item 5 follow-up (Pau, 16 Nov 2026): a near name the manager confirmed as this person, by the name question record. */
   const typedConfirmed = read.kind === "read" ? (employee.id ? confirmedKeys : spellingKeysConfirmedForName(nameQuestionView(context, read.roster), employee.name)) : [];
-  const cited = requestTurns(conversation, input.request_evidence, employee.name, rosterNames, "request_evidence", typedConfirmed);
+  /* A corrected card (name_corrected): turns that named the card's earlier name are this person's request. */
+  const correctedKeys = nameCorrectedFrom !== null ? [personKey(nameCorrectedFrom)] : [];
+  const cited = requestTurns(conversation, input.request_evidence, employee.name, rosterNames, "request_evidence", [...typedConfirmed, ...correctedKeys]);
   if (!cited.ok) {
     /* The "is <A'> <A> or <C>?" question is recorded like a Did-you-mean, so the manager's answer is read next turn. */
     if (cited.near && read.kind === "read") {
