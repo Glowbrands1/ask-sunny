@@ -1232,6 +1232,7 @@ export async function findPastForms(context: ToolContext, input: { employee_name
         return {
           forms,
           card_on_screen: { form, created: false },
+          reply_name: first,
           ask_exactly: `Want me to change the ${form} card for ${first}? Tell me what to change.`,
           note: `Nothing is on file: the ${form} for this person is the card on screen, not created yet. Say that in one short line, then end your reply with ask_exactly, exactly, once.`,
         };
