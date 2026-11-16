@@ -23,6 +23,7 @@ import { extractUsedMarkers } from "../prompts";
 import { shownCitations } from "@/lib/knowledge/empty-card-drop";
 import { dataToolHandlers, dataToolSpecs } from "./data-tools";
 import { appConfig, SUNNY_CONFIG, type AppConfig } from "./app-config";
+import { withoutPersonPronouns } from "./reply-pronouns";
 import { agentLoopRules, agentLoopSystem } from "./prompt";
 import { generatedId, identifiedTurns, messageIdTag, withoutMessageIdTags } from "./evidence";
 import { agentLoopStepLimit } from "./switch";
@@ -433,7 +434,7 @@ function buildAgentLoopTools(config: AppConfig) {
           description: "Earlier messages of this request the name lookup missed (the manager typed the name differently there, and this message gives it).",
         },
         new_form_evidence: evidence("Only when this message asks for another or a new form (a second form for the person on the open draft, or a new request after an earlier card): its words."),
-        policy: { type: "string", description: "Always on a Corrective Action or Coaching card. One JBA Policy Manual heading, exactly; or \"Other — <short topic>\"; or both, \"<heading>; Other — <topic>\" (a cleaning or sanitation duty left undone is Other, as the rules book says)." },
+        policy: { type: "string", description: "Always on a Corrective Action card; on a Coaching card only when the manager names a policy or a section fits (never Other made from the coaching topic). The one JBA Policy Manual heading that fits what happened, exactly. \"Other — <short topic>\" only for Must See Behaviors, a cleaning or sanitation duty left undone, or an incident no section covers; or both, \"<heading>; Other — <topic>\" (a cleaning duty beside another offense), as the rules book says." },
         what_happened: {
           type: "string",
           description:
@@ -627,6 +628,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   const noop = input.openFormId ? await import("@/lib/forms/form-noop-reply") : null;
   const openBefore = noop && input.openFormId ? await noop.formBeforeTurn(input.openFormId, input.request) : null;
   const steps: AgentLoopStep[] = [];
+  const replyNames = new Set<string>();
   /* The tools this turn called so far (the hand-backs' too), for the item 7 check below. */
   const calledThisTurn = (tool: string) => steps.some((step) => step.tool === tool);
   /* Each model call's tokens and ms, for the trace (numbers only). */
@@ -733,6 +735,9 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
         }
       }
     }
+    /* What the reply calls each person this turn's tools named (reply_name, by replyNameFor): the pronoun check's name. */
+    const shownName = (result as { reply_name?: unknown }).reply_name;
+    if (typeof shownName === "string" && shownName.trim()) replyNames.add(shownName.trim());
     steps.push({ step, tool: name, ms: Math.round(performance.now() - started), resultChars: JSON.stringify(result).length, ok: !("error" in result), ...(toolCalls > 0 ? { model_calls: toolCalls } : {}), ...stepReason(result, name) });
     return result;
   };
@@ -1059,8 +1064,19 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   input.onTools?.(steps.map((step) => step.tool));
   const trace = chatTraceDraft();
   /* PR 2: the card this turn made, for later turns' card record (`card-record.ts`). */
+  /*
+   * THE PERSON BY NAME, NEVER A PRONOUN (Pau's rule; QA, 16 Nov 2026: "nothing is on file for her" in 1 of 6 live replies):
+   * with exactly one person named by this turn's tools, a pronoun for them in the reply becomes their reply_name
+   * (`reply-pronouns.ts`; deterministic, no model call). Several people, or none: the reply is left as written.
+   */
+  let pronounsReplaced = 0;
+  if (replyNames.size === 1 && text) {
+    const named = withoutPersonPronouns(text, [...replyNames][0]!);
+    text = named.text;
+    pronounsReplaced = named.replaced;
+  }
   const cardSlot: CardSlot | null = effects.proposal
-    ? { proposalId: effects.proposal.proposalId, employeeKey: effects.proposalEmployeeId ? personKey(effects.proposalEmployeeId) : null, nameKey: effects.proposal.employeeName ? personKey(effects.proposal.employeeName) : null, templateKey: effects.proposal.templateKey, templateName: effects.proposal.templateName ?? null, ...(effects.proposalAsked?.length ? { asked: effects.proposalAsked } : {}), ...(effects.proposalLevel ? { level: effects.proposalLevel } : {}), ...(effects.proposal.policyLine ? { policyLine: effects.proposal.policyLine } : {}) }
+    ? { proposalId: effects.proposal.proposalId, employeeKey: effects.proposalEmployeeId ? personKey(effects.proposalEmployeeId) : null, nameKey: effects.proposal.employeeName ? personKey(effects.proposal.employeeName) : null, templateKey: effects.proposal.templateKey, templateName: effects.proposal.templateName ?? null, ...(effects.proposalAsked?.length ? { asked: effects.proposalAsked } : {}), ...(effects.proposalLevel ? { level: effects.proposalLevel } : {}), ...(effects.proposalPayroll ? { payroll: effects.proposalPayroll } : {}), ...(effects.proposalPayroll === "yes" && effects.proposalPayrollAmount ? { payrollAmount: effects.proposalPayrollAmount } : {}), ...(effects.proposal.policyLine ? { policyLine: effects.proposal.policyLine } : {}) }
     : null;
   /* Fix batch items 4 and 3: this turn's "Did you mean", for the next turn's name question record (one-way keys only). */
   const nameQuestionSlot: NameQuestionSlot | null = effects.nameQuestion && stoppedAt === "reply"
@@ -1072,7 +1088,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     trace.firstTokenMs = firstTokenMs;
     trace.slots = {
       ...(trace.slots ?? {}),
-      agent_loop: { ...(cardSlot ? { card: cardSlot } : {}), ...(nameQuestionSlot ? { name_question: nameQuestionSlot } : {}), ...(personAskedSlot ? { person_asked: personAskedSlot } : {}), steps, model_steps: modelSteps, model_calls: modelCalls, ...(turn.manualRead ? { manual_read: turn.manualRead } : {}), step_limit: limit, steps_used: stepNumber - 1 + hiddenCalls, ...(hiddenCalls > 0 ? { tool_model_calls: hiddenCalls } : {}), stopped: stoppedAt, ms: latencyMs, first_token_ms: firstTokenMs, ...(selfReview ? { self_review: selfReview } : {}), ...(draftReview ? { draft_review: draftReview } : {}), ...(levelReview ? { level_review: levelReview } : {}), ...(replyUnwrapped ? { reply_unwrapped: true } : {}), ...(retriesBlocked > 0 ? { stop_retrying: retriesBlocked } : {}) },
+      agent_loop: { ...(cardSlot ? { card: cardSlot } : {}), ...(nameQuestionSlot ? { name_question: nameQuestionSlot } : {}), ...(personAskedSlot ? { person_asked: personAskedSlot } : {}), steps, model_steps: modelSteps, model_calls: modelCalls, ...(turn.manualRead ? { manual_read: turn.manualRead } : {}), step_limit: limit, steps_used: stepNumber - 1 + hiddenCalls, ...(hiddenCalls > 0 ? { tool_model_calls: hiddenCalls } : {}), stopped: stoppedAt, ms: latencyMs, first_token_ms: firstTokenMs, ...(selfReview ? { self_review: selfReview } : {}), ...(draftReview ? { draft_review: draftReview } : {}), ...(levelReview ? { level_review: levelReview } : {}), ...(replyUnwrapped ? { reply_unwrapped: true } : {}), ...(retriesBlocked > 0 ? { stop_retrying: retriesBlocked } : {}), ...(pronounsReplaced > 0 ? { pronouns_replaced: pronounsReplaced } : {}) },
     };
   }
 

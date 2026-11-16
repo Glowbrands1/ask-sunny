@@ -10,7 +10,7 @@ import { appConfig } from "./app-config";
 import { isoDate, monthDayToIso, readDates, sameDate, withoutDates } from "./dates";
 import { candidateNameWords, chatFormsActor } from "@/lib/forms/chat-form-records";
 import { holdsPhrase, identifiedTurns, verifyEvidence, withoutMessageIdTags, type IdentifiedTurn } from "./evidence";
-import { answeredNameQuestions, answerNamesSomeoneElse, isConfirmedSpelling, latestTurnAnswersFor, latestTurnConfirms, latestTurnKeepsOrUsesTyped, latestTurnKeepsTyped, spellingKeysConfirmedFor, spellingKeysConfirmedForName, type NameQuestionView } from "./confirmed-spelling";
+import { answeredNameQuestions, answerNamesSomeoneElse, everKeptOrUsedTyped, isConfirmedSpelling, latestTurnAnswersFor, latestTurnConfirms, latestTurnKeepsOrUsesTyped, latestTurnKeepsTyped, spellingKeysConfirmedFor, spellingKeysConfirmedForName, type NameQuestionView } from "./confirmed-spelling";
 import { AFFIRMATIVE, displayName, editDistance, matchEmployeeName, nameConfirmationQuestion, readNameConfirmation, type RosterEmployee } from "@/lib/forms/employee-match";
 import { offRosterTyped } from "@/lib/forms/roster-only-names";
 import { parseFormDocument } from "@/lib/forms/document";
@@ -560,6 +560,9 @@ export interface ToolEffects {
   proposalAsked?: readonly string[];
   /** QA (c208): the warning level this turn's card holds (verbal / written), for the card record, so a rebuild keeps it. */
   proposalLevel?: "verbal" | "written" | null;
+  /** QA (c022): the payroll answer and amount this turn's card holds, for the card record, so a rebuild keeps them. */
+  proposalPayroll?: "yes" | "no" | null;
+  proposalPayrollAmount?: string | null;
   /**
    * Every source a tool read this turn, numbered from 1 in the order read: the model cites one as [S<n>] (`addSource`).
    * Only the ones the reply cites become source cards (run.ts, QA's live-app item 12), as today's grounded path does.
@@ -745,7 +748,7 @@ const ALSO_ASK_ACCOUNT = "If so, tell me what happened.";
 export const FIND_STAFF_LIMIT = 10;
 
 export async function findStaff(context: ToolContext, input: { name?: unknown; person_evidence?: unknown }, effects?: ToolEffects): Promise<ToolResult> {
-  const typed = typeof input.name === "string" ? input.name.trim() : "";
+  const typed = typeof input.name === "string" ? withoutJobTitle(input.name) : "";
   if (typed === "") return { reason_code: "missing_input", error: "Give the name to look for." };
   if (effects) effects.staffLookedUp = true;
   const read = await rosterFor(context.actor.scope);
@@ -755,7 +758,7 @@ export async function findStaff(context: ToolContext, input: { name?: unknown; p
    * QA's live test a4 (ruling A): this turn keeps this typed name as typed, answering this chat's recorded name question
    * ("no", or "use <typed>"): settled from the record. Never ask the Did-you-mean or the use-<name> offer again.
    */
-  if (typed && latestTurnKeepsOrUsesTyped(nameQuestionView(context, read.roster), typed)) {
+  if (typed && (latestTurnKeepsOrUsesTyped(nameQuestionView(context, read.roster), typed) || typedNameSettled(context, read.roster, typed))) {
     /* QA (16 Nov 2026): what the reply calls this person, decided by code (`replyNameFor`), as on every card result. */
     return { matches: [], kept_as_typed: typed, reply_name: replyNameFor(typed, read.roster, extractEmployeeNames(managerTurns(context)), null), note: `The manager kept "${typed}" as typed (their answer to your question). Do not ask again: propose the card now with employee_name "${typed}", with this request's account from the earlier turns.` };
   }
@@ -788,6 +791,8 @@ export async function findStaff(context: ToolContext, input: { name?: unknown; p
     if (effects) effects.nameQuestion = { offeredIds: found.slice(0, 5).map((row) => row.id), typed: spelled };
     return {
       matches: [],
+      reason_code: "close_spelling_not_confirmed",
+      ask_exactly: nameConfirmationQuestion(spelled, names),
       did_you_mean: found.slice(0, 5).map((row) => staffRow(row)),
       note: `The manager typed "${spelled}", not this name. Ask the manager, in these words: ${nameConfirmationQuestion(spelled, names)}`,
       also_ask_if_no_account: ALSO_ASK_ACCOUNT,
@@ -835,6 +840,8 @@ export async function findStaff(context: ToolContext, input: { name?: unknown; p
       if (effects) effects.nameQuestion = { offeredIds: close.candidates.slice(0, 5).map((candidate) => candidate.employee.id), typed };
       return {
         matches: [],
+        reason_code: "close_spelling_not_confirmed",
+        ask_exactly: nameConfirmationQuestion(typed, names),
         did_you_mean: close.candidates.slice(0, 5).map((candidate) => staffRow(candidate.employee)),
         note: `Not on the roster as typed. Ask the manager, in these words: ${nameConfirmationQuestion(typed, names)}`,
         also_ask_if_no_account: ALSO_ASK_ACCOUNT,
@@ -873,6 +880,10 @@ export async function findStaff(context: ToolContext, input: { name?: unknown; p
         if (!context.formChosen && !effects?.formChosen) {
           return { reason_code: "not_on_roster", matches: [], not_on_roster: shown, form_not_chosen: true, note: `Not on the ${staffSystem()} staff list. No form is chosen yet: if the manager has not said what they want made, your one question is that (ending with "?"). Ask about the name only once a form is chosen (propose_form will give the question).` };
         }
+        /* QA (16 Nov 2026, c220/c224): a full name the manager typed, a close spelling of nobody, is taken as typed. */
+        if (fullNameTakenAsTyped(context, read.roster, shown)) {
+          return { reason_code: "not_on_roster", matches: [], not_on_roster: shown, staff_list: context.actor.scope.level === "salon" ? `your ${locationWord()}'s` : "the", note: `Not on the ${staffSystem()} staff list. Propose the card now with employee_name "${shown}" as typed, and say so as the rules book's Card replies teach.` };
+        }
         if (effects) effects.nameQuestion = { offeredIds: [], typed: shown, asksFullName: true };
         return { reason_code: "not_on_roster", matches: [], not_on_roster: shown, ask_exactly: offRosterNameQuestion(shown), note: `Not on the ${staffSystem()} staff list. Ask the manager, in these words: ${offRosterNameQuestion(shown)}` };
       }
@@ -906,6 +917,8 @@ export async function findStaff(context: ToolContext, input: { name?: unknown; p
       if (effects) effects.nameQuestion = { offeredIds: [only.id], typed };
       return {
         matches: [],
+        reason_code: "close_spelling_not_confirmed",
+        ask_exactly: nameConfirmationQuestion(typed, [displayName(only)]),
         did_you_mean: [staffRow(only)],
         note: `Not a whole first name on the roster. Ask the manager, in these words: ${nameConfirmationQuestion(typed, [displayName(only)])}`,
         also_ask_if_no_account: ALSO_ASK_ACCOUNT,
@@ -1219,6 +1232,7 @@ export async function findPastForms(context: ToolContext, input: { employee_name
         return {
           forms,
           card_on_screen: { form, created: false },
+          reply_name: first,
           ask_exactly: `Want me to change the ${form} card for ${first}? Tell me what to change.`,
           note: `Nothing is on file: the ${form} for this person is the card on screen, not created yet. Say that in one short line, then end your reply with ask_exactly, exactly, once.`,
         };
@@ -1564,6 +1578,8 @@ function cardNameCorrection(
     effects.nameQuestion = { offeredIds: close.candidates.slice(0, 5).map((candidate) => candidate.employee.id), typed };
     return { refusal: { reason_code: "name_correction_did_you_mean", error: `${typed} is not on the staff list as typed. The card was not changed. Ask the manager, in these words: ${nameConfirmationQuestion(typed, candidates.slice(0, 5))}` } };
   }
+  /* QA (16 Nov 2026, c224): a full name the manager typed as their own correction, a close spelling of nobody, goes on as typed. */
+  if (fullNameTakenAsTyped(context, roster, typed)) return { asTyped: true, from: cardName };
   /* The answer bridge: this refusal asks for "use <typed>" or the full name; recorded so the answer is read next turn. */
   effects.nameQuestion = { offeredIds: [], typed, asksFullName: true };
   return {
@@ -1572,6 +1588,47 @@ function cardNameCorrection(
       ask_exactly: offRosterNameQuestion(typed),
     },
   };
+}
+
+/**
+ * QA (16 Nov 2026, the 266 re-run's c220 and c224): a job title typed beside the name ("TC <name>", "<name> TC",
+ * "Tanning Consultant, <name>") is not part of it. The company's titles come from the app config; only a whole title
+ * at the start or end is taken off, and never the last word left.
+ */
+export function withoutJobTitle(typed: string): string {
+  let name = typed.replace(/\s+/g, " ").trim();
+  for (let pass = 0; pass < 3; pass += 1) {
+    const before = name;
+    for (const title of appConfig().jobTitles) {
+      const lead = new RegExp(`^(?:${title.source})[\\s,:-]+`, "i");
+      const tail = new RegExp(`[\\s,:-]+(?:${title.source})$`, "i");
+      const cut = name.replace(lead, "").replace(tail, "").trim();
+      if (cut !== "" && cut !== name) name = cut;
+    }
+    if (name === before) break;
+  }
+  return name;
+}
+
+/**
+ * A name that is settled for this chat (QA, 16 Nov 2026, c022 and c220): kept as typed in an earlier answer, or already
+ * the name on this chat's card for a person not on the roster (the card record's nameKey). It is never asked about again.
+ */
+function typedNameSettled(context: ToolContext, roster: readonly RosterEmployee[], typed: string): boolean {
+  if (everKeptOrUsedTyped(nameQuestionView(context, roster), typed)) return true;
+  return [context.cardOnScreen, context.earlierCard].some((card) => Boolean(card && !card.employeeKey && card.nameKey === personKey(typed)));
+}
+
+/**
+ * The general rule (QA, 16 Nov 2026, c220 and c224): a FULL name the manager typed (their own words hold it) that is
+ * nobody on the roster and not a close spelling of anyone on it is taken as typed, with the card's off-roster line.
+ * Only a close spelling of a roster person is asked about (ruling A); a single word still gets the use-<name> offer.
+ */
+function fullNameTakenAsTyped(context: ToolContext, roster: readonly RosterEmployee[], typed: string): boolean {
+  const name = typed.replace(/\s+/g, " ").trim();
+  if (words(name).length < 2 || namesAPlace(name) || isJobTitlePhrase(name)) return false;
+  if (rosterMatches(name, roster).length > 0 || matchEmployeeName(name, roster).kind === "confirm") return false;
+  return holdsPhrase(managerTurns(context), name);
 }
 
 /**
@@ -1991,7 +2048,7 @@ export async function proposeForm(
   if (read.kind === "read") {
     const id = typeof input.employee_id === "string" ? input.employee_id.trim() : "";
     const person = id ? read.roster.find((row) => row.id === id) : undefined;
-    const typed = typeof input.employee_name === "string" ? tidyTypedName(input.employee_name) : "";
+    const typed = typeof input.employee_name === "string" ? withoutJobTitle(tidyTypedName(input.employee_name)) : "";
     /*
      * HARD GUARD, A "NO" NEVER SEATS THE NAME (NEAR_MISS_QUESTION_RULES, parity gap #45): when the manager answered
      * "no" to this chat's own "Did you mean **<A>**?" or "Is this for **<A>**?", <A> is not put on the card.
@@ -2044,9 +2101,15 @@ export async function proposeForm(
      * name ("no" to "Did you mean <B>?", or "use <typed>" after the app offered it) keeps the name as typed. Settled from
      * the record, before the roster checks below that would refuse a close spelling of a roster person.
      */
-    else if (typed && !namesAPlace(typed) && latestTurnKeepsOrUsesTyped(nameQuestionView(context, read.roster), typed)) {
+    else if (typed && !namesAPlace(typed) && (latestTurnKeepsOrUsesTyped(nameQuestionView(context, read.roster), typed) || typedNameSettled(context, read.roster, typed))) {
       employee = { name: typed, salonIds: [] };
       offRosterName = typed;
+    }
+    /* QA (16 Nov 2026, c220/c224): a full name the manager typed, a close spelling of nobody on the roster, is taken as typed. */
+    else if (typed && !id && fullNameTakenAsTyped(context, read.roster, typed)) {
+      employee = { name: typed, salonIds: [] };
+      offRosterName = typed;
+      effects.nameQuestion ??= { offeredIds: [], typed, asksFullName: true };
     }
     else if (typed && !rosterMatches(typed, read.roster).length && !namesAPlace(typed) && offRosterTyped(typed, `for ${typed}`, read.roster.map(displayName)) && matchEmployeeName(typed, read.roster).kind !== "confirm") {
       employee = { name: typed, salonIds: [] };
@@ -2367,7 +2430,15 @@ export async function proposeForm(
   const topicFits = topicHeadings(requestWords);
   const managerNamed = namedPolicies(requestWords).some((named) => policyHeading !== null && headingKey(named.phrase) === headingKey(policyHeading));
   /* Batch C (code-check #19): the headings today's reader fits this incident to, when the model's is not one of them. */
-  const fitsHeadings = policyHeading && topicFits && !managerNamed && !topicFits.some((heading) => headingKey(heading) === headingKey(policyHeading!)) ? topicFits : null;
+  /*
+   * "Other" is only for Must See Behaviors (Pau, 16 Nov 2026), a cleaning duty left undone (OTHER_POLICY_AGREES), or an
+   * incident no section of the manual covers (QA, 16 Nov 2026: the launch train's 266 re-run cited "Other — <topic>" on
+   * c156, c163, c231, c242 and c244, where a manual section fits). A card that cites Other alone while today's reader fits
+   * the incident to a manual section gets the same fits_headings fact as a wrong heading: the model chooses again.
+   */
+  const otherAlone = !policyHeading && /^other\b/i.test(askedPolicyWhole);
+  const otherIsTheRule = /\bmsb\b|must see behaviou?rs?/i.test(requestWords) || Boolean(cleaning && !careAndCleaning);
+  const fitsHeadings = topicFits && !managerNamed && ((policyHeading && !topicFits.some((heading) => headingKey(heading) === headingKey(policyHeading!))) || (otherAlone && !otherIsTheRule)) ? topicFits : null;
   /* As today's card prints it (`formatManualCitation`): "Standards of Conduct Policy, JBA Policy Manual p.12". */
   /*
    * The card cites the policy the model chose (batch B, code-check #22: the cleaning rule is a fact and a rules-book
@@ -2414,7 +2485,7 @@ export async function proposeForm(
   const typedAmount = typeof input.payroll_amount === "string" && /\d/.test(input.payroll_amount) ? input.payroll_amount.replace(/[^\d.]/g, "") : null;
   /* The amount the manager stated, read as today reads it (`payrollAmountFromConversation`) when the model left it out. */
   const statedAmount = payroll === "yes" ? payrollAmountFromConversation(conversationTurns(context), { payrollAnswer: "yes" })?.replace(/[^\d.]/g, "") ?? null : null;
-  const amount = caOnlyFields && typedAmount && managerWords.replace(/[^\d.]/g, " ").split(/\s+/).some((n) => n !== "" && Number(n) === Number(typedAmount)) ? typedAmount : null;
+  let amount = caOnlyFields && typedAmount && managerWords.replace(/[^\d.]/g, " ").split(/\s+/).some((n) => n !== "" && Number(n) === Number(typedAmount)) ? typedAmount : null;
   const today = context.today || businessToday();
   let date = typeof input.incident_date === "string" && DATE.test(input.incident_date.trim()) ? input.incident_date.trim() : null;
   /* Several incident dates and the latest message does not pick one: the date waits, and the card asks (today's rule). */
@@ -2484,7 +2555,15 @@ export async function proposeForm(
    * inside this request's turns still holds the level, so it returns. A new request (new_form_evidence) starts fresh.
    */
   const inRequest = (record: CardRecord) => Boolean(record.messageId && requestTurnIds.includes(record.messageId));
-  const carriedRecord = [...(context.cardRecords ?? [])].reverse().find((record) => isThisCard(record) && inRequest(record) && record.level) ?? [context.cardOnScreen, context.earlierCard].find(isThisCard) ?? null;
+  /*
+   * QA (16 Nov 2026, with #1070's payroll carry): only while a card for THIS person is on screen (this card, or their card
+   * on another form: c019's switch away and back). After a reply with no card ("verbal", "thanks", "another ca for
+   * <name>"), the level an earlier card held never reaches the next card; the manager states it again.
+   */
+  const samePersonOnScreen = Boolean(context.cardOnScreen && (employee.id ? context.cardOnScreen.employeeKey === personKey(employee.id) : !context.cardOnScreen.employeeKey && context.cardOnScreen.nameKey === personKey(employee.name)));
+  const carriedRecord = samePersonOnScreen
+    ? ([...(context.cardRecords ?? [])].reverse().find((record) => isThisCard(record) && inRequest(record) && record.level) ?? (isThisCard(context.cardOnScreen) ? context.cardOnScreen : null))
+    : null;
   const carriedLevel = caOnlyFields && !asksNewForm ? (carriedRecord?.level ?? null) : null;
   const level = askedLevel && levelCheck?.ok ? askedLevel : carriedLevel;
   /*
@@ -2503,6 +2582,19 @@ export async function proposeForm(
     answersThisMessage(payrollCheck) && payrollCheck.wholeMessage && oneWord(withoutMessageIdTags(conversationTurnsNow.at(-1)!.content)) &&
     !(answersThisMessage(levelCheck) && level !== null);
   if (payrollAnswerUnclear) payroll = null;
+  /*
+   * PAYROLL STATED FOR THIS REQUEST STAYS ON THE CARD (QA, 16 Nov 2026; c022: "payroll is deductable" put Yes on the card,
+   * and the next turn's rebuild dropped it). A rebuild of the card ON SCREEN (the last reply showed this card, by the
+   * server's record) keeps the payroll answer and amount that card held, when this turn's evidence states none. Only the
+   * card on screen: an answer belongs to the card it answered (PR 1c), so a card shown again after a turn with no card
+   * ("yes", "thanks", "another ca for <name>") never gets it, nor does a new request (new_form_evidence), another
+   * person's card or another form. Never "as you said" for a carried answer (stated_this_turn lists this message's only).
+   */
+  const payrollRecord = caOnlyFields && !asksNewForm && isThisCard(context.cardOnScreen) && context.cardOnScreen.payroll ? context.cardOnScreen : null;
+  if (payroll === null && !payrollAnswerUnclear && payrollRecord?.payroll) {
+    payroll = payrollRecord.payroll;
+    if (payroll === "yes" && !amount && payrollRecord.payrollAmount) amount = payrollRecord.payrollAmount;
+  }
   const payrollQuestion = `Is payroll deduct applicable for **${employee.name}**? Yes or no.`;
   const amountInThisMessage = (digits: string | null) => Boolean(digits && context.question.replace(/[^\d.]/g, " ").split(/\s+/).some((n) => n !== "" && Number(n) === Number(digits)));
   const statedThisTurn = [
@@ -2722,6 +2814,8 @@ export async function proposeForm(
   /* Fix batch item 7: what this card's reply asks (the next turn's card record): payroll alone after an unclear answer. */
   effects.proposalAsked = payrollAnswerUnclear ? ["payroll_deduct"] : unset;
   effects.proposalLevel = level;
+  effects.proposalPayroll = payroll;
+  effects.proposalPayrollAmount = payroll === "yes" ? amount : null;
   const salonNames = (ids: readonly string[] | undefined) => (ids ?? []).map((id) => ({ id, name: rosterSalonName(id) ?? id }));
   /*
    * Batch K4 (QA's 266 shadow replay, c137/c134: a pasted account about <Y>, off the roster, went on <X>'s card; the
@@ -2765,10 +2859,11 @@ export async function proposeForm(
     ...(exitForm && !whatHappened ? { account_not_given: { note: "This exit card has no account. If the manager said how or when they left (\"resigned by text\", their last day), propose the card again with all of it in what_happened, in their own words." } } : {}),
     /*
      * PR 6 (the live comparison: a coaching card came back with no policy line once read_policy was no longer called first):
-     * a Corrective Action or Coaching card with an account and no policy. A fact, never a policy code picked: the model
+     * a Corrective Action card (the form with policy fields; a Coaching card has none: QA, the train's c231/c242/c244) with an
+     * account and no policy. A fact, never a policy code picked: the model
      * passes the heading (the system prompt lists them) or Other, or says no section fits.
      */
-    ...(ACCOUNT_FORMS.has(template.key) && !awaiting && !askedPolicyWhole ? { policy_not_given: { note: "This card has no policy. Propose it again with policy: the one JBA Policy Manual heading that fits what happened (the headings are listed in your instructions), or \"Other — <short topic>\". If no section fits, say so in your reply." } } : {}),
+    ...(template.key === appConfig().formKeys.corrective && !awaiting && !askedPolicyWhole ? { policy_not_given: { note: "This card has no policy. Propose it again with policy: the one JBA Policy Manual heading that fits what happened (the headings are listed in your instructions). \"Other — <short topic>\" only for Must See Behaviors, a cleaning duty left undone, or when no section fits; then say so in your reply." } } : {}),
     ...(accountGiven ? { request_words: untrusted(accountGiven) } : {}),
     ...(figuresNotSaid.length > 0 ? { figures_not_said: figuresNotSaid } : {}),
     ...(formatFigures.length > 0 ? { format_figures: formatFigures } : {}),

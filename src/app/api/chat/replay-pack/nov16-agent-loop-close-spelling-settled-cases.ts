@@ -2,6 +2,7 @@ import { expect, vi } from "vitest";
 
 import { KEARNEY, STAFF, type DirectoryRow, type ReplayCase, type ReplayContext } from "./cases";
 import { evidenceFrom, lastResult, loopStandIn, type LoopDecision, type LoopView } from "./loop-stand-in";
+import { personPronoun } from "./reply-checks";
 
 /**
  * ============================================================================
@@ -215,6 +216,34 @@ export const NOV16_AGENT_LOOP_CLOSE_SPELLING_SETTLED_CASES: ReplayCase[] = [
       }));
       const worded = await own.say("yes");
       expect(worded.content, "a second question was appended to a reply that already asks").toBe("That card on screen isn't created yet. What would you like to change on it?");
+    },
+  },
+  {
+    id: "nov16-reply-names-the-person-never-her-live",
+    title: "The Runner's live re-run of #1067 (1 of 6): after \"yes\" the model wrote \"nothing is on file for her\". The reply calls the person by name (reply_name) every time: \"nothing is on file for Tamsin\", never a pronoun",
+    report: `${REPORT}; QA (16 Nov 2026): "nothing is on file for her" in 1 of 6 live replies (Pau's first-name rule)`,
+    status: "fixed",
+    fixFlags: [FLAG, NEAR_MISS],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      start(t);
+      t.loopModel!(model());
+      const thread = t.thread();
+      await thread.say("ca for tamsin orwell, she was late to her shift on 11/14");
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        const found = lastResult(view, "find_past_forms") as { ask_exactly?: string } | null;
+        if (!found) return { tool: "find_past_forms", input: { employee_name: "tamsen orwel", form: "CA", open: true, forms_on_file_evidence: evidenceFrom(view, "edit tamsen orwel ca") } };
+        return { text: found.ask_exactly ?? "" };
+      }));
+      await thread.say("edit tamsen orwel ca");
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        if (!lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { employee_name: "Tamsin Orwell", form: "CA", open: true, forms_on_file_evidence: evidenceFrom(view, "edit tamsen orwel ca", 1) } };
+        // The live reply, word for word but the name: a pronoun for the person.
+        return { text: "Got it. The Corrective Action Form is the card on screen - it hasn't been created yet, so nothing is on file for her." };
+      }));
+      const yes = await thread.say("yes");
+      expect(personPronoun(yes.content), `a pronoun for the person:\n${yes.content}`).toBeNull();
+      expect(yes.content).toContain("nothing is on file for Tamsin.");
     },
   },
 ];

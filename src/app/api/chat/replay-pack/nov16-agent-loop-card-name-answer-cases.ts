@@ -34,7 +34,7 @@ type CardOut = {
   reply_name?: string;
   ask_exactly?: string;
   not_on_card?: { field: string; reason_code: string }[];
-  facts?: { name_corrected?: { from: string; to: string }; exit_termination?: { form_label: string; effective: string } };
+  facts?: { name_corrected?: { from: string; to: string }; exit_termination?: { form_label: string; effective: string }; off_roster_name?: string };
 } | null;
 const lastCardOut = (views: readonly LoopView[]) => views.flatMap((view) => view.results).filter((result) => result.tool === "propose_form").at(-1)?.output as CardOut;
 
@@ -64,7 +64,7 @@ const RE_ASK = /would you like me to prepare|resignation or (?:a )?termination\?
 export const NOV16_AGENT_LOOP_CARD_NAME_ANSWER_CASES: ReplayCase[] = [
   ...(["Odalys Fenwick", "Test Testy"] as const).map((name): ReplayCase => ({
     id: `nov16-card-name-answer-off-roster-${name.replace(/\s+/g, "-").toLowerCase()}-c219`,
-    title: `c219 re-ask: after the exit card for "Test Testi" (typed, not on the staff list), "For ${name}" corrects that card through the roster check: "${name}" is nobody on the list, so the reply asks "Reply **use ${name}** …" (never a re-ask about the form), and "use ${name}" puts ${name} on the exit card from the script's turns`,
+    title: `c219 re-ask: after the exit card for "Test Testi" (typed, not on the staff list), "For ${name}" corrects that card: "${name}" is nobody on the list and a close spelling of nobody, so it goes on the exit card as typed at once (QA, 16 Nov 2026, c224), never a re-ask about the form and never "Reply use"`,
     report: REPORT,
     status: "fixed",
     fixFlags: [FLAG],
@@ -79,10 +79,17 @@ export const NOV16_AGENT_LOOP_CARD_NAME_ANSWER_CASES: ReplayCase[] = [
       expect(thread.proposal?.employeeName, "T2 made no exit card for the typed name").toBe("Test Testi");
       const t3 = await thread.say(`For ${name}`);
       expect(t3.content, `T3 re-asked about a card that exists:\n${t3.content}`).not.toMatch(RE_ASK);
-      expect(t3.content, `T3 did not run the roster check for the corrected name:\n${t3.content}`).toContain(`Reply **use ${name}**`);
-      await thread.say(`use ${name}`);
+      /*
+       * Changed on purpose (QA's rule, 16 Nov 2026, the 266 re-run's c224): this case asked "Reply **use <name>**" here and
+       * corrected the card on "use <name>". A full name the manager types as their own correction that is a close spelling
+       * of nobody on the roster is now taken as typed at once. The rest of what it checks (no re-ask about the form, the
+       * exit card kept, the card corrected) is unchanged.
+       */
+      expect(t3.content, `T3 offered "use" for a full name close to nobody:\n${t3.content}`).not.toContain(`Reply **use ${name}**`);
       expect(thread.proposal?.templateKey).toBe("stc-exit");
       expect(thread.proposal?.employeeName, "the answer did not correct the existing exit card").toBe(name);
+      // Pau's s10 ruling, as QA confirmed for this change: a name not on the staff list is never silent; the card says so.
+      expect(lastCardOut(standIn.views)?.facts?.off_roster_name, "the card does not say the name is not on the staff list").toBe(name);
     },
   })),
   {

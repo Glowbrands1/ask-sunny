@@ -1,3 +1,5 @@
+import { personPronoun } from "./reply-checks";
+import { ACCOUNT_LINE } from "@/lib/ai/agent-loop/reply-pronouns";
 import { PROGRESS_HEADER, PROGRESS_STREAM, STREAM_HEADER, readStreamedLines, unwrapStreamed } from "@/lib/api/streamed-response";
 import { createHash, randomUUID } from "node:crypto";
 
@@ -720,6 +722,16 @@ class Thread {
         : null;
     const payload = (streamed ? streamed.body : await response.json()) as Answer & { error?: string };
     expect(streamed?.status ?? response.status, JSON.stringify(payload)).toBe(200);
+    /*
+     * EVERY LOOP CARD REPLY (QA, 16 Nov 2026; Pau's first-name rule): a reply that shows a card calls its person by name,
+     * never a pronoun (quoted words aside). The judge is the live-run checker (`reply-checks.ts`); the app's own pass is
+     * `agent-loop/reply-pronouns.ts`.
+     */
+    // The loop's own cards only (production's flags turn the loop on for its users; the old path's replies quote accounts).
+    if ((payload.formProposal as { fromAgentLoop?: boolean } | undefined)?.fromAgentLoop && payload.formProposal?.employeeName) {
+      const unquoted = (payload.content ?? "").replace(/"[^"\n]*"|“[^”\n]*”/g, "").replace(ACCOUNT_LINE, "");
+      expect(personPronoun(unquoted), `a pronoun for the card's person:\n${payload.content}`).toBeNull();
+    }
     // EVERY REPLY (QA, 3 Nov 2026): "I still need …" is never said unless the reply asks who, which location or which date.
     if (/^I still need\b/m.test(payload.content ?? "")) {
       expect(stillAsks(payload.content), `"I still need" without a question:\n${payload.content}`).not.toBeNull();
