@@ -1,7 +1,7 @@
 import { ordinalDateInDraftEnabled, relativeDateReaderEnabled, undatedAccountBriefEnabled } from "@/lib/config/chat-quality-flags";
 
 import { priorSentenceFixFor } from "./prior-sentence-scope";
-import { isRelativeDateWord } from "./relative-dates";
+import { isRelativeDateWord, relativeDates } from "./relative-dates";
 
 import {
   datesInText,
@@ -504,4 +504,59 @@ export function withDateMoved(text: string, fromIso: string, toIso: string): str
   return text.replace(DATE_TOKEN, (token) =>
     datesInText(token, `${year}-01-01`)[0]?.iso === fromIso ? to.long : token,
   );
+}
+
+/**
+ * ============================================================================
+ * NO DATE THE MANAGER DID NOT STATE (Pau's ruling via QA, 17 Nov 2026)
+ * ============================================================================
+ *
+ * c094's saved Observation read "On October 22, 2026, <P> did not complete …" where the manager typed no date. The
+ * drafting step's brief already says so (UNDATED_ACCOUNT_BRIEF); this is the check on its output. A date in the drafted
+ * text whose day is not one the manager stated — a date they typed, a day word they used ("today", "yesterday", "last
+ * Tuesday", read by `relativeDates`) — is taken out with the words that lead it in ("On … ,", " on …"), and reported.
+ * A date they stated stays exactly as drafted ("late to work on November 14, 2026"). The form's own Date field is not
+ * touched.
+ */
+export function withoutUnstatedDates(
+  values: Record<string, string>,
+  keys: ReadonlySet<string>,
+  notes: string,
+  today: string,
+  /** The form's own date: "today" in the manager's words is that day (the form is dated the day they said it). */
+  formDate?: string | null,
+): { values: Record<string, string>; removed: string[] } {
+  const stated = new Set<string>([
+    ...datesInText(notes, today).map((found) => found.iso),
+    ...relativeDates(notes, today).map((found) => found.iso),
+    ...(SAID_THE_DAY.test(notes) ? [today, ...(formDate ? [formDate] : [])] : []),
+  ]);
+  const removed: string[] = [];
+  const next = { ...values };
+  for (const key of keys) {
+    let text = next[key];
+    if (typeof text !== "string" || text.trim() === "") continue;
+    const found = datesInText(text, today).filter((date) => !stated.has(date.iso));
+    if (found.length === 0) continue;
+    for (const date of [...found].sort((a, b) => b.index - a.index)) {
+      const before = text.slice(0, date.index);
+      const after = text.slice(date.end);
+      // "On November 16, 2026, Remy …" → "Remy …"; "… late on November 16, 2026." → "… late."
+      // A sentence's lead-in ("On <date>, Remy …"): the lead-in and its comma go, the next word starts the sentence.
+      const lead = /(^|\n|[.!?]\s+)(?:on|as of|by)\s+$/i.exec(before);
+      // Inside a sentence ("late on <date>."): the preposition goes with the date.
+      const inner = /\s+(?:on|as of|by)\s+$/i.exec(before);
+      removed.push(text.slice(date.index, date.end));
+      if (lead) {
+        const rest = after.replace(/^,?\s*/, "");
+        text = before.slice(0, lead.index) + lead[1] + rest.charAt(0).toUpperCase() + rest.slice(1);
+      } else if (inner) {
+        text = before.slice(0, inner.index) + after.replace(/^,(?=\s)/, "");
+      } else {
+        text = before.replace(/\s+$/, "") + after.replace(/^,(?=\s)/, "");
+      }
+    }
+    next[key] = text.replace(/[ \t]{2,}/g, " ").replace(/\s+([.,;])/g, "$1");
+  }
+  return { values: removed.length > 0 ? next : values, removed };
 }

@@ -36,8 +36,23 @@ const REQUEST =
 const QUESTION = /^(?:which|what|how)\b.*\b(?:can|could|do|should)\s+(?:i|we)\b/i;
 const FIELD_LINE = /^(?:employee|job title|location|date|type of warning|payroll deduct\w*|prior actions)\s*:/i;
 
+/**
+ * HOTFIX (QA, 17 Nov 2026; the tester's coaching form): "Coaching for test testy on greeting guests at the door" put the
+ * whole request in Other's topic. A clause that names the form's own person (the record's employee name, any case) has
+ * its topic after the name: "on greeting guests at the door" → "Greeting guests at the door".
+ */
+function topicAfterName(clause: string, employeeName: string | null | undefined): string | null {
+  const name = (employeeName ?? "").trim().toLowerCase();
+  if (!name) return null;
+  const at = clause.toLowerCase().indexOf(name);
+  if (at < 0) return null;
+  const after = clause.slice(at + name.length).replace(/^[\s,:-]+/, "").replace(/^(?:on|about|regarding|re|for|with)\s+/i, "").trim();
+  if (after.split(/\s+/).length < 2) return null;
+  return after.charAt(0).toUpperCase() + after.slice(1);
+}
+
 /** What happened, in the manager's own words, short enough for a write-in; or null. */
-export function managerIssueWords(notes: string): string | null {
+export function managerIssueWords(notes: string, employeeName?: string | null): string | null {
   const lines = (notes ?? "").split("\n").map((line) => line.trim()).filter(Boolean);
   const stated = lines.find((line) => /^what happened\s*:/i.test(line));
   const source = stated ? [stated.replace(/^what happened\s*:\s*/i, "")] : lines.filter((line) => !FIELD_LINE.test(line));
@@ -45,6 +60,8 @@ export function managerIssueWords(notes: string): string | null {
   for (const line of source) {
     for (const part of line.split(/(?<=[.!?])\s+|[,;]\s+/)) {
       const clause = part.trim().replace(/[.!?\s]+$/, "");
+      const named = topicAfterName(clause, employeeName);
+      if (named) return named.length > LONGEST ? null : named;
       if (clause.split(/\s+/).length < 3 || REQUEST.test(clause)) continue;
       if (skipQuestions && (/\?\s*$/.test(part) || QUESTION.test(clause))) continue;
       if (clause.length > LONGEST) return null;
@@ -58,14 +75,22 @@ export function guardOtherWriteIn<T extends { values: Record<string, string>; ch
   draft: T,
   notes: string,
   fieldKeys: ReadonlySet<string>,
+  employeeName?: string | null,
 ): T {
   if (!otherWriteInGuardEnabled()) return draft;
   let values = draft.values;
   let checked = draft.checked;
   for (const [group, writeIn] of Object.entries(WRITE_INS)) {
     if (!fieldKeys.has(writeIn) || !(checked[group] ?? []).includes(OTHER)) continue;
-    if ((values[writeIn] ?? "").trim() !== "") continue;
-    const words = managerIssueWords(notes);
+    /* HOTFIX: a topic that is the whole request naming the person ("Coaching for <name> on …") becomes the topic. */
+    const written = (values[writeIn] ?? "").trim();
+    const trimmed = written ? topicAfterName(written, employeeName) : null;
+    if (trimmed) {
+      values = { ...values, [writeIn]: trimmed };
+      continue;
+    }
+    if (written !== "") continue;
+    const words = managerIssueWords(notes, employeeName);
     if (words) {
       values = { ...values, [writeIn]: words };
       continue;

@@ -16,3 +16,18 @@ carried only the card's heading ("Other" is none of the manual's), so the drafte
   - Policy Violated reads "Other — <topic>" (or has it added after a cited heading), so the Action Plan names the topic.
 - A heading on the card ("Attendance p.14") was already carried. A replay case now checks Policy Violated and Direct
   policy on the saved form.
+
+## Pau's rulings, same day (via QA): the full write-up, the card's policy, no invented date
+
+- **Going Forward.** It was missing on every Corrective Action and on Coaching forms where the manager typed no plan, on
+  both paths, loop or not. `DRAFT_NO_INVENTED_PLAN_ENABLED` removed it. Pau wants the full write-up, so the flag is now off
+  in `src/config/production-flags.json`; QA turns it off in Vercel. The code is unchanged.
+- **The card's policy is the saved form's.** For a loop card (`cardFromLoop`), the card's heading is read as the manager
+  naming that policy (`loopCardHeading` is added to `policyNotes`), so every policy reader cites it. A card citing Other
+  alone sets Type of Offense to Other, Policy Violated to "Other — <topic>" and Direct policy to blank, and the plan is
+  rebuilt from that line.
+- **No date the manager did not state.** `withoutUnstatedDates` (`form-date-grounding.ts`) runs on the drafted
+  Observation sections and the Action Plan. It takes out any date whose day the manager never stated, and logs it. A day
+  word they used ("today", "yesterday") counts as stated.
+- **The coaching Other topic is the topic.** `other-write-in.ts` reads the text after the form's own employee name
+  ("Coaching for <name> on greeting guests at the door" → "Greeting guests at the door").
