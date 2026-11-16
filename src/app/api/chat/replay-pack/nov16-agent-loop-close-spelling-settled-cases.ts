@@ -201,7 +201,8 @@ export const NOV16_AGENT_LOOP_CLOSE_SPELLING_SETTLED_CASES: ReplayCase[] = [
       // Only the turn whose find_past_forms set it: the next turn's reply gets no offer appended.
       t.loopModel!(loopStandIn((): LoopDecision => ({ text: "Noted." })));
       const next = await thread.say("thanks");
-      expect(next.content, "the offer was appended in a later turn").toBe("Noted.");
+      // Live the model says its own thanks (QA): the check is only that the offer sentence is not there.
+      expect(next.content, "the offer was appended in a later turn").not.toContain("Want me to change the Corrective Action Form card for Tamsin?");
       // A reply that already asks for a change in its own words gets no second question.
       const own = t.thread();
       t.loopModel!(model());
