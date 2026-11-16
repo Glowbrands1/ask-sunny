@@ -35,6 +35,10 @@ import { rulesBookText } from "./rules-book";
  * Re-taken on purpose on 16 Nov 2026 (the retry guard, QA): one Card replies line was added for stop_retrying. It reads
  * the same under every config; nothing else changed.
  *
+ * Updated on purpose on 16 Nov 2026 (fix-name, live s10; QA's review of #1050): one line in the card replies teaches
+ * propose_form's name_corrected fact ("I changed the name on the card from <from> to <to>; nothing else changed.").
+ * It names no app, place, staff system or form key; nothing else in either text changed.
+ *
  * Re-taken on purpose on 16 Nov 2026 (never guess, QA): a Replies line (never guess a pronoun) and a Which form line
  * (pasted text with no ask gets one question) were added, and the termination-offense line now says "the manager tells
  * in their own words". All read the same under every config; nothing else changed. The same day (Pau): the pronoun line
