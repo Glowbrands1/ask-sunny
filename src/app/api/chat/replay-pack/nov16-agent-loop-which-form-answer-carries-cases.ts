@@ -156,3 +156,54 @@ export const NOV16_WHICH_FORM_ANSWER_CARRIES_CASES: ReplayCase[] = [
     },
   },
 ];
+
+/*
+ * QA (16 Nov 2026): the same two chats as production sends them. The first message's trace had a null conversation_id
+ * and the history's message ids did not match the trace's, so T1's turn record was found only through #1075's lookup.
+ * T2 and T3 go with the history renumbered (as in #1075's live cases); openRequestTurns finds the open request through
+ * `replyTurns`, the same lookup, so the request's edit still carries.
+ */
+const renumbered = (thread: { conversation?: readonly { id: string; role: string; content: string }[] }) =>
+  (thread.conversation ?? []).map((message) => ({ id: `prod-${message.id}`, role: message.role, content: message.content }));
+
+NOV16_WHICH_FORM_ANSWER_CARRIES_CASES.push(
+  {
+    id: "nov16-which-form-answer-carries-date-dateedit-production-ids",
+    title: "dateedit with production's message ids (renumbered history, T1's record found by #1075's lookup): \"the finalized one\" still saves 11/09/2026 on the revision draft",
+    report: `${REPORT}; with #1075's record lookup`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.() || !offline) return;
+      let ids = { tenthFinal: "", tenthDraft: "", twelfth: "" };
+      ids = await onFile(t);
+      t.loopModel!(whichThenEdit("the corrective action for test testy", () => ids, () => ({ values: { form_date: "11/09/2026" } })));
+      const thread = t.thread();
+      await thread.say("the corrective action for test testy, change the date to 11/09/2026");
+      await thread.say("the 11/10 one", {}, { history: renumbered(thread) });
+      const reply = await thread.say("the finalized one", {}, { history: renumbered(thread) });
+      const revision = (t.forms() as Forms).find((row) => row.revises_instance_id === ids.tenthFinal);
+      expect(revision?.form_date, `the date stated at T1 was not saved:\n${reply.content}`).toBe("2026-11-09");
+    },
+  },
+  {
+    id: "nov16-which-form-answer-carries-payroll-paycheck-production-ids",
+    title: "paycheck with production's message ids (renumbered history): \"the finalized one\" still saves Payroll = Yes and asks the amount",
+    report: `${REPORT}; with #1075's record lookup`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.() || !offline) return;
+      let ids = { tenthFinal: "", tenthDraft: "", twelfth: "" };
+      ids = await onFile(t);
+      const first = "on the 11/10 corrective action for test testy, tick payroll deduct";
+      t.loopModel!(whichThenEdit(first, () => ids, (view) => ({ values: { payroll_deduct: "yes" }, payroll_evidence: evidenceFrom(view, "tick payroll deduct", view.turns.filter((turn) => turn.role === "user").length - 1) })));
+      const thread = t.thread();
+      await thread.say(first);
+      const reply = await thread.say("the finalized one", {}, { history: renumbered(thread) });
+      const revision = (t.forms() as Forms).find((row) => row.revises_instance_id === ids.tenthFinal);
+      expect(revision && t.checked(revision.id).payroll_deduct, `the payroll answer from T1 was not saved:\n${reply.content}`).toEqual(["yes"]);
+      expect(reply.content).toMatch(/Payroll deduction amount/);
+    },
+  },
+);
