@@ -50,6 +50,10 @@ function cardModel(options: { skips: RegExp; fixes: boolean; extra?: (view: Loop
     if (!skip) {
       if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "tamsin orwel" } };
       if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { ...fields, employee_id: TAMSIN.id } };
+      // ruling (b), QA 17 Nov: a typed full name whose last name differs from the staff list's is asked, never seated.
+      // A model told to ask (the card refused with ask_exactly: "Did you mean **Tamsin Orwell**?") asks it, and nothing else.
+      const refused = lastResult(view, "propose_form") as { reason_code?: string; ask_exactly?: string } | null;
+      if (refused?.reason_code && refused.ask_exactly) return { text: refused.ask_exactly };
     }
     const lines = [
       "Here's the Corrective Action Form for **Tamsin Orwell**.",
@@ -78,6 +82,8 @@ export const NOV14_AGENT_LOOP_SELF_REVIEW_CASES: ReplayCase[] = [
       t.loopModel!(model);
       const thread = t.thread();
       await thread.say(T1);
+      // ruling (b), QA 17 Nov: a typed full name whose last name differs from the staff list's is asked, never seated.
+      await thread.say("yes");
       const payroll = await thread.say(T2);
       expect(payroll.formProposal, "the payroll answer did not re-propose the card").toMatchObject({ payrollDeduct: "yes", payrollDeductAmount: "20" });
       expect(model.views.some(checked), "a matching reply was handed back").toBe(false);
@@ -102,6 +108,8 @@ export const NOV14_AGENT_LOOP_SELF_REVIEW_CASES: ReplayCase[] = [
       t.loopModel!(cardModel({ skips: /make it a written/, fixes: false }));
       const thread = t.thread();
       await thread.say(T1);
+      // ruling (b), QA 17 Nov: a typed full name whose last name differs from the staff list's is asked, never seated.
+      await thread.say("yes");
       await thread.say(T2);
       const written = await thread.say(T3);
       expect(written.formProposal ?? null).toBeNull();
@@ -128,6 +136,8 @@ export const NOV14_AGENT_LOOP_SELF_REVIEW_CASES: ReplayCase[] = [
       t.loopModel!(dated);
       const one = t.thread();
       await one.say(T1);
+      // ruling (b), QA 17 Nov: a typed full name whose last name differs from the staff list's is asked, never seated.
+      await one.say("yes");
       const date = await one.say("change the date to 11/4");
       expect(date.formProposal?.formDate, `the date did not reach the card:\n${date.content}`).toBe("2026-11-04");
 

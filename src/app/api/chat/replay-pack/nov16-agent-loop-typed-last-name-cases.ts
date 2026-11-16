@@ -158,4 +158,31 @@ export const NOV16_AGENT_LOOP_TYPED_LAST_NAME_CASES: ReplayCase[] = [
       }
     },
   },
+  {
+    id: "nov16-typed-last-name-prefix-asked-then-yes",
+    title: "Ruling (b), QA 17 Nov (option A): \"ca for tamsin orwel, late on 11/14\" (a last name that is only a prefix of the staff list's Orwell) asks \"Did you mean **Tamsin Orwell**?\"; \"yes\" then seats Tamsin Orwell",
+    report: `${REPORT}; QA's ruling on the prefix case: a last name that is only a prefix is asked too`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-16T22:15:00Z"));
+      t.directory([...STAFF, { id: "e-tamsin-orwell", firstName: "Tamsin", lastName: "Orwell", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" }]);
+      t.as("salon_director", KEARNEY);
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        const staff = lastResult(view, "find_staff") as { matches?: { employee_id: string }[]; ask_exactly?: string } | null;
+        if (!staff) return { tool: "find_staff", input: { name: "tamsin orwel", person_evidence: quoted(view, "tamsin orwel") } };
+        if (staff.ask_exactly) return { text: staff.ask_exactly };
+        const done = lastResult(view, "propose_form");
+        if (done) return { text: typeof done.ask_exactly === "string" ? done.ask_exactly : "Here's the Corrective Action Form for **Tamsin**." };
+        return { tool: "propose_form", input: { template_key: "dpoa", employee_id: staff.matches?.[0]?.employee_id, person_evidence: quoted(view, "tamsin orwel"), what_happened: "Tamsin Orwell was late on 11/14.", incident_date: "2026-11-14", policy: "Attendance" } };
+      }));
+      const thread = t.thread();
+      const ask = await thread.say("ca for tamsin orwel, late on 11/14");
+      expect(ask.content).toMatch(/Did you mean \*\*Tamsin Orwell\*\*\?/);
+      expect(employeeOf(ask), "seated before the manager answered").toBeNull();
+      const yes = await thread.say("yes");
+      expect(employeeOf(yes) ?? thread.proposal?.employeeName, yes.content).toBe("Tamsin Orwell");
+    },
+  },
 ];
