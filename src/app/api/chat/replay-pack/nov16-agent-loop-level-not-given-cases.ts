@@ -84,4 +84,28 @@ export const NOV16_AGENT_LOOP_LEVEL_NOT_GIVEN_CASES: ReplayCase[] = [
       expect((reply.formProposal as FormProposal | undefined)?.warningLevel ?? null).toBeNull();
     },
   },
+  {
+    id: "nov16-level-not-given-control-written-describes-a-thing",
+    title: "Control (QA, #1079): \"CA for Remy Calder, she didn't follow the written closing checklist on 11/14\" — \"written\" describes the checklist, not the warning: no level_not_given, and a model that sends Written quoting \"written closing checklist\" is refused (level_not_in_evidence); the level is never ticked",
+    report: `${REPORT}; QA's control on #1079: "written" that describes something else is never the level`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      start(t);
+      const message = "CA for Remy Calder, she didn't follow the written closing checklist on 11/14";
+      const account = "Remy Calder did not follow the written closing checklist on 11/14.";
+      // 1. The live shape: no level sent; it is proposed again with Written only if level_not_given is offered.
+      t.loopModel!(liveShape("written closing checklist", account));
+      const offered = await t.thread().say(message);
+      expect((offered.formProposal as FormProposal | undefined)?.warningLevel ?? null, "Written was ticked from the checklist's \"written\"").toBeNull();
+      // 2. A model that sends Written itself, quoting the checklist words.
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        if (proposals(view).length === 0) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: account, incident_date: "2026-11-14", policy: "Other — closing duties", warning_level: "written", level_evidence: evidenceFrom(view, "the written closing checklist") } };
+        return { text: "Here's the Corrective Action Form for **Remy**." };
+      }));
+      const sent = await t.thread().say(message);
+      expect((sent.formProposal as FormProposal | undefined)?.warningLevel ?? null, "Written was ticked from the checklist's \"written\"").toBeNull();
+    },
+  },
 ];

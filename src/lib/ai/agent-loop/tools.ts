@@ -235,6 +235,34 @@ export function levelNamedInEvidence(evidence: unknown, level: "verbal" | "writt
   return holdsPhrase(quote, level) || (quote.toLowerCase().match(/[\p{L}]+/gu) ?? []).some((word) => word.length >= 4 && editDistance(word, level) === 1);
 }
 
+/**
+ * QA (16 Nov 2026, #1079's control): the option word may describe something else, "she didn't follow the written closing
+ * checklist", and is then not the form's level. An occurrence counts as the level only when it does not describe another
+ * thing: the next word is one of the form's own words (`formWords`: the form's name, its initials, the option labels'
+ * "Warning"), or there is no next word in its clause, or the next word is a number ("verbal 146 tans") or a short linking
+ * word of three letters or fewer ("a written for being late", "verbal on 11/14"). A longer word right after it is what
+ * the option word describes ("written closing checklist", "written policy"): not the level. A shape check, never a list.
+ */
+export function levelOptionIsTheLevel(text: string, level: "verbal" | "written", formWords: readonly string[]): boolean {
+  const own = new Set(formWords.map((word) => word.toLowerCase()));
+  const tokens = text.toLowerCase().match(/[\p{L}\p{N}'$/-]+|[.,;:!?()\n]/gu) ?? [];
+  return tokens.some((token, index) => {
+    const isOption = token === level || (token.length >= 4 && /^\p{L}+$/u.test(token) && editDistance(token, level) === 1);
+    if (!isOption) return false;
+    const next = tokens[index + 1];
+    if (next === undefined || /^[.,;:!?()\n]$/.test(next) || /^[\d$]/.test(next)) return true;
+    const bare = next.replace(/[-']+$/g, "");
+    return own.has(bare) || bare.length <= 3;
+  });
+}
+
+/** The form's own words for `levelOptionIsTheLevel`: its name's words and initials, and the option labels' "warning". */
+export function levelFormWords(formName: string): string[] {
+  const words = formName.toLowerCase().match(/\p{L}+/gu)?.filter((word) => word !== "form") ?? [];
+  const initials = words.length > 1 ? [words.map((word) => word[0]).join("")] : [];
+  return [...words, ...initials, "warning", "warnings"];
+}
+
 /** The question when no level option was named (Pau's ruling, fix batch item 2). */
 export const LEVEL_QUESTION = "Which is it: Verbal Warning, Written Warning or Termination?";
 
@@ -2684,7 +2712,9 @@ export async function proposeForm(
   const askedLevel = input.warning_level === "verbal" || input.warning_level === "written" ? input.warning_level : null;
   const levelAnswer = caOnlyFields && askedLevel ? notTheOfferAnswer(answerEvidence(context, input.level_evidence, "request", evidencePerson, { requestTurnIds }), context) : null;
   /* Fix batch item 2: the quote must name the option ("final warning" names none: level_not_in_evidence, and ask which). */
-  const levelUnnamed = Boolean(levelAnswer?.ok && askedLevel && !levelNamedInEvidence(input.level_evidence, askedLevel));
+  /* QA (#1079's control): and the option word in the quote is the form's level, not a word describing something else. */
+  const levelQuote = input.level_evidence && typeof input.level_evidence === "object" ? String((input.level_evidence as { quote?: unknown }).quote ?? "") : "";
+  const levelUnnamed = Boolean(levelAnswer?.ok && askedLevel && (!levelNamedInEvidence(input.level_evidence, askedLevel) || !levelOptionIsTheLevel(levelQuote, askedLevel, levelFormWords(template.name))));
   const levelCheck: AnswerEvidence | null = levelUnnamed ? { ok: false, reason: "level_not_in_evidence" } : levelAnswer;
   /*
    * The carry (c208: "redo the outline" rebuilt the card with no level, and it stayed unset): the card on screen, or this
@@ -2969,7 +2999,7 @@ export async function proposeForm(
   const terminationStated = loopTermination;
   /* The level option this message names when the card has none and none was asked (`level_not_given` below). */
   const namedOptions = caOnlyFields && !askedLevel && !level && !terminationStated
-    ? (["verbal", "written"] as const).filter((option) => levelNamedInEvidence({ quote: context.question }, option))
+    ? (["verbal", "written"] as const).filter((option) => levelNamedInEvidence({ quote: context.question }, option) && levelOptionIsTheLevel(withoutMessageIdTags(context.question), option, levelFormWords(template.name)))
     : [];
   const levelNotGiven = namedOptions.length === 1 ? namedOptions[0]! : null;
   const unset = corrective && !awaiting ? [...(payroll ? [] : ["payroll_deduct"]), ...(level || terminationStated ? [] : ["warning_level"])] : [];
