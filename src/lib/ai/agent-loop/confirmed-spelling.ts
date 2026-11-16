@@ -149,6 +149,18 @@ export function latestTurnKeepsOrUsesTyped(view: NameQuestionView, typed: string
   );
 }
 
+/**
+ * QA (16 Nov 2026, the 266 re-run's c022): a name kept as typed ("keep <typed>", "no", "use <typed>") in ANY answered
+ * name question of this chat stays settled for the chat: the next turn's card is never asked about it again.
+ */
+export function everKeptOrUsedTyped(view: NameQuestionView, typed: string): boolean {
+  return answeredNameQuestions(view).some(
+    (asked) =>
+      !asked.confirmed && asked.record.typedKey === personKey(typed) &&
+      (saysNo(asked.answer) || holdsPhrase(asked.answer, `use ${typed}`) || (asked.record.asksFullName === true && asked.offered.length === 0 && AFFIRMATIVE.test(asked.answer))),
+  );
+}
+
 /** The message being answered now answers a recorded name question for this typed name (whatever it says). */
 export function latestTurnAnswersFor(view: NameQuestionView, typed: string): boolean {
   return answeredNameQuestions(view).some((asked) => asked.latest && asked.record.typedKey === personKey(typed));

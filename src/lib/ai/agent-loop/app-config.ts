@@ -1,6 +1,7 @@
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { ACTIVE_BRAND } from "@/lib/brand";
 import { readDirectoryFacts, readDirectoryRoster, readScopedRoster } from "@/lib/forms/employee-roster";
+import { JOB_TITLES } from "@/lib/forms/proposal";
 
 /**
  * ============================================================================
@@ -43,6 +44,11 @@ export interface AppConfig {
     readonly readDirectory: typeof readDirectoryRoster;
     readonly readDirectoryFacts: typeof readDirectoryFacts;
   };
+  /**
+   * The company's job titles, as a manager may type them before or after a name ("TC <name>", "<name> TC",
+   * "Tanning Consultant, <name>"): taken off a typed name before it is looked up (QA, 16 Nov 2026, the 266 re-run's c220).
+   */
+  readonly jobTitles: readonly RegExp[];
 }
 
 /** Ask Sunny: the brand's names and place words, plus the staff system and form keys of this app. */
@@ -61,6 +67,7 @@ export const SUNNY_CONFIG: AppConfig = {
     readDirectory: (...args) => readDirectoryRoster(...args),
     readDirectoryFacts: (...args) => readDirectoryFacts(...args),
   },
+  jobTitles: JOB_TITLES.map((entry) => entry.pattern),
 };
 
 let active: AppConfig = SUNNY_CONFIG;
