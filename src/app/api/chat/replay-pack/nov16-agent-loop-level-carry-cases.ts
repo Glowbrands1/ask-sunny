@@ -36,12 +36,17 @@ const proposeOutputs = (views: readonly LoopView[]) => views.flatMap((view) => v
 /** c158's first turns: the form and its level with no person (the app asks who), then the name. */
 async function c158Card(t: ReplayContext, third?: (view: LoopView) => LoopDecision) {
   start(t);
+  const evidence = { cited: "" };
   const standIn = loopStandIn((view): LoopDecision => {
     const text = said(view);
     if (/^i need to create/i.test(text)) return lastResult(view, "propose_form") ? { text: String((lastResult(view, "propose_form") as { ask_exactly?: string }).ask_exactly ?? "Who is it for?") } : { tool: "propose_form", input: { template_key: "dpoa" } };
     if (/^remy calder$/i.test(text)) {
       if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
-      if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", warning_level: "verbal", level_evidence: evidenceFrom(view, "verbal corrective action form", 1) } };
+      if (!lastResult(view, "propose_form")) {
+        const level = evidenceFrom(view, "verbal corrective action form", 1);
+        evidence.cited = level.message_id;
+        return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", warning_level: "verbal", level_evidence: level } };
+      }
       return { text: "Here's the Corrective Action Form for **Remy Calder**. What happened?" };
     }
     return third ? third(view) : { text: "Okay." };
@@ -50,7 +55,7 @@ async function c158Card(t: ReplayContext, third?: (view: LoopView) => LoopDecisi
   const thread = t.thread();
   await thread.say("I need to create a verbal corrective action form");
   await thread.say("remy calder");
-  return { thread, standIn };
+  return { thread, standIn, evidence };
 }
 
 export const NOV16_LEVEL_CARRY_CASES: ReplayCase[] = [
@@ -62,10 +67,15 @@ export const NOV16_LEVEL_CARRY_CASES: ReplayCase[] = [
     fixFlags: [FLAG],
     async run(t) {
       if (!t.loopOn?.() || !offline) return;
-      const { thread, standIn } = await c158Card(t);
+      const { thread, standIn, evidence } = await c158Card(t);
       const out = proposeOutputs(standIn.views).at(-1)!;
       expect(out.reason_code ?? null, JSON.stringify(out)).toBeNull();
       expect(levelOf(thread), "the level stated with the request was lost").toBe("verbal");
+      // QA: the bound INCLUDES the manager turn the "who is it for?" answered. The person_asked record is on T1, and T1 is
+      // the very turn the level evidence quotes ("I need to create a verbal corrective action form").
+      const askedOn = (t.rows?.("chat_traces") ?? []).filter((row) => (row.slots as { agent_loop?: { person_asked?: unknown } } | undefined)?.agent_loop?.person_asked).map((row) => row.message_id);
+      expect(askedOn, "no person_asked record for T1").toHaveLength(1);
+      expect(evidence.cited, "the level evidence does not cite the turn the who-question answered").toBe(askedOn[0]);
     },
   },
   {
