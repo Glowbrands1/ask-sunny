@@ -38,6 +38,10 @@ import { rulesBookText } from "./rules-book";
  * Updated on purpose on 16 Nov 2026 (fix-name, live s10; QA's review of #1050): one line in the card replies teaches
  * propose_form's name_corrected fact ("I changed the name on the card from <from> to <to>; nothing else changed.").
  * It names no app, place, staff system or form key; nothing else in either text changed.
+ *
+ * Re-taken on purpose on 16 Nov 2026 (QA, c019 in #1056): one line in "Which form" teaches that "Create a <form> from this
+ * conversation" / "make it a <form> instead" for the same person and incident is the same request, not
+ * new_form_evidence. It names no app, place, staff system or form key; nothing else changed.
  */
 
 const fixture = (name: string): string => readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), "utf8");
