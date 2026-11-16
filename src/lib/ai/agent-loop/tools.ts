@@ -265,10 +265,19 @@ export function levelOptionIsTheLevel(text: string, level: "verbal" | "written",
 export function levelPhraseNamingTheForm(text: string, level: "verbal" | "written", formWords: readonly string[]): string | null {
   const own = new Set(formWords.map((word) => word.toLowerCase()));
   const words = [...text.matchAll(/[\p{L}][\p{L}'-]*/gu)];
-  for (let index = 0; index + 1 < words.length; index += 1) {
+  for (let index = 0; index < words.length; index += 1) {
     const word = words[index]![0].toLowerCase();
     const isOption = word === level || (word.length >= 4 && editDistance(word, level) === 1);
     if (!isOption) continue;
+    const start = words[index]!.index!;
+    const end = start + words[index]![0].length;
+    /*
+     * QA (c094: "make it a verbal"): the level as a noun, "a"/"an" right before the option word and nothing after it in its
+     * clause ("make it a verbal", "it's a written."). "written up before" and "a written for being late" do not qualify.
+     */
+    const article = index > 0 && /^an?$/i.test(words[index - 1]![0]) && /^\s+$/.test(text.slice(words[index - 1]!.index! + words[index - 1]![0].length, start));
+    if (article && /^\s*(?:[.,;:!?)]|$)/.test(text.slice(end))) return text.slice(words[index - 1]!.index!, end);
+    if (index + 1 >= words.length) continue;
     const next = words[index + 1]!;
     const between = text.slice(words[index]!.index! + words[index]![0].length, next.index!);
     if (!/^\s+$/.test(between) || !own.has(next[0].toLowerCase().replace(/[-']+$/g, ""))) continue;
@@ -279,9 +288,11 @@ export function levelPhraseNamingTheForm(text: string, level: "verbal" | "writte
 
 /** The form's own words for `levelOptionIsTheLevel`: its name's words and initials, and the option labels' "warning". */
 export function levelFormWords(formName: string): string[] {
+  /* The initials come from the name without "form" ("Corrective Action Form" → CA); "form" itself is the form's own word too
+   * (QA, c094: "Written form" names the level). */
   const words = formName.toLowerCase().match(/\p{L}+/gu)?.filter((word) => word !== "form") ?? [];
   const initials = words.length > 1 ? [words.map((word) => word[0]).join("")] : [];
-  return [...words, ...initials, "warning", "warnings"];
+  return [...words, ...initials, "form", "warning", "warnings"];
 }
 
 /** The question when no level option was named (Pau's ruling, fix batch item 2). */

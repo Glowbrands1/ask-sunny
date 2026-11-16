@@ -26,7 +26,7 @@ describe("levelOptionIsTheLevel", () => {
     ] as const) expect(levelOptionIsTheLevel(text, level, words), text).toBe(false);
   });
   it("reads the form's words from its name", () => {
-    expect(levelFormWords("Corrective Action Form")).toEqual(["corrective", "action", "ca", "warning", "warnings"]);
+    expect(levelFormWords("Corrective Action Form")).toEqual(["corrective", "action", "ca", "form", "warning", "warnings"]);
   });
 });
 
@@ -38,6 +38,13 @@ describe("levelPhraseNamingTheForm", () => {
     expect(levelPhraseNamingTheForm("verbal ca for remy calder, late on 11/13", "verbal", words)).toBe("verbal ca");
     expect(levelPhraseNamingTheForm("give her a Written Warning for being late", "written", words)).toBe("Written Warning");
     expect(levelPhraseNamingTheForm("a written corrective action for remy", "written", words)).toBe("written corrective");
+  });
+  it("takes \"written form\" and the level as a noun at the end of its clause (QA, c094)", () => {
+    expect(levelPhraseNamingTheForm("Written form and no payroll deducted", "written", words)).toBe("Written form");
+    expect(levelPhraseNamingTheForm("make it a verbal", "verbal", words)).toBe("a verbal");
+    expect(levelPhraseNamingTheForm("ok, it's a written.", "written", words)).toBe("a written");
+    expect(levelPhraseNamingTheForm("she was written up before, make it a CA", "written", words)).toBeNull();
+    expect(levelPhraseNamingTheForm("give her a written for being late", "written", words)).toBeNull();
   });
   it("is null when the option word is not right before the form's own word", () => {
     for (const text of [
