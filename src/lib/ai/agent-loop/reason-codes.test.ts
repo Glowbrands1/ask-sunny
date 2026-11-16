@@ -44,6 +44,8 @@ const KNOWN = new Set([
   // Added on purpose (QA, the live set on #1064, 16 Nov 2026): an answer to the card's name check keeps its form; a close
   // spelling the manager typed is asked even when the model chose the roster person's id.
   "name_answer_keeps_form", "close_spelling_not_confirmed",
+  // Added on purpose (QA, 16 Nov 2026; Runner 2's c014 T6): a heading on a non-CA card that the manager never named for it.
+  "policy_not_for_this_card",
   // QA (16 Nov 2026, live group E): an edit asked for a form type with forms on file and another card on screen.
   "edit_asked_forms_on_file",
 ]);

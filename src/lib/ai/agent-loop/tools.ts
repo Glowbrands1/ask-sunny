@@ -54,7 +54,7 @@ import { redactSensitiveDefaults } from "@/lib/ai/sensitive-defaults";
 import { expandPolicyQuery } from "@/lib/knowledge/policy-retrieval";
 import type { SourceCitation } from "@/types";
 import type { AccessScope, ChatFormProposal, ChatMessage, Role } from "@/types";
-import { personKey, replyTurns, type CardRecord, type NameQuestionRecord, type PersonAskedRecord, type TurnRecord } from "@/lib/ai/agent-loop/card-record";
+import { accountKey, personKey, replyTurns, type CardRecord, type NameQuestionRecord, type PersonAskedRecord, type TurnRecord } from "@/lib/ai/agent-loop/card-record";
 
 /**
  * ============================================================================
@@ -685,6 +685,8 @@ export interface ToolEffects {
   /** QA (c022): the payroll answer and amount this turn's card holds, for the card record, so a rebuild keeps them. */
   proposalPayroll?: "yes" | "no" | null;
   proposalPayrollAmount?: string | null;
+  /** QA (c163): the one-way key of this card's account as the model gave it (`accountKey`), for the card record. */
+  proposalAccountKey?: string | null;
   /**
    * Every source a tool read this turn, numbered from 1 in the order read: the model cites one as [S<n>] (`addSource`).
    * Only the ones the reply cites become source cards (run.ts, QA's live-app item 12), as today's grounded path does.
@@ -2797,6 +2799,16 @@ export async function proposeForm(
   let policyLine: string | null = policyHeading ? formatManualCitation(policyHeading, page) : null;
   /* Batch G (G7a, the tester's exit sweep): an exit cites no policy; it is not an incident. */
   if (template.key === appConfig().formKeys.exit) policyLine = null;
+  /*
+   * QA (16 Nov 2026; Runner 2's c014 T6 on d7042447, and c200): "Create a Coaching Form from this conversation" came with
+   * the earlier Corrective Action's "Standards of Conduct", which the manager never named for the coaching card (the
+   * model chose it for the CA). A card other than a Corrective Action cites a manual heading only when the manager named
+   * it in this card's request words, or today's topic reader fits it to this card's own account; never one copied from
+   * another form in the chat. Otherwise the heading is left off the card (not_on_card: policy_not_for_this_card).
+   */
+  const policyNotForThisCard = template.key !== appConfig().formKeys.corrective && policyHeading !== null && !managerNamed && !(topicFits ?? []).some((heading) => headingKey(heading) === headingKey(policyHeading!));
+  /* The heading is left off; an "Other — <topic>" beside it (after "; ") stays, as #1068's rules decide it. */
+  if (policyNotForThisCard) policyLine = policyLine && policyLine.includes("; ") ? policyLine.split("; ").slice(1).join("; ") : null;
   const otherPart = askedOther || (/^other\b/i.test(askedPolicy) ? askedPolicy : "");
   if (otherPart) {
     const topic = otherPart.replace(/^other\s*[—:-]?\s*/i, "").trim() || cleaning || whatHappened.slice(0, 120);
@@ -2970,7 +2982,17 @@ export async function proposeForm(
    * ("yes", "thanks", "another ca for <name>") never gets it, nor does a new request (new_form_evidence), another
    * person's card or another form. Never "as you said" for a carried answer (stated_this_turn lists this message's only).
    */
-  const payrollRecord = caOnlyFields && !asksNewForm && isThisCard(context.cardOnScreen) && context.cardOnScreen.payroll ? context.cardOnScreen : null;
+  /*
+   * QA (16 Nov 2026; Runner 2's c163 on d7042447): payroll Yes (T4) was dropped at T6 ("we have already done coaching")
+   * because T5's reply ("my DM told me she gets one this month") showed no card, so nothing was "on screen". The card was
+   * still open: the chat's latest card, this card, rebuilt with the SAME account (its key, `accountKey`), is the card on
+   * screen for the carry. A new account ("another ca …, she was rude to a guest") is a new card and carries nothing, as
+   * the level guard after a reply with no card; a new request (new_form_evidence) or a form opened since never does.
+   */
+  const modelAccount = typeof input.what_happened === "string" ? input.what_happened.trim() : "";
+  const sameCardKept = !context.openFormId && isThisCard(context.earlierCard) && Boolean(context.earlierCard.accountKey && modelAccount && context.earlierCard.accountKey === accountKey(modelAccount));
+  const openCard = isThisCard(context.cardOnScreen) ? context.cardOnScreen : sameCardKept ? context.earlierCard : null;
+  const payrollRecord = caOnlyFields && !asksNewForm && openCard?.payroll ? openCard : null;
   if (payroll === null && !answerUnclear && payrollRecord?.payroll) {
     payroll = payrollRecord.payroll;
     if (payroll === "yes" && !amount && payrollRecord.payrollAmount) amount = payrollRecord.payrollAmount;
@@ -3219,6 +3241,7 @@ export async function proposeForm(
   effects.proposalLevel = level;
   effects.proposalPayroll = payroll;
   effects.proposalPayrollAmount = payroll === "yes" ? amount : null;
+  effects.proposalAccountKey = typeof input.what_happened === "string" && input.what_happened.trim() ? accountKey(input.what_happened.trim()) : null;
   const salonNames = (ids: readonly string[] | undefined) => (ids ?? []).map((id) => ({ id, name: rosterSalonName(id) ?? id }));
   /*
    * Batch K4 (QA's 266 shadow replay, c137/c134: a pasted account about <Y>, off the roster, went on <X>'s card; the
@@ -3336,6 +3359,7 @@ export async function proposeForm(
    */
   const notOnCard: { field: string; reason_code: string }[] = [
     ...(dateFromAnotherRequest ? [{ field: "incident_date", reason_code: "date_from_another_request" }] : []),
+    ...(policyNotForThisCard ? [{ field: "policy", reason_code: "policy_not_for_this_card" }] : []),
     ...((modelLevel && level !== modelLevel) ? [{ field: "warning_level", reason_code: caOnlyFields ? "level_not_stated" : "not_on_this_form" }] : []),
     ...((askedTermination && !loopTermination) ? [{ field: "warning_level", reason_code: "termination_not_stated" }] : []),
     ...((askedPayroll && !payroll) ? [{ field: "payroll_deduct", reason_code: caOnlyFields ? "payroll_not_stated" : "not_on_this_form" }] : []),
