@@ -1413,6 +1413,9 @@ function answeredByFullName(view: NameQuestionView, typed: string): boolean {
   return person.length === 1 && latestTurnConfirms(view, person[0]!.id) !== null;
 }
 
+/** The edited fields an edit_form result lists as stated by this message (stated_this_turn). */
+const STATED_EDIT_FIELDS: ReadonlySet<string> = new Set(["warning_type", "payroll_deduct", PAYROLL_AMOUNT_KEY]);
+
 /** The manager accepted the off-roster offer for this name ("use <name>", or yes right after the offer). */
 function offRosterConfirmed(context: Pick<ToolContext, "question" | "history">, typed: string): boolean {
   const offered = context.history.some((message) => message.role === "assistant" && message.content.toLowerCase().includes(`reply **use ${typed.toLowerCase()}**`));
@@ -2066,6 +2069,12 @@ export async function proposeForm(
     !(answersThisMessage(levelCheck) && level !== null);
   if (payrollAnswerUnclear) payroll = null;
   const payrollQuestion = `Is payroll deduct applicable for **${employee.name}**? Yes or no.`;
+  const amountInThisMessage = (digits: string | null) => Boolean(digits && context.question.replace(/[^\d.]/g, " ").split(/\s+/).some((n) => n !== "" && Number(n) === Number(digits)));
+  const statedThisTurn = [
+    ...(level && answersThisMessage(levelCheck) ? ["warning_level"] : []),
+    ...(payroll && answersThisMessage(payrollCheck) ? ["payroll_deduct"] : []),
+    ...(payroll === "yes" && amountInThisMessage(amount) ? ["payroll_amount"] : []),
+  ];
   /*
    * Batch G (QA's design, 15 Nov 2026; Pau's standing approval): the MODEL decides this Corrective Action is a
    * termination (warning_level "termination", taught by the rules book's examples); code only LOCKS it. It is kept only
@@ -2304,6 +2313,12 @@ export async function proposeForm(
     ...(level || payroll || priorActions
       ? { stated: { ...(level ? { warning_level: level } : {}), ...(payroll ? { payroll_deduct: payroll } : {}), ...(payroll === "yes" && amount ? { payroll_amount: `$${amount.replace(/^\$/, "")}` } : {}), ...(priorActions ? { prior_actions: priorActions } : {}) } }
       : {}),
+    /*
+     * QA's live finding (16 Nov 2026): "as you said" only for what THIS message stated. The level and payroll whose
+     * evidence is the message being answered now, and an amount whose digits are in it; one stated earlier in the
+     * request is read back without "as you said".
+     */
+    ...(statedThisTurn.length > 0 ? { stated_this_turn: statedThisTurn } : {}),
     /* AMOUNT_UNKNOWN_ACK (batch H1): "I don't know the amount" leaves it blank for the manager, said once, never asked again. */
     ...(corrective && payroll === "yes" && !amount ? (saysAmountUnknown(context.question, context.history, { amountOpen: true }) ? { payroll_amount_unknown: true } : { payroll_amount_unset: true }) : {}),
     ...(datesGiven.length > 1 ? { dates_given: datesGiven, ...(date ? { date_chosen: date } : {}) } : {}),
@@ -3058,6 +3073,8 @@ export async function editForm(
       refused,
       /* QA's live finding (16 Nov 2026): what the change was saved on, so the reply never says "press Create" on a saved draft. */
       form_state: "saved_draft",
+      /* "as you said" only for what this message stated (QA, 16 Nov 2026): an edit's level and payroll are this message's own. */
+      ...(updated.some((field) => STATED_EDIT_FIELDS.has(field)) ? { stated_this_turn: updated.filter((field) => STATED_EDIT_FIELDS.has(field)) } : {}),
       ...(amountMissing ? { payroll_amount_missing: { ask_exactly: PAYROLL_AMOUNT_QUESTION } } : {}),
       ...(unchanged.length > 0 ? { unchanged } : {}),
       ...(loaded.instance.templateKey === appConfig().formKeys.corrective ? { saved_level: savedLevel.length > 0 ? savedLevel.map((key) => levelLabel[key] ?? key).join(", ") : null } : {}),

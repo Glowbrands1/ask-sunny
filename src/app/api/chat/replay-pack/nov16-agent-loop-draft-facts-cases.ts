@@ -126,3 +126,53 @@ NOV16_AGENT_LOOP_DRAFT_FACTS_CASES.push(
     },
   })),
 );
+
+/*
+ * QA's live finding (16 Nov 2026): "as you said" was said for a value the turn did not state. propose_form and edit_form
+ * now list stated_this_turn: the level and payroll whose evidence is the message being answered now. A level stated in
+ * the first message and read back on the card the next turn rebuilt is read back without "as you said".
+ */
+NOV16_AGENT_LOOP_DRAFT_FACTS_CASES.push({
+  id: "nov16-draft-facts-as-you-said-only-this-turn",
+  title: "\"written warning for Remy Calder, she was late to her shift on 11/14\" then \"no payroll\": the first card's stated_this_turn has the level; the second card's has payroll only, so the level is read back without \"as you said\"",
+  report: REPORT,
+  status: "fixed",
+  fixFlags: [FLAG],
+  async run(t) {
+    if (!t.loopOn?.()) return;
+    vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
+    t.directory([...STAFF]);
+    t.as("salon_director", KEARNEY);
+    const facts: { stated_this_turn?: string[] }[] = [];
+    t.loopModel!(loopStandIn((view: LoopView): LoopDecision => {
+      const managerTurns = view.turns.filter((turn) => turn.role === "user").length;
+      const card = lastResult(view, "propose_form") as { facts?: { stated_this_turn?: string[] } } | null;
+      if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "Remy Calder" } };
+      if (!card) {
+        return {
+          tool: "propose_form",
+          input: {
+            template_key: "dpoa",
+            employee_id: "e-2",
+            warning_level: "written",
+            level_evidence: evidenceFrom(view, "written warning", managerTurns === 1 ? 0 : 1),
+            ...(managerTurns > 1 ? { payroll_deduct: "no", payroll_evidence: evidenceFrom(view, "no payroll") } : {}),
+            what_happened: "She was late to her shift on 11/14.",
+            incident_date: "2026-11-14",
+          },
+        };
+      }
+      facts.push(card.facts ?? {});
+      const said = (field: string) => (card.facts?.stated_this_turn ?? []).includes(field);
+      return { text: ["Here's the Corrective Action Form for **Remy Calder**.", `**Type of Warning:** Written Warning${said("warning_level") ? ", as you said" : ""}.`, managerTurns > 1 ? `**Is payroll deduct applicable?** No${said("payroll_deduct") ? ", as you said" : ""}.` : ""].filter(Boolean).join("\n") };
+    }));
+    const thread = t.thread();
+    const first = await thread.say("written warning for Remy Calder, she was late to her shift on 11/14");
+    const second = await thread.say("no payroll");
+    expect(facts[0]?.stated_this_turn, JSON.stringify(facts[0])).toEqual(["warning_level"]);
+    expect(first.content).toMatch(/Written Warning, as you said/);
+    expect(facts[1]?.stated_this_turn, JSON.stringify(facts[1])).toEqual(["payroll_deduct"]);
+    expect(second.content, "the level from the first message was called \"as you said\"").toMatch(/Written Warning\.\n/);
+    expect(second.content).toMatch(/No, as you said/);
+  },
+});
