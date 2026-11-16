@@ -3,7 +3,7 @@ import { expect, vi } from "vitest";
 import type { ChatFormProposal as FormProposal } from "@/types";
 
 import { KEARNEY, STAFF, type ReplayCase, type ReplayContext } from "./cases";
-import { evidenceFrom, loopStandIn, type LoopDecision, type LoopView } from "./loop-stand-in";
+import { evidenceFrom, lastResult, loopStandIn, type LoopDecision, type LoopView } from "./loop-stand-in";
 
 /**
  * ============================================================================
@@ -106,6 +106,37 @@ export const NOV16_AGENT_LOOP_LEVEL_NOT_GIVEN_CASES: ReplayCase[] = [
       }));
       const sent = await t.thread().say(message);
       expect((sent.formProposal as FormProposal | undefined)?.warningLevel ?? null, "Written was ticked from the checklist's \"written\"").toBeNull();
+    },
+  },
+  {
+    id: "nov16-level-not-given-control-edit-written-checklist",
+    title: "Control (QA, #1079): \"add that she skipped the written closing checklist\" on an open CA with no level (the card on screen, then the saved draft): a model that sends Written quoting the checklist is refused on both paths (propose_form again, edit_form), and the level stays unset",
+    report: `${REPORT}; QA's edit control on #1079: the three level paths agree`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      start(t);
+      const base = { template_key: "dpoa", employee_id: "e-2", what_happened: "Remy Calder was late on 11/14.", incident_date: "2026-11-14", policy: "Attendance" };
+      t.loopModel!(loopStandIn((view): LoopDecision => (proposals(view).length === 0 ? { tool: "propose_form", input: base } : { text: "Here's the Corrective Action Form for **Remy**. Warning level isn't set; tell me if it applies." })));
+      const thread = t.thread();
+      await thread.say("ca for remy calder, late on 11/14");
+      const message = "add that she skipped the written closing checklist";
+
+      // The card on screen: proposed again with the account added, and Written quoting the checklist words.
+      t.loopModel!(loopStandIn((view): LoopDecision => (proposals(view).length === 0
+        ? { tool: "propose_form", input: { ...base, what_happened: "Remy Calder was late on 11/14. Remy Calder skipped the written closing checklist.", warning_level: "written", level_evidence: evidenceFrom(view, "the written closing checklist") } }
+        : { text: "I added that to the card." })));
+      const card = await thread.say(message);
+      expect((card.formProposal as FormProposal | undefined)?.warningLevel ?? null, "Written was ticked on the card from the checklist's \"written\"").toBeNull();
+
+      // The saved draft: edit_form with warning_type written, quoting the checklist words.
+      const id = await thread.create();
+      t.loopModel!(loopStandIn((view): LoopDecision => (lastResult(view, "edit_form")
+        ? { text: "I added that to the form." }
+        : { tool: "edit_form", input: { instance_id: id, values: { warning_type: "written" }, level_evidence: evidenceFrom(view, "the written closing checklist") } })));
+      await thread.say(message);
+      expect(t.checked(id).warning_type ?? [], "Written was ticked on the draft from the checklist's \"written\"").toEqual([]);
     },
   },
 ];

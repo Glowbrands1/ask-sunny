@@ -3370,7 +3370,10 @@ export async function editForm(
       /* QA (16 Nov 2026): the level stated in the message that started this open request counts too. */
       const levelCheck = answerEvidenceInOpenRequest(context, input.level_evidence, editPerson);
       /* Fix batch item 2: the quote must name the option the model chose ("final warning" names none). */
-      const named = levelNamedInEvidence(input.level_evidence, kind);
+      /* QA (#1079): and the option word is the form's level, not a word describing something else (as propose_form reads it). */
+      const levelQuote = input.level_evidence && typeof input.level_evidence === "object" ? String((input.level_evidence as { quote?: unknown }).quote ?? "") : "";
+      const correctiveName = (await creatableTemplates(context.actor.role).catch(() => null))?.find((row) => row.key === appConfig().formKeys.corrective)?.name ?? "Corrective Action Form";
+      const named = levelNamedInEvidence(input.level_evidence, kind) && levelOptionIsTheLevel(levelQuote, kind, levelFormWords(correctiveName));
       if (!levelCheck.ok || !named) {
         unstated.push(field);
         unstatedCodes.set(field, { reason_code: "level_not_stated", evidence_reason: levelCheck.ok ? "level_not_in_evidence" : levelCheck.reason });
