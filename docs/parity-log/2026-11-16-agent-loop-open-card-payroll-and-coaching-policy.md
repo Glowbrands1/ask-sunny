@@ -20,3 +20,10 @@ QA then ordered c163's three items, and two more are fixed here:
   and the question ends the reply.
 - **(2)** A one-word message that answers the chat's recorded name question is never also payroll or level evidence
   (`answer_to_name_question`).
+
+**(b)**, also on this branch: a typed full name whose last name is a close spelling of a staff-list person's is asked about
+(Did-you-mean), never seated silently.
+- `closeSpellingNotSettled` no longer takes the whole first name alone as settling a different last name.
+- find_staff's one-close-candidate seat never applies to a full name, whatever NEAR_MISS_NEVER_SEATED says.
+
+**c094**, also here: "Written form", and the level as a noun ("make it a verbal"), set the level on the open card.

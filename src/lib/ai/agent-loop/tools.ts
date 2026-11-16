@@ -979,7 +979,8 @@ export async function findStaff(context: ToolContext, input: { name?: unknown; p
      * correct before Create ("Using **<A>** from your staff list."). Two or more → asked. A "no" to an earlier
      * Did-you-mean → asked.
      */
-    if (close.kind === "confirm" && close.candidates.length === 1 && !saidNo && !nearMissNever) {
+    /* QA (c163 T2, item b): a typed FULL name is never seated on a close spelling without asking, whatever the flag. */
+    if (close.kind === "confirm" && close.candidates.length === 1 && !saidNo && !nearMissNever && words(typed).length < 2) {
       const chosen = close.candidates[0]!;
       if (effects) effects.nameLines = { ...(effects.nameLines ?? {}), [chosen.employee.id]: chosen.name };
       return { matches: [staffRow(chosen.employee)], name_from_staff_list: chosen.name, note: `A close spelling of ${chosen.name}, the only one on the roster. Use them, and say so as the rules book's Card replies teach.` };
@@ -1886,16 +1887,24 @@ function closeSpellingNotSettled(
   if (askedAbout.some((asked) => asked.latest)) return null;
   /* An earlier question for this spelling answered with a yes (a bare yes, or a yes going on with the account: K12b). */
   const saidYes = (key: string) => askedAbout.some((asked) => asked.record.typedKey === key && AFFIRMATIVE.test(asked.answer.split(/[,.;!\n]/)[0] ?? ""));
+  /*
+   * QA (16 Nov 2026; Runner 2's c163 T2, item b): "<first> <last minus a letter> was below …" was settled by its whole FIRST
+   * name alone, so the staff-list person with that first name and another last name was seated with no Did-you-mean. A
+   * full name settles it; a close spelling of the full name is asked (unless confirmed); only then does a first name alone.
+   */
+  const fullNames = fullNamesOf(row).map((name) => name.trim()).filter(Boolean);
   for (const text of texts) {
-    if (exactNames.some((name) => holdsPhrase(text, name))) return null;
+    if (fullNames.some((name) => holdsPhrase(text, name))) return null;
     /* The name reader's names, then each two-word window of the words (it reads "edit tamsen orwel ca" as no name). */
     const plain = text.toLowerCase().replace(/[^\p{L}'\s-]+/gu, " ").split(/\s+/).filter(Boolean);
     const windows = plain.slice(1).map((word, at) => `${plain[at]} ${word}`);
-    const close = [...extractEmployeeNames(text), ...windows].find((name) => {
+    const isExactName = (name: string) => exactNames.some((exact) => exact.toLowerCase().replace(/\s+/g, " ") === name.trim().toLowerCase().replace(/\s+/g, " "));
+    const close = [...extractEmployeeNames(text), ...windows].filter((name) => !isExactName(name)).find((name) => {
       const match = matchEmployeeName(name, [row]);
       return match.kind === "confirm" && match.candidates.some((candidate) => candidate.employee.id === row.id);
     });
     if (close) return confirmed.includes(personKey(close)) || saidYes(personKey(close)) ? null : close;
+    if (exactNames.some((name) => holdsPhrase(text, name))) return null;
   }
   return null;
 }
