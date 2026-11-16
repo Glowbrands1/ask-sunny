@@ -238,6 +238,28 @@ export function levelNamedInEvidence(evidence: unknown, level: "verbal" | "writt
 /** The question when no level option was named (Pau's ruling, fix batch item 2). */
 export const LEVEL_QUESTION = "Which is it: Verbal Warning, Written Warning or Termination?";
 
+/**
+ * The next person's form, offered when a turn's second card was refused (one card per reply; QA's live re-test, 16 Nov
+ * 2026, item B). The reply ends with it (`replyMustAsk`), and the next turn recognises its own offer by this shape.
+ */
+export const nextPersonOffer = (form: string, first: string) => `Want me to make the ${form} for ${first} next?`;
+const NEXT_PERSON_OFFER = /Want me to make the [^\n?]+ for [^\n?]+ next\?\s*$/;
+
+/**
+ * The manager's one-word message ("yes") answers the app's own next-person offer, which ended the reply before it. It
+ * builds that card; it is never the card's payroll or level answer (QA: '"Yes" alone doesn't tell me whether that's for
+ * payroll deduct, warning level, or both'). Reads Sunny's own reply, never the manager's words.
+ */
+function answersNextPersonOffer(context: ToolContext): boolean {
+  const lastReply = [...(context.history as ChatMessage[])].reverse().find((turn) => turn.role === "assistant");
+  return Boolean(lastReply && NEXT_PERSON_OFFER.test(String(lastReply.content ?? "").trim()) && oneWord(withoutMessageIdTags(context.question)));
+}
+
+/** An answer whose quote is the whole one-word reply to the next-person offer is refused (`answersNextPersonOffer`). */
+function notTheOfferAnswer(check: AnswerEvidence, context: ToolContext): AnswerEvidence {
+  return check.ok && check.wholeMessage && answersNextPersonOffer(context) ? { ok: false, reason: "answer_to_offer" } : check;
+}
+
 /** A message of one word (punctuation aside): a format check, never a reading of which word (fix batch item 7). */
 export function oneWord(text: string): boolean {
   return text.trim().split(/\s+/).filter((word) => /[\p{L}\p{N}]/u.test(word)).length === 1;
@@ -2593,9 +2615,9 @@ export async function proposeForm(
    */
   const payrollCheck = caOnlyFields && askedPayroll
     ? (() => {
-        const byCard = answerEvidence(context, input.payroll_evidence, { card: employee.name, aliases }, evidencePerson);
+        const byCard = notTheOfferAnswer(answerEvidence(context, input.payroll_evidence, { card: employee.name, aliases }, evidencePerson), context);
         if (byCard.ok || !requestStart) return byCard;
-        const byRequest = answerEvidence(context, input.payroll_evidence, "request", evidencePerson, { requestTurnIds: [requestStart.id] });
+        const byRequest = notTheOfferAnswer(answerEvidence(context, input.payroll_evidence, "request", evidencePerson, { requestTurnIds: [requestStart.id] }), context);
         return byRequest.ok && byRequest.turnId === requestStart.id ? byRequest : byCard;
       })()
     : null;
@@ -2660,7 +2682,7 @@ export async function proposeForm(
     ? incidentDates(requestWords, null).find((given) => monthDayToIso(given, today) === date) ?? null
     : null;
   const askedLevel = input.warning_level === "verbal" || input.warning_level === "written" ? input.warning_level : null;
-  const levelAnswer = caOnlyFields && askedLevel ? answerEvidence(context, input.level_evidence, "request", evidencePerson, { requestTurnIds }) : null;
+  const levelAnswer = caOnlyFields && askedLevel ? notTheOfferAnswer(answerEvidence(context, input.level_evidence, "request", evidencePerson, { requestTurnIds }), context) : null;
   /* Fix batch item 2: the quote must name the option ("final warning" names none: level_not_in_evidence, and ask which). */
   const levelUnnamed = Boolean(levelAnswer?.ok && askedLevel && !levelNamedInEvidence(input.level_evidence, askedLevel));
   const levelCheck: AnswerEvidence | null = levelUnnamed ? { ok: false, reason: "level_not_in_evidence" } : levelAnswer;
@@ -2909,6 +2931,23 @@ export async function proposeForm(
   if (earlierKept) card.earlierCardKept = true;
   const earlierRead = earlierKept && earlier!.employeeKey ? await rosterFor(context.actor.scope) : null;
   const earlierRow = earlierRead?.kind === "read" ? earlierRead.roster.find((row) => personKey(row.id) === earlier!.employeeKey) : undefined;
+  /*
+   * ONE CARD PER REPLY, CHECKED WHERE THE CARD IS SET (QA's live re-test on 269ac0d9, 16 Nov 2026, item B): "write CAs
+   * for <A> and <B>, both late on 11/14" made two cards in one turn. The model called propose_form twice in ONE step; the
+   * calls run together, so both passed the one_card check at the top (no card yet) and the second replaced the first,
+   * while the reply described both ("Both cards are ready") and the "yes" after it was read as a payroll or level answer.
+   * The same rule, checked again here, where nothing awaits between the check and the set: the first card stays on screen,
+   * another person's card this turn is refused, and the reply ends with one question offering it. A "yes" to that offer
+   * builds the next card; it is never that card's payroll or level answer (the evidence rule takes those only after a
+   * reply showing that person's own card).
+   */
+  const refused = anotherCard(card.employeeName);
+  if (refused) {
+    const next = (card.employeeName ?? "").split(/\s+/)[0] || "the next person";
+    const offer = nextPersonOffer(card.templateName ?? template.name, next);
+    effects.replyMustAsk = offer;
+    return { ...refused, reason_code: "one_card", error: `${refused.error} Describe only the card on screen, never say both cards are ready, and end your reply with exactly: ${offer}`, ask_exactly: offer };
+  }
   effects.proposal = card;
   effects.proposalEmployeeId = employee.id ?? null;
   const personId = typeof input.employee_id === "string" ? input.employee_id.trim() : "";
@@ -2928,6 +2967,11 @@ export async function proposeForm(
   const stated = await import("@/lib/forms/termination-stated");
   /* QA's third review: in the loop only the model decides (locked above); main's reader never decides a loop card. */
   const terminationStated = loopTermination;
+  /* The level option this message names when the card has none and none was asked (`level_not_given` below). */
+  const namedOptions = caOnlyFields && !askedLevel && !level && !terminationStated
+    ? (["verbal", "written"] as const).filter((option) => levelNamedInEvidence({ quote: context.question }, option))
+    : [];
+  const levelNotGiven = namedOptions.length === 1 ? namedOptions[0]! : null;
   const unset = corrective && !awaiting ? [...(payroll ? [] : ["payroll_deduct"]), ...(level || terminationStated ? [] : ["warning_level"])] : [];
   /* Fix batch item 7: what this card's reply asks (the next turn's card record): payroll alone after an unclear answer. */
   effects.proposalAsked = payrollAnswerUnclear ? ["payroll_deduct"] : unset;
@@ -2958,6 +3002,15 @@ export async function proposeForm(
     ...(unset.length > 0 && !payrollAnswerUnclear ? { unset } : {}),
     ...(payrollAnswerUnclear ? { payroll_answer_unclear: { ask_exactly: payrollQuestion } } : {}),
     ...(levelUnnamed ? { level_not_named: { ask_exactly: LEVEL_QUESTION } } : {}),
+    /*
+     * QA's live re-test (16 Nov 2026): "written CA for <A>, late 11/14, payroll deduct $20" came back "Warning level isn't
+     * set" (payroll kept), while "verbal ca for <A>, late on 11/13" ticked Verbal. The model sent no warning_level at all:
+     * "written CA" reads like the form's name. A Corrective Action card with no level, whose message names exactly one of
+     * the form's own Type of Warning options (the option word, as `levelNamedInEvidence` reads a quote), gets this fact,
+     * as a card with no policy gets policy_not_given. Only a fact: the model passes warning_level with level_evidence (the
+     * evidence check still decides), or leaves it when the words are history ("written up before").
+     */
+    ...(levelNotGiven ? { level_not_given: { option: levelNotGiven, note: `This card has no warning level, and the manager's message names the form's ${levelNotGiven === "written" ? "Written" : "Verbal"} Warning option. If it states THIS form's level, propose the card again with warning_level ${levelNotGiven} and level_evidence quoting those words; if it is history ("written up before"), leave the level unset.` } } : {}),
     ...(level || payroll || priorActions
       ? { stated: { ...(level ? { warning_level: level } : {}), ...(payroll ? { payroll_deduct: payroll } : {}), ...(payroll === "yes" && amount ? { payroll_amount: `$${amount.replace(/^\$/, "")}` } : {}), ...(priorActions ? { prior_actions: priorActions } : {}) } }
       : {}),

@@ -26,6 +26,8 @@ export interface LoopView {
 
 export type LoopDecision =
   | { readonly tool: string; readonly input: Record<string, unknown> }
+  /** Several tool calls in ONE step, as a live model makes them; the AI SDK runs them together (QA, 16 Nov 2026, item B). */
+  | { readonly tools: ReadonlyArray<{ readonly tool: string; readonly input: Record<string, unknown> }> }
   | { readonly text: string; readonly cut?: boolean }
   /** The request is accepted and nothing more arrives, until the call is aborted (a stalled model). */
   | { readonly stall: true }
@@ -127,7 +129,13 @@ export function loopStandIn(decide: (view: LoopView) => LoopDecision | Promise<L
           };
         }
         const parts: Record<string, unknown>[] =
-          "tool" in decision
+          "tools" in decision
+            ? [
+                { type: "stream-start", warnings: [] },
+                ...decision.tools.map((call, index) => ({ type: "tool-call", toolCallId: `call-${standIn.calls}-${index}`, toolName: call.tool, input: JSON.stringify(call.input) })),
+                { type: "finish", finishReason: { unified: "tool-calls", raw: "tool_use" }, usage: USAGE },
+              ]
+            : "tool" in decision
             ? [
                 { type: "stream-start", warnings: [] },
                 { type: "tool-call", toolCallId: `call-${standIn.calls}`, toolName: decision.tool, input: JSON.stringify(decision.input) },
