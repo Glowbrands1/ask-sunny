@@ -124,6 +124,18 @@ describe("withoutPersonPronouns", () => {
     expect(withoutPersonPronouns(close, "Tamsin", [], "exit form for tamsin orwell, she sent her immediate resignation to the management team").text)
       .toBe('You said Tamsin "sent her immediate resignation to management".');
   });
+  /*
+   * QA (16 Nov 2026; the pack's three-saved-edits case on train 4): a reporter who is a pronoun the same pass names as the
+   * card's person is that person, so the pronoun in what they said is theirs too. Invented names.
+   */
+  it("names the person in their own reported speech when the reporter pronoun is replaced too", () => {
+    expect(withoutPersonPronouns("She said her car broke down.", "Remy").text).toBe("Remy said Remy's car broke down.");
+    expect(withoutPersonPronouns("Observed:\nRemy was 20 minutes late on 11/12.\nShe said her car broke down.", "Remy").text)
+      .toBe("Observed:\nRemy was 20 minutes late on 11/12.\nRemy said Remy's car broke down.");
+    // A reporter pronoun the pass keeps (another person named before it) still keeps the pronoun in what it said.
+    const kept = "When Juno Paxton asked whether Tamsin was done, she said her checklist was finished.";
+    expect(withoutPersonPronouns(kept, "Tamsin", ["Juno Paxton"])).toEqual({ text: kept, replaced: 0 });
+  });
   it("leaves a reply with no pronoun alone", () => {
     const plain = "Here's the Corrective Action Form for **Tamsin**. Tamsin's shift was on 11/14.";
     expect(withoutPersonPronouns(plain, "Tamsin")).toEqual({ text: plain, replaced: 0 });
