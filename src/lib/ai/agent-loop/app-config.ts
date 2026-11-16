@@ -49,6 +49,12 @@ export interface AppConfig {
    * "Tanning Consultant, <name>"): taken off a typed name before it is looked up (QA, 16 Nov 2026, the 266 re-run's c220).
    */
   readonly jobTitles: readonly RegExp[];
+  /**
+   * A roster job title that leads others (manager, director, lead, supervisor): someone with it who asks or tells the
+   * card's person something speaks for the salon, so a pronoun in what they asked is the card person's (Pau's ruling,
+   * QA 17 Nov 2026). Read from the roster's job title, never from the manager's words.
+   */
+  readonly leadershipTitle: RegExp;
 }
 
 /** Ask Sunny: the brand's names and place words, plus the staff system and form keys of this app. */
@@ -68,6 +74,7 @@ export const SUNNY_CONFIG: AppConfig = {
     readDirectoryFacts: (...args) => readDirectoryFacts(...args),
   },
   jobTitles: JOB_TITLES.map((entry) => entry.pattern),
+  leadershipTitle: /\b(?:directors?|managers?|leads?|supervisors?)\b/i,
 };
 
 let active: AppConfig = SUNNY_CONFIG;

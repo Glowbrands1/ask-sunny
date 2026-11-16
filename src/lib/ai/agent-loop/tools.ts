@@ -9,7 +9,7 @@ import { businessToday } from "@/lib/business-date";
 import { appConfig } from "./app-config";
 import { isoDate, monthDayToIso, readDates, sameDate, withoutDates } from "./dates";
 import { candidateNameWords, chatFormsActor } from "@/lib/forms/chat-form-records";
-import { holdsPhrase, identifiedTurns, verifyEvidence, withoutMessageIdTags, type IdentifiedTurn } from "./evidence";
+import { CURRENT_MESSAGE_ID, holdsPhrase, identifiedTurns, verifyEvidence, withoutMessageIdTags, type IdentifiedTurn } from "./evidence";
 import { answeredNameQuestions, answerNamesSomeoneElse, everKeptOrUsedTyped, isConfirmedSpelling, latestTurnAnswersFor, latestTurnConfirms, latestTurnKeepsOrUsesTyped, latestTurnKeepsTyped, spellingKeysConfirmedFor, spellingKeysConfirmedForName, type NameQuestionView } from "./confirmed-spelling";
 import { AFFIRMATIVE, displayName, editDistance, matchEmployeeName, nameConfirmationQuestion, readNameConfirmation, type RosterEmployee } from "@/lib/forms/employee-match";
 import { offRosterTyped } from "@/lib/forms/roster-only-names";
@@ -254,6 +254,27 @@ export function levelOptionIsTheLevel(text: string, level: "verbal" | "written",
     const bare = next.replace(/[-']+$/g, "");
     return own.has(bare) || bare.length <= 3;
   });
+}
+
+/**
+ * QA (live c_pay r1, 16 Nov 2026): the level code sets itself, with no model call. Stricter than `levelOptionIsTheLevel`,
+ * because no model weighs it: the option word as typed, directly followed by one of the form's own words ("written CA",
+ * "verbal warning", "Written Corrective Action"). Returns those two words exactly as typed (the evidence quote), or null.
+ * "written up before", "the written closing checklist" and "verbal abuse" never qualify.
+ */
+export function levelPhraseNamingTheForm(text: string, level: "verbal" | "written", formWords: readonly string[]): string | null {
+  const own = new Set(formWords.map((word) => word.toLowerCase()));
+  const words = [...text.matchAll(/[\p{L}][\p{L}'-]*/gu)];
+  for (let index = 0; index + 1 < words.length; index += 1) {
+    const word = words[index]![0].toLowerCase();
+    const isOption = word === level || (word.length >= 4 && editDistance(word, level) === 1);
+    if (!isOption) continue;
+    const next = words[index + 1]!;
+    const between = text.slice(words[index]!.index! + words[index]![0].length, next.index!);
+    if (!/^\s+$/.test(between) || !own.has(next[0].toLowerCase().replace(/[-']+$/g, ""))) continue;
+    return text.slice(words[index]!.index!, next.index! + next[0].length);
+  }
+  return null;
 }
 
 /** The form's own words for `levelOptionIsTheLevel`: its name's words and initials, and the option labels' "warning". */
@@ -861,7 +882,7 @@ export async function findStaff(context: ToolContext, input: { name?: unknown; p
    */
   if (typed && (latestTurnKeepsOrUsesTyped(nameQuestionView(context, read.roster), typed) || typedNameSettled(context, read.roster, typed))) {
     /* QA (16 Nov 2026): what the reply calls this person, decided by code (`replyNameFor`), as on every card result. */
-    return { matches: [], kept_as_typed: typed, reply_name: replyNameFor(typed, read.roster, extractEmployeeNames(managerTurns(context)), null), note: `The manager kept "${typed}" as typed (their answer to your question). Do not ask again: propose the card now with employee_name "${typed}", with this request's account from the earlier turns.` };
+    return { matches: [], kept_as_typed: typed, reply_name: replyNameFor(shownAsTyped(typed), read.roster, extractEmployeeNames(managerTurns(context)), null), note: `The manager kept "${typed}" as typed (their answer to your question). Do not ask again: propose the card now with employee_name "${typed}", with this request's account from the earlier turns.` };
   }
   /* Rebuild plan PR 6: the list is cut at 10; more_matches says so, so a cut list is never read as everyone. */
   const allMatches = rosterMatches(typed, read.roster);
@@ -1897,6 +1918,41 @@ async function closeSpellingOfRoster(context: ToolContext, effects: ToolEffects 
   };
 }
 
+/**
+ * QA (16 Nov 2026, live group E on main 63ba4c48): an EDIT asked for a form type (a Corrective Action) while this person's
+ * card on screen is another type (a Coaching Form, not created) and forms of the asked type are on file: never a new card
+ * of that type. The which-one question, the card on screen first, as find_past_forms asks it. Read only when the
+ * manager's words ask to edit or open a form (`mayAskToReopen`, the reopen path's own reading): the latest message, or,
+ * when it answers this chat's recorded name question ("yes"), the message that question was about.
+ */
+async function editAskedFormsOnFile(context: ToolContext, effects: ToolEffects, template: { key: string; name: string }, person: RosterEmployee, roster: readonly RosterEmployee[], newFormEvidence: unknown): Promise<ToolResult | null> {
+  const shown = context.cardOnScreen ?? context.earlierCard ?? null;
+  if (!shown || shown.employeeKey !== personKey(person.id) || shown.templateKey === template.key) return null;
+  if (verifyEvidence(newFormEvidence, identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId), { thisTurnOnly: true }).ok) return null;
+  const { mayAskToReopen } = await import("@/lib/forms/reopen-cue");
+  const managerSaid = (context.history as ChatMessage[]).filter((turn) => turn.role === "user").map((turn) => String(turn.content ?? ""));
+  const answersNameQuestion = answeredNameQuestions(nameQuestionView(context, roster)).some((asked) => asked.latest);
+  const asked = [context.question, ...(answersNameQuestion && managerSaid.length > 0 ? [managerSaid.at(-1)!] : [])];
+  if (!asked.some((said) => mayAskToReopen(said, true))) return null;
+  const actor = await chatFormsActor(context.actor).catch(() => undefined);
+  if (!actor) return null;
+  const names = fullNamesOf(person);
+  const nameWords = [...new Set(names.flatMap(candidateNameWords))];
+  const onFile = visibleInstances(actor, await listInstances("all", 200, { ...instanceListFilterFor(actor), employeeNameWords: nameWords }).catch(() => []))
+    .filter((row) => row.templateKey === template.key && (names.some((full) => samePerson(full, row.employeeName)) || sameRosterPerson(row.employeeName, displayName(person), roster)));
+  if (onFile.length === 0) return null;
+  const cardForm = shown.templateName ?? "card";
+  const dated = onFile.slice(0, 6).map((row) => `${row.templateName}${row.formDate ? ` from ${row.formDate}` : ""}`);
+  const files = dated.length === 1 ? `the ${dated[0]} on file` : `one of the ${onFile.length} ${template.name}s on file (${dated.join("; ")})`;
+  effects.openRequested ??= displayName(person);
+  return {
+    reason_code: "edit_asked_forms_on_file", error: `The manager asked to edit a ${template.name}, and this person's ${cardForm} card is on screen (not created) while ${template.name}s are on file. No new card was made. End your reply with ask_exactly, exactly: the card on screen picked is changed (propose_form again); a dated form picked is opened with open_form.`,
+    card_on_screen: { form: cardForm, created: false },
+    forms: onFile.slice(0, 6).map((row) => ({ instance_id: row.id, form: row.templateName, status: row.status, form_date: row.formDate })),
+    ask_exactly: `Which one: the ${cardForm} on screen, or ${files}?`,
+  };
+}
+
 /** A roster person's full names: the Woven preferred name with the surname, and the legal one (batch G, QA). */
 export function fullNamesOf(person: Pick<RosterEmployee, "firstName" | "lastName" | "preferredFirstName">): string[] {
   const last = person.lastName?.trim() ?? "";
@@ -1910,6 +1966,19 @@ export function fullNamesOf(person: Pick<RosterEmployee, "firstName" | "lastName
  * the manager's staff list (the roster the tool read, the person's own roster row aside), or another full name the
  * manager typed in this conversation. Then the full name. The roster and the conversation decide; no word list.
  */
+/**
+ * QA (16 Nov 2026, train 5): a name taken as typed with no capital letter ("test testy", typed off the roster) is shown in
+ * title case everywhere ("Test Testy"): the card's name, reply_name, the pronoun pass and the account. Each word's first
+ * letter, and the letter after a hyphen or apostrophe, is capitalised. A name typed with any capital ("McKenzie",
+ * "DeShawn", "test Testy") is kept exactly as typed, and a roster match keeps the roster's spelling (not called for it).
+ * Only the display: records key names case-blind (`personKey`).
+ */
+export function shownAsTyped(name: string): string {
+  const tidy = name.replace(/\s+/g, " ").trim();
+  if (/\p{Lu}/u.test(tidy)) return tidy;
+  return tidy.replace(/(^|[\s'-])(\p{Ll})/gu, (_all, lead: string, letter: string) => lead + letter.toUpperCase());
+}
+
 export function replyNameFor(name: string, roster: readonly RosterEmployee[], mentioned: readonly string[], ownId?: string | null): string {
   const full = name.replace(/\s+/g, " ").trim();
   const words = full.split(" ");
@@ -1948,6 +2017,21 @@ export async function cardPersonReplyName(context: ToolContext): Promise<string 
     .filter((other) => !samePerson(other, name) && !namesAPlace(other) && !(row && fullNamesOf(row).some((full) => samePerson(full, other))));
   if (others.length > 0) return null;
   return replyNameFor(name, roster, mentioned, row?.id ?? null);
+}
+
+/**
+ * Who may report for the card's person in a reply (Pau's ruling as QA narrowed it, 17 Nov 2026; `reply-pronouns.ts`): the
+ * signed-in manager, and the roster people whose job title leads others (`appConfig().leadershipTitle`, read from the
+ * roster's title), by full and first name. The card's person themself is added by the pronoun pass.
+ */
+export async function trustedReporters(context: ToolContext): Promise<string[]> {
+  const facts = await appConfig().roster.readDirectoryFacts(context.actor.scope).catch(() => []);
+  const leaders = facts.filter((row) => typeof row.title === "string" && appConfig().leadershipTitle.test(row.title));
+  const manager = context.actor.displayName?.trim() ?? "";
+  return [...new Set([
+    ...(manager ? [manager, manager.split(/\s+/)[0]!] : []),
+    ...leaders.flatMap((row) => [displayName(row), ...fullNamesOf(row), row.firstName, row.preferredFirstName ?? ""]),
+  ].filter((name) => name && name.trim().length > 1))];
 }
 
 /**
@@ -2182,6 +2266,31 @@ async function lookUpForCard(context: ToolContext, effects: ToolEffects, typed: 
   return { kind: "ask", result: { ...found, card: null, looked_up_by: "propose_form", reason_code: typeof record.reason_code === "string" ? record.reason_code : "name_to_confirm", ...("error" in record ? {} : { error: `No card was made: the name was looked up as find_staff does. ${ask}` }) } };
 }
 
+/**
+ * c019 (QA, 17 Nov 2026): the manual heading `heading` typed in the manager's words, as they typed it, and whether it is
+ * typed as the policy itself ("the Attendance policy", "Late Opening section") rather than as what the employee did ("for
+ * Late Opening"). The heading's own words, in order, from the manual; null when they are not in the words.
+ */
+export function headingTypedIn(words: string, heading: string): { typed: string; asPolicy: boolean } | null {
+  const own = headingKey(heading).split(" ").filter(Boolean);
+  while (own.length > 1 && /^polic(?:y|ies)$/.test(own.at(-1)!)) own.pop();
+  if (own.length === 0 || (own.length === 1 && own[0]!.length < 4)) return null;
+  const escaped = own.map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const found = new RegExp(`(?<![\\p{L}\\p{N}])${escaped.join("[\\s-]+")}(?![\\p{L}\\p{N}])`, "iu").exec(words);
+  if (!found) return null;
+  const after = words.slice(found.index + found[0].length);
+  return { typed: found[0], asPolicy: /^\s+(?:polic(?:y|ies)|section|guidelines?)\b/i.test(after) };
+}
+
+/** The week's day names, from the calendar (Intl), never typed out: 2023-01-01 was a Sunday. */
+const CALENDAR_WEEKDAYS = new Set(
+  Array.from({ length: 7 }, (_unused, day) => new Intl.DateTimeFormat("en-US", { weekday: "long", timeZone: "UTC" }).format(new Date(Date.UTC(2023, 0, 1 + day))).toLowerCase()),
+);
+/** A name holding a weekday ("Both Sundays", "Last Monday"): one of its words is a day of the week, singular or plural. */
+export function holdsWeekday(name: string): boolean {
+  return name.toLowerCase().split(/[^\p{L}]+/u).some((word) => CALENDAR_WEEKDAYS.has(word) || (word.endsWith("s") && CALENDAR_WEEKDAYS.has(word.slice(0, -1))));
+}
+
 export async function proposeForm(
   context: ToolContext,
   effects: ToolEffects,
@@ -2358,6 +2467,11 @@ export async function proposeForm(
     if (!typedName) return { reason_code: "missing_input", error: "Give the employee's name as the manager typed it." };
     employee = { name: typedName, salonIds: [] };
   }
+  /* QA (train 5): a name taken as typed is shown in title case when typed all lowercase (`shownAsTyped`). */
+  if (offRosterName) {
+    offRosterName = shownAsTyped(offRosterName);
+    employee = { ...employee, name: offRosterName };
+  }
   /*
    * HARD GUARD: the draft on screen keeps the manager's turns (OPEN_DRAFT_KEEPS_TURNS; a report of lost typing). With a
    * draft open, a second card for the same form AND the same person is refused unless the manager asked for another or
@@ -2391,12 +2505,17 @@ export async function proposeForm(
   if (effects.openRequested && samePerson(effects.openRequested, employee.name)) {
     return { error: "The manager asked to open a form on file for this person, not to make one. Open it with open_form.", reason_code: "open_requested" };
   }
+  {
+    const onScreenPerson = employee.id && read.kind === "read" ? read.roster.find((row) => row.id === employee.id) : undefined;
+    const editAsked = onScreenPerson && read.kind === "read" ? await editAskedFormsOnFile(context, effects, template, onScreenPerson, read.roster, input.new_form_evidence) : null;
+    if (editAsked) return editAsked;
+  }
   /* The manager's own name is never the employee (as MANAGER_NAME_NOT_EMPLOYEE does on the old path). */
   if (context.actor.displayName && samePerson(context.actor.displayName, employee.name)) {
     return { reason_code: "right_person", error: "That is the signed-in manager's own name, not an employee. Ask who the form is about." };
   }
 
-  const whatHappened = typeof input.what_happened === "string" ? input.what_happened.trim().slice(0, 2_000) : "";
+  let whatHappened = typeof input.what_happened === "string" ? input.what_happened.trim().slice(0, 2_000) : "";
   /* The incident's own words (this person's turns, read below) are checked against the account once they are known. */
   const asked = managerContext(context.history as ChatMessage[], { id: context.questionMessageId, content: context.question });
   /* THIS request's turns (QA, 14 Nov 2026; THIS_PERSONS_TURNS behaviour): an earlier incident in the chat never feeds this card. */
@@ -2547,9 +2666,21 @@ export async function proposeForm(
     Boolean(record && record.templateKey === template.key && (
       (employee.id ? record.employeeKey === personKey(employee.id) : !record.employeeKey && record.nameKey === personKey(employee.name)) ||
       (!record.employeeKey && aliases.some((alias) => record.nameKey === personKey(alias)))));
+  /*
+   * Runner 2's c158 on 63ba4c48: the model answered "I need to create a verbal corrective action form" with "Who is this
+   * Corrective Action Form for?" itself, with no tool call, so no person_asked record was written, and the level named
+   * there was refused at T2 (evidence_after_card) and T3. The app's own question for THIS form ("Who is this <form name>
+   * for", by the template's name) in the reply right after a manager turn marks that turn as this request's start, as
+   * the record does. It reads Sunny's reply, never the manager's words.
+   */
+  const askedWhoFor = new RegExp(`\\bwho is this ${template.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} for\\b`, "i");
+  const whoAskedTurns = conversation
+    .filter((turn, index) => turn.role === "user" && conversation[index + 1]?.role === "assistant" && askedWhoFor.test(withoutMessageIdTags(conversation[index + 1]!.content)))
+    .map((turn) => turn.id);
   const requestStarts = new Set([
     ...(context.cardRecords ?? []).filter(isThisCard).map((record) => record.messageId),
     ...(context.personAskedRecords ?? []).filter((record) => record.templateKey === template.key).map((record) => record.messageId),
+    ...whoAskedTurns,
   ].filter((id): id is string => Boolean(id)));
   const ownRequestTurns = conversation.filter((turn) => turn.role === "user" && sourceIds.includes(turn.id));
   const requestStart = ownRequestTurns.find((turn) => requestStarts.has(turn.id));
@@ -2600,6 +2731,21 @@ export async function proposeForm(
     if (lateOpening && saysLateOpening && headingKey(policyHeading) === headingKey("Attendance") && !lateOpen.describesAttendanceToo(requestWords)) {
       return { reason_code: "wrong_heading", error: `The manager's words ("late to open", a failure to open) are the manual's ${lateOpening} section, not Attendance. Propose the card again with policy "${lateOpening}".` };
     }
+  }
+  /*
+   * THE OFFENSE THE MANAGER NAMED IS THE ACCOUNT, AND THE POLICY HINT (QA, 17 Nov 2026; the 266 re-run on train 3, c019:
+   * "create corrective action for <P> for Late Opening from the policy manual. It is a verbal warning" got policy Late
+   * Opening and no account, policy_named_by_manager false, and "What happened?" on every turn after). The card's heading,
+   * as the manual prints it, typed in this request's words: the manager named that policy. Typed as what the employee
+   * did ("for Late Opening"), not as the policy itself ("the Attendance policy"), it is also the account when the model
+   * gave none, in the manager's own words, as the rules book reads "for late open". An account the model gave is never
+   * replaced. The heading is read from the manual, never from a word list.
+   */
+  const typedHeading = policyHeading ? headingTypedIn(requestWords, policyHeading) : null;
+  let accountFromNamedOffense: string | null = null;
+  if (!whatHappened && ACCOUNT_FORMS.has(template.key) && typedHeading && !typedHeading.asPolicy) {
+    whatHappened = `${typedHeading.typed.charAt(0).toUpperCase()}${typedHeading.typed.slice(1)}.`;
+    accountFromNamedOffense = whatHappened;
   }
   /*
    * CLOSE_SPELLING (the manual's own reader): a policy the manager named with a misspelling that is not one confident
@@ -2745,12 +2891,31 @@ export async function proposeForm(
   const lastYear = incidentForm && date && !dateAfterToday && date.slice(0, 4) < today.slice(0, 4)
     ? incidentDates(requestWords, null).find((given) => monthDayToIso(given, today) === date) ?? null
     : null;
-  const askedLevel = input.warning_level === "verbal" || input.warning_level === "written" ? input.warning_level : null;
-  const levelAnswer = caOnlyFields && askedLevel ? notTheOfferAnswer(answerEvidence(context, input.level_evidence, "request", evidencePerson, { requestTurnIds }), context) : null;
+  const modelLevel = input.warning_level === "verbal" || input.warning_level === "written" ? input.warning_level : null;
+  /*
+   * QA (live c_pay r1, 16 Nov 2026: "written CA for <A>, late 11/14, payroll deduct $20"): propose_form returned
+   * level_not_given and the model stopped without proposing again, 1 run in 2. So the level said with THIS message is set
+   * by code: a Corrective Action card, no level from the model, no termination asked or said, and exactly one Type of
+   * Warning option written right before one of the form's own words in this message ("written CA", "verbal warning";
+   * `levelPhraseNamingTheForm`). Those words, as typed, are its evidence, and it passes the same checks as the model's
+   * (verifyEvidence, the person guard, the offer guard). "written up before", "the written closing checklist" and a
+   * termination stay unset.
+   */
+  const thisMessage = withoutMessageIdTags(context.question);
+  const impliedLevels = caOnlyFields && !modelLevel && input.warning_level !== "termination" && !(await import("@/lib/forms/termination-word")).saysTerminationWord(thisMessage)
+    ? (["verbal", "written"] as const).flatMap((option) => {
+        const phrase = levelPhraseNamingTheForm(thisMessage, option, levelFormWords(template.name));
+        return phrase ? [{ option, phrase }] : [];
+      })
+    : [];
+  const impliedLevel = impliedLevels.length === 1 ? impliedLevels[0]! : null;
+  const askedLevel = modelLevel ?? impliedLevel?.option ?? null;
+  const levelEvidence = modelLevel ? input.level_evidence : impliedLevel ? { message_id: context.questionMessageId || CURRENT_MESSAGE_ID, quote: impliedLevel.phrase } : undefined;
+  const levelAnswer = caOnlyFields && askedLevel ? notTheOfferAnswer(answerEvidence(context, levelEvidence, "request", evidencePerson, { requestTurnIds }), context) : null;
   /* Fix batch item 2: the quote must name the option ("final warning" names none: level_not_in_evidence, and ask which). */
   /* QA (#1079's control): and the option word in the quote is the form's level, not a word describing something else. */
-  const levelQuote = input.level_evidence && typeof input.level_evidence === "object" ? String((input.level_evidence as { quote?: unknown }).quote ?? "") : "";
-  const levelUnnamed = Boolean(levelAnswer?.ok && askedLevel && (!levelNamedInEvidence(input.level_evidence, askedLevel) || !levelOptionIsTheLevel(levelQuote, askedLevel, levelFormWords(template.name))));
+  const levelQuote = levelEvidence && typeof levelEvidence === "object" ? String((levelEvidence as { quote?: unknown }).quote ?? "") : "";
+  const levelUnnamed = Boolean(levelAnswer?.ok && askedLevel && (!levelNamedInEvidence(levelEvidence, askedLevel) || !levelOptionIsTheLevel(levelQuote, askedLevel, levelFormWords(template.name))));
   const levelCheck: AnswerEvidence | null = levelUnnamed ? { ok: false, reason: "level_not_in_evidence" } : levelAnswer;
   /*
    * The carry (c208: "redo the outline" rebuilt the card with no level, and it stayed unset): the card on screen, or this
@@ -2777,16 +2942,25 @@ export async function proposeForm(
    * payroll). The card on screen asked two things in one line (its record's `asked`), and this message is one word, quoted
    * whole as the payroll evidence, with no level: one word answering two questions says neither ("yes payroll deduct"
    * names which, and is kept). Payroll is not kept and the reply asks
-   * payroll alone (ask_exactly). Code compares the card record and where the quote sits; it never reads the words.
+   * which the answer is for and the amount (ask_exactly; E r2 below). Code compares the card record and where the quote sits; it never reads the words.
    */
   const onScreen = context.cardOnScreen;
   const sameCard = Boolean(onScreen && onScreen.templateKey === template.key && ((employee.id && onScreen.employeeKey === personKey(employee.id)) || onScreen.nameKey === personKey(employee.name)));
   const conversationTurnsNow = identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId);
   const answersThisMessage = (check: AnswerEvidence | null): check is AnswerEvidence & { ok: true } => Boolean(check?.ok && check.turnId === conversationTurnsNow.at(-1)!.id);
+  const asksBoth = sameCard && onScreen!.asked.includes("payroll_deduct") && onScreen!.asked.includes("warning_level");
+  const bareWord = oneWord(withoutMessageIdTags(conversationTurnsNow.at(-1)!.content));
   const payrollAnswerUnclear =
-    payroll !== null && sameCard && onScreen!.asked.includes("payroll_deduct") && onScreen!.asked.includes("warning_level") &&
-    answersThisMessage(payrollCheck) && payrollCheck.wholeMessage && oneWord(withoutMessageIdTags(conversationTurnsNow.at(-1)!.content)) &&
+    payroll !== null && asksBoth && answersThisMessage(payrollCheck) && payrollCheck.wholeMessage && bareWord &&
     !(answersThisMessage(levelCheck) && level !== null);
+  /*
+   * QA's pre-launch live re-test (16 Nov 2026, E r2: the card asked payroll and level, the manager typed "yes", and the
+   * reply claimed payroll $20): the same one word quoted whole as the LEVEL answer is refused for the same reason
+   * (answer_to_two_questions, not level_not_named), and either refusal asks which the answer is for and, for payroll, the
+   * amount, in one question. A one-word level that names an option ("written") passes the level check and is kept.
+   */
+  const levelAnswerUnclear = Boolean(askedLevel && levelUnnamed && asksBoth && bareWord && answersThisMessage(levelAnswer) && levelAnswer.wholeMessage);
+  const answerUnclear = payrollAnswerUnclear || levelAnswerUnclear;
   if (payrollAnswerUnclear) payroll = null;
   /*
    * PAYROLL STATED FOR THIS REQUEST STAYS ON THE CARD (QA, 16 Nov 2026; c022: "payroll is deductable" put Yes on the card,
@@ -2797,11 +2971,12 @@ export async function proposeForm(
    * person's card or another form. Never "as you said" for a carried answer (stated_this_turn lists this message's only).
    */
   const payrollRecord = caOnlyFields && !asksNewForm && isThisCard(context.cardOnScreen) && context.cardOnScreen.payroll ? context.cardOnScreen : null;
-  if (payroll === null && !payrollAnswerUnclear && payrollRecord?.payroll) {
+  if (payroll === null && !answerUnclear && payrollRecord?.payroll) {
     payroll = payrollRecord.payroll;
     if (payroll === "yes" && !amount && payrollRecord.payrollAmount) amount = payrollRecord.payrollAmount;
   }
-  const payrollQuestion = `Is payroll deduct applicable for **${employee.name}**? Yes or no.`;
+  /* One question for a one-word answer to two (`answerUnclear`): which it answers, and for payroll the amount. */
+  const payrollQuestion = `Which does that answer: payroll deduct, the warning level, or both? If payroll deduct applies for **${employee.name}**, how much?`;
   const amountInThisMessage = (digits: string | null) => Boolean(digits && context.question.replace(/[^\d.]/g, " ").split(/\s+/).some((n) => n !== "" && Number(n) === Number(digits)));
   const statedThisTurn = [
     ...(level && answersThisMessage(levelCheck) ? ["warning_level"] : []),
@@ -2919,7 +3094,7 @@ export async function proposeForm(
   /* No account yet: the card shows, and Create waits for what happened (as WHAT_HAPPENED_NO_CREATE does today). */
   const awaiting = whatHappened === "" && ACCOUNT_FORMS.has(template.key);
   /* NO_ACCOUNT_NO_APP_POLICY as a fact (batch B, code-check #21; r3 639: an MSB or topic request counts as naming it). */
-  const policyNamedByManager = namedPolicies(requestWords).length > 0 || topicFits !== null || /\bmsb\b|must see behaviou?rs?/i.test(requestWords);
+  const policyNamedByManager = namedPolicies(requestWords).length > 0 || typedHeading !== null || topicFits !== null || /\bmsb\b|must see behaviou?rs?/i.test(requestWords);
   /*
    * Act and state the assumption (Pau, 14 Nov 2026): no date in the manager's words, so the card is dated today, and
    * the reply says so in one line the manager can correct.
@@ -3039,8 +3214,8 @@ export async function proposeForm(
     : [];
   const levelNotGiven = namedOptions.length === 1 ? namedOptions[0]! : null;
   const unset = corrective && !awaiting ? [...(payroll ? [] : ["payroll_deduct"]), ...(level || terminationStated ? [] : ["warning_level"])] : [];
-  /* Fix batch item 7: what this card's reply asks (the next turn's card record): payroll alone after an unclear answer. */
-  effects.proposalAsked = payrollAnswerUnclear ? ["payroll_deduct"] : unset;
+  /* What this card's reply asks (the next turn's card record). After an unclear answer it still asks both (E r2). */
+  effects.proposalAsked = unset;
   effects.proposalLevel = level;
   effects.proposalPayroll = payroll;
   effects.proposalPayrollAmount = payroll === "yes" ? amount : null;
@@ -3058,6 +3233,8 @@ export async function proposeForm(
     .flatMap((sentence) => sentence.split(/[,;]\s+/).flatMap((clause) => extractEmployeeNames(clause)).map((name) => ({ name, sentence })))
     .filter(({ name }, index, all) => all.findIndex((other) => other.name.toLowerCase() === name.toLowerCase()) === index)
     .filter(({ name }) => words(name).length >= 2 && !samePerson(name, employee.name) && !(context.actor.displayName && samePerson(name, context.actor.displayName)))
+    /* c200 (QA, 17 Nov 2026): "Both Sundays" holds a weekday, as the calendar names it: a day, never another person. */
+    .filter(({ name }) => !holdsWeekday(name))
     .slice(0, 3)
     .map(({ name, sentence }) => ({ name: untrusted(name), sentence: untrusted(sentence) }));
   const facts = {
@@ -3065,9 +3242,9 @@ export async function proposeForm(
     ...(nameCorrectedFrom !== null ? { name_corrected: { from: nameCorrectedFrom, to: employee.name } } : {}),
     ...(earlierKept ? { earlier_card: { kept: true, ...(earlierRow ? { employee: displayName(earlierRow) } : {}), form: earlier!.templateName ?? earlier!.templateKey } } : {}),
     ...(otherNamed.length > 0 ? { account_names_other_person: { named: otherNamed, card_person: employee.name } } : {}),
-    ...(unset.length > 0 && !payrollAnswerUnclear ? { unset } : {}),
-    ...(payrollAnswerUnclear ? { payroll_answer_unclear: { ask_exactly: payrollQuestion } } : {}),
-    ...(levelUnnamed ? { level_not_named: { ask_exactly: LEVEL_QUESTION } } : {}),
+    ...(unset.length > 0 && !answerUnclear ? { unset } : {}),
+    ...(answerUnclear ? { payroll_answer_unclear: { ask_exactly: payrollQuestion } } : {}),
+    ...(levelUnnamed && !levelAnswerUnclear ? { level_not_named: { ask_exactly: LEVEL_QUESTION } } : {}),
     /*
      * QA's live re-test (16 Nov 2026): "written CA for <A>, late 11/14, payroll deduct $20" came back "Warning level isn't
      * set" (payroll kept), while "verbal ca for <A>, late on 11/13" ticked Verbal. The model sent no warning_level at all:
@@ -3102,6 +3279,8 @@ export async function proposeForm(
      */
     ...(template.key === appConfig().formKeys.corrective && !awaiting && !askedPolicyWhole ? { policy_not_given: { note: "This card has no policy. Propose it again with policy: the one JBA Policy Manual heading that fits what happened (the headings are listed in your instructions). \"Other — <short topic>\" only for Must See Behaviors, a cleaning duty left undone, or when no section fits; then say so in your reply." } } : {}),
     ...(accountGiven ? { request_words: untrusted(accountGiven) } : {}),
+    /* c019: the account is the offense the manager named (see headingTypedIn); the reply says so, never "What happened?" about it. */
+    ...(accountFromNamedOffense ? { account_from_named_offense: { account: untrusted(accountFromNamedOffense), note: "The manager named the offense, and their words for it are the card's account. Say so in one short line (they can add more before Create); never ask what happened about it." } } : {}),
     ...(figuresNotSaid.length > 0 ? { figures_not_said: figuresNotSaid } : {}),
     ...(formatFigures.length > 0 ? { format_figures: formatFigures } : {}),
     ...(fitsHeadings ? { fits_headings: fitsHeadings } : {}),
@@ -3157,7 +3336,7 @@ export async function proposeForm(
    */
   const notOnCard: { field: string; reason_code: string }[] = [
     ...(dateFromAnotherRequest ? [{ field: "incident_date", reason_code: "date_from_another_request" }] : []),
-    ...((askedLevel && level !== askedLevel) ? [{ field: "warning_level", reason_code: caOnlyFields ? "level_not_stated" : "not_on_this_form" }] : []),
+    ...((modelLevel && level !== modelLevel) ? [{ field: "warning_level", reason_code: caOnlyFields ? "level_not_stated" : "not_on_this_form" }] : []),
     ...((askedTermination && !loopTermination) ? [{ field: "warning_level", reason_code: "termination_not_stated" }] : []),
     ...((askedPayroll && !payroll) ? [{ field: "payroll_deduct", reason_code: caOnlyFields ? "payroll_not_stated" : "not_on_this_form" }] : []),
     ...((typedAmount && !amount) ? [{ field: "payroll_amount", reason_code: caOnlyFields ? "amount_not_stated" : "not_on_this_form" }] : []),
@@ -3167,9 +3346,10 @@ export async function proposeForm(
     ...(datesAsked.length > 0 ? [{ field: "form_date", reason_code: "several_dates_not_chosen" }] : []),
   ];
   return {
-    ...(askedLevel && level !== askedLevel && levelCheck && !levelCheck.ok ? { reason_code: "level_not_stated", level_evidence: levelCheck.reason } : askedPayroll && !payroll && payrollCheck && !payrollCheck.ok ? { reason_code: "payroll_not_stated" } : {}),
+    ...(modelLevel && level !== modelLevel && levelCheck && !levelCheck.ok ? { reason_code: "level_not_stated", level_evidence: levelCheck.reason } : askedPayroll && !payroll && payrollCheck && !payrollCheck.ok ? { reason_code: "payroll_not_stated" } : {}),
     ...(askedPayroll && !payroll && payrollCheck && !payrollCheck.ok ? { payroll_evidence: payrollCheck.reason } : {}),
-    ...(payrollAnswerUnclear ? { ...(askedLevel && !level ? {} : { reason_code: "payroll_not_stated" }), payroll_evidence: "answer_to_two_questions" } : {}),
+    ...(payrollAnswerUnclear ? { ...(modelLevel && !level ? {} : { reason_code: "payroll_not_stated" }), payroll_evidence: "answer_to_two_questions" } : {}),
+    ...(levelAnswerUnclear ? { level_evidence: "answer_to_two_questions" } : {}),
     ...(notOnCard.length > 0 ? { not_on_card: notOnCard } : {}),
     /* PR 6 item 1: find_staff's facts from propose_form's own lookup (name_from_staff_list, confirmed_by_manager, longer_names_on_roster, …). */
     ...(lookedUp.kind === "person" ? { ...lookedUp.facts, looked_up_by: "propose_form" } : {}),
@@ -3821,6 +4001,16 @@ export async function editForm(
       }
     }
     /*
+     * ALREADY SET (QA's live re-test, dateedit r2, 16 Nov 2026): what this write asks each field to hold, after the guards
+     * above (a level or payroll tick, a text value, the document's date as ISO). A field the draft held that way before the
+     * write is reported as already_set below, never as unchanged ("didn't update … confirm the date again").
+     */
+    const requested = new Map<string, string>([
+      ...Object.entries(checked).map(([field, boxes]) => [field, [...boxes].sort().join(", ")] as const),
+      ...Object.entries(values).filter(([, value]) => typeof value === "string").map(([field, value]) => [field, String(value).trim()] as const),
+      ...(documentDate !== null ? [["form_date", documentDate] as const] : []),
+    ]);
+    /*
      * Only the keys this write carries that the manager stated, after the guards above passed: payroll (G5), a
      * termination level (G9), and an Action Plan that is the manager's own text in this message, word for word (G8).
      */
@@ -3874,8 +4064,23 @@ export async function editForm(
     /* PR 3: claimed = what the writers accepted; the saved list is what the form shows after the write. */
     const claimed = [...Object.keys(written.accepted.values ?? {}), ...Object.keys(written.accepted.checked ?? {}), ...(documentDate !== null ? ["form_date"] : []), ...(dictatedPlan !== null ? ["action_plan"] : []), ...written.rejected.map((row) => row.key)];
     const reasons = new Map(written.rejected.map((row) => [row.key, row.reason] as const));
-    const { saved: savedChanges, refused, unchanged, now: saved } = await recordSaved(claimed, reasons);
+    const { saved: savedChanges, refused: refusedAll, unchanged: unchangedAll, now: saved } = await recordSaved(claimed, reasons);
     const updated = savedChanges.map((change) => change.field);
+    /* The value the draft already held equals the one asked for (an amount by its figure; any field). */
+    const sameAsAsked = (field: string, asked: string, held: string) =>
+      held !== "" && (field === PAYROLL_AMOUNT_KEY ? Number(asked.replace(/[^\d.]/g, "")) === Number(held.replace(/[^\d.]/g, "")) : asked.toLowerCase() === held.toLowerCase());
+    const shownValue = (field: string, held: string) => {
+      const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(held);
+      if (field === "form_date" && iso) return `${iso[2]}/${iso[3]}/${iso[1]}`;
+      if (field === PAYROLL_AMOUNT_KEY) return `$${held.replace(/^\$/, "")}`;
+      return held.split(", ").every((box) => /^[a-z]+$/.test(box)) ? held.split(", ").map((box) => box[0]!.toUpperCase() + box.slice(1)).join(", ") : held;
+    };
+    const alreadySet = [...requested]
+      .filter(([field, asked]) => asked !== "" && !updated.includes(field) && sameAsAsked(field, asked, beforeStates.get(field) ?? ""))
+      .map(([field]) => ({ field, value: shownValue(field, beforeStates.get(field) ?? "") }));
+    const alreadyFields = new Set(alreadySet.map((row) => row.field));
+    const refused = refusedAll.filter((row) => !alreadyFields.has(row.field));
+    const unchanged = unchangedAll.filter((field) => !alreadyFields.has(field));
     /* Batch G2 (item 1, EDIT_SEES_SAVED_FORM): the level the saved form holds now, read back, so the reply never claims it from the card or history. */
     const savedLevel = saved.values.find((row) => row.fieldKey === "warning_type")?.checked ?? [];
     const levelLabel: Record<string, string> = { verbal: "Verbal", written: "Written", termination: "Termination" };
@@ -3899,6 +4104,7 @@ export async function editForm(
       /* QA's live finding: a field the writer refused carries the fix (the keys a direct edit takes, and the date's key). */
       ...(refused.length > 0 ? directEditFix(loaded, fieldKeys) : {}),
       ...(unchanged.length > 0 ? { unchanged } : {}),
+      ...(alreadySet.length > 0 ? { already_set: alreadySet } : {}),
       ...(loaded.instance.templateKey === appConfig().formKeys.corrective ? { saved_level: savedLevel.length > 0 ? savedLevel.map((key) => levelLabel[key] ?? key).join(", ") : null } : {}),
       ...rewordFacts,
       ...addFacts,

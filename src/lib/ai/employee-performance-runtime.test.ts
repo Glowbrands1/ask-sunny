@@ -347,7 +347,12 @@ describe("A. employee performance + framework available -> framework reaches Cla
     };
   });
 
-  it("calls the model with the framework's own rule text in the grounding", async () => {
+  /*
+   * QA 17 Nov: the first test pays the cold import of the framework module; in CI shard 1/4 that exceeds 5 s. The
+   * assertion is unchanged. (Measured locally: this test 4.7-4.9 s, the next one 11-14 ms; no network connection is
+   * opened during the file — it is `await import("./server-ask")`'s module graph loading.)
+   */
+  it("calls the model with the framework's own rule text in the grounding", { timeout: 20_000 }, async () => {
     await ask({ question: "Who should I coach from this employee performance report?" });
 
     expect(state.claudeCalls).toBe(1);

@@ -44,6 +44,8 @@ const KNOWN = new Set([
   // Added on purpose (QA, the live set on #1064, 16 Nov 2026): an answer to the card's name check keeps its form; a close
   // spelling the manager typed is asked even when the model chose the roster person's id.
   "name_answer_keeps_form", "close_spelling_not_confirmed",
+  // QA (16 Nov 2026, live group E): an edit asked for a form type with forms on file and another card on screen.
+  "edit_asked_forms_on_file",
 ]);
 
 /** A line that returns a refusal: `error:` followed by a string, a template or a named message (not `error: Boolean(...)`). */
