@@ -48,7 +48,25 @@ export function openChatTrace(input: {
   };
 }
 
-export async function finishChatTrace<T>(draft: ChatTraceDraft, run: () => Promise<T>): Promise<T> {
+export async function finishChatTrace<T>(draft: ChatTraceDraft, run: () => Promise<T>, options: { readonly awaitWrite?: boolean } = {}): Promise<T> {
+  /*
+   * QA (16 Nov 2026, keep-as-typed on production): the agent loop's next turn reads this row back (its name question and
+   * card records, `agent-loop/card-record.ts`). Written after the reply, a quick next message could arrive before the row
+   * did, and the manager's answer was asked again. `awaitWrite`: the row is written before the reply returns.
+   */
+  if (options.awaitWrite) {
+    try {
+      const value = await runChatTrace(draft, run);
+      if (draft.succeeded === null) draft.succeeded = draft.errorSubtype === null;
+      await persistChatTrace(draft);
+      return value;
+    } catch (error) {
+      draft.succeeded = false;
+      if (!draft.errorClass && error instanceof Error) draft.errorClass = error.name;
+      scheduleChatTrace(draft);
+      throw error;
+    }
+  }
   try {
     const value = await runChatTrace(draft, run);
     if (draft.succeeded === null) draft.succeeded = draft.errorSubtype === null;

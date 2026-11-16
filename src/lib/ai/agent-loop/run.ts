@@ -582,7 +582,8 @@ export async function runAgentTurn(input: AgentTurnInput): Promise<AskResponse> 
     formInProgress: input.openFormId !== null,
   });
   draft.intent = "agent_loop";
-  return finishChatTrace(draft, () => loop(input));
+  /* The next turn reads this turn's records from its trace row: written before the reply returns (QA, 16 Nov 2026). */
+  return finishChatTrace(draft, () => loop(input), { awaitWrite: true });
 }
 
 async function loop(input: AgentTurnInput): Promise<AskResponse> {
@@ -1088,7 +1089,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     trace.firstTokenMs = firstTokenMs;
     trace.slots = {
       ...(trace.slots ?? {}),
-      agent_loop: { ...(cardSlot ? { card: cardSlot } : {}), ...(nameQuestionSlot ? { name_question: nameQuestionSlot } : {}), ...(personAskedSlot ? { person_asked: personAskedSlot } : {}), steps, model_steps: modelSteps, model_calls: modelCalls, ...(turn.manualRead ? { manual_read: turn.manualRead } : {}), step_limit: limit, steps_used: stepNumber - 1 + hiddenCalls, ...(hiddenCalls > 0 ? { tool_model_calls: hiddenCalls } : {}), stopped: stoppedAt, ms: latencyMs, first_token_ms: firstTokenMs, ...(selfReview ? { self_review: selfReview } : {}), ...(draftReview ? { draft_review: draftReview } : {}), ...(levelReview ? { level_review: levelReview } : {}), ...(replyUnwrapped ? { reply_unwrapped: true } : {}), ...(retriesBlocked > 0 ? { stop_retrying: retriesBlocked } : {}), ...(pronounsReplaced > 0 ? { pronouns_replaced: pronounsReplaced } : {}) },
+      agent_loop: { question_key: personKey(input.question), ...(cardSlot ? { card: cardSlot } : {}), ...(nameQuestionSlot ? { name_question: nameQuestionSlot } : {}), ...(personAskedSlot ? { person_asked: personAskedSlot } : {}), steps, model_steps: modelSteps, model_calls: modelCalls, ...(turn.manualRead ? { manual_read: turn.manualRead } : {}), step_limit: limit, steps_used: stepNumber - 1 + hiddenCalls, ...(hiddenCalls > 0 ? { tool_model_calls: hiddenCalls } : {}), stopped: stoppedAt, ms: latencyMs, first_token_ms: firstTokenMs, ...(selfReview ? { self_review: selfReview } : {}), ...(draftReview ? { draft_review: draftReview } : {}), ...(levelReview ? { level_review: levelReview } : {}), ...(replyUnwrapped ? { reply_unwrapped: true } : {}), ...(retriesBlocked > 0 ? { stop_retrying: retriesBlocked } : {}), ...(pronounsReplaced > 0 ? { pronouns_replaced: pronounsReplaced } : {}) },
     };
   }
 
