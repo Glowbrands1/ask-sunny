@@ -134,6 +134,17 @@ export function latestTurnKeepsTyped(view: NameQuestionView, typed: string): boo
   return answeredNameQuestions(view).some((asked) => asked.latest && !asked.confirmed && asked.record.typedKey === personKey(typed) && saysNo(asked.answer));
 }
 
+/**
+ * QA's live test a4 (16 Nov 2026; ruling A): the message being answered now keeps THIS typed name as typed, answering a
+ * recorded name question for it (the record's typedKey) without confirming anybody: "no", or "use <typed>" (the app's own
+ * offer wording, whole words as evidence.ts reads quotes). Settled from the record, before any roster refusal.
+ */
+export function latestTurnKeepsOrUsesTyped(view: NameQuestionView, typed: string): boolean {
+  return answeredNameQuestions(view).some(
+    (asked) => asked.latest && !asked.confirmed && asked.record.typedKey === personKey(typed) && (saysNo(asked.answer) || holdsPhrase(asked.answer, `use ${typed}`)),
+  );
+}
+
 /** The message being answered now answers a recorded name question for this typed name (whatever it says). */
 export function latestTurnAnswersFor(view: NameQuestionView, typed: string): boolean {
   return answeredNameQuestions(view).some((asked) => asked.latest && asked.record.typedKey === personKey(typed));

@@ -10,7 +10,7 @@ import { appConfig } from "./app-config";
 import { isoDate, monthDayToIso, readDates, sameDate, withoutDates } from "./dates";
 import { candidateNameWords, chatFormsActor } from "@/lib/forms/chat-form-records";
 import { holdsPhrase, identifiedTurns, verifyEvidence, withoutMessageIdTags, type IdentifiedTurn } from "./evidence";
-import { answerNamesSomeoneElse, isConfirmedSpelling, latestTurnAnswersFor, latestTurnConfirms, latestTurnKeepsTyped, spellingKeysConfirmedFor, spellingKeysConfirmedForName, type NameQuestionView } from "./confirmed-spelling";
+import { answerNamesSomeoneElse, isConfirmedSpelling, latestTurnAnswersFor, latestTurnConfirms, latestTurnKeepsOrUsesTyped, latestTurnKeepsTyped, spellingKeysConfirmedFor, spellingKeysConfirmedForName, type NameQuestionView } from "./confirmed-spelling";
 import { displayName, editDistance, matchEmployeeName, nameConfirmationQuestion, readNameConfirmation, type RosterEmployee } from "@/lib/forms/employee-match";
 import { offRosterTyped } from "@/lib/forms/roster-only-names";
 import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
@@ -696,6 +696,13 @@ export async function findStaff(context: ToolContext, input: { name?: unknown; p
   const read = await rosterFor(context.actor.scope);
   if (read.kind === "failed") return { reason_code: "roster_failed", error: ROSTER_FAILED };
   if (read.kind === "unchecked") return { unchecked: true, note: ROSTER_UNCHECKED };
+  /*
+   * QA's live test a4 (ruling A): this turn keeps this typed name as typed, answering this chat's recorded name question
+   * ("no", or "use <typed>"): settled from the record. Never ask the Did-you-mean or the use-<name> offer again.
+   */
+  if (typed && latestTurnKeepsOrUsesTyped(nameQuestionView(context, read.roster), typed)) {
+    return { matches: [], kept_as_typed: typed, note: `The manager kept "${typed}" as typed (their answer to your question). Do not ask again: propose the card now with employee_name "${typed}", with this request's account from the earlier turns.` };
+  }
   let found = rosterMatches(typed, read.roster).slice(0, 10);
   /* The roster's exact full name wins over people whose names only start the same ("Test Employee" vs "Test Employee Two"). */
   const exact = found.filter((person) => samePerson(displayName(person), typed) && words(displayName(person)).length === words(typed).length);
@@ -1693,6 +1700,15 @@ export async function proposeForm(
      * OFF_ROSTER_CONFIRM (as today): a person not in Woven yet goes on the form by the name the manager typed, only
      * after the app offered "reply **use <name>**" and the manager said so. Never a name nobody confirmed.
      */
+    /*
+     * QA's live test a4 (16 Nov 2026; ruling A): the manager's answer to this chat's recorded name question for this typed
+     * name ("no" to "Did you mean <B>?", or "use <typed>" after the app offered it) keeps the name as typed. Settled from
+     * the record, before the roster checks below that would refuse a close spelling of a roster person.
+     */
+    else if (typed && !namesAPlace(typed) && latestTurnKeepsOrUsesTyped(nameQuestionView(context, read.roster), typed)) {
+      employee = { name: typed, salonIds: [] };
+      offRosterName = typed;
+    }
     else if (typed && !rosterMatches(typed, read.roster).length && !namesAPlace(typed) && (offRosterConfirmed(context, typed) || (offRosterTyped(typed, `for ${typed}`, read.roster.map(displayName)) && matchEmployeeName(typed, read.roster).kind !== "confirm"))) {
       employee = { name: typed, salonIds: [] };
       offRosterName = typed;
