@@ -36,10 +36,16 @@ export interface CardRecord {
    * ("verbal" / "written"), so a rebuild of the same card keeps it. A value of the form, never a name. Null when none.
    */
   readonly level?: "verbal" | "written" | null;
+  /**
+   * QA (16 Nov 2026, c219 live: "That change isn't on the card yet: policy (…)"): the policy line the card cited, a line of
+   * the manual (never a name), so a later turn's card check compares the reply with the card on screen. Null when none or
+   * for an older record.
+   */
+  readonly policyLine?: string | null;
 }
 
 /** What a turn writes into `slots.agent_loop.card`. */
-export type CardSlot = Omit<CardRecord, "messageId" | "asked" | "level"> & { readonly asked?: readonly string[]; readonly level?: "verbal" | "written" };
+export type CardSlot = Omit<CardRecord, "messageId" | "asked" | "level" | "policyLine"> & { readonly asked?: readonly string[]; readonly level?: "verbal" | "written"; readonly policyLine?: string };
 
 function isCardSlot(value: unknown): value is CardSlot {
   const row = value as Partial<CardSlot> | null;
@@ -123,7 +129,7 @@ export async function readLoopRecords(conversationId: string | undefined, userId
       cards: rows.flatMap((row) => {
         const card = row.slots?.agent_loop?.card;
         return isCardSlot(card)
-          ? [{ proposalId: card.proposalId, employeeKey: card.employeeKey ?? null, nameKey: card.nameKey ?? null, templateKey: card.templateKey, templateName: card.templateName ?? null, messageId: row.message_id, asked: Array.isArray(card.asked) ? card.asked.filter((field): field is string => typeof field === "string") : [], level: card.level === "verbal" || card.level === "written" ? card.level : null }]
+          ? [{ proposalId: card.proposalId, employeeKey: card.employeeKey ?? null, nameKey: card.nameKey ?? null, templateKey: card.templateKey, templateName: card.templateName ?? null, messageId: row.message_id, asked: Array.isArray(card.asked) ? card.asked.filter((field): field is string => typeof field === "string") : [], level: card.level === "verbal" || card.level === "written" ? card.level : null, policyLine: typeof card.policyLine === "string" ? card.policyLine : null }]
           : [];
       }),
       nameQuestions: rows.flatMap((row) => {

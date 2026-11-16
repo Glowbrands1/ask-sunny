@@ -603,7 +603,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   const handlers: Record<string, (args: Record<string, unknown>) => Promise<ToolResult>> = {
     find_staff: (args) => findStaff(context, args, effects),
     find_past_forms: (args) => findPastForms(context, args, effects),
-    read_form: (args) => readForm(context, args),
+    read_form: (args) => readForm(context, args, effects),
     read_policy: (args) => readPolicy(context, args, effects),
     propose_form: (args) => proposeForm(context, effects, args),
     edit_form: async (args) => withEditReplyName(context, effects, await editForm(context, effects, args)),
@@ -860,8 +860,21 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
         if (!finished) effects.proposal = proposalBefore;
         return finished;
       };
-      const reviewed = stoppedAt === "reply" && !effects.formUpdate && !effects.formOpened && !input.openFormId && (effects.proposal || cardOpenAtStart);
-      const wrong = reviewed ? cardMismatch(cardClaims(text), effects.proposal) : [];
+      /*
+       * QA (16 Nov 2026, c219 live): the card check, and its "That change isn't on the card yet" hand-back, run only with a
+       * card on screen this turn: the card proposed this turn, else the last reply's card (by the server's record). With no
+       * card this turn the reply is compared with the card ON SCREEN (its recorded level and policy line), never with no
+       * card: a reply that repeats the card's own policy or level is no mismatch.
+       */
+      const cardShownNow = () => effects.proposal !== null || cardOnScreen !== null;
+      const mismatchOf = (reply: string) => {
+        const claims = cardClaims(reply);
+        if (effects.proposal) return cardMismatch(claims, effects.proposal);
+        const onScreen = cardOnScreen ? ({ warningLevel: cardOnScreen.level ?? null, policyLine: cardOnScreen.policyLine ?? null } as unknown as ChatFormProposal) : null;
+        return cardMismatch(claims, onScreen);
+      };
+      const reviewed = stoppedAt === "reply" && !effects.formUpdate && !effects.formOpened && !input.openFormId && cardShownNow();
+      const wrong = reviewed ? mismatchOf(text) : [];
       /* Batch E (E8): a new card that cites a policy, and a reply with no **Policy:** line, goes back once; never rewritten. */
       const noPolicyLine = (reply: string) => Boolean(reviewed && effects.proposal?.policyLine && !cardClaims(reply).policy);
       const missing = noPolicyLine(text);
@@ -873,14 +886,24 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
           "If the manager asked for that change, call propose_form again for the same person and form with it (and everything else the card already has). Otherwise correct your reply. Never state a value the card does not hold. Then write your reply to the manager again.",
         ].join("\n");
         const again = await handBack(note);
-        const still = again ? cardMismatch(cardClaims(again), effects.proposal) : wrong;
+        const still = again ? mismatchOf(again) : wrong;
+        /*
+         * QA (16 Nov 2026, live c219 on 1a53042): only a field the card's form holds is offered as "isn't on the card yet …
+         * I'll update the card". A Corrective Action's policy, level or payroll claimed for another form (an exit card) is no
+         * change the manager can ask for: its **Policy:** line is left out of the reply instead.
+         */
+        const shownForm = effects.proposal?.templateKey ?? cardOnScreen?.templateKey ?? null;
+        const caOnly = (field: string) => /^(?:policy|warning level|payroll deduct|payroll amount) \(/.test(field);
+        const offer = shownForm === appConfig().formKeys.corrective ? still : still.filter((field) => !caOnly(field));
+        const withoutPolicyLine = (reply: string) => (shownForm !== appConfig().formKeys.corrective ? reply.replace(/^\s*\*\*Policy:?\*\*:?.*$\n?/gim, "").trim() : reply);
         selfReview = { mismatched: [...wrong, ...(missing ? ["policy line (missing)"] : [])], fixed: still.length === 0 && Boolean(again) && !noPolicyLine(again) };
         /*
          * Only on a second miss of a stated value: the reply says plainly what is not on the card (today's no-op honesty
          * pattern). A reply that only left the Policy line out keeps the model's words (the hand-back's, else the first).
          */
-        if (still.length > 0) text = `That change isn't on the card yet: ${still.join("; ")}. Tell me again and I'll update the card.`;
-        else if (again) text = again;
+        if (offer.length > 0 && cardShownNow()) text = `That change isn't on the card yet: ${offer.join("; ")}. Tell me again and I'll update the card.`;
+        else if (again) text = withoutPolicyLine(again);
+        else if (still.length > 0) text = withoutPolicyLine(text);
       }
       /*
        * THE DRAFT'S HONESTY CHECK HANDS BACK FIRST (code-check #48, batch D): with a draft open, a reply that claims the
@@ -953,7 +976,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   const trace = chatTraceDraft();
   /* PR 2: the card this turn made, for later turns' card record (`card-record.ts`). */
   const cardSlot: CardSlot | null = effects.proposal
-    ? { proposalId: effects.proposal.proposalId, employeeKey: effects.proposalEmployeeId ? personKey(effects.proposalEmployeeId) : null, nameKey: effects.proposal.employeeName ? personKey(effects.proposal.employeeName) : null, templateKey: effects.proposal.templateKey, templateName: effects.proposal.templateName ?? null, ...(effects.proposalAsked?.length ? { asked: effects.proposalAsked } : {}), ...(effects.proposalLevel ? { level: effects.proposalLevel } : {}) }
+    ? { proposalId: effects.proposal.proposalId, employeeKey: effects.proposalEmployeeId ? personKey(effects.proposalEmployeeId) : null, nameKey: effects.proposal.employeeName ? personKey(effects.proposal.employeeName) : null, templateKey: effects.proposal.templateKey, templateName: effects.proposal.templateName ?? null, ...(effects.proposalAsked?.length ? { asked: effects.proposalAsked } : {}), ...(effects.proposalLevel ? { level: effects.proposalLevel } : {}), ...(effects.proposal.policyLine ? { policyLine: effects.proposal.policyLine } : {}) }
     : null;
   /* Fix batch items 4 and 3: this turn's "Did you mean", for the next turn's name question record (one-way keys only). */
   const nameQuestionSlot: NameQuestionSlot | null = effects.nameQuestion && stoppedAt === "reply"

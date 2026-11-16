@@ -369,7 +369,13 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       expect(toolResults(model.views, "find_staff").at(-1), "a close spelling was seated").toMatch(/did_you_mean/);
       // Did-you-mean answered "no": still not that person.
       await fresh.say("no, edit tamsen orwel ca as typed");
-      expect(toolResults(model.views, "find_staff").at(-1), "a \"no\" to Did you mean was read as yes").toMatch(/did_you_mean/);
+      /*
+       * Changed on purpose (QA's live test a4, 16 Nov 2026; ruling A): a "no" to this chat's recorded Did-you-mean keeps the
+       * name as typed. find_staff says kept_as_typed for "tamsen orwel" instead of asking again; it is never Tamsin Orwell.
+       */
+      const answered = toolResults(model.views, "find_staff").at(-1) ?? "";
+      expect(answered, "a \"no\" to Did you mean was read as yes").not.toContain('"name":"Tamsin Orwell"');
+      expect(answered, "a \"no\" to Did you mean was not kept as typed").toContain('"kept_as_typed":"tamsen orwel"');
     },
   },
   {
