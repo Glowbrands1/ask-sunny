@@ -68,7 +68,7 @@ import {
   formNameOffRosterAskEnabled,
   whatHappenedNoCreateEnabled,
 } from "@/lib/config/chat-quality-flags";
-import { streamWhenSlow } from "@/lib/api/streamed-response";
+import { progressChannel, streamWhenSlow, wantsProgress, type ProgressChannel } from "@/lib/api/streamed-response";
 import { finalReplyWithoutMarkers } from "@/lib/ai/source-note";
 import {
   assertLiveMode,
@@ -136,11 +136,15 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** SPEND_GUARD_ALL_CALLS_ENABLED: this route's Claude calls are counted (`ai/spend-meter.ts`). Off, as before. */
 export async function POST(request: Request) {
   // CHAT_RESPONSE_STREAM_ENABLED: a slow answer is streamed so nothing cuts it off at 30 s. See `api/streamed-response.ts`.
-  if (chatResponseStreamEnabled()) return streamWhenSlow(() => withSpendMeter("chat", () => postChat(request)));
+  if (chatResponseStreamEnabled()) {
+    /* PR 6 item 5: progress lines only when the browser asks AND the loop answers this turn (enabled in its branch below). */
+    const progress = wantsProgress(request) ? progressChannel() : undefined;
+    return streamWhenSlow(() => withSpendMeter("chat", () => postChat(request, progress)), progress);
+  }
   return withSpendMeter("chat", () => postChat(request));
 }
 
-async function postChat(request: Request) {
+async function postChat(request: Request, progress?: ProgressChannel) {
   enterChatRequestClock();
   try {
     assertLiveMode();
@@ -249,6 +253,8 @@ async function postChat(request: Request) {
       } else try {
         const parsedForLoop = parseAskRequest(body);
         let loopTools: readonly string[] = [];
+        /* PR 6 item 5: the loop's tool steps as screen statuses (display only: never the reply, history or a trace). */
+        progress?.enable();
         const looped = await (await import("@/lib/ai/agent-loop/run")).runAgentTurn({
           request,
           actor: context.identity,
@@ -262,6 +268,7 @@ async function postChat(request: Request) {
           onTools: (tools) => {
             loopTools = tools;
           },
+          ...(progress ? { onProgress: (status: string) => progress.emit(status) } : {}),
         });
         /* What the turn carried that the loop reads another way (`loopCarriedOnly`): noted, never a reason to skip. */
         const carried = loopCarriedOnly(parsedForLoop);

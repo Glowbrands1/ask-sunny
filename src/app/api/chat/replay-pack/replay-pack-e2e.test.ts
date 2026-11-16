@@ -1,4 +1,4 @@
-import { STREAM_HEADER, unwrapStreamed } from "@/lib/api/streamed-response";
+import { PROGRESS_HEADER, PROGRESS_STREAM, STREAM_HEADER, readStreamedLines, unwrapStreamed } from "@/lib/api/streamed-response";
 import { createHash, randomUUID } from "node:crypto";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -670,6 +670,14 @@ class Thread {
   private offeredCopy: OfferedCopy | undefined;
   // A well-formed client id, so the route keeps the intake state between turns (`isClientConversationId`).
   private readonly conversationId = createId("conv");
+  /** PR 6 item 5: the thread asks for progress lines (`askProgress`); the last turn's statuses and stream version. */
+  private progressAsked = false;
+  lastProgress: string[] = [];
+  lastStreamVersion: string | null = null;
+
+  askProgress(): void {
+    this.progressAsked = true;
+  }
 
   async say(question: string, reading: Record<string, unknown> = {}, extra: Record<string, unknown> = {}): Promise<Answer> {
     state.reading = reading;
@@ -680,7 +688,7 @@ class Thread {
     const response = await chatRoute.POST(
       new Request("https://app.test/api/chat", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", ...(this.progressAsked ? { [PROGRESS_HEADER]: "1" } : {}) },
         body: JSON.stringify({
           question,
           mode: "standard",
@@ -703,7 +711,13 @@ class Thread {
      * the sibling app, 5 Nov 2026: a slow redraft was recorded there as an empty reply because the envelope
      * was read as the answer).
      */
-    const streamed = response.headers.get(STREAM_HEADER) === "1" ? unwrapStreamed(await response.text()) : null;
+    this.lastStreamVersion = response.headers.get(STREAM_HEADER);
+    this.lastProgress = [];
+    const streamed = this.lastStreamVersion === "1"
+      ? unwrapStreamed(await response.text())
+      : this.lastStreamVersion === PROGRESS_STREAM
+        ? await readStreamedLines(response, (status) => this.lastProgress.push(status))
+        : null;
     const payload = (streamed ? streamed.body : await response.json()) as Answer & { error?: string };
     expect(streamed?.status ?? response.status, JSON.stringify(payload)).toBe(200);
     // EVERY REPLY (QA, 3 Nov 2026): "I still need …" is never said unless the reply asks who, which location or which date.

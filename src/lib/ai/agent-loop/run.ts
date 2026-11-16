@@ -26,6 +26,7 @@ import { appConfig, SUNNY_CONFIG, type AppConfig } from "./app-config";
 import { agentLoopRules, agentLoopSystem } from "./prompt";
 import { generatedId, identifiedTurns, messageIdTag, withoutMessageIdTags } from "./evidence";
 import { agentLoopStepLimit } from "./switch";
+import { progressStatus } from "./progress";
 import {
   appHelp,
   coachTeam,
@@ -185,6 +186,8 @@ export interface AgentTurnInput {
   readonly openFormId: string | null;
   /** PR 4: the names of the tools the turn called, once it has finished (the route logs the turn's category from them). */
   readonly onTools?: (tools: readonly string[]) => void;
+  /** PR 6 item 5: a short status as each tool starts, for the screen only (`progress.ts`); never the reply, history or trace. */
+  readonly onProgress?: (status: string) => void;
 }
 
 const count = (value: unknown): number => (typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0);
@@ -696,6 +699,12 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
       retriesBlocked += 1;
       result = { reason_code: "stop_retrying", error: `${name} was refused twice this turn for ${stopped.reason_code}; it was not run again. Reply to the manager now${stopped.ask_exactly ? ", ending with ask_exactly" : ""}.`, stop_retrying: stopped, ...(stopped.ask_exactly ? { ask_exactly: stopped.ask_exactly } : {}) };
     } else {
+      /* PR 6 item 5: the screen's status as the tool starts (a call the retry guard stops never runs, so it shows none). */
+      try {
+        input.onProgress?.(progressStatus(name, args));
+      } catch {
+        // A screen status never changes the turn.
+      }
       try {
         const handler = handlers[name];
         /* PR 6 item 3: the model calls the tool made itself (the reviser's), counted toward the turn's step budget. */

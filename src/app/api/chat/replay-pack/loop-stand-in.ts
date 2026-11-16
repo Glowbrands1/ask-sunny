@@ -93,7 +93,8 @@ function streamOf(parts: readonly Record<string, unknown>[]): ReadableStream<Rec
 }
 
 /** A language model (AI SDK v3, streamed) that answers each step with `decide`'s choice. */
-export function loopStandIn(decide: (view: LoopView) => LoopDecision): LoopStandIn {
+/** `decide` may return a promise (PR 6 item 5: a case that takes real time per step, so the route's stream starts). */
+export function loopStandIn(decide: (view: LoopView) => LoopDecision | Promise<LoopDecision>): LoopStandIn {
   const standIn: LoopStandIn = {
     views: [],
     prompts: [],
@@ -113,7 +114,7 @@ export function loopStandIn(decide: (view: LoopView) => LoopDecision): LoopStand
         standIn.providerOptions.push(options.providerOptions ?? null);
         const view = viewOf(options.prompt);
         standIn.views.push(view);
-        const decision = decide(view);
+        const decision = await decide(view);
         if ("fail" in decision) throw new Error("the stand-in model failed");
         if ("stall" in decision) {
           return {

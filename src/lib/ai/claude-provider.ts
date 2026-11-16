@@ -1,7 +1,7 @@
 import { truncate } from "@/lib/utils/format";
 import { AiError } from "./errors";
-import type { AIProvider, ClientAskRequest, AskResponse } from "./types";
-import { STREAM_HEADER, unwrapStreamed } from "@/lib/api/streamed-response";
+import type { AIProvider, AskOptions, ClientAskRequest, AskResponse } from "./types";
+import { PROGRESS_HEADER, PROGRESS_STREAM, STREAM_HEADER, readStreamedLines, unwrapStreamed } from "@/lib/api/streamed-response";
 import { offeredCopyForTurn, type OfferedCopy } from "@/lib/forms/proposal-continuation";
 
 /**
@@ -28,13 +28,14 @@ export class ClaudeProvider implements AIProvider {
    */
   private readonly offeredCopies = new Map<string, OfferedCopy>();
 
-  async ask(request: ClientAskRequest): Promise<AskResponse> {
+  async ask(request: ClientAskRequest, options: AskOptions = {}): Promise<AskResponse> {
     const key = request.conversationId ?? "";
     const pendingCopyFromInstanceId = offeredCopyForTurn(this.offeredCopies.get(key), request.history);
     this.offeredCopies.delete(key);
     const response = await post<AskResponse>(
       "/api/chat",
       pendingCopyFromInstanceId ? { ...request, pendingCopyFromInstanceId } : request,
+      options.onProgress,
     );
     if (response.pendingCopy?.fromInstanceId) {
       this.offeredCopies.set(key, { fromInstanceId: response.pendingCopy.fromInstanceId, answer: response.content });
@@ -49,12 +50,13 @@ export class ClaudeProvider implements AIProvider {
   }
 }
 
-async function post<T>(url: string, body: unknown): Promise<T> {
+async function post<T>(url: string, body: unknown, onProgress?: (status: string) => void): Promise<T> {
   let response: Response;
   try {
     response = await fetch(url, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      /* PR 6 item 5: progress lines asked for only when the screen shows them; the server sends them to loop users only. */
+      headers: { "content-type": "application/json", ...(onProgress ? { [PROGRESS_HEADER]: "1" } : {}) },
       body: JSON.stringify(body),
     });
   } catch {
@@ -77,7 +79,17 @@ async function post<T>(url: string, body: unknown): Promise<T> {
   let payload: Partial<T> & { error?: string; code?: string; missing?: string[] };
   // Read defensively: a fetch stand-in without `headers` (as several chat
   // screen tests use) is a plain response, exactly as before this flag.
-  if (response.headers?.get?.(STREAM_HEADER) === "1") {
+  if (response.headers?.get?.(STREAM_HEADER) === PROGRESS_STREAM) {
+    /* Version 2: statuses line by line, then the same envelope; an unreadable line is skipped, never an error. */
+    let unwrapped: { status: number; body: unknown };
+    try {
+      unwrapped = await readStreamedLines(response, onProgress);
+    } catch {
+      throw new AiError("model_failed", "Ask Sunny could not be reached. Check your connection and try again.", 503, []);
+    }
+    status = unwrapped.status;
+    payload = (unwrapped.body ?? {}) as typeof payload;
+  } else if (response.headers?.get?.(STREAM_HEADER) === "1") {
     let text: string;
     try {
       text = await response.text();
