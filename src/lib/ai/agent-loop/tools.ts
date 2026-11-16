@@ -2793,7 +2793,8 @@ export async function editForm(
           note: "Nothing was written and no new draft was opened. Say what was refused and why.",
         };
       }
-      return { ...revisedEdit, revision_draft: { id: draft.instanceId, from_id: id, form: draft.templateName, employee: draft.employeeName }, original_unchanged: true, note: "Say it is a new draft revising the finalized form, as the rules book's Editing lines teach." };
+      /* QA's live finding (16 Nov 2026): a revision draft already open is reused (opened false), never said to be new. */
+      return { ...revisedEdit, form_state: "revision_draft", revision_draft: { id: draft.instanceId, from_id: id, form: draft.templateName, employee: draft.employeeName, reused: !draft.opened }, original_unchanged: true, note: "Say it is a new draft revising the finalized form, as the rules book's Editing lines teach." };
     }
     /*
      * HARD GUARD, A REWORD KEEPS EVERY FACT (Pau via QA, 14 Nov 2026: "make it professional", "reword it", "clean it
@@ -3047,6 +3048,8 @@ export async function editForm(
       updated,
       saved: savedChanges,
       refused,
+      /* QA's live finding (16 Nov 2026): what the change was saved on, so the reply never says "press Create" on a saved draft. */
+      form_state: "saved_draft",
       ...(unchanged.length > 0 ? { unchanged } : {}),
       ...(loaded.instance.templateKey === appConfig().formKeys.corrective ? { saved_level: savedLevel.length > 0 ? savedLevel.map((key) => levelLabel[key] ?? key).join(", ") : null } : {}),
       ...rewordFacts,
