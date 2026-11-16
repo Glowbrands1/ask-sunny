@@ -14,3 +14,11 @@ account): `tools.ts` adds <T>'s request turns and treats <T> as an alias in `ans
 <T> is this card's request start. The card check (`run.ts`) now compares a reply with the card on screen (its record
 holds the policy line beside the level) when nothing is proposed this turn, and writes "That change isn't on the card
 yet" only with a card on screen. Sunny-only for the same reason: Ask Bubbles has no agent loop yet.
+
+**Follow-up 2 (QA, the live set on 1a53042).** (1) An answer to the card's recorded name check corrects that card
+even when the model chose the person by `employee_id`, and keeps the card's form: another form is refused
+(`name_answer_keeps_form`) unless the message asks for one (`new_form_evidence`). The card check offers "isn't on the
+card yet" only for fields the card's form holds; an exit card's reply drops a Corrective Action's policy line. (2) A
+roster person is settled only by the manager's own words naming them exactly (or a recorded confirmation): a close
+spelling they typed gets the Did-you-mean from `find_staff` and from `propose_form` with an `employee_id`
+(`close_spelling_not_confirmed`). Sunny-only: Ask Bubbles has no agent loop yet.

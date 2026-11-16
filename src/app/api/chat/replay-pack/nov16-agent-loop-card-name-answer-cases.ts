@@ -186,4 +186,53 @@ export const NOV16_AGENT_LOOP_CARD_NAME_ANSWER_CASES: ReplayCase[] = [
       expect(plain.content, "the card check wrote its hand-back with no card on screen").not.toMatch(/isn't on the card yet/);
     },
   },
+  {
+    id: "nov16-card-name-answer-by-id-keeps-the-exit-form-c219-live",
+    title: "c219 live on 1a53042: after the exit card for \"Test Testi\", the model looks \"For Remy Calder\" up and proposes a Corrective Action by employee_id. The answer to the exit card's name check keeps the exit form (name_answer_keeps_form); the exit card is corrected to Remy Calder by id with its termination, and the reply is never \"That change isn't on the card yet\"",
+    report: `${REPORT}; the live set on 1a53042 (16 Nov 2026): at T3 a Corrective Action replaced the exit card, the termination was dropped, and the reply was "That change isn't on the card yet: policy (Standards of Conduct Policy, JBA Policy Manual p.12). Tell me again and I'll update the card."`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      start(t);
+      const standIn = loopStandIn((view): LoopDecision => {
+        const said = lastSaid(view);
+        const card = lastResult(view, "propose_form") as CardOut;
+        if (said.startsWith(ASK)) {
+          if (card) return { text: card.ask_exactly ?? card.reason_code ?? "Here's the Resignation/Exit Form for Test." };
+          return { tool: "propose_form", input: { template_key: "stc-exit", employee_name: "Test Testi", exit_type: "termination", effective_date: "11/5", exit_evidence: { ...evidenceFrom(view, ASK), kind: "asks_for_exit_form" }, request_evidence: [evidenceFrom(view, "this meeting is about the text you sent", 1)] } };
+        }
+        const EXIT_REPLY = "Here's the Resignation/Exit Form for Remy. Filed as a termination, effective 11/5.\n\n**Policy:** Standards of Conduct Policy, JBA Policy Manual p.12";
+        if (said.startsWith("[app check]")) return { text: EXIT_REPLY };
+        if (!said.startsWith("For ")) return { text: "This is a termination meeting script for Test. Do you want the Resignation/Exit Form for Test, or a Corrective Action?" };
+        const staff = lastResult(view, "find_staff") as { matches?: { employee_id: string }[] } | null;
+        if (!staff) return { tool: "find_staff", input: { name: "Remy Calder", person_evidence: evidenceFrom(view, "Remy Calder") } };
+        const id = staff.matches?.[0]?.employee_id;
+        // The live model's first choice: a Corrective Action citing the Standards of Conduct.
+        if (!card) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: id, what_happened: "Sent a disrespectful text to the salon director on 11/3.", incident_date: "2026-11-03", policy: "Standards of Conduct", request_evidence: [evidenceFrom(view, "this meeting is about the text you sent", 1)] } };
+        if (card.reason_code === "name_answer_keeps_form") {
+          return { tool: "propose_form", input: { template_key: "stc-exit", employee_id: id, exit_type: "termination", effective_date: "11/5", exit_evidence: { ...evidenceFrom(view, ASK, 1), kind: "asks_for_exit_form" }, request_evidence: [evidenceFrom(view, "this meeting is about the text you sent", 2), evidenceFrom(view, ASK, 1)] } };
+        }
+        // The live reply kept the Corrective Action's policy line (it does so again when handed back).
+        return { text: card.ask_exactly ?? card.reason_code ?? EXIT_REPLY };
+      });
+      t.loopModel!(standIn);
+      const thread = t.thread();
+      await thread.say(SCRIPT);
+      await thread.say(`${ASK} ${SCRIPT}`);
+      expect(thread.proposal?.employeeName, "T2 made no exit card for the typed name").toBe("Test Testi");
+      const t3 = await thread.say("For Remy Calder");
+      const results = standIn.views.flatMap((view) => view.results).filter((result) => result.tool === "propose_form").map((result) => result.output as CardOut);
+      expect(results.some((out) => out?.reason_code === "name_answer_keeps_form"), "the Corrective Action was not refused").toBe(true);
+      expect(thread.proposal?.templateKey, `a Corrective Action replaced the exit card:\n${t3.content}`).toBe("stc-exit");
+      expect(thread.proposal?.employeeName).toBe("Remy Calder");
+      const out = results.at(-1);
+      expect(out?.facts?.name_corrected, "the correction by employee_id was not recorded").toEqual({ from: "Test Testi", to: "Remy Calder" });
+      expect(out?.not_on_card ?? [], "the termination was dropped").not.toContainEqual({ field: "exit_type", reason_code: "termination_not_stated" });
+      expect(out?.facts?.exit_termination).toEqual({ form_label: "Immediate involuntary separation", effective: "2026-11-05" });
+      expect(t3.content, "an exit card was offered a policy change").not.toMatch(/isn't on the card yet/);
+      expect(t3.content, "the exit card's reply kept a Corrective Action's policy line").not.toMatch(/\*\*Policy:\*\*/);
+      expect(t3.content).toContain("Here's the Resignation/Exit Form for Remy");
+    },
+  },
 ];

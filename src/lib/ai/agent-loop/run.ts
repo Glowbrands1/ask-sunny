@@ -887,13 +887,23 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
         ].join("\n");
         const again = await handBack(note);
         const still = again ? mismatchOf(again) : wrong;
+        /*
+         * QA (16 Nov 2026, live c219 on 1a53042): only a field the card's form holds is offered as "isn't on the card yet …
+         * I'll update the card". A Corrective Action's policy, level or payroll claimed for another form (an exit card) is no
+         * change the manager can ask for: its **Policy:** line is left out of the reply instead.
+         */
+        const shownForm = effects.proposal?.templateKey ?? cardOnScreen?.templateKey ?? null;
+        const caOnly = (field: string) => /^(?:policy|warning level|payroll deduct|payroll amount) \(/.test(field);
+        const offer = shownForm === appConfig().formKeys.corrective ? still : still.filter((field) => !caOnly(field));
+        const withoutPolicyLine = (reply: string) => (shownForm !== appConfig().formKeys.corrective ? reply.replace(/^\s*\*\*Policy:?\*\*:?.*$\n?/gim, "").trim() : reply);
         selfReview = { mismatched: [...wrong, ...(missing ? ["policy line (missing)"] : [])], fixed: still.length === 0 && Boolean(again) && !noPolicyLine(again) };
         /*
          * Only on a second miss of a stated value: the reply says plainly what is not on the card (today's no-op honesty
          * pattern). A reply that only left the Policy line out keeps the model's words (the hand-back's, else the first).
          */
-        if (still.length > 0 && cardShownNow()) text = `That change isn't on the card yet: ${still.join("; ")}. Tell me again and I'll update the card.`;
-        else if (again) text = again;
+        if (offer.length > 0 && cardShownNow()) text = `That change isn't on the card yet: ${offer.join("; ")}. Tell me again and I'll update the card.`;
+        else if (again) text = withoutPolicyLine(again);
+        else if (still.length > 0) text = withoutPolicyLine(text);
       }
       /*
        * THE DRAFT'S HONESTY CHECK HANDS BACK FIRST (code-check #48, batch D): with a draft open, a reply that claims the

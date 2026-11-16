@@ -760,6 +760,19 @@ export async function findStaff(context: ToolContext, input: { name?: unknown; p
       note: `The manager confirmed ${displayName(found[0]!)} (their answer to Did you mean). Do not ask again: propose the card for ${displayName(found[0]!)} now, with this request's account from the earlier turns.`,
     };
   }
+  /* QA (16 Nov 2026, live): the roster spelling the model looked up is settled only by the manager's own words. */
+  const unsettled = found.length > 0 ? found.map((row) => closeSpellingNotSettled(context, row, read.roster, input.person_evidence)) : [];
+  if (unsettled.length > 0 && unsettled.every((spelling) => spelling !== null)) {
+    const spelled = unsettled[0]!;
+    const names = found.slice(0, 5).map(displayName);
+    if (effects) effects.nameQuestion = { offeredIds: found.slice(0, 5).map((row) => row.id), typed: spelled };
+    return {
+      matches: [],
+      did_you_mean: found.slice(0, 5).map((row) => staffRow(row)),
+      note: `The manager typed "${spelled}", not this name. Ask the manager, in these words: ${nameConfirmationQuestion(spelled, names)}`,
+      also_ask_if_no_account: ALSO_ASK_ACCOUNT,
+    };
+  }
   if (found.length === 0) {
     /* Close spellings, as the app's own name check reads them ("Marnie Halloway" → Marnie Holloway). */
     const close = matchEmployeeName(typed, read.roster);
@@ -1399,6 +1412,13 @@ function cardNameCorrection(
   templateKey: string,
   typed: string,
   roster: readonly RosterEmployee[],
+  /*
+   * QA (16 Nov 2026, live c219 on 1a53042): the model looked "For <C>" up first and proposed with <C>'s employee_id, and
+   * chose a Corrective Action, so the exit card's name check was never answered: the CA replaced the exit card and lost
+   * its evidence. `byId`: the roster person the model chose (corrects the card only when the record says this turn
+   * answers the card's name check). `newFormEvidence`: the model's new_form_evidence (this turn asks for another form).
+   */
+  options: { readonly byId?: RosterEmployee; readonly newFormEvidence?: unknown } = {},
 ): { person: RosterEmployee; from: string } | { asTyped: true; from: string } | { refusal: ToolResult } | null {
   if (context.openFormId) return null;
   /* A salon or city answer ("KS Manhattan" to the which-salon question) is never a person, so never a name correction. */
@@ -1412,7 +1432,7 @@ function cardNameCorrection(
   const declined = latestTurnKeepsTyped(view, typed);
   /* The card on screen; after this chat's Did-you-mean or "reply **use <name>**" offer (no card shown), the chat's latest card. */
   const card = context.cardOnScreen ?? (latestTurnAnswersFor(view, typed) || answeredByFullName(view, typed) ? (context.earlierCard ?? null) : null);
-  if (!card || card.templateKey !== templateKey) return null;
+  if (!card) return null;
   /*
    * The card's name: its roster person (the record's employeeKey), or, for a name not on the roster (live s10's card
    * was one), the name in this chat's earlier manager turns whose key is the record's nameKey. The record holds only
@@ -1439,6 +1459,24 @@ function cardNameCorrection(
    */
   const answersCardCheck = !cardPerson && card.nameKey !== null && spellingKeysConfirmedForName(view, typed).includes(card.nameKey);
   if (!sharesAName && !answersCardCheck) return null;
+  /* A roster person the model chose by id corrects the card only when this turn answers the card's recorded name check. */
+  if (options.byId && !answersCardCheck) return null;
+  if (card.templateKey !== templateKey) {
+    /*
+     * QA (16 Nov 2026, live c219): a message that answers the name check of the card on screen is about THAT card. It never
+     * makes another form unless the message itself asks for one (new_form_evidence, checked against this turn's words).
+     */
+    if (!answersCardCheck) return null;
+    if (verifyEvidence(options.newFormEvidence, identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId), { thisTurnOnly: true }).ok) return null;
+    const form = card.templateName ?? "card";
+    return {
+      refusal: {
+        template_key: card.templateKey,
+        reason_code: "name_answer_keeps_form", error: `This message answers the name check on the ${form} on screen (${cardName} → ${typed}); it does not ask for another form. Propose the ${form} again (template_key "${card.templateKey}") for ${typed}, with everything that card already has. Only the name changes.`,
+      },
+    };
+  }
+  if (options.byId) return { person: options.byId, from: cardName };
   const holders = roster.filter((row) => fullNamesOf(row).some((full) => samePerson(full, typed)));
   if (holders.length === 1) return { person: holders[0]!, from: cardName };
   if (holders.length > 1) {
@@ -1499,6 +1537,41 @@ export function mentionsPerson(text: string, name: string, rosterNames: readonly
     if (!longer.some((other) => rest.startsWith(other))) return true;
   }
   return false;
+}
+
+/**
+ * A ROSTER MATCH IS SETTLED BY THE MANAGER'S OWN WORDS (QA, 16 Nov 2026, live on 1a53042: "tamsen orwel" was seated as
+ * Tamsin Orwell when the model looked up the roster spelling itself). The words the lookup came from: the model's
+ * verified person_evidence quote, else the manager's turns, newest first. They settle <A> when they name <A> exactly
+ * (a full name, legal or preferred, or a whole first or preferred name; case and spacing ignored) or when the close
+ * spelling they hold was confirmed as <A> in this chat's recorded Did-you-mean. Returns that close spelling when it is
+ * not settled ("tamsen orwel"), so the caller asks Did you mean; null when settled, or when no words name <A> at all.
+ */
+function closeSpellingNotSettled(
+  context: Pick<ToolContext, "question" | "history" | "questionMessageId" | "nameQuestions">,
+  row: RosterEmployee,
+  roster: readonly RosterEmployee[],
+  evidence: unknown,
+): string | null {
+  const turns = identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId);
+  const quoted = verifyEvidence(evidence, turns);
+  const texts = quoted.ok
+    ? [String((evidence as { quote: string }).quote)]
+    : turns.filter((turn) => turn.role === "user").map((turn) => withoutMessageIdTags(turn.content)).reverse();
+  const exactNames = [...fullNamesOf(row), row.firstName, row.preferredFirstName ?? ""].map((name) => name.trim()).filter(Boolean);
+  const confirmed = spellingKeysConfirmedFor(nameQuestionView(context as ToolContext, roster), row.id);
+  for (const text of texts) {
+    if (exactNames.some((name) => holdsPhrase(text, name))) return null;
+    /* The name reader's names, then each two-word window of the words (it reads "edit tamsen orwel ca" as no name). */
+    const plain = text.toLowerCase().replace(/[^\p{L}'\s-]+/gu, " ").split(/\s+/).filter(Boolean);
+    const windows = plain.slice(1).map((word, at) => `${plain[at]} ${word}`);
+    const close = [...extractEmployeeNames(text), ...windows].find((name) => {
+      const match = matchEmployeeName(name, [row]);
+      return match.kind === "confirm" && match.candidates.some((candidate) => candidate.employee.id === row.id);
+    });
+    if (close) return confirmed.includes(personKey(close)) ? null : close;
+  }
+  return null;
 }
 
 /** A roster person's full names: the Woven preferred name with the surname, and the legal one (batch G, QA). */
@@ -1773,8 +1846,22 @@ export async function proposeForm(
         reason_code: "right_person", error: `The manager's answer to "Did you mean ${displayName(person)}?" names ${elsewhere.others.join(", ")}, not ${displayName(person)}: that is not a yes. Never put ${displayName(person)} on the card from it. Look up ${other} with find_staff; if the form's person is still unclear, ask: "Is this form for **${other}** or **${displayName(person)}**?"`,
       };
     }
+    /*
+     * QA (16 Nov 2026, live on 1a53042): an employee_id is settled only by the manager's own words (or a recorded
+     * confirmation): a close spelling they typed ("tamsen orwel") gets the Did-you-mean, never the roster person.
+     */
+    const spelled = person ? closeSpellingNotSettled(context, person, read.roster, undefined) : null;
+    if (person && spelled) {
+      effects.nameQuestion = { offeredIds: [person.id], typed: spelled };
+      return {
+        reason_code: "close_spelling_not_confirmed", error: `The manager typed "${spelled}", not ${displayName(person)}. The card was not made. Ask exactly ask_exactly, once.`,
+        ask_exactly: nameConfirmationQuestion(spelled, [displayName(person)]),
+      };
+    }
     /* fix-name, live s10 (Pau's ruling, 16 Nov 2026): a typed name that corrects the card's person goes through the roster check. */
-    const corrected = !person && typed ? cardNameCorrection(context, effects, key, typed, read.roster) : null;
+    const corrected = person
+      ? cardNameCorrection(context, effects, key, displayName(person), read.roster, { byId: person, newFormEvidence: input.new_form_evidence })
+      : typed ? cardNameCorrection(context, effects, key, typed, read.roster, { newFormEvidence: input.new_form_evidence }) : null;
     if (corrected && "refusal" in corrected) return corrected.refusal;
     if (corrected) nameCorrectedFrom = corrected.from;
     if (corrected && "person" in corrected) employee = { name: displayName(corrected.person), salonIds: corrected.person.salonIds, id: corrected.person.id };
