@@ -57,13 +57,19 @@ export const NOV16_AGENT_LOOP_KEEP_AS_TYPED_CASES: ReplayCase[] = ([["no", false
   async run(t) {
     if (!t.loopOn?.()) return;
     start(t);
-    t.loopModel!(model(lookupFirst));
+    const standIn = model(lookupFirst);
+    t.loopModel!(standIn);
     const thread = t.thread();
     const ask = await thread.say("ca for Remi Calder, late on 11/12");
     expect(ask.content, "T1 did not ask the Did-you-mean").toMatch(/Did you mean \*\*Remy Calder\*\*/);
     const reply = await thread.say(answer);
     expect(reply.content, "the app re-offered the instruction it had just given").not.toMatch(/I can't find \*\*Remi Calder\*\*/);
     expect(thread.proposal?.employeeName, `"${answer}" did not keep the name as typed:\n${reply.content}`).toBe("Remi Calder");
+    if (lookupFirst) {
+      /* QA (16 Nov 2026): the kept_as_typed result names the person for the reply, as every card result does (replyNameFor). */
+      const kept = standIn.views.flatMap((view) => view.results).find((result) => result.tool === "find_staff" && (result.output as { kept_as_typed?: string } | null)?.kept_as_typed);
+      expect(kept?.output, "find_staff did not settle the name as typed").toMatchObject({ kept_as_typed: "Remi Calder", reply_name: "Remi" });
+    }
   },
 }));
 

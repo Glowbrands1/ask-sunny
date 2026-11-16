@@ -739,7 +739,8 @@ export async function findStaff(context: ToolContext, input: { name?: unknown; p
    * ("no", or "use <typed>"): settled from the record. Never ask the Did-you-mean or the use-<name> offer again.
    */
   if (typed && latestTurnKeepsOrUsesTyped(nameQuestionView(context, read.roster), typed)) {
-    return { matches: [], kept_as_typed: typed, note: `The manager kept "${typed}" as typed (their answer to your question). Do not ask again: propose the card now with employee_name "${typed}", with this request's account from the earlier turns.` };
+    /* QA (16 Nov 2026): what the reply calls this person, decided by code (`replyNameFor`), as on every card result. */
+    return { matches: [], kept_as_typed: typed, reply_name: replyNameFor(typed, read.roster, extractEmployeeNames(managerTurns(context)), null), note: `The manager kept "${typed}" as typed (their answer to your question). Do not ask again: propose the card now with employee_name "${typed}", with this request's account from the earlier turns.` };
   }
   let found = rosterMatches(typed, read.roster).slice(0, 10);
   /* The roster's exact full name wins over people whose names only start the same ("Test Employee" vs "Test Employee Two"). */

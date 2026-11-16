@@ -31,6 +31,7 @@ function start(t: ReplayContext) {
 const lastSaid = (view: LoopView) => [...view.turns].reverse().find((turn) => turn.role === "user")?.text ?? "";
 type CardOut = {
   reason_code?: string;
+  reply_name?: string;
   ask_exactly?: string;
   not_on_card?: { field: string; reason_code: string }[];
   facts?: { name_corrected?: { from: string; to: string }; exit_termination?: { form_label: string; effective: string } };
@@ -104,6 +105,7 @@ export const NOV16_AGENT_LOOP_CARD_NAME_ANSWER_CASES: ReplayCase[] = [
       expect(thread.proposal?.employeeName, `the roster person did not correct the card:\n${t3.content}`).toBe("Remy Calder");
       const out = lastCardOut(standIn.views);
       expect(out?.facts?.name_corrected).toEqual({ from: "Test Testi", to: "Remy Calder" });
+      expect(out?.reply_name, "the corrected card does not say what the reply calls the person").toBe("Remy");
       /* QA (16 Nov 2026, live 0/6): the script's turns named "Test Testi"; after the correction they are Remy Calder's own turns. */
       expect(out?.not_on_card ?? [], "the termination was dropped after the name correction").not.toContainEqual({ field: "exit_type", reason_code: "termination_not_stated" });
       expect(out?.facts?.exit_termination, "the exit card is not a termination").toEqual({ form_label: "Immediate involuntary separation", effective: "2026-11-05" });
@@ -141,6 +143,7 @@ export const NOV16_AGENT_LOOP_CARD_NAME_ANSWER_CASES: ReplayCase[] = [
       const t2 = await thread.say("For Remy Calder");
       expect(thread.proposal?.employeeName, `the roster person did not correct the card:\n${t2.content}`).toBe("Remy Calder");
       expect(lastCardOut(standIn.views)?.facts?.name_corrected).toEqual({ from: "Test Testi", to: "Remy Calder" });
+      expect(lastCardOut(standIn.views)?.reply_name, "the corrected card does not say what the reply calls the person").toBe("Remy");
       expect((thread.proposal as { warningLevel?: string | null } | null)?.warningLevel ?? null, `the stated level was dropped after the correction:\n${t2.content}`).toBe("written");
     },
   },
