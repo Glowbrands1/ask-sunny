@@ -230,6 +230,8 @@ export async function createInlineForm({
         notes: notes.text,
         // NEXT_PUBLIC_CARD_POLICY_TO_DRAFT_ENABLED: the policy the card cited (QA live check, 3 Nov 2026).
         ...(cardPolicyToDraftEnabled() && cardPolicyFor(proposal, messages) ? { cardPolicy: cardPolicyFor(proposal, messages) } : {}),
+        // The coaching card's topic (QA, 17 Nov 2026): the saved form's Other topic.
+        ...(proposal.coachingTopic ? { cardTopic: proposal.coachingTopic } : {}),
         // SAME_FORM_COPY_NEW_PERSON_ENABLED: the form this card copies; re-checked by the route.
         ...(proposal.copyFromInstanceId ? { copyFromInstanceId: proposal.copyFromInstanceId } : {}),
       }),
