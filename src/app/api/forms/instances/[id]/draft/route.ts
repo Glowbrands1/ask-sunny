@@ -319,6 +319,12 @@ interface DraftBody {
    */
   cardPolicy?: string;
   /**
+   * HOTFIX (QA, 17 Nov 2026; the tester's form 7545d162): the "Other — <topic>" the card cited ("10-minute
+   * sanitization"). With NEXT_PUBLIC_CARD_POLICY_TO_DRAFT_ENABLED, a Corrective Action whose Type of Offense offers Other
+   * ticks it, Policy Violated reads "Other — <topic>", and the drafter is told so. See `cardOtherTopic`.
+   */
+  cardOther?: string;
+  /**
    * SAME_FORM_COPY_NEW_PERSON_ENABLED: the form the card was asked to copy
    * ("the same draft that we did with <name>"). Re-checked: this account's
    * own form of this template, still visible to it. See
@@ -828,6 +834,11 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      */
     /* The version's own Type of Offense keys (revision 8 replaced several; see `offense-keys.ts`). */
     const offenseOffered = groups.find((group) => group.key === "offense_type")?.options.map((option) => option.key) ?? [];
+    /* HOTFIX (QA, 17 Nov 2026): the card's "Other — <topic>", on a form whose Type of Offense offers Other. */
+    const cardOther =
+      cardPolicyToDraftEnabled() && offenseOffered.includes("other") && typeof body.cardOther === "string" && body.cardOther.trim() && body.cardOther.trim().length <= 120
+        ? body.cardOther.trim()
+        : null;
     const offersConductPolicy =
       fields.some((field) => field.key === "policy_language") &&
       groups.some(
@@ -929,13 +940,19 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         ? eppPolicyPassages({ chunks: manual.chunks, topics: eppTopics })
         : [];
 
+    /* HOTFIX (QA, 17 Nov 2026): the card cited Other — <topic>; the drafter is told so, never "none found". */
+    const cardOtherLine = cardOther
+      ? `\nTHE CARD ALSO CITES: Other — ${cardOther}. Tick "other" in Type of Offense; the Action Plan names ${cardOther}.`
+      : "";
     const policyBlock = grounding.passages.length
       ? `\nAPPROVED POLICY (quote only from this, verbatim):\n${grounding.passages
           .map((passage) => `[${passage.source.documentTitle} ${passage.source.locator}]\n${passage.text}`)
-          .join("\n\n")}`
-      : needsPolicy
-        ? "\nAPPROVED POLICY: none found. Leave every policy field empty."
-        : "";
+          .join("\n\n")}${cardOtherLine}`
+      : needsPolicy && cardOther
+        ? `\nAPPROVED POLICY: the card cites Other — ${cardOther} (no section of the manual). Tick "other" in Type of Offense and leave Direct policy empty; the Action Plan names ${cardOther}.`
+        : needsPolicy
+          ? "\nAPPROVED POLICY: none found. Leave every policy field empty."
+          : "";
 
     const hasTimeframeField = fields.some(
       (field) => field.semantics === "follow_up_timeframe",
@@ -2427,6 +2444,23 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         });
 
     /*
+     * HOTFIX (QA, 17 Nov 2026; the tester's form 7545d162): the card cited "Other — <topic>", so Policy Violated says what
+     * the Other is ("Other" alone becomes "Other — <topic>"; a line without it gets it added), and the plan built below
+     * from that line names the topic (`policyNamesFromViolated` reads "<box> — <name>"). A line the manager typed is kept.
+     */
+    const cardOtherViolated = (line: string | undefined): string => {
+      const otherLabel = `Other \u2014 ${cardOther}`;
+      const labels = (line ?? "").split(/\s*,\s*/).map((label) => label.trim()).filter(Boolean);
+      const withTopic = labels.some((label) => /^other$/i.test(label))
+        ? labels.map((label) => (/^other$/i.test(label) ? otherLabel : label))
+        : labels.some((label) => /^other\s*[\u2014\u2013-]/i.test(label))
+          ? labels
+          : [...labels, otherLabel];
+      return withTopic.join(", ");
+    };
+    const cardOtherOnViolated = Boolean(cardOther) && fields.some((field) => field.key === "policy_violated") && !managerKeys.has("policy_violated");
+    if (cardOtherOnViolated) named.values = { ...named.values, policy_violated: cardOtherViolated(named.values.policy_violated) };
+    /*
      * The manager's own lines are not overwritten — except a policy line this
      * draft could CITE from the manual, which replaces wording typed without a
      * section or page.
@@ -2614,6 +2648,14 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         notes,
         employeeName: loaded.instance.employeeName,
       }) as typeof draftedPayload.values;
+    }
+    /* HOTFIX (QA, 17 Nov 2026): the card cited "Other — <topic>": the form's own Other box is ticked beside any other. */
+    if (cardOther && !(draftedPayload.checked.offense_type ?? []).includes("other")) {
+      draftedPayload.checked = { ...draftedPayload.checked, offense_type: [...(draftedPayload.checked.offense_type ?? []), "other"] };
+    }
+    // The citation line above is rebuilt from the cited sections; the card's Other goes back on it.
+    if (cardOtherOnViolated && typeof draftedPayload.values.policy_violated === "string") {
+      draftedPayload.values = { ...draftedPayload.values, policy_violated: cardOtherViolated(draftedPayload.values.policy_violated) };
     }
     const kept = draftMergeEnabled()
       ? retainFilledFields({
