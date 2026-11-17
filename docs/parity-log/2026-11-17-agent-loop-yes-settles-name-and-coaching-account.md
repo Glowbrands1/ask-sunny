@@ -12,7 +12,6 @@ Two regressions from #1087 and #1092, found by Runner 2's 266 re-run on main 338
   place. With no account from the model, a coaching card's topic (its kept topic, else its Other topic when the words are
   the manager's own) is the account, and the policy line is in addition (`tools.ts`, beside `offenseAccount`).
 
-Rules book: that account rule; Time Records is named as the policy to pass for staying after hours, never Other (c259,
-c242); and policy_not_given / policy_copied join the facts to fix before replying (coaching cards with no policy line).
+Rules book: the account rule above (a coaching topic the manager gave is still the account; the policy is in addition).
 
 Port with the rest of the loop when Ask Bubbles gets it.

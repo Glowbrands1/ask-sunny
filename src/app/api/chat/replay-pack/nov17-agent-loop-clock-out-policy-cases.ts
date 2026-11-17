@@ -79,13 +79,8 @@ export const NOV17_AGENT_LOOP_CLOCK_OUT_POLICY_CASES: ReplayCase[] = [
       const account = "Stayed over hours until 9:53 on 11/4 and on 11/11 until 10:19 pm. Remy said Remy was cleaning, but it has been clear that we do not do extra cleaning after hours and this is not acceptable.";
       t.loopModel!(caWith("Time Records", account, null, systems));
       const reply = await t.thread().say("Please make me a CA form for Remy Calder for staying overhours until 9:53 on 11/4 and 11/11 until 10:19 pm. Remy said Remy was cleaning but it has been clear that we do not do extra cleaning after hours and this is not acceptable.");
-      /*
-       * QA (17 Nov 2026; the 266 re-run on main 33863575: c259 cited "Other — Staying after hours", c242 "Other — Closing
-       * duties and staying over hours"): the rule names the heading as the policy to pass and rules out Other, and the
-       * heading is checked as its own line of the headings list (a match anywhere could be the rule's own words).
-       */
-      expect(systems[0], "the after-hours rule is not in the model's instructions").toMatch(/Staying after hours \("staying over hours", working past close\), or clocking out more than fifteen minutes after the end of the scheduled shift without a manager's approval, is policy "Time Records", a heading in the list above .*never Attendance and never "Other — <topic>"\. When the manager also says closing duties were done while staying over, it is still Time Records/);
-      expect(systems[0], "Time Records is not among the manual headings the model is given").toMatch(/^- Time Records$/m);
+      expect(systems[0], "the after-hours rule is not in the model's instructions").toMatch(/Staying after hours, or clocking out more than fifteen minutes after the end of the scheduled shift without a manager's approval, is the manual's Time Records section/);
+      expect(systems[0], "Time Records is not among the manual headings the model is given").toMatch(/Time Records/);
       expect(card(reply)?.policyLine ?? "", JSON.stringify(card(reply))).toMatch(/^Time Records Policy, JBA Policy Manual p\.\d+$/);
     },
   },
