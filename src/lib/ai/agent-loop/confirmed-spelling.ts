@@ -40,6 +40,8 @@ export interface AnsweredNameQuestion {
   /** The person the answer confirmed, and how; null when it confirmed nobody. */
   readonly confirmed: RosterEmployee | null;
   readonly by: "yes" | "full_name" | null;
+  /** No manager turn has answered it yet (QA, c163): the question is still waiting, and its person is not settled. */
+  readonly open?: boolean;
 }
 
 /** A roster person's full names: legal, and preferred first name with the surname. */
@@ -49,28 +51,55 @@ function fullNames(person: RosterEmployee): string[] {
     .filter((name) => name.split(" ").length > 1);
 }
 
-/** Every recorded name question this chat's manager has answered, oldest first. */
+/** The person a message confirms in answer to this question, and how (a bare yes to one offer, or an offered full name). */
+function confirmsIn(answer: string, record: NameQuestionRecord, offered: readonly RosterEmployee[]): { confirmed: RosterEmployee | null; by: AnsweredNameQuestion["by"] } {
+  // A bare yes confirms only a question that offered one person (an offered name off the roster counts as one).
+  if (offered.length === 1 && (record.offeredNameKeys?.length ?? 0) === 0 && AFFIRMATIVE.test(answer)) return { confirmed: offered[0]!, by: "yes" };
+  const held = offered.filter((person) => fullNames(person).some((name) => holdsPhrase(answer, name)));
+  return held.length === 1 ? { confirmed: held[0]!, by: "full_name" } : { confirmed: null, by: null };
+}
+
+/** The message holds the name the question was about, as typed (its key): "use <typed>", "keep <typed>". */
+function holdsTyped(answer: string, typedKey: string): boolean {
+  const plain = answer.toLowerCase().replace(/[^\p{L}\p{N}'\s-]+/gu, " ").split(/\s+/).filter(Boolean);
+  for (let size = 1; size <= 4; size += 1) {
+    for (let at = 0; at + size <= plain.length; at += 1) if (personKey(plain.slice(at, at + size).join(" ")) === typedKey) return true;
+  }
+  return false;
+}
+
+/**
+ * QA (17 Nov 2026; Runner 2's c163 on main 33863575): the manager's answer to a name question is the first later manager
+ * turn that answers it, not just the next one. c163 asked "Did you mean **<A>**?" at T2; T3 ("can you make a verbal warning
+ * Ca") was read as the answer, so the card was built under the offered name before any answer, and T4's "yes" answered
+ * nothing (the question was asked again, three times in the chat). A turn answers it when today's readers find an answer
+ * in it: a yes or an offered person's full name, a no, the typed name itself ("use <typed>"), or somebody's full name.
+ * Any other turn leaves the question open, and the next turn is read.
+ */
+function answersQuestion(answer: string, record: NameQuestionRecord, offered: readonly RosterEmployee[], roster: readonly RosterEmployee[]): boolean {
+  if (confirmsIn(answer, record, offered).confirmed) return true;
+  if (AFFIRMATIVE.test(answer.split(/[,.;!\n]/)[0] ?? "") || saysNo(answer) || holdsTyped(answer, record.typedKey)) return true;
+  if (extractEmployeeNames(answer).some((name) => name.trim().split(/\s+/).length > 1 && !notAPerson(name))) return true;
+  return roster.some((person) => fullNames(person).some((name) => holdsPhrase(answer, name)));
+}
+
+/** Every recorded name question of this chat, oldest first, with the manager's answer (`open` while none has answered it). */
 export function answeredNameQuestions(view: NameQuestionView): AnsweredNameQuestion[] {
   const out: AnsweredNameQuestion[] = [];
   for (const [reply, record] of [...replyTurns(view.history, view.records)].sort(([a], [b]) => a - b)) {
-    const next = view.history.findIndex((turn, at) => at > reply && turn.role === "user");
-    const latest = next < 0;
-    const answer = latest ? view.question : String(view.history[next]!.content ?? "");
     const offered = record.offeredKeys.flatMap((key) => view.roster.filter((row) => personKey(row.id) === key));
-    let confirmed: RosterEmployee | null = null;
-    let by: AnsweredNameQuestion["by"] = null;
-    // A bare yes confirms only a question that offered one person (an offered name off the roster counts as one).
-    if (offered.length === 1 && (record.offeredNameKeys?.length ?? 0) === 0 && AFFIRMATIVE.test(answer)) {
-      confirmed = offered[0]!;
-      by = "yes";
-    } else {
-      const held = offered.filter((person) => fullNames(person).some((name) => holdsPhrase(answer, name)));
-      if (held.length === 1) {
-        confirmed = held[0]!;
-        by = "full_name";
-      }
+    // The manager turns after the question, then the message being answered now.
+    const later = [
+      ...view.history.flatMap((turn, at) => (at > reply && turn.role === "user" ? [String(turn.content ?? "")] : [])).map((text) => ({ text, latest: false })),
+      { text: view.question, latest: true },
+    ];
+    const answered = later.find((turn) => answersQuestion(turn.text, record, offered, view.roster));
+    if (!answered) {
+      out.push({ record, offered, answer: "", latest: false, confirmed: null, by: null, open: true });
+      continue;
     }
-    out.push({ record, offered, answer, latest, confirmed, by });
+    const { confirmed, by } = confirmsIn(answered.text, record, offered);
+    out.push({ record, offered, answer: answered.text, latest: answered.latest, confirmed, by });
   }
   return out;
 }

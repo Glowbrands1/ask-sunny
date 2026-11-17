@@ -3255,6 +3255,25 @@ export async function proposeForm(
     }
   }
   /*
+   * THE POLICY NEVER TAKES THE ACCOUNT'S PLACE (QA, 17 Nov 2026; Runner 2's c243, c244 and c075 on main 33863575): after
+   * #1092 (coaching always cites a policy), "a coaching form for salon cleanliness" came as policy "Other — Salon
+   * cleanliness" and an EMPTY account, so the card was not ready; on train 4 the topic was the account. A coaching topic
+   * the manager gave is still the account, as the offense the manager named is (`offenseAccount`), and the policy line is
+   * in addition: with no account from the model, the card's kept topic, else its Other topic when every word of it is the
+   * manager's own in this request (never the person's name), is the account, in their words.
+   */
+  if (coachingCard && whatHappened === "") {
+    const otherTopic = otherPart.replace(/^other\s*[—:-]?\s*/i, "").trim().replace(/[.!?]+$/, "");
+    const saidWords = new Set(words(requestWords).map((word) => word.toLowerCase()));
+    const otherWords = words(otherTopic).map((word) => word.toLowerCase());
+    const otherSaid = otherWords.length > 0 && otherWords.every((word) => saidWords.has(word)) && !otherWords.some((word) => nameWords.has(word));
+    const topicAccount = coachingTopic ?? (otherSaid ? `${otherTopic.charAt(0).toUpperCase()}${otherTopic.slice(1)}` : null);
+    if (topicAccount) {
+      whatHappened = `${topicAccount}.`;
+      accountFromNamedOffense = whatHappened;
+    }
+  }
+  /*
    * HARD GUARD, NEVER AN EMPTY ACCOUNT WHEN ONE WAS GIVEN (QA's live triage, 16:17Z: the lost-account cases): the
    * manager already said what happened in this person's turns, so a card with an empty what_happened is refused and
    * the model gets their words back.
