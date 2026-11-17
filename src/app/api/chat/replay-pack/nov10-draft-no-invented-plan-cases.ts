@@ -1,5 +1,7 @@
 import { expect } from "vitest";
 
+import { draftNoInventedPlanEnabled } from "@/lib/config/chat-quality-flags";
+
 import { KEARNEY, STAFF, type ReplayCase } from "./cases";
 
 /**
@@ -33,7 +35,13 @@ export const NOV10_DRAFT_NO_INVENTED_PLAN_CASES: ReplayCase[] = [
       const id = await thread.create();
       const observation = t.values(id).observation ?? "";
       expect(observation, observation).toContain("20 minutes late");
-      expect(observation, `an invented plan saved:\n${observation}`).not.toMatch(/Going Forward|plans travel/);
+      /*
+       * Changed on purpose (17 Nov 2026, Pau's ruling via QA: "observation + going forward", "I prefer the full write-up,
+       * also in Other"): DRAFT_NO_INVENTED_PLAN_ENABLED is off in production now, so the drafting step's Going Forward is
+       * saved; with the flag on (its fix-flag run) it is still dropped, as this case was written for.
+       */
+      if (draftNoInventedPlanEnabled()) expect(observation, `an invented plan saved:\n${observation}`).not.toMatch(/Going Forward|plans travel/);
+      else expect(observation, "the full write-up lost Going Forward").toContain("Going Forward:");
     },
   },
 ];
