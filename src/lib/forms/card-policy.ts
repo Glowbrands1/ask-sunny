@@ -48,6 +48,24 @@ export function cardPolicyPhrase(heading: string): string {
 }
 
 /**
+ * HOTFIX (QA, 17 Nov 2026; the tester's form 7545d162): the "Other — <topic>" part of the card's own policy line, or null.
+ * A loop card whose policy is "Other — 10-minute sanitization" (or "Attendance …; Other — <topic>") saved with no policy:
+ * the draft request carried only the heading ("Other" is none). The topic goes with it, so the saved form ticks Other and
+ * says what it is.
+ */
+export function cardOtherTopic(proposal: Pick<ChatFormProposal, "proposalId">, messages: readonly Pick<ChatMessage, "role" | "content" | "formProposal">[]): string | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]!;
+    if (message.role !== "assistant" || message.formProposal?.proposalId !== proposal.proposalId) continue;
+    const line = message.formProposal.policyLine;
+    if (typeof line !== "string") return null;
+    const topic = /(?:^|;\s*)Other\s*[\u2014\u2013-]\s*([^;\n]+)$/i.exec(line.trim())?.[1]?.trim() ?? "";
+    return topic.length > 0 && topic.length <= 120 ? topic : null;
+  }
+  return null;
+}
+
+/**
  * Pau's ruling (17 Nov 2026, ~7:25 AM PHT): a Coaching Form always carries the policy and page. The Coaching Form has no
  * policy field, so the card's whole policy line ("Attendance Policy, JBA Policy Manual p.14", or "Other — <topic>") goes
  * with the draft request and is written as the Details' citation line. The card's own line (the agent loop's), else the reply's
