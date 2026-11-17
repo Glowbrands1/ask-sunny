@@ -117,10 +117,27 @@ export function checkProposalIsCurrent(input: {
   const settled = input.isSettledName;
   const isCardPerson = (name: string) => samePerson(name, input.employeeName) || Boolean(settled?.(name));
   const unsettled = notOtherPeople(state.resolution, input);
-  /* The loop's card: names the loop settled as this person are this person, never "more than one person" with it. */
-  const resolution: typeof unsettled = settled && unsettled.kind === "ambiguous" && unsettled.candidates.every(isCardPerson)
-    ? { kind: "resolved", employeeName: input.employeeName }
-    : unsettled;
+  /*
+   * The loop's card (QA, 17 Nov 2026; Runner 2's c003, c039, c134, c210, c220, c232): the caller gives only the turns after
+   * the card's own turn, and names the loop settled as this person are this person. In those turns another PERSON is a name
+   * on the manager's roster: a job title or salon beside the name, metric words ("resubmit", "LPSVA"), or somebody named
+   * only in a pasted write-up are nobody the form could be for. A switch to someone on the roster is still a switch.
+   */
+  const loopRoster = settled && input.rosterNames && input.rosterNames.length > 0 ? input.rosterNames : null;
+  const somebody = (name: string) => isCardPerson(name) || !loopRoster || onRosterNamed(name, loopRoster);
+  let resolution: typeof unsettled = unsettled;
+  if (settled && unsettled.kind === "ambiguous") {
+    const people = unsettled.candidates.filter(somebody);
+    resolution = people.length === 0
+      ? { kind: "missing" }
+      : people.every(isCardPerson)
+        ? { kind: "resolved", employeeName: input.employeeName }
+        : people.length === 1
+          ? { kind: "resolved", employeeName: people[0]! }
+          : { ...unsettled, candidates: people };
+  } else if (settled && unsettled.kind === "resolved" && !somebody(unsettled.employeeName)) {
+    resolution = { kind: "missing" };
+  }
 
   if (resolution.kind === "ambiguous") {
     return {
@@ -209,13 +226,17 @@ export function checkProposalIsCurrent(input: {
     };
   }
 
+  /*
+   * The loop's card (Runner 2's c210: "It needs to be a CA, not a coaching form", "Its a CA" after a pasted HR note that
+   * names a "Kit Coaching Document"): the manager saying which form it is ("Its a CA") is that form, as a request is.
+   */
   for (const message of [...context.messages].reverse()) {
     if (isQuestion(message.content)) continue;
     const intent = detectTemplateIntent(message.content);
     const asked =
       intent.kind === "explicit"
         ? intent.templateKey
-        : intent.kind === "corrective_action" && intent.requestedCreation
+        : intent.kind === "corrective_action" && (intent.requestedCreation || settled)
           ? "dpoa"
           : null;
     if (asked === null) continue;
@@ -324,6 +345,15 @@ function severalStillStand(
  */
 function looselyTyped(typed: string, name: string, roster: readonly LoosePerson[] | undefined): boolean {
   return Boolean(roster && roster.length > 0 && partialNameLooseMatchEnabled() && looseFitsOnly(typed, name, roster));
+}
+
+/** A name the manager's roster has: its first word a roster first name, and every word of it beginning a word of that person's name. */
+function onRosterNamed(name: string, roster: readonly string[]): boolean {
+  const said = name.toLowerCase().match(/[a-z][a-z'’-]*/g) ?? [];
+  return roster.some((person) => {
+    const words = person.toLowerCase().match(/[a-z][a-z'’-]*/g) ?? [];
+    return said.length > 0 && said[0] === words[0] && (said.length === 1 || typedFor(name, person));
+  });
 }
 
 function notOtherPeople(

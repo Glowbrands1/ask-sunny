@@ -232,25 +232,31 @@ export async function POST(request: Request) {
       // PREFERRED_NAME_CARD_CURRENT_ENABLED: "kit dovetail" is the card's Katrin Dovetail when the manager's roster says Kit is her preferred name. Off: none, and no roster read.
       const alsoCalled = await preferredNamesOf(actor.scope, body.employeeName);
       /*
-       * QA (17 Nov 2026; Runner 2's saved-form run, c003): the agent loop's own card passes with the names the loop settled
-       * as its person (its recorded name questions), read from the loop's records for this proposal id; never for a card
-       * the loop has no record of. See `lib/ai/agent-loop/settled-names.ts`.
+       * QA (17 Nov 2026; Runner 2's saved-form run on 33863575: c003, c039, c134, c210, c220, c232): the agent loop's own card
+       * is read with the loop's record for it (this proposal id, this name): the turns after the card's own turn, which the
+       * loop already read with its evidence checks, and the names the loop settled as its person. Never for a card the loop
+       * has no record of. See `lib/ai/agent-loop/settled-names.ts`.
        */
-      const isSettledName = body.fromAgentLoop === true && typeof body.proposalId === "string"
-        ? await (await import("@/lib/ai/agent-loop/settled-names")).loopSettledNames({
+      const settledNames = body.fromAgentLoop === true && typeof body.proposalId === "string"
+        ? await import("@/lib/ai/agent-loop/settled-names")
+        : null;
+      const settlement = settledNames
+        ? await settledNames.loopCardSettlement({
             conversationId: typeof body.conversationId === "string" ? body.conversationId : undefined,
             userId: actor.id,
             messageIds: (body.conversation as { id?: unknown; role?: unknown }[]).filter((turn) => turn?.role === "user" && typeof turn.id === "string").map((turn) => String(turn.id)),
-            proposalId: body.proposalId,
+            proposalId: String(body.proposalId),
             employeeName: body.employeeName,
           })
         : null;
+      const history = parseHistory(body.conversation);
+      const readFrom = settledNames && settlement ? [...settledNames.turnsAfterCard(history, settlement)] : history;
       const currency = checkProposalIsCurrent({
         // FORM_TYPE_SWITCH_ENABLED: "change to coaching" is read as the chat read it, so the switched card is current.
         // TEAM_CARD_NOT_PRODUCT_ENABLED: on the team card, "selling Spray Tan Kits" is the topic, as the chat read it.
         // SAME_REQUEST_OTHER_PERSON_ENABLED: "the same thing for <B>" is read from that turn on, as the chat read it.
         // SAME_REQUEST_KEEPS_EARLIER_CARD_ENABLED: <A>'s card is read as it stood before "the same thing for <B>".
-        conversation: sameRequestReadConversation(teamTopicReadConversation(switchReadConversation(parseHistory(body.conversation)), body.employeeName), body.employeeName),
+        conversation: sameRequestReadConversation(teamTopicReadConversation(switchReadConversation(readFrom), body.employeeName), body.employeeName),
         templateKey: body.templateKey,
         employeeName: body.employeeName,
         alsoCalled,
@@ -258,7 +264,7 @@ export async function POST(request: Request) {
         looseRoster: await looseRosterFor(actor.scope),
         // STALE_NEEDS_ROSTER_PERSON_ENABLED: "drop wage" and "forfeit bonus" are not more people. Off: undefined, and no roster read.
         rosterNames: await rosterNamesFor(actor.scope),
-        ...(isSettledName ? { isSettledName } : {}),
+        ...(settlement ? { isSettledName: settlement.isSettledName } : {}),
       });
       if (!currency.current) {
         return NextResponse.json({ error: currency.reason, code: "proposal_superseded" }, { status: 409 });
