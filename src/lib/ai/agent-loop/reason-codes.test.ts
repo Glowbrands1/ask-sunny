@@ -48,6 +48,8 @@ const KNOWN = new Set([
   "policy_not_for_this_card",
   // QA (16 Nov 2026, live group E): an edit asked for a form type with forms on file and another card on screen.
   "edit_asked_forms_on_file",
+  // QA (16 Nov 2026, the 266 audit on train 4): c261/c263 dress code cited as another heading; c207 Must See Behaviors with no MSB said.
+  "dress_code_heading", "msb_not_said",
 ]);
 
 /** A line that returns a refusal: `error:` followed by a string, a template or a named message (not `error: Boolean(...)`). */
