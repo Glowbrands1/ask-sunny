@@ -128,7 +128,7 @@ export function Conclude({
           </div>
           <ul className="m-0 mt-4 flex list-none flex-col gap-3 p-0">
             {rows.map((a) => (
-              <li key={a.id} data-me={isMe(a) || undefined} className={cx("flex flex-wrap items-center gap-2", isMe(a) && "rounded-lg bg-cream/70 p-2")}>
+              <li key={a.id} data-me={isMe(a) || undefined} className={cx("flex flex-wrap items-center gap-2", isMe(a) && "-mx-2 rounded-lg bg-cream/70 px-2 py-1.5")}>
                 <span className={cx("w-36 truncate text-sm", isMe(a) && "font-bold")}>
                   {a.name}
                   {isMe(a) && <span className="font-normal text-muted"> (you)</span>}
