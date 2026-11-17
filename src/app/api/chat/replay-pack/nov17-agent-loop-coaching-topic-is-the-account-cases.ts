@@ -31,12 +31,12 @@ const quoted = (view: LoopView, quote: string) => ({ message_id: [...managerTurn
 const card = (reply: { formProposal?: unknown }) => (reply.formProposal as (ChatFormProposal & { policyLine?: string | null }) | undefined) ?? null;
 
 /** The live model: a coaching card with the topic as "Other — <topic>" and no account; asks who first when nobody is named. */
-function topicAsPolicy(policy: string, account?: string) {
+function topicAsPolicy(policy: string, account?: string, topic?: string) {
   return loopStandIn((view): LoopDecision => {
     const result = [...view.results].reverse().find((entry) => entry.tool === "propose_form")?.output;
     if (result) return { text: typeof result.ask_exactly === "string" ? result.ask_exactly : "Here's the Coaching Form for **Remy Calder**." };
     if (!managerTurns(view).some((turn) => /remy calder/i.test(turn.text))) return { text: "Who is this Coaching Form for?" };
-    return { tool: "propose_form", input: { template_key: "coaching", employee_name: "Remy Calder", person_evidence: quoted(view, "Remy Calder"), policy, ...(account ? { what_happened: account } : {}) } };
+    return { tool: "propose_form", input: { template_key: "coaching", employee_name: "Remy Calder", person_evidence: quoted(view, "Remy Calder"), policy, ...(account ? { what_happened: account } : {}), ...(topic ? { topic, topic_evidence: quoted(view, topic) } : {}) } };
   });
 }
 
@@ -72,6 +72,11 @@ export const NOV17_AGENT_LOOP_COACHING_TOPIC_IS_THE_ACCOUNT_CASES: ReplayCase[] 
     const thread = t.thread();
     await thread.say("a coaching form for salon cleanliness");
     const reply = await thread.say("Remy Calder");
+    ready(reply, /^Salon cleanliness\.$/);
+  }),
+  fixed("nov17-coaching-topic-is-the-account-c243-topic", "c243 as the trace shows it: \"Remy Calder. make this form for salon cleanliness\" (a coaching form chosen), the model sends topic \"salon cleanliness\" with its evidence and policy \"Other — Salon cleanliness\", no account: the account is \"Salon cleanliness.\", the card is ready", async (t) => {
+    t.loopModel!(topicAsPolicy("Other — Salon cleanliness", undefined, "salon cleanliness"));
+    const reply = await t.thread().say("Remy Calder. make this coaching form for salon cleanliness");
     ready(reply, /^Salon cleanliness\.$/);
   }),
   fixed("nov17-coaching-topic-account-control-model-account-kept", "Control: the model gives the account itself (\"Left the beds wet after cleaning.\") beside \"Other — Bed cleaning\": its account is kept, never replaced by the topic", async (t) => {

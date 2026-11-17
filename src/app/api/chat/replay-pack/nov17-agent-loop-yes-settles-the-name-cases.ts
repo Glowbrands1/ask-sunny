@@ -61,6 +61,40 @@ function liveModel() {
   });
 }
 
+/**
+ * Runner 2's c163 trace on main 33863575, call for call: T2 find_staff with the typed name; T3 propose_form with the TYPED
+ * name, the level from T3; T4 ("yes") find_staff for the staff-list name, propose_form by employee_id with the level, and
+ * propose_form by name with "yes" as the person evidence; T5 propose_form; T6 two propose_forms with the prior coaching.
+ * A guard for the yes and the turns after it: in this harness T3's typed name is asked again (production seated the
+ * staff-list person there, the T3-as-answer bug the case above fails on before the fix).
+ */
+function traceModel() {
+  return loopStandIn((view): LoopDecision => {
+    const turn = managerTurns(view).length;
+    const done = view.results.filter((entry) => entry.tool === "propose_form" || entry.tool === "find_staff").map((entry) => entry.output);
+    const level = { warning_level: "verbal", level_evidence: quoted(view, "can you make a verbal warning Ca") };
+    const base = { template_key: "dpoa", what_happened: ACCOUNT, policy: "Other — Must See Behaviors" };
+    if (done.length > 0) {
+      const ask = done.map((output) => output.ask_exactly).find((question): question is string => typeof question === "string");
+      const made = view.results.some((entry) => entry.tool === "propose_form" && !entry.output.reason_code);
+      return { text: made ? "Here's the Corrective Action Form for **Remy Calder**." : ask ?? "Noted." };
+    }
+    if (turn === 1) return { text: "Who is this Corrective Action Form for?" };
+    if (turn === 2) return { tool: "find_staff", input: { name: TYPED, person_evidence: quoted(view, TYPED) } };
+    if (turn === 3) return { tool: "propose_form", input: { ...base, employee_name: TYPED, person_evidence: quoted(view, TYPED), ...level } };
+    if (turn === 4) return { tools: [
+      { tool: "find_staff", input: { name: "Remy Calder", person_evidence: quoted(view, "yes") } },
+      { tool: "propose_form", input: { ...base, employee_id: "e-2", ...level } },
+      { tool: "propose_form", input: { ...base, employee_name: "Remy Calder", person_evidence: quoted(view, "yes"), ...level } },
+    ] };
+    if (turn === 5) return { tool: "propose_form", input: { ...base, employee_name: "Remy Calder", person_evidence: quoted(view, TYPED), ...level } };
+    return { tools: [
+      { tool: "propose_form", input: { ...base, employee_name: "Remy Calder", person_evidence: quoted(view, TYPED), ...level, prior_actions: "Coaching, date not given" } },
+      { tool: "propose_form", input: { ...base, employee_id: "e-2", ...level, prior_actions: "Coaching, date not given" } },
+    ] };
+  });
+}
+
 const DID_YOU_MEAN = /Did you mean \*\*Remy Calder\*\*\?/;
 
 export const NOV17_AGENT_LOOP_YES_SETTLES_THE_NAME_CASES: ReplayCase[] = [
@@ -92,6 +126,32 @@ export const NOV17_AGENT_LOOP_YES_SETTLES_THE_NAME_CASES: ReplayCase[] = [
       expect(t6.content, "the name was asked about again after the yes").not.toMatch(DID_YOU_MEAN);
       expect(card(t6)?.employeeName).toBe("Remy Calder");
       expect(card(t6)?.priorActions ?? "", "the prior coaching was never added").toMatch(/Coaching/);
+    },
+  },
+  {
+    id: "nov17-yes-to-did-you-mean-settles-the-name-c163-trace",
+    title: "c163 as Runner 2's trace on 33863575 shows it, call for call (T3 proposes the typed name; T4 \"yes\" makes three calls; T6 two): no card before the yes, the yes settles Remy Calder with Verbal, and the prior coaching is added at T6 with no Did-you-mean after the yes",
+    report: REPORT,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      start(t);
+      t.loopModel!(traceModel());
+      const thread = t.thread();
+      await thread.say("can you create a CA for must see behaviors");
+      const t2 = await thread.say(`${TYPED} ${ACCOUNT.charAt(0).toLowerCase()}${ACCOUNT.slice(1)}`);
+      expect(t2.content).toMatch(DID_YOU_MEAN);
+      const t3 = await thread.say("can you make a verbal warning Ca");
+      expect(card(t3)?.employeeName ?? null, `T3 seated a person before the answer: ${t3.content}`).toBeNull();
+      const t4 = await thread.say("yes");
+      expect(t4.content, "the yes was not accepted").not.toMatch(DID_YOU_MEAN);
+      expect(card(t4)?.employeeName, t4.content).toBe("Remy Calder");
+      expect(card(t4)?.warningLevel).toBe("verbal");
+      await thread.say("my DM told me she gets one this month");
+      const t6 = await thread.say("we have already done coaching");
+      expect(t6.content, "asked about the name again after the yes").not.toMatch(DID_YOU_MEAN);
+      expect(card(t6)?.priorActions ?? "", `the prior coaching was never added: ${t6.content}`).toMatch(/Coaching/);
     },
   },
   {
