@@ -247,7 +247,7 @@ export const NOV16_AGENT_LOOP_PR6_SPEED_CASES: ReplayCase[] = [
   },
   {
     id: "nov16-pr6-one-call-coaching-keeps-its-policy",
-    title: "PR 6 (the Runner's live comparison, 16 Nov 2026; QA's 266 re-run of the train): \"did not greet guests at the front desk\" in one propose_form call: a Coaching card with the policy passed cites Standards of Conduct with its page; a Coaching card without one keeps none and gets no policy_not_given (the form has no policy field); a Corrective Action that leaves the policy out gets policy_not_given, and the card made after it cites the policy",
+    title: "PR 6 (the Runner's live comparison, 16 Nov 2026; QA's 266 re-run of the train): \"did not greet guests at the front desk\" in one propose_form call: a Coaching card with the policy passed cites Standards of Conduct with its page; a Coaching card without one gets policy_not_given (Pau, 17 Nov: coaching always has policy and page); a Corrective Action that leaves the policy out gets policy_not_given, and the card made after it cites the policy",
     report: `${REPORT}; the live comparison: #1059 gave this coaching card no policy line in both rounds`,
     status: "fixed",
     fixFlags: [FLAG],
@@ -273,7 +273,9 @@ export const NOV16_AGENT_LOOP_PR6_SPEED_CASES: ReplayCase[] = [
       t.loopModel!(none);
       const coachingNone = await t.thread().say(message);
       const coachingResult = firstResult(none.views, "propose_form")!;
-      expect(factsOf(coachingResult).policy_not_given, JSON.stringify(coachingResult)).toBeUndefined();
+      // Pau, 17 Nov: coaching always has policy and page. A Coaching card with no policy now gets policy_not_given, as a CA does
+      // (this model does not propose again, so its card still has none).
+      expect(factsOf(coachingResult).policy_not_given, JSON.stringify(coachingResult)).toBeDefined();
       expect(policyOf(coachingNone)).toBe("");
 
       // A Corrective Action that leaves the policy out is told so (a fact, no policy picked by code); the model's next call has it.

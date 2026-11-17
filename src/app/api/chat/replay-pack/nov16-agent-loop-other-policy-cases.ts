@@ -43,7 +43,7 @@ function oneCard(input: (view: LoopView) => Record<string, unknown>) {
 export const NOV16_AGENT_LOOP_OTHER_POLICY_CASES: ReplayCase[] = [
   {
     id: "nov16-other-policy-coaching-cards-keep-none",
-    title: "QA's train re-run (c231, c242, c244 shapes): a Coaching card for updating clients' accounts, closing duties not done, or salon cleanliness, made with no policy, keeps no policy line and gets no policy_not_given (the Coaching form has no policy field)",
+    title: "QA's train re-run (c231, c242, c244 shapes): a Coaching card for updating clients' accounts, closing duties not done, or salon cleanliness, made with no policy, gets policy_not_given (Pau, 17 Nov: coaching always has policy and page) and no policy picked by code",
     report: REPORT,
     status: "fixed",
     fixFlags: [FLAG],
@@ -60,8 +60,10 @@ export const NOV16_AGENT_LOOP_OTHER_POLICY_CASES: ReplayCase[] = [
         const reply = await t.thread().say(message);
         const result = firstResult(model.views, "propose_form")!;
         expect(reply.formProposal?.templateKey, message).toBe("coaching");
-        expect(policyOf(reply), `${message}: a policy was put on a coaching card`).toBe("");
-        expect(factsOf(result).policy_not_given, `${message}: ${JSON.stringify(result)}`).toBeUndefined();
+        // Pau, 17 Nov: coaching always has policy and page. A Coaching card made with no policy gets policy_not_given, as a CA
+        // does (this model does not propose again, so its card still has none); never "Other" made by code.
+        expect(policyOf(reply), `${message}: code put a policy on a coaching card`).toBe("");
+        expect(factsOf(result).policy_not_given, `${message}: ${JSON.stringify(result)}`).toBeDefined();
       }
     },
   },
