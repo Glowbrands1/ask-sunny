@@ -64,3 +64,22 @@ export function cardOtherTopic(proposal: Pick<ChatFormProposal, "proposalId">, m
   }
   return null;
 }
+
+/**
+ * Pau's ruling (17 Nov 2026, ~7:25 AM PHT): a Coaching Form always carries the policy and page. The Coaching Form has no
+ * policy field, so the card's whole policy line ("Attendance Policy, JBA Policy Manual p.14", or "Other — <topic>") goes
+ * with the draft request and is written as the Details' citation line. The card's own line (the agent loop's), else the reply's
+ * "**Policy:**" line; ", as you said" and its like are not part of it. Null when the card cites none (or the manager
+ * took it off).
+ */
+export function cardPolicyLineFor(proposal: Pick<ChatFormProposal, "proposalId">, messages: readonly Pick<ChatMessage, "role" | "content" | "formProposal">[]): string | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]!;
+    if (message.role !== "assistant" || message.formProposal?.proposalId !== proposal.proposalId) continue;
+    const own = message.formProposal.policyLine;
+    const line = own !== undefined ? (own ?? "") : (/\*\*Policy:\*\*\s*([^\n]+)/.exec(message.content)?.[1] ?? "");
+    const clean = line.replace(/,\s*as you said.*$/i, "").replace(/[\s.]+$/, "").trim();
+    return clean.length > 0 && clean.length <= 200 ? clean : null;
+  }
+  return null;
+}
