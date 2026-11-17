@@ -54,6 +54,7 @@ The Hub's page code runs unchanged except:
 | Assistant @-mentions: everyone the person shares a meeting with | this meeting's people | one meeting here |
 | Assistant: web search / fetch tool version 20260318 | 20260209 | the newest in `@ai-sdk/anthropic` for AI SDK 6; see PARITY.md |
 | IDS ranking ("Everyone's top three", Rank buttons, Priority badges) | off (`RANKING = false` in `Ids.tsx`) | the team works IDS as in Bloom Growth, without ranking (14 Nov 2026) |
+| Bloom-style IDS "!" priority mark | a priority number (1, 2, 3 …) per issue; numbered issues on top in that order | the DM L10 run-through, 17 Nov 2026; see PARITY.md |
 
 When the Hub's meeting page changes, re-copy the file and re-apply the row above that concerns it. The full audit, file by file, is in [PARITY.md](./PARITY.md).
 
@@ -74,3 +75,15 @@ document as `meetingHistory` (the Hub keeps unknown fields). Times are Central. 
 Copy this folder, the `(app)/meetings` routes, `/api/l10/assistant` and the sidebar wiring; set `PARTNER_ID` to
 `"ask-bubbles"` and `L10_TAB_LABELS` for `bcs-dm` / `bcs-gm`; add those keys to the Hub's `l10.partner_meetings`.
 See `docs/parity-log/2026-11-13-dm-l10-tab-leadership-hub.md`.
+
+## The STC SD L10s (17 Nov 2026)
+
+Three district meeting spaces, `stc-sd-1`, `stc-sd-2` and `stc-sd-3` (`lib/config.ts` `STC_SD_KEYS`): each its own Hub
+meeting, so each has its own attendees, scorecard, to-dos, IDS list and meeting history. Bloom-style, no rocks, no
+Reference views, agenda Segue · Scorecard · To-dos · IDS · Conclude (`NO_ROCKS_AGENDA`, used until the Hub serves its own).
+The scorecard lists each salon of the district (`SD_DISTRICT_SALONS`, by salon number) with its DM and the five metrics
+(`SD_SALON_METRICS`): "Set up the salon scorecard" on the Scorecard page adds them, with the goals typed once.
+
+Which DM hosts which district, and every person in it, is the Hub's (its meeting names and roles): this repository is
+public. A tab shows once the Hub has the meeting and the allowlist row `('ask-sunny', 'stc-sd-N')`; its label is the
+Hub's name for the meeting.

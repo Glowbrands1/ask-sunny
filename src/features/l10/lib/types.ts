@@ -19,6 +19,8 @@ export interface ScorecardRow {
   format: MetricFormat;
   bidirectional?: boolean;
   weeks: (number | null)[];
+  /** Ask Sunny: the salon this metric is for, on the STC SD L10s' per-salon scorecard (17 Nov 2026). The Hub keeps it. */
+  salon?: string;
   [extra: string]: unknown;
 }
 
@@ -99,8 +101,13 @@ export interface Issue {
   addedBy?: string;
   /** Who owns the issue (the New Issue bar's owner picker on the Bloom-style meetings, 15 Nov 2026). */
   owner?: string;
-  /** Flagged with the "!" priority mark (the Bloom-style meetings, 15 Nov 2026). */
+  /** Flagged with the "!" priority mark (the Bloom-style meetings, 15 Nov 2026). Replaced by `priorityNumber`; still read. */
   priority?: boolean;
+  /**
+   * Ask Sunny and Ask Bubbles: the IDS priority number (1, 2, 3 …) pressed on a Bloom-style meeting (17 Nov 2026). It
+   * only orders the issues: the number shown is worked out from it (lib/bloom.ts `priorityNumbers`).
+   */
+  priorityNumber?: number;
   resolvedSession?: string | null;
   /** Which IDS list an open issue sits on. Missing means "short" (every issue written before the split). */
   term?: IssueTerm;

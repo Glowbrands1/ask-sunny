@@ -25,7 +25,13 @@ export function Conclude({
   durationSeconds,
   onEnded,
   recapsHref = "/meetings/recaps",
+  me = "",
 }: {
+  /**
+   * Ask Sunny and Ask Bubbles: the signed-in person's full name. Their own row comes first, marked "(you)", so each
+   * attendee rates on their own screen (the DM L10 run-through, 17 Nov 2026). Empty: the rows in the meeting's order.
+   */
+  me?: string;
   /** Where "See recaps" goes (Ask Sunny: /meetings/<key>/recaps, this meeting's recaps page). */
   recapsHref?: string;
   meetingKey: string;
@@ -54,6 +60,9 @@ export function Conclude({
   const rated = attendees.filter((a) => a.rating != null);
   const avg = rated.length ? (rated.reduce((s, a) => s + (a.rating ?? 0), 0) / rated.length).toFixed(1) : null;
   const openTodos = doc.todos.filter((t) => !t.done);
+  const isMe = (a: Attendee) => !!me.trim() && a.name.trim().toLowerCase() === me.trim().toLowerCase();
+  const rows = [...attendees.filter(isMe), ...attendees.filter((a) => !isMe(a))];
+  const waiting = attendees.filter((a) => a.rating == null).map((a) => a.name);
 
   const run = async () => {
     if (busy) return;
@@ -118,9 +127,12 @@ export function Conclude({
             </div>
           </div>
           <ul className="m-0 mt-4 flex list-none flex-col gap-3 p-0">
-            {attendees.map((a) => (
-              <li key={a.id} className="flex flex-wrap items-center gap-2">
-                <span className="w-36 truncate text-sm">{a.name}</span>
+            {rows.map((a) => (
+              <li key={a.id} data-me={isMe(a) || undefined} className={cx("flex flex-wrap items-center gap-2", isMe(a) && "rounded-lg bg-cream/70 p-2")}>
+                <span className={cx("w-36 truncate text-sm", isMe(a) && "font-bold")}>
+                  {a.name}
+                  {isMe(a) && <span className="font-normal text-muted"> (you)</span>}
+                </span>
                 <div role="group" aria-label={`Rating for ${a.name}`} className="flex min-w-[200px] flex-1 gap-1">
                   {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
                     <button
@@ -149,6 +161,12 @@ export function Conclude({
         </Card>
       </div>
       <div className="flex flex-wrap items-center gap-3 rounded-[10px] border border-line bg-white p-4 shadow-card">
+        {/* Who has not rated yet, so the leader waits for everyone before ending (a reminder only: End still works). */}
+        {!done && attendees.length > 0 && (
+          <p data-testid="ratings-waiting" className="m-0 basis-full text-sm text-muted">
+            {waiting.length === 0 ? "Everyone has rated." : `Not rated yet: ${waiting.join(", ")}`}
+          </p>
+        )}
         <Button variant="primary" disabled={busy} onClick={run}>
           {busy ? "Saving the recap…" : "End meeting & save recap"}
         </Button>
