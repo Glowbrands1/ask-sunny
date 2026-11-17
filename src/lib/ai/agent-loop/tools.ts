@@ -2398,6 +2398,8 @@ export async function proposeForm(
     payroll_deduct?: unknown;
     payroll_amount?: unknown;
     prior_actions?: unknown;
+    topic?: unknown;
+    topic_evidence?: unknown;
     incident_time?: unknown;
     salon?: unknown;
   },
@@ -3160,6 +3162,25 @@ export async function proposeForm(
    */
   const priorActionsRefused = askedPriorActions ? priorActionsProblem(askedPriorActions, requestWords, date) : null;
   const priorActions = priorActionsRefused ? null : askedPriorActions;
+  /*
+   * THE COACHING TOPIC (QA, 17 Nov 2026; the tester's coaching form saved "Coaching for <name> on greeting guests at the
+   * door" as Other's topic). A coaching card carries the topic the model names, kept only when its evidence is a manager
+   * message of this request whose quote holds every word of it, and it does not hold the person's name. Create sends it,
+   * and the saved form's Other topic is that topic (`guardOtherWriteIn`).
+   */
+  const coachingCard = template.key === appConfig().formKeys.coaching || template.key === appConfig().formKeys.followUpCoaching;
+  const askedTopic = coachingCard && typeof input.topic === "string" ? input.topic.trim().replace(/[.!?]+$/, "").slice(0, 80) : "";
+  const topicQuote = typeof (input.topic_evidence as { quote?: unknown } | null | undefined)?.quote === "string" ? String((input.topic_evidence as { quote: string }).quote) : "";
+  const topicWords = words(askedTopic).map((word) => word.toLowerCase());
+  const quoteWords = new Set(words(topicQuote).map((word) => word.toLowerCase()));
+  const nameWords = new Set(words(employee.name).map((word) => word.toLowerCase()));
+  const topicKept =
+    askedTopic !== "" &&
+    topicWords.length > 0 &&
+    topicWords.every((word) => quoteWords.has(word)) &&
+    !topicWords.some((word) => nameWords.has(word)) &&
+    answerEvidence(context, input.topic_evidence, "request", evidencePerson, { requestTurnIds }).ok;
+  const coachingTopic = topicKept ? askedTopic.charAt(0).toUpperCase() + askedTopic.slice(1) : null;
   const incidentTime = typeof input.incident_time === "string" && input.incident_time.trim() ? input.incident_time.trim().slice(0, 40) : null;
 
   const typedSalon = typeof input.salon === "string" ? input.salon.trim() : "";
@@ -3266,6 +3287,7 @@ export async function proposeForm(
     ...(payroll ? { payrollDeduct: payroll } : {}),
     ...(payroll === "yes" && amount ? { payrollDeductAmount: amount } : {}),
     ...(priorActions ? { priorActions } : {}),
+    ...(coachingTopic ? { coachingTopic } : {}),
     ...(incidentTime ? { incidentTime } : {}),
     ...(awaiting ? { awaitingIncident: true as const, supportsInlineDraft: false } : {}),
   };
@@ -3438,6 +3460,8 @@ export async function proposeForm(
      */
     ...(template.key === appConfig().formKeys.corrective && !awaiting && !askedPolicyWhole ? { policy_not_given: { note: "This card has no policy. Propose it again with policy: the one JBA Policy Manual heading that fits what happened (the headings are listed in your instructions). \"Other — <short topic>\" only for Must See Behaviors, a cleaning duty left undone, or when no section fits; then say so in your reply." } } : {}),
     ...(accountGiven ? { request_words: untrusted(accountGiven) } : {}),
+    /* The coaching topic was not kept: say none, or name it with evidence from the manager's message (see `coachingTopic`). */
+    ...(askedTopic && !topicKept ? { topic_not_kept: { note: "That topic is not the manager's words from this request (or holds the person's name), so it is not on the card. Pass topic only as the manager named it, with topic_evidence quoting it." } } : {}),
     /* c019: the account is the offense the manager named (see headingTypedIn); the reply says so, never "What happened?" about it. */
     ...(accountFromNamedOffense ? { account_from_named_offense: { account: untrusted(accountFromNamedOffense), note: "The manager named the offense, and their words for it are the card's account, exactly as shown. Say so in one short line of your reply (they can add more before Create); never ask what happened about it, and never write that line into what_happened." } } : {}),
     /* HOTFIX: sentences addressed to the manager were taken out of the account; they belong in the reply, never on the form. */

@@ -236,6 +236,8 @@ export async function createInlineForm({
         ...(proposal.fromAgentLoop ? { cardFromLoop: true } : {}),
         // Pau (17 Nov 2026): a Coaching Form always carries the policy and page; the card's whole line goes with it.
         ...(cardPolicyToDraftEnabled() && cardPolicyLineFor(proposal, messages) ? { cardPolicyLine: cardPolicyLineFor(proposal, messages) } : {}),
+        // The coaching card's topic (QA, 17 Nov 2026): the saved form's Other topic.
+        ...(proposal.coachingTopic ? { cardTopic: proposal.coachingTopic } : {}),
         // SAME_FORM_COPY_NEW_PERSON_ENABLED: the form this card copies; re-checked by the route.
         ...(proposal.copyFromInstanceId ? { copyFromInstanceId: proposal.copyFromInstanceId } : {}),
       }),

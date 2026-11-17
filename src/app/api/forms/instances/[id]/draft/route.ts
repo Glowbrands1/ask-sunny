@@ -322,6 +322,8 @@ interface DraftBody {
   cardPolicy?: string;
   /** Pau (17 Nov 2026): the card's whole policy line, written under a Coaching Form's Details (`cardPolicyLineFor`). */
   cardPolicyLine?: string;
+  /** The coaching topic the agent loop's card carried (`coachingTopic`), for the form's Other topic (QA, 17 Nov 2026). */
+  cardTopic?: string;
   /**
    * HOTFIX (QA, 17 Nov 2026; the tester's form 7545d162): the "Other — <topic>" the card cited ("10-minute
    * sanitization"). With NEXT_PUBLIC_CARD_POLICY_TO_DRAFT_ENABLED, a Corrective Action whose Type of Offense offers Other
@@ -1600,7 +1602,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       ? guardCoachingFraming({ values: followUp.values, checked: followUp.checked }, notes)
       : { values: followUp.values, checked: followUp.checked, adjusted: [] as string[], underperformanceRefused: false };
     // OTHER_WRITE_IN_GUARD_ENABLED: a ticked "Other" gets its write-in in the manager's words, or is unticked.
-    const framing = guardOtherWriteIn(framed, notes, new Set(fields.map((field) => field.key)));
+    const framing = guardOtherWriteIn(framed, notes, new Set(fields.map((field) => field.key)), loaded.instance.employeeName, typeof body.cardTopic === "string" ? body.cardTopic.trim().slice(0, 120) : null);
 
     /*
      * ========================================================================
