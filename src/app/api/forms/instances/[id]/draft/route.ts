@@ -97,6 +97,7 @@ import {
   enforceResponsibilities,
 } from "@/lib/forms/responsibility";
 import { stripPlaceholdersFromDraft } from "@/lib/forms/drafted-text";
+import { withoutUnstatedDates } from "@/lib/forms/form-date-grounding";
 import {
   FOLLOW_UP_TIMEFRAME_RULES,
   guardFollowUpTimeframe,
@@ -320,6 +321,14 @@ interface DraftBody {
   cardPolicy?: string;
   /** The coaching topic the agent loop's card carried (`coachingTopic`), for the form's Other topic (QA, 17 Nov 2026). */
   cardTopic?: string;
+  /**
+   * HOTFIX (QA, 17 Nov 2026; the tester's form 7545d162): the "Other — <topic>" the card cited ("10-minute
+   * sanitization"). With NEXT_PUBLIC_CARD_POLICY_TO_DRAFT_ENABLED, a Corrective Action whose Type of Offense offers Other
+   * ticks it, Policy Violated reads "Other — <topic>", and the drafter is told so. See `cardOtherTopic`.
+   */
+  cardOther?: string;
+  /** HOTFIX (QA, 17 Nov 2026): the card came from the agent loop, so its policy is the form's (`loopCardHeading`). */
+  cardFromLoop?: boolean;
   /**
    * SAME_FORM_COPY_NEW_PERSON_ENABLED: the form the card was asked to copy
    * ("the same draft that we did with <name>"). Re-checked: this account's
@@ -788,7 +797,18 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      * for <A>, his cash drawer was short") was drafted with the first request's policy (Late Opening) as its Policy
      * Violated. Only the policy reads below use it; payroll, exit and every other reader keep the notes as sent.
      */
-    const policyNotes = secondRequestOwnAccountEnabled() ? currentFormRequestText(notes) : notes;
+    /*
+     * HOTFIX (QA, 17 Nov 2026): an agent-loop card's policy is the saved form's. The loop checked it against the manual
+     * and the manager's words before the card was shown, so its heading is read here as the manager naming that policy:
+     * every policy reader below (grounding, the CA reading, the citation line) cites it, and the drafter only writes the
+     * text around it. "Other" is no heading (its topic is `cardOther`). Old cards are read as before.
+     */
+    const loopCardHeading =
+      body.cardFromLoop === true && cardPolicyToDraftEnabled() && typeof body.cardPolicy === "string" && body.cardPolicy.trim() && !/^other$/i.test(body.cardPolicy.trim())
+        ? body.cardPolicy.trim().slice(0, 80)
+        : null;
+    const requestPolicyNotes = secondRequestOwnAccountEnabled() ? currentFormRequestText(notes) : notes;
+    const policyNotes = loopCardHeading ? `${requestPolicyNotes}\nfor violating the ${cardPolicyPhrase(loopCardHeading)}` : requestPolicyNotes;
     const wantsEppPolicy = fields.some((field) => field.key === EPP_POLICY_REFERENCE_KEY);
     const needsPolicy = fields.some(
       (field) => field.policyGrounded && field.key !== EPP_POLICY_REFERENCE_KEY,
@@ -830,6 +850,11 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      */
     /* The version's own Type of Offense keys (revision 8 replaced several; see `offense-keys.ts`). */
     const offenseOffered = groups.find((group) => group.key === "offense_type")?.options.map((option) => option.key) ?? [];
+    /* HOTFIX (QA, 17 Nov 2026): the card's "Other — <topic>", on a form whose Type of Offense offers Other. */
+    const cardOther =
+      cardPolicyToDraftEnabled() && offenseOffered.includes("other") && typeof body.cardOther === "string" && body.cardOther.trim() && body.cardOther.trim().length <= 120
+        ? body.cardOther.trim()
+        : null;
     const offersConductPolicy =
       fields.some((field) => field.key === "policy_language") &&
       groups.some(
@@ -872,7 +897,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
     // Only where it ticks the box the manager's own words tick, or they tick none: a card's generic
     // "Attendance" never turns a missed meeting (Absenteeism) into Tardiness.
     const ownKeys = cardHeading && caPolicy ? statedOffenseKeys(caPolicy, policyText) : null;
-    const cardSection = cardHeading && (!ownKeys || ownKeys.includes(cardHeading.offenseKey)) ? cardHeading : null;
+    const cardSection = cardHeading && (loopCardHeading !== null || !ownKeys || ownKeys.includes(cardHeading.offenseKey)) ? cardHeading : null;
     const namedSection =
       cardSection ??
       (caPolicy && caPolicy.stated === null && manual.ok
@@ -931,13 +956,19 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         ? eppPolicyPassages({ chunks: manual.chunks, topics: eppTopics })
         : [];
 
+    /* HOTFIX (QA, 17 Nov 2026): the card cited Other — <topic>; the drafter is told so, never "none found". */
+    const cardOtherLine = cardOther
+      ? `\nTHE CARD ALSO CITES: Other — ${cardOther}. Tick "other" in Type of Offense; the Action Plan names ${cardOther}.`
+      : "";
     const policyBlock = grounding.passages.length
       ? `\nAPPROVED POLICY (quote only from this, verbatim):\n${grounding.passages
           .map((passage) => `[${passage.source.documentTitle} ${passage.source.locator}]\n${passage.text}`)
-          .join("\n\n")}`
-      : needsPolicy
-        ? "\nAPPROVED POLICY: none found. Leave every policy field empty."
-        : "";
+          .join("\n\n")}${cardOtherLine}`
+      : needsPolicy && cardOther
+        ? `\nAPPROVED POLICY: the card cites Other — ${cardOther} (no section of the manual). Tick "other" in Type of Offense and leave Direct policy empty; the Action Plan names ${cardOther}.`
+        : needsPolicy
+          ? "\nAPPROVED POLICY: none found. Leave every policy field empty."
+          : "";
 
     const hasTimeframeField = fields.some(
       (field) => field.semantics === "follow_up_timeframe",
@@ -2429,6 +2460,23 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         });
 
     /*
+     * HOTFIX (QA, 17 Nov 2026; the tester's form 7545d162): the card cited "Other — <topic>", so Policy Violated says what
+     * the Other is ("Other" alone becomes "Other — <topic>"; a line without it gets it added), and the plan built below
+     * from that line names the topic (`policyNamesFromViolated` reads "<box> — <name>"). A line the manager typed is kept.
+     */
+    const cardOtherViolated = (line: string | undefined): string => {
+      const otherLabel = `Other \u2014 ${cardOther}`;
+      const labels = (line ?? "").split(/\s*,\s*/).map((label) => label.trim()).filter(Boolean);
+      const withTopic = labels.some((label) => /^other$/i.test(label))
+        ? labels.map((label) => (/^other$/i.test(label) ? otherLabel : label))
+        : labels.some((label) => /^other\s*[\u2014\u2013-]/i.test(label))
+          ? labels
+          : [...labels, otherLabel];
+      return withTopic.join(", ");
+    };
+    const cardOtherOnViolated = Boolean(cardOther) && fields.some((field) => field.key === "policy_violated") && !managerKeys.has("policy_violated");
+    if (cardOtherOnViolated) named.values = { ...named.values, policy_violated: cardOtherViolated(named.values.policy_violated) };
+    /*
      * The manager's own lines are not overwritten — except a policy line this
      * draft could CITE from the manual, which replaces wording typed without a
      * section or page.
@@ -2504,22 +2552,24 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         await applyStatedFacts(id, { values: { [fixedPlan.key]: typed }, checked: {} }, actor.id, new Set([fixedPlan.key]));
       }
     }
+    const planText = (input: ActionPlanInput) =>
+      // PLAN_PAYROLL_SENTENCE_ENABLED: the deduction the manager stated is said in the plan.
+      // TERMINATION_STATED_TICKS_ENABLED: on a termination, the plan ends with the termination sentence.
+      withTerminationPlan(withPayrollSentence(
+        // MEETING_NOT_LATENESS_PLAN_ENABLED: a missed meeting keeps the general plan.
+        attendanceActionPlanEnabled() && isAttendancePlan(input) && !missedMeetingNotLateness(notes)
+          ? attendanceActionPlan(input)
+          : actionPlanSentencesEnabled()
+            ? twoSentenceActionPlan(input)
+            : correctiveActionPlan(input),
+        { answer: input.payroll.answer, amount: payrollDeductAmount(notes), employeeName: loaded.instance.employeeName },
+      ), terminationPlan);
     const planned =
       !managerOnlyPlan && fixedPlan && planInput && draftedAnything && !keeps(fixedPlan.key)
         ? {
             values: {
               ...named.values,
-              // PLAN_PAYROLL_SENTENCE_ENABLED: the deduction the manager stated is said in the plan.
-              // TERMINATION_STATED_TICKS_ENABLED: on a termination, the plan ends with the termination sentence.
-              [fixedPlan.key]: withTerminationPlan(withPayrollSentence(
-                // MEETING_NOT_LATENESS_PLAN_ENABLED: a missed meeting keeps the general plan.
-                attendanceActionPlanEnabled() && isAttendancePlan(planInput) && !missedMeetingNotLateness(notes)
-                  ? attendanceActionPlan(planInput)
-                  : actionPlanSentencesEnabled()
-                    ? twoSentenceActionPlan(planInput)
-                    : correctiveActionPlan(planInput),
-                { answer: planInput.payroll.answer, amount: payrollDeductAmount(notes), employeeName: loaded.instance.employeeName },
-              ), terminationPlan),
+              [fixedPlan.key]: planText(planInput),
             },
             provenance: { ...provenance, [fixedPlan.key]: actionPlanProvenance(planInput) },
           }
@@ -2616,6 +2666,54 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         notes,
         employeeName: loaded.instance.employeeName,
       }) as typeof draftedPayload.values;
+    }
+    /* HOTFIX (QA, 17 Nov 2026): the card cited "Other — <topic>": the form's own Other box is ticked beside any other. */
+    if (cardOther && !(draftedPayload.checked.offense_type ?? []).includes("other")) {
+      draftedPayload.checked = { ...draftedPayload.checked, offense_type: [...(draftedPayload.checked.offense_type ?? []), "other"] };
+    }
+    /*
+     * NO DATE THE MANAGER DID NOT STATE (Pau's ruling via QA, 17 Nov 2026; c094's "On October 22, 2026, …" with no date
+     * typed): a drafted date in the Observation sections or the Action Plan whose day the manager never stated is taken out
+     * and logged (`withoutUnstatedDates`). Their own dates stay; the form's Date field is not touched.
+     */
+    {
+      const dateKeys = new Set([...narrativeKeys, ...(fixedPlan ? [fixedPlan.key] : [])].filter((key) => !keeps(key)));
+      /*
+       * The form's own date is a stated one when it is not the day the form was created: the manager set it (in chat, from
+       * their words, or on the form). Left at the creation day, it was nobody's statement.
+       */
+      const createdDay = loaded.instance.createdAt ? businessToday(new Date(loaded.instance.createdAt)) : null;
+      const formDateStated = Boolean(narrativeFormDate && createdDay && narrativeFormDate.iso !== createdDay);
+      const undated = withoutUnstatedDates(
+        draftedPayload.values,
+        dateKeys,
+        formDateStated ? `${notes}\n${narrativeFormDate!.iso}` : notes,
+        businessToday(),
+        narrativeFormDate?.iso ?? null,
+      );
+      if (undated.removed.length > 0) {
+        draftedPayload.values = undated.values;
+        console.info("[draft] removed dates the manager did not state", { instanceId: id, removed: undated.removed });
+      }
+    }
+    // The citation line above is rebuilt from the cited sections; the card's Other goes back on it.
+    if (cardOtherOnViolated && typeof draftedPayload.values.policy_violated === "string") {
+      draftedPayload.values = { ...draftedPayload.values, policy_violated: cardOtherViolated(draftedPayload.values.policy_violated) };
+    }
+    /*
+     * HOTFIX (QA, 17 Nov 2026): a loop card citing Other alone ("Other — Must See Behaviors") is the form's whole policy.
+     * A section a reader of the manager's words chose beside it (the MSB reading's Standards of Conduct) is not the
+     * card's: Type of Offense is Other, Policy Violated "Other — <topic>", Direct policy blank, and the Action Plan is
+     * built again from that line, so it names the topic.
+     */
+    if (body.cardFromLoop === true && cardOther && loopCardHeading === null && cardOtherOnViolated) {
+      const violated = `Other \u2014 ${cardOther}`;
+      draftedPayload.checked = { ...draftedPayload.checked, offense_type: ["other"] };
+      draftedPayload.values = { ...draftedPayload.values, policy_violated: violated };
+      if (!keeps("policy_language") && "policy_language" in draftedPayload.values) draftedPayload.values = { ...draftedPayload.values, policy_language: "" };
+      if (planInput && fixedPlan && fixedPlan.key in draftedPayload.values) {
+        draftedPayload.values = { ...draftedPayload.values, [fixedPlan.key]: planText({ ...planInput, citedPolicies: [], policyViolated: violated }) };
+      }
     }
     const kept = draftMergeEnabled()
       ? retainFilledFields({

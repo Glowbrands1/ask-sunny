@@ -4,7 +4,7 @@ import {
   draftNotesFromConversation,
 } from "@/lib/forms/draft-notes";
 import { cardPolicyToDraftEnabled } from "@/lib/config/chat-quality-flags";
-import { cardPolicyFor } from "@/lib/forms/card-policy";
+import { cardOtherTopic, cardPolicyFor } from "@/lib/forms/card-policy";
 import { remapDraftSourcesClientEnabled } from "@/lib/config/chat-quality-flags";
 import type { ChatFormInstanceRef, ChatFormProposal, ChatMessage } from "@/types";
 
@@ -230,6 +230,10 @@ export async function createInlineForm({
         notes: notes.text,
         // NEXT_PUBLIC_CARD_POLICY_TO_DRAFT_ENABLED: the policy the card cited (QA live check, 3 Nov 2026).
         ...(cardPolicyToDraftEnabled() && cardPolicyFor(proposal, messages) ? { cardPolicy: cardPolicyFor(proposal, messages) } : {}),
+        // HOTFIX (QA, 17 Nov 2026): the card's "Other — <topic>", so the saved form ticks Other and names it.
+        ...(cardPolicyToDraftEnabled() && cardOtherTopic(proposal, messages) ? { cardOther: cardOtherTopic(proposal, messages) } : {}),
+        // HOTFIX (QA, 17 Nov 2026): a loop card's policy is the saved form's (the draft route reads it as named).
+        ...(proposal.fromAgentLoop ? { cardFromLoop: true } : {}),
         // The coaching card's topic (QA, 17 Nov 2026): the saved form's Other topic.
         ...(proposal.coachingTopic ? { cardTopic: proposal.coachingTopic } : {}),
         // SAME_FORM_COPY_NEW_PERSON_ENABLED: the form this card copies; re-checked by the route.
