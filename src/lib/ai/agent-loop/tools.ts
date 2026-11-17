@@ -328,6 +328,12 @@ function notTheOfferAnswer(check: AnswerEvidence, context: ToolContext, roster?:
   return check;
 }
 
+/** The card record's account key (QA, c163; PR 1c): the account as the model gave it and the incident date it gave, if any. */
+function cardAccountKey(account: string, incidentDate: unknown): string {
+  const day = typeof incidentDate === "string" ? incidentDate.trim() : "";
+  return accountKey(day ? `${account} ${day}` : account);
+}
+
 /** A message of one word (punctuation aside): a format check, never a reading of which word (fix batch item 7). */
 export function oneWord(text: string): boolean {
   return text.trim().split(/\s+/).filter((word) => /[\p{L}\p{N}]/u.test(word)).length === 1;
@@ -1873,6 +1879,12 @@ function closeSpellingNotSettled(
   row: RosterEmployee,
   roster: readonly RosterEmployee[],
   evidence: unknown,
+  /*
+   * Seating a person on a card (find_staff, propose_form): a whole first name settles them only after no close spelling of
+   * the full name is found (ruling (b)). A form tool looking up forms ON FILE (find_past_forms, open_form) keeps G4's
+   * order (REOPEN_CLOSE_SPELLING, 15 Nov): a whole first name in the words settles them first.
+   */
+  options: { readonly firstNameSettlesFirst?: boolean } = {},
 ): string | null {
   const turns = identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId);
   const quoted = verifyEvidence(evidence, turns);
@@ -1895,6 +1907,7 @@ function closeSpellingNotSettled(
   const fullNames = fullNamesOf(row).map((name) => name.trim()).filter(Boolean);
   for (const text of texts) {
     if (fullNames.some((name) => holdsPhrase(text, name))) return null;
+    if (options.firstNameSettlesFirst && exactNames.some((name) => holdsPhrase(text, name))) return null;
     /* The name reader's names, then each two-word window of the words (it reads "edit tamsen orwel ca" as no name). */
     const plain = text.toLowerCase().replace(/[^\p{L}'\s-]+/gu, " ").split(/\s+/).filter(Boolean);
     const windows = plain.slice(1).map((word, at) => `${plain[at]} ${word}`);
@@ -1920,7 +1933,7 @@ async function closeSpellingRefusal(context: ToolContext, effects: ToolEffects |
   if (read.kind !== "read") return null;
   const holders = read.roster.filter((row) => fullNamesOf(row).some((full) => samePerson(full, personName)));
   if (holders.length !== 1) return null;
-  const spelled = closeSpellingNotSettled(context, holders[0]!, read.roster, undefined);
+  const spelled = closeSpellingNotSettled(context, holders[0]!, read.roster, undefined, { firstNameSettlesFirst: true });
   if (!spelled) return null;
   if (effects) effects.nameQuestion = { offeredIds: [holders[0]!.id], typed: spelled };
   return {
@@ -3083,7 +3096,8 @@ export async function proposeForm(
    * the level guard after a reply with no card; a new request (new_form_evidence) or a form opened since never does.
    */
   const modelAccount = typeof input.what_happened === "string" ? input.what_happened.trim() : "";
-  const sameCardKept = !context.openFormId && isThisCard(context.earlierCard) && Boolean(context.earlierCard.accountKey && modelAccount && context.earlierCard.accountKey === accountKey(modelAccount));
+  /* The key holds the incident date the model gave too: "another ca …, late on 11/14" after a card for 11/12 with the same words is another incident (PR 1c). */
+  const sameCardKept = !context.openFormId && isThisCard(context.earlierCard) && Boolean(context.earlierCard.accountKey && modelAccount && context.earlierCard.accountKey === cardAccountKey(modelAccount, input.incident_date));
   const openCard = isThisCard(context.cardOnScreen) ? context.cardOnScreen : sameCardKept ? context.earlierCard : null;
   const payrollRecord = caOnlyFields && !asksNewForm && openCard?.payroll ? openCard : null;
   if (payroll === null && !answerUnclear && payrollRecord?.payroll) {
@@ -3339,7 +3353,7 @@ export async function proposeForm(
   effects.proposalLevel = level;
   effects.proposalPayroll = payroll;
   effects.proposalPayrollAmount = payroll === "yes" ? amount : null;
-  effects.proposalAccountKey = typeof input.what_happened === "string" && input.what_happened.trim() ? accountKey(input.what_happened.trim()) : null;
+  effects.proposalAccountKey = typeof input.what_happened === "string" && input.what_happened.trim() ? cardAccountKey(input.what_happened.trim(), input.incident_date) : null;
   const salonNames = (ids: readonly string[] | undefined) => (ids ?? []).map((id) => ({ id, name: rosterSalonName(id) ?? id }));
   /*
    * Batch K4 (QA's 266 shadow replay, c137/c134: a pasted account about <Y>, off the roster, went on <X>'s card; the
