@@ -532,7 +532,13 @@ describe('"she was late last week", Create without answering the date question',
     expect(card.content).toContain('I couldn\'t read "last week"');
     expect(prompt).toContain(`FORM DATE: ${TODAY_LONG}`);
     expect(prompt).toContain("This is the date of the incident and of this form.");
-    expect(value("observation")).toContain(TODAY_LONG);
+    /*
+     * Changed on purpose (Pau, 17 Nov 2026, via QA: the drafter never writes a date the manager did not state). This
+     * asserted the form's date (today) in the Observation, where the manager wrote "last week" and answered no date
+     * question; the invented calendar date is now taken out of the drafted text (`withoutUnstatedDates`). The brief is
+     * as before (above), and "last week" itself, the manager's words, may stay.
+     */
+    expect(value("observation")).not.toContain(TODAY_LONG);
     expect(notices).not.toContain("you wrote");
   });
 
