@@ -11,8 +11,8 @@ export type MeetingKey = "leadership" | "stc-dm" | "bcs-dm" | "bcs-gm" | "mainte
  * history"). Each is its own Hub meeting, so each has its own record, people, history and recaps. Which DM hosts which
  * is the Hub's (its name for the meeting, its people); this public repository keeps only the keys and the salons.
  */
-export type StcSdKey = "stc-sd-1" | "stc-sd-2" | "stc-sd-3";
-export const STC_SD_KEYS: readonly StcSdKey[] = ["stc-sd-1", "stc-sd-2", "stc-sd-3"];
+export type StcSdKey = "stc-sd-one" | "stc-sd-two" | "stc-sd-three";
+export const STC_SD_KEYS: readonly StcSdKey[] = ["stc-sd-one", "stc-sd-two", "stc-sd-three"];
 export const isStcSd = (key: string): key is StcSdKey => (STC_SD_KEYS as readonly string[]).includes(key);
 
 export const MEETING_KEYS: readonly MeetingKey[] = ["leadership", "stc-dm", "bcs-dm", "bcs-gm", "maintenance", ...STC_SD_KEYS];
@@ -97,7 +97,7 @@ export const NO_ROCKS_AGENDA: AgendaSection[] = [
  * individually with its assigned DM"), by salon number (src/data/salons.ts) with the name the scorecard shows.
  */
 export const SD_DISTRICT_SALONS: Record<StcSdKey, readonly { number: string; name: string }[]> = {
-  "stc-sd-1": [
+  "stc-sd-one": [
     { number: "0462", name: "Manhattan" },
     { number: "0311", name: "Lincoln O Street" },
     { number: "0310", name: "Lincoln 27th" },
@@ -105,7 +105,7 @@ export const SD_DISTRICT_SALONS: Record<StcSdKey, readonly { number: string; nam
     { number: "0307", name: "Grand Island" },
     { number: "0309", name: "Kearney" },
   ],
-  "stc-sd-2": [
+  "stc-sd-two": [
     { number: "0313", name: "Omaha Maple" },
     { number: "0314", name: "Omaha Center" },
     { number: "0410", name: "Omaha Pacific" },
@@ -113,7 +113,7 @@ export const SD_DISTRICT_SALONS: Record<StcSdKey, readonly { number: string; nam
     { number: "0394", name: "Liberty" },
     { number: "0306", name: "Wornall" },
   ],
-  "stc-sd-3": [
+  "stc-sd-three": [
     { number: "0468", name: "Lawrence" },
     { number: "0476", name: "Overland Park" },
     { number: "0463", name: "Shawnee" },

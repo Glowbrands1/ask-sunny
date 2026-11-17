@@ -79,7 +79,7 @@ export async function listMyMeetings(): Promise<MeetingInfo[]> {
 }
 
 /** Ask Sunny's name for each meeting's tab. */
-/** The STC SD L10s (stc-sd-1 … 3) have no entry: their tabs carry the Hub's name for each district's meeting. */
+/** The STC SD L10s (stc-sd-one, -two, -three) have no entry: their tabs carry the Hub's name for each district's meeting. */
 export const L10_TAB_LABELS: Record<string, string> = { "stc-dm": "DM L10" };
 
 export interface L10Tab {

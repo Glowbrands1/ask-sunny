@@ -853,9 +853,9 @@ describe("the STC SD L10s", () => {
 
   it("three district meetings, each Segue, Scorecard, To-dos, IDS, Conclude, Bloom-style, without Rocks or the Reference views", async () => {
     const { MEETING_KEYS, STC_SD_KEYS } = await import("@/features/l10/lib/config");
-    expect(STC_SD_KEYS).toEqual(["stc-sd-1", "stc-sd-2", "stc-sd-3"]);
+    expect(STC_SD_KEYS).toEqual(["stc-sd-one", "stc-sd-two", "stc-sd-three"]);
     for (const key of STC_SD_KEYS) expect(MEETING_KEYS).toContain(key);
-    view("stc-sd-2", vi.fn() as unknown as SaveFn, { issues: [{ id: "i1", title: "Short on staff", notes: "", resolved: false }] });
+    view("stc-sd-two", vi.fn() as unknown as SaveFn, { issues: [{ id: "i1", title: "Short on staff", notes: "", resolved: false }] });
     const items = within(screen.getByRole("region", { name: "Agenda" })).getAllByRole("listitem").map((li) => li.textContent);
     expect(items).toEqual(["1 · Segue5m", "2 · Scorecard5m", "3 · To-dos5m", "4 · IDS60m", "5 · Conclude5m"]);
     expect(document.body.textContent).toContain("Thursdays · 80 min");
@@ -864,12 +864,12 @@ describe("the STC SD L10s", () => {
     fireEvent.click(screen.getByRole("button", { name: "Short on staff", expanded: false }));
     expect(within(screen.getByRole("region", { name: "Issue detail" })).queryByRole("button", { name: "Rock" })).toBeNull();
     const { reportSections } = await import("@/features/l10/lib/report");
-    expect(reportSections("stc-sd-1").map((s) => s.title)).toEqual(["Issues", "Metrics", "Meeting Recaps"]);
+    expect(reportSections("stc-sd-one").map((s) => s.title)).toEqual(["Issues", "Metrics", "Meeting Recaps"]);
   });
 
   it("sets up the salon scorecard: each salon of the district with its DM and the five metrics, listed salon by salon", async () => {
     const save = vi.fn().mockResolvedValue({ ok: true, version: 4, updatedAt: "2026-11-17T00:00:00Z" } satisfies SaveOutcome);
-    view("stc-sd-3", save as unknown as SaveFn);
+    view("stc-sd-three", save as unknown as SaveFn);
     fireEvent.click(within(screen.getByRole("region", { name: "Agenda" })).getByRole("button", { name: /Scorecard/ }));
     const setup = within(screen.getByRole("region", { name: "Set up the salon scorecard" }));
     expect(setup.getAllByRole("checkbox").map((c) => c.parentElement?.textContent)).toEqual(["Lawrence", "Overland Park", "Shawnee"]);
@@ -894,9 +894,9 @@ describe("the STC SD L10s", () => {
 
   it("each district lists only its own salons", async () => {
     const { SD_DISTRICT_SALONS } = await import("@/features/l10/lib/config");
-    expect(SD_DISTRICT_SALONS["stc-sd-1"].map((s) => s.name)).toEqual(["Manhattan", "Lincoln O Street", "Lincoln 27th", "Lincoln Pine Lake", "Grand Island", "Kearney"]);
-    expect(SD_DISTRICT_SALONS["stc-sd-2"].map((s) => s.name)).toEqual(["Omaha Maple", "Omaha Center", "Omaha Pacific", "St. Joseph", "Liberty", "Wornall"]);
-    expect(SD_DISTRICT_SALONS["stc-sd-3"].map((s) => s.name)).toEqual(["Lawrence", "Overland Park", "Shawnee"]);
+    expect(SD_DISTRICT_SALONS["stc-sd-one"].map((s) => s.name)).toEqual(["Manhattan", "Lincoln O Street", "Lincoln 27th", "Lincoln Pine Lake", "Grand Island", "Kearney"]);
+    expect(SD_DISTRICT_SALONS["stc-sd-two"].map((s) => s.name)).toEqual(["Omaha Maple", "Omaha Center", "Omaha Pacific", "St. Joseph", "Liberty", "Wornall"]);
+    expect(SD_DISTRICT_SALONS["stc-sd-three"].map((s) => s.name)).toEqual(["Lawrence", "Overland Park", "Shawnee"]);
     const { salonByNumber } = await import("@/data/salons");
     for (const list of Object.values(SD_DISTRICT_SALONS)) for (const s of list) expect(salonByNumber(s.number)).toBeTruthy();
   });

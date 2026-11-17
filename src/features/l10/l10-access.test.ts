@@ -110,12 +110,12 @@ describe("the DM L10 tab", () => {
   // lists them on.
   it("an SD L10 shows as its own tab with the Hub's name; a district the Hub does not list does not show", async () => {
     signedIn();
-    const SD = { ...STC, key: "stc-sd-2", name: "SD L10 · District 2", team: "STC Salon Directors" };
-    hub.answer = () => ({ status: 200, body: { user_id: "h1", name: "Avery Quill", meetings: [STC, SD, { ...SD, key: "stc-sd-9" }] } });
+    const SD = { ...STC, key: "stc-sd-two", name: "SD L10 · District 2", team: "STC Salon Directors" };
+    hub.answer = () => ({ status: 200, body: { user_id: "h1", name: "Avery Quill", meetings: [STC, SD, { ...SD, key: "stc-sd-nine" }] } });
     const { l10TabsForLayout } = await import("./data.server");
     expect(await l10TabsForLayout()).toEqual([
       { key: "stc-dm", href: "/meetings/stc-dm", label: "DM L10" },
-      { key: "stc-sd-2", href: "/meetings/stc-sd-2", label: "SD L10 · District 2" },
+      { key: "stc-sd-two", href: "/meetings/stc-sd-two", label: "SD L10 · District 2" },
     ]);
   });
 
