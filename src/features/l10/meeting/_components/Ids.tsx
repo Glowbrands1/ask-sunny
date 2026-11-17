@@ -7,6 +7,7 @@ import { Button, cx, inputClass } from "@/features/l10/ui/ui";
 import { MentionField, MentionText, useMentionPlain, useMentionRoster } from "@/features/l10/ui/Mentions";
 import { SharedFiles } from "./SharedFiles";
 import { RANKS, canVote, groupRanks, issueTerm, myRank, newItemId, picksByVoter, recentlySolved, searchIssues, sortIssues, toggleSolved, toggleVote, usesPreviousOrder, type Rank, type Voter } from "@/features/l10/lib/doc";
+import { byPriority, priorityNumbers, togglePriority } from "@/features/l10/lib/priority";
 import type { Attendee, Headline, Issue, IssueTerm, MeetingDoc, Rock, Todo } from "@/features/l10/lib/types";
 
 /**
@@ -170,7 +171,9 @@ export function Ids({
   const setIssues = (fn: (xs: Issue[]) => Issue[]) => edit((d) => ({ ...d, issues: fn(d.issues) }));
   const sorted = sortIssues(doc.issues);
   // Bloom-style: Oldest (the order they were added) or Newest first, with the "!" issues on top.
-  const ordered = bloom ? [...(newestFirst ? [...sorted].reverse() : sorted)].sort((a, b) => Number(!!b.priority) - Number(!!a.priority)) : sorted;
+  // Port from Ask Bubbles (lib/priority.ts): the priorities on top as 1, 2, 3 in the order they were picked.
+  const numbers = priorityNumbers(doc.issues);
+  const ordered = bloom ? byPriority(newestFirst ? [...sorted].reverse() : sorted, numbers) : sorted;
   const filtered = searchIssues(ordered, query);
   const roomRanks = groupRanks(doc.issues);
   const shortTerm = filtered.filter((i) => !i.resolved && issueTerm(i) === "short");
@@ -247,18 +250,22 @@ export function Ids({
     return (
       <li key={i.id} className={cx("rounded-[10px] border shadow-card", isActive ? "border-bronze bg-sunny" : "border-line bg-white")}>
         <div className="flex flex-wrap items-center gap-2 p-2.5">
-          {bloom && (
-            <button
-              type="button"
-              aria-pressed={!!i.priority}
-              aria-label={`Priority: ${plain(i.title)}`}
-              title={i.priority ? "Priority. Click to clear." : "Mark as a priority"}
-              onClick={() => patch(i.id, { priority: !i.priority })}
-              className={cx("flex size-8 flex-none items-center justify-center rounded-full border-2 text-sm font-extrabold", i.priority ? "border-[#b42323] bg-[#b42323] text-white" : "border-line bg-white text-muted hover:border-[#b42323] hover:text-[#b42323]")}
-            >
-              !
-            </button>
-          )}
+          {bloom && (() => {
+            const n = numbers.get(i.id);
+            return (
+              <button
+                type="button"
+                aria-pressed={!!i.priority}
+                aria-label={`Priority${n ? ` ${n}` : ""}: ${plain(i.title)}`}
+                title={n ? `Priority ${n}. Click to clear.` : i.priority ? "Priority. Click to clear." : "Mark as the next priority"}
+                onClick={() => setIssues((xs) => togglePriority(xs, i.id))}
+                data-testid="priority-number"
+                className={cx("flex size-8 flex-none items-center justify-center rounded-full border-2 text-sm font-extrabold tabular-nums", i.priority ? "border-[#b42323] bg-[#b42323] text-white" : "border-line bg-white text-muted hover:border-[#b42323] hover:text-[#b42323]")}
+              >
+                {n ?? (i.priority ? "!" : "")}
+              </button>
+            );
+          })()}
           {bloom && i.owner && (
             <span title={i.owner} className="flex size-7 flex-none items-center justify-center rounded-full bg-cream text-[10px] font-bold">
               <span aria-hidden>{initials(i.owner)}</span>

@@ -708,6 +708,27 @@ describe("Bloom-style page: Rocks and To-dos", () => {
 
 // IDS on the Bloom-style STC DM L10 (the owner's request, 15 Nov 2026), as in the Hub.
 describe("Bloom-style page: IDS", () => {
+  it('"in ask sunny, we should be able to label 1 2 3 and appear that they are indeed 1 2 3 in ranking" (the owner, 17 Nov 2026)', async () => {
+    const save = vi.fn().mockResolvedValue({ ok: true, version: 4, updatedAt: "2026-11-17T00:00:00Z" } satisfies SaveOutcome);
+    renderView({
+      save: save as unknown as SaveFn,
+      initial: loaded(3, { issues: ["Alpha", "Bravo", "Charlie", "Delta"].map((t, n) => ({ id: `i${n + 1}`, title: t, notes: "", resolved: false })) }),
+    });
+    fireEvent.click(within(screen.getByRole("region", { name: "Agenda" })).getAllByRole("button", { name: /· IDS/ })[0]);
+    const shown = () =>
+      within(screen.getByRole("list", { name: "Open issues" }))
+        .getAllByRole("listitem")
+        .map((li) => `${li.querySelector("[data-testid=priority-number]")?.textContent ?? ""}${li.querySelector("[aria-expanded] .font-semibold")?.textContent}`);
+    fireEvent.click(screen.getByRole("button", { name: "Priority: Charlie" }));
+    fireEvent.click(screen.getByRole("button", { name: "Priority: Alpha" }));
+    fireEvent.click(screen.getByRole("button", { name: "Priority: Delta" }));
+    expect(shown()).toEqual(["1Charlie", "2Alpha", "3Delta", "Bravo"]);
+    fireEvent.click(screen.getByRole("button", { name: "Priority 1: Charlie" }));
+    expect(shown()).toEqual(["1Alpha", "2Delta", "Bravo", "Charlie"]);
+    await waitFor(() => expect(save).toHaveBeenCalled());
+    const issues = (save.mock.calls.at(-1)![2] as { issues: { title: string; priority?: boolean; priorityOrder?: number }[] }).issues;
+    expect(issues.filter((i) => i.priority).sort((a, b) => a.priorityOrder! - b.priorityOrder!).map((i) => i.title)).toEqual(["Alpha", "Delta"]);
+  });
 
   it("rows have a ! circle, the owner's initials, Solve and the term button; ! issues first; Oldest / Newest", async () => {
     const save = vi.fn().mockResolvedValue({ ok: true, version: 4, updatedAt: "2026-11-15T00:00:00Z" } satisfies SaveOutcome);
