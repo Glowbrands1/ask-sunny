@@ -743,6 +743,25 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
         }
       }
     }
+    /*
+     * QA (16 Nov 2026; Runner 2's c163 T3): a "Did you mean <A>?" this turn (close_spelling_not_confirmed or
+     * name_correction_did_you_mean) is recorded with the roster ids it offers, and its question ends the reply. A card the
+     * turn already made for an offered person (a parallel call by the staff-list name) is withdrawn: it waits for the
+     * manager's answer, never a guess.
+     */
+    const asksName = result as { reason_code?: unknown; ask_exactly?: unknown; error?: unknown };
+    if (asksName.reason_code === "close_spelling_not_confirmed" || asksName.reason_code === "name_correction_did_you_mean") {
+      const ask = typeof asksName.ask_exactly === "string" ? asksName.ask_exactly : typeof asksName.error === "string" ? (/in these words: ([\s\S]+)$/.exec(asksName.error)?.[1] ?? "").trim() : "";
+      const offered = effects.nameQuestion?.offeredIds ?? [];
+      if (ask && offered.length > 0) {
+        effects.nameNotConfirmed = { offeredIds: [...new Set([...(effects.nameNotConfirmed?.offeredIds ?? []), ...offered])], ask };
+        effects.replyMustAsk = ask;
+        if (effects.proposal && effects.proposalEmployeeId && offered.includes(effects.proposalEmployeeId)) {
+          effects.proposal = null;
+          effects.proposalEmployeeId = null;
+        }
+      }
+    }
     /* What the reply calls each person this turn's tools named (reply_name, by replyNameFor): the pronoun check's name. */
     const shownName = (result as { reply_name?: unknown }).reply_name;
     if (typeof shownName === "string" && shownName.trim()) replyNames.add(shownName.trim());
@@ -1123,7 +1142,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     pronounsReplaced = named.replaced;
   }
   const cardSlot: CardSlot | null = effects.proposal
-    ? { proposalId: effects.proposal.proposalId, employeeKey: effects.proposalEmployeeId ? personKey(effects.proposalEmployeeId) : null, nameKey: effects.proposal.employeeName ? personKey(effects.proposal.employeeName) : null, templateKey: effects.proposal.templateKey, templateName: effects.proposal.templateName ?? null, ...(effects.proposalAsked?.length ? { asked: effects.proposalAsked } : {}), ...(effects.proposalLevel ? { level: effects.proposalLevel } : {}), ...(effects.proposalPayroll ? { payroll: effects.proposalPayroll } : {}), ...(effects.proposalPayroll === "yes" && effects.proposalPayrollAmount ? { payrollAmount: effects.proposalPayrollAmount } : {}), ...(effects.proposal.policyLine ? { policyLine: effects.proposal.policyLine } : {}) }
+    ? { proposalId: effects.proposal.proposalId, employeeKey: effects.proposalEmployeeId ? personKey(effects.proposalEmployeeId) : null, nameKey: effects.proposal.employeeName ? personKey(effects.proposal.employeeName) : null, templateKey: effects.proposal.templateKey, templateName: effects.proposal.templateName ?? null, ...(effects.proposalAsked?.length ? { asked: effects.proposalAsked } : {}), ...(effects.proposalLevel ? { level: effects.proposalLevel } : {}), ...(effects.proposalPayroll ? { payroll: effects.proposalPayroll } : {}), ...(effects.proposalPayroll === "yes" && effects.proposalPayrollAmount ? { payrollAmount: effects.proposalPayrollAmount } : {}), ...(effects.proposal.policyLine ? { policyLine: effects.proposal.policyLine } : {}), ...(effects.proposalAccountKey ? { accountKey: effects.proposalAccountKey } : {}) }
     : null;
   /* Fix batch items 4 and 3: this turn's "Did you mean", for the next turn's name question record (one-way keys only). */
   const nameQuestionSlot: NameQuestionSlot | null = effects.nameQuestion && stoppedAt === "reply"

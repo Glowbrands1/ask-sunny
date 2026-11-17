@@ -33,6 +33,10 @@ function careful(person: DirectoryRow, typed: string, build: (view: LoopView) =>
   return loopStandIn((view): LoopDecision => {
     if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: typed } };
     if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: person.id, ...build(view) } };
+    // ruling (b), QA 17 Nov: a typed full name whose last name differs from the staff list's is asked, never seated.
+    // A model told to ask (the card refused with ask_exactly) asks it, and nothing else.
+    const refused = lastResult(view, "propose_form") as { reason_code?: string; ask_exactly?: string } | null;
+    if (refused?.reason_code && refused.ask_exactly) return { text: refused.ask_exactly };
     return { text: say(view) };
   });
 }
@@ -67,7 +71,8 @@ export const NOV14_LIVE_R4_CASES: ReplayCase[] = [
         ].join("\n\n"),
       ));
       const thread = t.thread();
-      for (const turn of ["please make a ca for tamsin orwel for not doing th e10 minute sanitaion", "yes payroll, $20", "make it a written"]) {
+      // ruling (b), QA 17 Nov: a typed full name whose last name differs from the staff list's is asked, never seated. The manager's "yes" to the Did-you-mean follows T1.
+      for (const turn of ["please make a ca for tamsin orwel for not doing th e10 minute sanitaion", "yes", "yes payroll, $20", "make it a written"]) {
         const reply = await thread.say(turn);
         const card = thread.proposal;
         if (/Written Warning/i.test(reply.content) && !/isn't on the card yet/.test(reply.content)) expect(card?.warningLevel, `"${turn}": the reply says Written, the card does not:\n${reply.content}`).toBe("written");
