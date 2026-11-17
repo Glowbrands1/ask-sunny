@@ -45,6 +45,11 @@ export interface CardRecord {
   readonly payroll?: "yes" | "no" | null;
   readonly payrollAmount?: string | null;
   /**
+   * QA (16 Nov 2026; c163): a one-way key of the card's account (`accountKey`), never the text. A rebuild that keeps this
+   * account is the same card, so it keeps the card's payroll after a reply with no card; a new account is a new card.
+   */
+  readonly accountKey?: string | null;
+  /**
    * QA (16 Nov 2026, c219 live: "That change isn't on the card yet: policy (…)"): the policy line the card cited, a line of
    * the manual (never a name), so a later turn's card check compares the reply with the card on screen. Null when none or
    * for an older record.
@@ -53,7 +58,7 @@ export interface CardRecord {
 }
 
 /** What a turn writes into `slots.agent_loop.card`. */
-export type CardSlot = Omit<CardRecord, "messageId" | "asked" | "level" | "policyLine" | "payroll" | "payrollAmount"> & { readonly asked?: readonly string[]; readonly level?: "verbal" | "written"; readonly policyLine?: string; readonly payroll?: "yes" | "no"; readonly payrollAmount?: string };
+export type CardSlot = Omit<CardRecord, "messageId" | "asked" | "level" | "policyLine" | "payroll" | "payrollAmount" | "accountKey"> & { readonly asked?: readonly string[]; readonly level?: "verbal" | "written"; readonly policyLine?: string; readonly payroll?: "yes" | "no"; readonly payrollAmount?: string; readonly accountKey?: string };
 
 function isCardSlot(value: unknown): value is CardSlot {
   const row = value as Partial<CardSlot> | null;
@@ -167,7 +172,7 @@ export async function readLoopRecords(conversationId: string | undefined, userId
       cards: rows.flatMap((row) => {
         const card = row.slots?.agent_loop?.card;
         return isCardSlot(card)
-          ? [{ proposalId: card.proposalId, employeeKey: card.employeeKey ?? null, nameKey: card.nameKey ?? null, templateKey: card.templateKey, templateName: card.templateName ?? null, messageId: row.message_id, questionKey: questionKeyOf(row), asked: Array.isArray(card.asked) ? card.asked.filter((field): field is string => typeof field === "string") : [], level: card.level === "verbal" || card.level === "written" ? card.level : null, policyLine: typeof card.policyLine === "string" ? card.policyLine : null, payroll: card.payroll === "yes" || card.payroll === "no" ? card.payroll : null, payrollAmount: typeof card.payrollAmount === "string" && /^\d+(?:\.\d+)?$/.test(card.payrollAmount) ? card.payrollAmount : null }]
+          ? [{ proposalId: card.proposalId, employeeKey: card.employeeKey ?? null, nameKey: card.nameKey ?? null, templateKey: card.templateKey, templateName: card.templateName ?? null, messageId: row.message_id, questionKey: questionKeyOf(row), asked: Array.isArray(card.asked) ? card.asked.filter((field): field is string => typeof field === "string") : [], level: card.level === "verbal" || card.level === "written" ? card.level : null, policyLine: typeof card.policyLine === "string" ? card.policyLine : null, payroll: card.payroll === "yes" || card.payroll === "no" ? card.payroll : null, payrollAmount: typeof card.payrollAmount === "string" && /^\d+(?:\.\d+)?$/.test(card.payrollAmount) ? card.payrollAmount : null, accountKey: typeof card.accountKey === "string" && /^[0-9a-f]{16}$/.test(card.accountKey) ? card.accountKey : null }]
           : [];
       }),
       nameQuestions: rows.flatMap((row) => {
@@ -235,6 +240,11 @@ export function replyTurns<T extends { readonly messageId: string | null; readon
 }
 
 /** A one-way key of a roster id or a name (case and spacing aside): the trace tells two cards' people apart without either. */
+/** A one-way key of a card's account (QA, c163): letters and digits only, any case, so a rebuild's same words match. */
+export function accountKey(account: string): string {
+  return createHash("sha256").update(account.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim()).digest("hex").slice(0, 16);
+}
+
 export function personKey(name: string): string {
   return createHash("sha256").update(name.trim().toLowerCase().replace(/\s+/g, " ")).digest("hex").slice(0, 16);
 }

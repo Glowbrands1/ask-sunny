@@ -55,7 +55,7 @@ import { redactSensitiveDefaults } from "@/lib/ai/sensitive-defaults";
 import { expandPolicyQuery } from "@/lib/knowledge/policy-retrieval";
 import type { SourceCitation } from "@/types";
 import type { AccessScope, ChatFormProposal, ChatMessage, Role } from "@/types";
-import { personKey, replyTurns, type CardRecord, type NameQuestionRecord, type PersonAskedRecord, type TurnRecord } from "@/lib/ai/agent-loop/card-record";
+import { accountKey, personKey, replyTurns, type CardRecord, type NameQuestionRecord, type PersonAskedRecord, type TurnRecord } from "@/lib/ai/agent-loop/card-record";
 
 /**
  * ============================================================================
@@ -266,10 +266,19 @@ export function levelOptionIsTheLevel(text: string, level: "verbal" | "written",
 export function levelPhraseNamingTheForm(text: string, level: "verbal" | "written", formWords: readonly string[]): string | null {
   const own = new Set(formWords.map((word) => word.toLowerCase()));
   const words = [...text.matchAll(/[\p{L}][\p{L}'-]*/gu)];
-  for (let index = 0; index + 1 < words.length; index += 1) {
+  for (let index = 0; index < words.length; index += 1) {
     const word = words[index]![0].toLowerCase();
     const isOption = word === level || (word.length >= 4 && editDistance(word, level) === 1);
     if (!isOption) continue;
+    const start = words[index]!.index!;
+    const end = start + words[index]![0].length;
+    /*
+     * QA (c094: "make it a verbal"): the level as a noun, "a"/"an" right before the option word and nothing after it in its
+     * clause ("make it a verbal", "it's a written."). "written up before" and "a written for being late" do not qualify.
+     */
+    const article = index > 0 && /^an?$/i.test(words[index - 1]![0]) && /^\s+$/.test(text.slice(words[index - 1]!.index! + words[index - 1]![0].length, start));
+    if (article && /^\s*(?:[.,;:!?)]|$)/.test(text.slice(end))) return text.slice(words[index - 1]!.index!, end);
+    if (index + 1 >= words.length) continue;
     const next = words[index + 1]!;
     const between = text.slice(words[index]!.index! + words[index]![0].length, next.index!);
     if (!/^\s+$/.test(between) || !own.has(next[0].toLowerCase().replace(/[-']+$/g, ""))) continue;
@@ -280,9 +289,11 @@ export function levelPhraseNamingTheForm(text: string, level: "verbal" | "writte
 
 /** The form's own words for `levelOptionIsTheLevel`: its name's words and initials, and the option labels' "warning". */
 export function levelFormWords(formName: string): string[] {
+  /* The initials come from the name without "form" ("Corrective Action Form" → CA); "form" itself is the form's own word too
+   * (QA, c094: "Written form" names the level). */
   const words = formName.toLowerCase().match(/\p{L}+/gu)?.filter((word) => word !== "form") ?? [];
   const initials = words.length > 1 ? [words.map((word) => word[0]).join("")] : [];
-  return [...words, ...initials, "warning", "warnings"];
+  return [...words, ...initials, "form", "warning", "warnings"];
 }
 
 /** The question when no level option was named (Pau's ruling, fix batch item 2). */
@@ -305,9 +316,23 @@ function answersNextPersonOffer(context: ToolContext): boolean {
   return Boolean(lastReply && NEXT_PERSON_OFFER.test(String(lastReply.content ?? "").trim()) && oneWord(withoutMessageIdTags(context.question)));
 }
 
-/** An answer whose quote is the whole one-word reply to the next-person offer is refused (`answersNextPersonOffer`). */
-function notTheOfferAnswer(check: AnswerEvidence, context: ToolContext): AnswerEvidence {
-  return check.ok && check.wholeMessage && answersNextPersonOffer(context) ? { ok: false, reason: "answer_to_offer" } : check;
+/**
+ * An answer whose quote is the whole one-word reply to the next-person offer is refused (`answersNextPersonOffer`). QA
+ * (16 Nov 2026; Runner 2's c163 T4): so is one that answers this chat's recorded name question ("Did you mean <A>?"): the
+ * bare "yes" confirmed the name AND was taken as payroll Yes. One word answers one question: the name.
+ */
+function notTheOfferAnswer(check: AnswerEvidence, context: ToolContext, roster?: readonly RosterEmployee[]): AnswerEvidence {
+  if (!check.ok || !check.wholeMessage) return check;
+  if (answersNextPersonOffer(context)) return { ok: false, reason: "answer_to_offer" };
+  const current = check.turnId === (context.questionMessageId || CURRENT_MESSAGE_ID);
+  if (current && roster && answeredNameQuestions(nameQuestionView(context, roster)).some((asked) => asked.latest)) return { ok: false, reason: "answer_to_name_question" };
+  return check;
+}
+
+/** The card record's account key (QA, c163; PR 1c): the account as the model gave it and the incident date it gave, if any. */
+function cardAccountKey(account: string, incidentDate: unknown): string {
+  const day = typeof incidentDate === "string" ? incidentDate.trim() : "";
+  return accountKey(day ? `${account} ${day}` : account);
 }
 
 /** A message of one word (punctuation aside): a format check, never a reading of which word (fix batch item 7). */
@@ -663,6 +688,12 @@ export interface ToolEffects {
    * card_on_screen offer). run.ts adds it when the model's reply left it out.
    */
   replyMustAsk?: string;
+  /**
+   * QA (16 Nov 2026; Runner 2's c163 T3): this turn asked the manager "Did you mean <A>?" (close_spelling_not_confirmed or
+   * name_correction_did_you_mean): the roster ids offered and the question. A card for an offered person waits for the
+   * manager's answer in a later turn (run.ts records it; propose_form refuses it where the card is set).
+   */
+  nameNotConfirmed?: { offeredIds: readonly string[]; ask: string };
   /** `saved`: each field that really changed on the form written, read back from the database (PR 3; `saved-diff.ts`). */
   formUpdate: { instanceId: string; updated: string[]; saved?: SavedChange[]; putBack?: string[] } | null;
   /** Roster ids find_staff chose from a close spelling or a lone first name this turn (the card's name_from_staff_list fact). */
@@ -686,6 +717,8 @@ export interface ToolEffects {
   /** QA (c022): the payroll answer and amount this turn's card holds, for the card record, so a rebuild keeps them. */
   proposalPayroll?: "yes" | "no" | null;
   proposalPayrollAmount?: string | null;
+  /** QA (c163): the one-way key of this card's account as the model gave it (`accountKey`), for the card record. */
+  proposalAccountKey?: string | null;
   /**
    * Every source a tool read this turn, numbered from 1 in the order read: the model cites one as [S<n>] (`addSource`).
    * Only the ones the reply cites become source cards (run.ts, QA's live-app item 12), as today's grounded path does.
@@ -953,7 +986,8 @@ export async function findStaff(context: ToolContext, input: { name?: unknown; p
      * correct before Create ("Using **<A>** from your staff list."). Two or more → asked. A "no" to an earlier
      * Did-you-mean → asked.
      */
-    if (close.kind === "confirm" && close.candidates.length === 1 && !saidNo && !nearMissNever) {
+    /* QA (c163 T2, item b): a typed FULL name is never seated on a close spelling without asking, whatever the flag. */
+    if (close.kind === "confirm" && close.candidates.length === 1 && !saidNo && !nearMissNever && words(typed).length < 2) {
       const chosen = close.candidates[0]!;
       if (effects) effects.nameLines = { ...(effects.nameLines ?? {}), [chosen.employee.id]: chosen.name };
       return { matches: [staffRow(chosen.employee)], name_from_staff_list: chosen.name, note: `A close spelling of ${chosen.name}, the only one on the roster. Use them, and say so as the rules book's Card replies teach.` };
@@ -1846,6 +1880,12 @@ function closeSpellingNotSettled(
   row: RosterEmployee,
   roster: readonly RosterEmployee[],
   evidence: unknown,
+  /*
+   * Seating a person on a card (find_staff, propose_form): a whole first name settles them only after no close spelling of
+   * the full name is found (ruling (b)). A form tool looking up forms ON FILE (find_past_forms, open_form) keeps G4's
+   * order (REOPEN_CLOSE_SPELLING, 15 Nov): a whole first name in the words settles them first.
+   */
+  options: { readonly firstNameSettlesFirst?: boolean } = {},
 ): string | null {
   const turns = identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId);
   const quoted = verifyEvidence(evidence, turns);
@@ -1860,16 +1900,25 @@ function closeSpellingNotSettled(
   if (askedAbout.some((asked) => asked.latest)) return null;
   /* An earlier question for this spelling answered with a yes (a bare yes, or a yes going on with the account: K12b). */
   const saidYes = (key: string) => askedAbout.some((asked) => asked.record.typedKey === key && AFFIRMATIVE.test(asked.answer.split(/[,.;!\n]/)[0] ?? ""));
+  /*
+   * QA (16 Nov 2026; Runner 2's c163 T2, item b): "<first> <last minus a letter> was below …" was settled by its whole FIRST
+   * name alone, so the staff-list person with that first name and another last name was seated with no Did-you-mean. A
+   * full name settles it; a close spelling of the full name is asked (unless confirmed); only then does a first name alone.
+   */
+  const fullNames = fullNamesOf(row).map((name) => name.trim()).filter(Boolean);
   for (const text of texts) {
-    if (exactNames.some((name) => holdsPhrase(text, name))) return null;
+    if (fullNames.some((name) => holdsPhrase(text, name))) return null;
+    if (options.firstNameSettlesFirst && exactNames.some((name) => holdsPhrase(text, name))) return null;
     /* The name reader's names, then each two-word window of the words (it reads "edit tamsen orwel ca" as no name). */
     const plain = text.toLowerCase().replace(/[^\p{L}'\s-]+/gu, " ").split(/\s+/).filter(Boolean);
     const windows = plain.slice(1).map((word, at) => `${plain[at]} ${word}`);
-    const close = [...extractEmployeeNames(text), ...windows].find((name) => {
+    const isExactName = (name: string) => exactNames.some((exact) => exact.toLowerCase().replace(/\s+/g, " ") === name.trim().toLowerCase().replace(/\s+/g, " "));
+    const close = [...extractEmployeeNames(text), ...windows].filter((name) => !isExactName(name)).find((name) => {
       const match = matchEmployeeName(name, [row]);
       return match.kind === "confirm" && match.candidates.some((candidate) => candidate.employee.id === row.id);
     });
     if (close) return confirmed.includes(personKey(close)) || saidYes(personKey(close)) ? null : close;
+    if (exactNames.some((name) => holdsPhrase(text, name))) return null;
   }
   return null;
 }
@@ -1885,7 +1934,7 @@ async function closeSpellingRefusal(context: ToolContext, effects: ToolEffects |
   if (read.kind !== "read") return null;
   const holders = read.roster.filter((row) => fullNamesOf(row).some((full) => samePerson(full, personName)));
   if (holders.length !== 1) return null;
-  const spelled = closeSpellingNotSettled(context, holders[0]!, read.roster, undefined);
+  const spelled = closeSpellingNotSettled(context, holders[0]!, read.roster, undefined, { firstNameSettlesFirst: true });
   if (!spelled) return null;
   if (effects) effects.nameQuestion = { offeredIds: [holders[0]!.id], typed: spelled };
   return {
@@ -2874,6 +2923,22 @@ export async function proposeForm(
   let policyLine: string | null = policyHeading ? formatManualCitation(policyHeading, page) : null;
   /* Batch G (G7a, the tester's exit sweep): an exit cites no policy; it is not an incident. */
   if (template.key === appConfig().formKeys.exit) policyLine = null;
+  /*
+   * QA (16 Nov 2026; Runner 2's c014 T6 on d7042447, and c200): "Create a Coaching Form from this conversation" came with
+   * the earlier Corrective Action's "Standards of Conduct", which the manager never named for the coaching card (the
+   * model chose it for the CA). A card other than a Corrective Action cites a manual heading only when the manager named
+   * it in this card's request words, or today's topic reader fits it to this card's own account; never one copied from
+   * another form in the chat. Otherwise the heading is left off the card (not_on_card: policy_not_for_this_card).
+   */
+  /*
+   * Narrowed (QA, 16 Nov 2026, CI on 65382449: nov16-pr6-one-call-coaching-keeps-its-policy, an earlier ruling): a heading
+   * the model chose because it fits THIS card's account stays. What is left off is a heading COPIED from another form's
+   * card in this chat (its card record's policy line), unnamed for this card and not fitted to it by the topic reader.
+   */
+  const copiedFromAnotherForm = policyHeading !== null && (context.cardRecords ?? []).some((record) => record.templateKey !== template.key && typeof record.policyLine === "string" && record.policyLine.toLowerCase().includes(policyHeading!.toLowerCase()));
+  const policyNotForThisCard = template.key !== appConfig().formKeys.corrective && policyHeading !== null && copiedFromAnotherForm && !managerNamed && !(topicFits ?? []).some((heading) => headingKey(heading) === headingKey(policyHeading!));
+  /* The heading is left off; an "Other — <topic>" beside it (after "; ") stays, as #1068's rules decide it. */
+  if (policyNotForThisCard) policyLine = policyLine && policyLine.includes("; ") ? policyLine.split("; ").slice(1).join("; ") : null;
   const otherPart = askedOther || (/^other\b/i.test(askedPolicy) ? askedPolicy : "");
   if (otherPart) {
     const topic = otherPart.replace(/^other\s*[—:-]?\s*/i, "").trim() || cleaning || whatHappened.slice(0, 120);
@@ -2902,9 +2967,9 @@ export async function proposeForm(
    */
   const payrollCheck = caOnlyFields && askedPayroll
     ? (() => {
-        const byCard = notTheOfferAnswer(answerEvidence(context, input.payroll_evidence, { card: employee.name, aliases }, evidencePerson), context);
+        const byCard = notTheOfferAnswer(answerEvidence(context, input.payroll_evidence, { card: employee.name, aliases }, evidencePerson), context, evidencePerson.roster);
         if (byCard.ok || !requestStart) return byCard;
-        const byRequest = notTheOfferAnswer(answerEvidence(context, input.payroll_evidence, "request", evidencePerson, { requestTurnIds: [requestStart.id] }), context);
+        const byRequest = notTheOfferAnswer(answerEvidence(context, input.payroll_evidence, "request", evidencePerson, { requestTurnIds: [requestStart.id] }), context, evidencePerson.roster);
         return byRequest.ok && byRequest.turnId === requestStart.id ? byRequest : byCard;
       })()
     : null;
@@ -2988,7 +3053,7 @@ export async function proposeForm(
   const impliedLevel = impliedLevels.length === 1 ? impliedLevels[0]! : null;
   const askedLevel = modelLevel ?? impliedLevel?.option ?? null;
   const levelEvidence = modelLevel ? input.level_evidence : impliedLevel ? { message_id: context.questionMessageId || CURRENT_MESSAGE_ID, quote: impliedLevel.phrase } : undefined;
-  const levelAnswer = caOnlyFields && askedLevel ? notTheOfferAnswer(answerEvidence(context, levelEvidence, "request", evidencePerson, { requestTurnIds }), context) : null;
+  const levelAnswer = caOnlyFields && askedLevel ? notTheOfferAnswer(answerEvidence(context, levelEvidence, "request", evidencePerson, { requestTurnIds }), context, evidencePerson.roster) : null;
   /* Fix batch item 2: the quote must name the option ("final warning" names none: level_not_in_evidence, and ask which). */
   /* QA (#1079's control): and the option word in the quote is the form's level, not a word describing something else. */
   const levelQuote = levelEvidence && typeof levelEvidence === "object" ? String((levelEvidence as { quote?: unknown }).quote ?? "") : "";
@@ -3047,7 +3112,18 @@ export async function proposeForm(
    * ("yes", "thanks", "another ca for <name>") never gets it, nor does a new request (new_form_evidence), another
    * person's card or another form. Never "as you said" for a carried answer (stated_this_turn lists this message's only).
    */
-  const payrollRecord = caOnlyFields && !asksNewForm && isThisCard(context.cardOnScreen) && context.cardOnScreen.payroll ? context.cardOnScreen : null;
+  /*
+   * QA (16 Nov 2026; Runner 2's c163 on d7042447): payroll Yes (T4) was dropped at T6 ("we have already done coaching")
+   * because T5's reply ("my DM told me she gets one this month") showed no card, so nothing was "on screen". The card was
+   * still open: the chat's latest card, this card, rebuilt with the SAME account (its key, `accountKey`), is the card on
+   * screen for the carry. A new account ("another ca …, she was rude to a guest") is a new card and carries nothing, as
+   * the level guard after a reply with no card; a new request (new_form_evidence) or a form opened since never does.
+   */
+  const modelAccount = typeof input.what_happened === "string" ? input.what_happened.trim() : "";
+  /* The key holds the incident date the model gave too: "another ca …, late on 11/14" after a card for 11/12 with the same words is another incident (PR 1c). */
+  const sameCardKept = !context.openFormId && isThisCard(context.earlierCard) && Boolean(context.earlierCard.accountKey && modelAccount && context.earlierCard.accountKey === cardAccountKey(modelAccount, input.incident_date));
+  const openCard = isThisCard(context.cardOnScreen) ? context.cardOnScreen : sameCardKept ? context.earlierCard : null;
+  const payrollRecord = caOnlyFields && !asksNewForm && openCard?.payroll ? openCard : null;
   if (payroll === null && !answerUnclear && payrollRecord?.payroll) {
     payroll = payrollRecord.payroll;
     if (payroll === "yes" && !amount && payrollRecord.payrollAmount) amount = payrollRecord.payrollAmount;
@@ -3259,6 +3335,11 @@ export async function proposeForm(
    * builds the next card; it is never that card's payroll or level answer (the evidence rule takes those only after a
    * reply showing that person's own card).
    */
+  /* QA (c163 T3): this turn asked whether the manager meant this person; the card waits for their answer (no guessing). */
+  if (effects.nameNotConfirmed && employee.id && effects.nameNotConfirmed.offeredIds.includes(employee.id)) {
+    effects.replyMustAsk = effects.nameNotConfirmed.ask;
+    return { reason_code: "close_spelling_not_confirmed", error: `This turn already asked the manager whether they meant ${employee.name}; the card waits for their answer in a later turn. Do not propose it again now. End your reply with ask_exactly, exactly.`, ask_exactly: effects.nameNotConfirmed.ask };
+  }
   const refused = anotherCard(card.employeeName);
   if (refused) {
     const next = (card.employeeName ?? "").split(/\s+/)[0] || "the next person";
@@ -3296,6 +3377,7 @@ export async function proposeForm(
   effects.proposalLevel = level;
   effects.proposalPayroll = payroll;
   effects.proposalPayrollAmount = payroll === "yes" ? amount : null;
+  effects.proposalAccountKey = typeof input.what_happened === "string" && input.what_happened.trim() ? cardAccountKey(input.what_happened.trim(), input.incident_date) : null;
   const salonNames = (ids: readonly string[] | undefined) => (ids ?? []).map((id) => ({ id, name: rosterSalonName(id) ?? id }));
   /*
    * Batch K4 (QA's 266 shadow replay, c137/c134: a pasted account about <Y>, off the roster, went on <X>'s card; the
@@ -3415,6 +3497,7 @@ export async function proposeForm(
    */
   const notOnCard: { field: string; reason_code: string }[] = [
     ...(dateFromAnotherRequest ? [{ field: "incident_date", reason_code: "date_from_another_request" }] : []),
+    ...(policyNotForThisCard ? [{ field: "policy", reason_code: "policy_not_for_this_card" }] : []),
     ...((modelLevel && level !== modelLevel) ? [{ field: "warning_level", reason_code: caOnlyFields ? "level_not_stated" : "not_on_this_form" }] : []),
     ...((askedTermination && !loopTermination) ? [{ field: "warning_level", reason_code: "termination_not_stated" }] : []),
     ...((askedPayroll && !payroll) ? [{ field: "payroll_deduct", reason_code: caOnlyFields ? "payroll_not_stated" : "not_on_this_form" }] : []),
