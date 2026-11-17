@@ -3,14 +3,14 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Button, cx, inputClass } from "@/features/l10/ui/ui";
+import { Button, Modal, cx, inputClass } from "@/features/l10/ui/ui";
 import { MentionField } from "@/features/l10/ui/Mentions";
 import { durationLabel, initials, mmddyyyy } from "@/features/l10/lib/bloom";
 import type { PastMeeting } from "@/features/l10/lib/past";
 
 /*
  * The parts every page of a Bloom-style meeting shares (the DM L10s; the owner's request, 15 Nov 2026): the Meeting
- * Notes drawer, the "Last meeting's summary" card and the "New Issue" bar pinned at the bottom. Hub colours and fonts;
+ * Notes drawer, the "Last meeting's summary" card and the floating "New Issue" button. Hub colours and fonts;
  * Bloom's layout only.
  */
 
@@ -158,12 +158,14 @@ function Stat({ label, value }: { label: string; value: string }) {
 }
 
 /**
- * "New Issue": who owns it, the issue, Enter. It takes the place of the floating Add to IDS button on these meetings and
- * saves the same way (with an owner). Inline in the main column, right after each page's title and hint (on the segue
- * page, right under the round-robin banner): the owner asked "why is the issue at the bottom? It should be at the top"
- * (15 Nov 2026). It was pinned to the bottom of the window across its full width, over Ask Sunny's sidebar.
+ * "New Issue": a floating button on every agenda page that opens a small window (the issue, who owns it, Add), saved
+ * the same way as before (with an owner and who added it).
+ *
+ * Port from Ask Bubbles: it was an inline bar at the top of each page, so the To-do and IDS pages showed two places
+ * to add (the owner, 17 Nov 2026: "in ask sunny DM L10 there 2 of these, just need 1"). It sits where the Add to IDS
+ * button sits on the other meetings (`ParkIt`), and "i" opens it.
  */
-export function NewIssueBar({ people, me, onAdd }: { people: string[]; me: string; onAdd: (title: string, owner: string) => void }) {
+export function NewIssueButton({ people, me, onAdd, open, setOpen }: { people: string[]; me: string; onAdd: (title: string, owner: string) => void; open: boolean; setOpen: (open: boolean) => void }) {
   const [title, setTitle] = useState("");
   const [owner, setOwner] = useState(people.includes(me) ? me : (people[0] ?? ""));
   const [notice, setNotice] = useState("");
@@ -173,32 +175,53 @@ export function NewIssueBar({ people, me, onAdd }: { people: string[]; me: strin
     onAdd(t, owner);
     setNotice(`Added to IDS: ${t}`);
     setTitle("");
+    setOpen(false);
   };
   return (
-    <form
-      aria-label="New Issue"
-      data-testid="new-issue-bar"
-      onSubmit={(e) => {
-        e.preventDefault();
-        submit();
-      }}
-      className="flex min-w-0 items-center gap-2 rounded-[10px] border border-line bg-white px-3 py-2 shadow-card print:hidden"
-    >
-      <span aria-hidden className="hidden size-8 flex-none items-center justify-center rounded-full bg-cream text-[11px] font-bold sm:flex" title={owner}>
-        {initials(owner)}
-      </span>
-      <select aria-label="Issue owner" value={owner} onChange={(e) => setOwner(e.target.value)} className={cx(inputClass, "w-32 flex-none sm:w-44")}>
-        {people.map((p) => (
-          <option key={p}>{p}</option>
-        ))}
-      </select>
-      <input aria-label="New Issue" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="New Issue… press Enter to add" className={cx(inputClass, "min-w-0 flex-1")} />
-      <Button type="submit" variant="primary" disabled={!title.trim()}>
-        Add
+    <>
+      <Button variant="primary" onClick={() => setOpen(true)} data-page-fab data-testid="new-issue-button" className="fixed right-(--fab-right) bottom-(--fab-bottom) z-40 min-h-(--fab-h) rounded-full shadow-card print:hidden" title="Add an issue to IDS">
+        + New Issue
       </Button>
       <p role="status" aria-live="polite" className="sr-only">
         {notice}
       </p>
-    </form>
+      <Modal
+        open={open}
+        title="New Issue"
+        onClose={() => setOpen(false)}
+        footer={
+          <>
+            <Button onClick={() => setOpen(false)}>Cancel</Button>
+            <Button variant="primary" disabled={!title.trim()} onClick={submit}>
+              Add to IDS
+            </Button>
+          </>
+        }
+      >
+        <form
+          aria-label="New Issue"
+          onSubmit={(e) => {
+            e.preventDefault();
+            submit();
+          }}
+          className="flex flex-col gap-3"
+        >
+          <input aria-label="New Issue" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="The issue… press Enter to add" className={inputClass} />
+          <label className="flex flex-col gap-1 text-xs font-bold text-muted">
+            Owner
+            <span className="flex items-center gap-2">
+              <span aria-hidden className="flex size-8 flex-none items-center justify-center rounded-full bg-cream text-[11px] font-bold text-ink" title={owner}>
+                {initials(owner)}
+              </span>
+              <select aria-label="Issue owner" value={owner} onChange={(e) => setOwner(e.target.value)} className={cx(inputClass, "flex-1")}>
+                {people.map((p) => (
+                  <option key={p}>{p}</option>
+                ))}
+              </select>
+            </span>
+          </label>
+        </form>
+      </Modal>
+    </>
   );
 }

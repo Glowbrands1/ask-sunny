@@ -136,10 +136,13 @@ describe("the DM L10 page in Ask Sunny", () => {
 
   // Changed on purpose 15 Nov 2026: the STC DM L10's pages are laid out like Bloom Growth's, so the floating Add to IDS
   // button became the New Issue bar (owner, issue, Enter), inline at the top of each page since the owner's report below.
-  it("has the New Issue bar in place of the floating Add to IDS button", () => {
+  // Changed on purpose 17 Nov 2026 (port from Ask Bubbles): the New Issue bar became a floating "+ New Issue" button
+  // that opens a window, so a page never shows two places to add an issue.
+  it("has the New Issue button in place of the floating Add to IDS button", () => {
     renderView();
-    expect(screen.queryByRole("button", { name: /Add to IDS/ })).toBeNull();
-    expect(screen.getByRole("form", { name: "New Issue" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Add to IDS/ })).toBeNull();
+    expect(screen.getByRole("button", { name: "+ New Issue" }).hasAttribute("data-page-fab")).toBe(true);
+    expect(screen.queryByRole("form", { name: "New Issue" })).toBeNull();
   });
 
   it("IDS has Short term, Long-term and Recently solved tabs, as in the Hub", () => {
@@ -401,25 +404,27 @@ describe("Bloom-style page: what every page shares", () => {
     resolved_issues: ["Front desk coverage"],
   };
 
-  it('the New Issue bar is inline at the top of each page, not pinned to the bottom ("why is the issue at the bottom? It should be at the top, after Round-robin: check off")', async () => {
+  // Replaces the 15 Nov test of the inline bar: the To-do and IDS pages showed it next to their own add row.
+  it('"in ask sunny DM L10 there 2 of these, just need 1" (the owner, 17 Nov 2026)', () => {
     renderView();
-    const bar = () => screen.getByRole("form", { name: "New Issue" });
-    // The segue page: right under the "Round-robin: check off each attendee as they share" banner.
-    const banner = screen.getByText("Round-robin: check off each attendee as they share.").parentElement!;
-    expect(banner.nextElementSibling).toBe(bar());
-    // Not fixed to the window (it spanned the window over Ask Sunny's sidebar footer), and not a floating button.
-    expect(bar().className).not.toMatch(/\bfixed\b/);
-    expect(bar().hasAttribute("data-page-fab")).toBe(false);
-    // Every other agenda page: right after the section's title and hint.
+    const agenda = within(screen.getByRole("region", { name: "Agenda" }));
     for (const section of [/Scorecard/, /Rock Review/, /To-do List/, /· IDS/, /Conclude/]) {
-      fireEvent.click(within(screen.getByRole("region", { name: "Agenda" })).getAllByRole("button", { name: section })[0]);
-      const heading = screen.getByRole("heading", { level: 2, name: new RegExp(section.source.replace("· ", "")) });
-      expect(heading.parentElement!.nextElementSibling, `${section}`).toBe(bar());
+      fireEvent.click(agenda.getAllByRole("button", { name: section })[0]);
+      // No banner on the page, only the floating button.
+      expect(screen.queryByRole("form", { name: "New Issue" }), `${section}`).toBeNull();
+      expect(screen.getByRole("button", { name: "+ New Issue" }).className).toMatch(/\bfixed\b/);
     }
-    // The "i" shortcut still goes to it.
-    (document.activeElement as HTMLElement | null)?.blur();
+    // To-do List: one add row (the to-do's own); IDS: one issue field (its own).
+    fireEvent.click(agenda.getAllByRole("button", { name: /To-do List/ })[0]);
+    expect(screen.queryAllByPlaceholderText(/New Issue/)).toHaveLength(0);
+    fireEvent.click(agenda.getAllByRole("button", { name: /· IDS/ })[0]);
+    expect(screen.getAllByRole("textbox", { name: /issue/i }).map((t) => t.getAttribute("aria-label"))).toEqual(["Identify a new issue"]);
+    // The button, and the "i" shortcut, open the New Issue window.
+    fireEvent.click(screen.getByRole("button", { name: "+ New Issue" }));
+    expect(screen.getByRole("dialog", { name: "New Issue" })).toBeTruthy();
+    fireEvent.click(within(screen.getByRole("dialog", { name: "New Issue" })).getByRole("button", { name: "Cancel" }));
     fireEvent.keyDown(document, { key: "i" });
-    expect(document.activeElement).toBe(within(bar()).getByRole("textbox", { name: "New Issue" }));
+    expect(screen.getByRole("dialog", { name: "New Issue" })).toBeTruthy();
   });
 
   it("Meeting Notes opens the shared notes pad in a side panel, saves as meetingNotes, and Esc closes it", async () => {
@@ -477,9 +482,10 @@ describe("Bloom-style page: what every page shares", () => {
     expect(body.getByText("Issues solved").nextSibling?.textContent).toBe("2");
   });
 
-  it("the New Issue bar saves the issue with its owner and who added it", async () => {
+  it("the New Issue button saves the issue with its owner and who added it", async () => {
     const save = vi.fn().mockResolvedValue({ ok: true, version: 4, updatedAt: "2026-11-15T00:00:00Z" } satisfies SaveOutcome);
     renderView({ save: save as unknown as SaveFn, initial: loaded(3, { issues: [] }), mentionPeople: [{ id: "hub-user-1", name: "Avery Quill" }] });
+    fireEvent.click(screen.getByRole("button", { name: "+ New Issue" }));
     const bar = within(screen.getByRole("form", { name: "New Issue" }));
     fireEvent.change(bar.getByLabelText("Issue owner"), { target: { value: "Cy Marlow" } });
     fireEvent.change(bar.getByRole("textbox", { name: "New Issue" }), { target: { value: "Late shift handover" } });
@@ -702,6 +708,7 @@ describe("Bloom-style page: Rocks and To-dos", () => {
 
 // IDS on the Bloom-style STC DM L10 (the owner's request, 15 Nov 2026), as in the Hub.
 describe("Bloom-style page: IDS", () => {
+
   it("rows have a ! circle, the owner's initials, Solve and the term button; ! issues first; Oldest / Newest", async () => {
     const save = vi.fn().mockResolvedValue({ ok: true, version: 4, updatedAt: "2026-11-15T00:00:00Z" } satisfies SaveOutcome);
     renderView({
