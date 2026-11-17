@@ -454,6 +454,8 @@ function buildAgentLoopTools(config: AppConfig) {
         payroll_deduct: { type: "string", enum: ["yes", "no"], description: "Only when the manager said whether payroll deduct applies." },
         payroll_amount: { type: "string", description: "The deduction amount the manager stated, digits." },
         prior_actions: { type: "string", description: "Earlier steps only as the manager stated them (\"verbal on 10/2\", \"coached last month\"); never from records on file." },
+        topic: { type: "string", description: "Coaching card only: the coaching topic in a few of the manager's words (\"greeting guests at the door\"), never the request sentence or the person's name. With topic_evidence." },
+        topic_evidence: evidence("With topic: the manager message of this request and its words that name the topic."),
         incident_time: { type: "string", description: "The time of the incident if the manager gave one, as they said it." },
         salon: { type: "string", description: "The " + place + " the form is for, as the manager named it (\"kearney\", \"IA Altoona\"), when the card asks which " + place + " or the manager says one. Only the manager's own " + places + " are accepted." },
       },
