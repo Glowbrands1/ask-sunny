@@ -231,6 +231,20 @@ export async function POST(request: Request) {
     if (body.source === "ask_sunny" && Array.isArray(body.conversation)) {
       // PREFERRED_NAME_CARD_CURRENT_ENABLED: "kit dovetail" is the card's Katrin Dovetail when the manager's roster says Kit is her preferred name. Off: none, and no roster read.
       const alsoCalled = await preferredNamesOf(actor.scope, body.employeeName);
+      /*
+       * QA (17 Nov 2026; Runner 2's saved-form run, c003): the agent loop's own card passes with the names the loop settled
+       * as its person (its recorded name questions), read from the loop's records for this proposal id; never for a card
+       * the loop has no record of. See `lib/ai/agent-loop/settled-names.ts`.
+       */
+      const isSettledName = body.fromAgentLoop === true && typeof body.proposalId === "string"
+        ? await (await import("@/lib/ai/agent-loop/settled-names")).loopSettledNames({
+            conversationId: typeof body.conversationId === "string" ? body.conversationId : undefined,
+            userId: actor.id,
+            messageIds: (body.conversation as { id?: unknown; role?: unknown }[]).filter((turn) => turn?.role === "user" && typeof turn.id === "string").map((turn) => String(turn.id)),
+            proposalId: body.proposalId,
+            employeeName: body.employeeName,
+          })
+        : null;
       const currency = checkProposalIsCurrent({
         // FORM_TYPE_SWITCH_ENABLED: "change to coaching" is read as the chat read it, so the switched card is current.
         // TEAM_CARD_NOT_PRODUCT_ENABLED: on the team card, "selling Spray Tan Kits" is the topic, as the chat read it.
@@ -244,6 +258,7 @@ export async function POST(request: Request) {
         looseRoster: await looseRosterFor(actor.scope),
         // STALE_NEEDS_ROSTER_PERSON_ENABLED: "drop wage" and "forfeit bonus" are not more people. Off: undefined, and no roster read.
         rosterNames: await rosterNamesFor(actor.scope),
+        ...(isSettledName ? { isSettledName } : {}),
       });
       if (!currency.current) {
         return NextResponse.json({ error: currency.reason, code: "proposal_superseded" }, { status: 409 });
