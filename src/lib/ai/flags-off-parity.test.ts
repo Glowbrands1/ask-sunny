@@ -1223,6 +1223,10 @@ describe("new flags default off and wrappers are inert", () => {
           ":(exclude)src/components/shell/app-shell.tsx",
           ":(exclude)src/components/shell/sidebar.tsx",
           ":(exclude)src/components/shell/app-switcher.tsx",
+          // Once-a-day "we're updating the chat" notice (requested by Paulyne, 18 Nov 2026, both
+          // apps): a dialog on desktop and a banner on phones, dismissed per user per business day.
+          // Shell only; no chat or form behaviour changes. Its mount line is in app-shell.tsx, above.
+          ":(exclude)src/components/shell/update-notice.tsx",
           `:(exclude)${SIGN_IN_FORM}`,
           // THE CLAY RESTYLE (requested by Paulyne, 9 Nov 2026, from the approved
           // "Ask Sunny Clay Web" mockup; QA to confirm before merge). Unlike the
