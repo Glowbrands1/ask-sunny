@@ -66,13 +66,36 @@ function Cell({ row, week, label, onCommit, bloom = false }: { row: ScorecardRow
   );
 }
 
-export function Scorecard({ doc, edit, people, bloom = false, today = "" }: { doc: MeetingDoc; edit: (fn: (d: MeetingDoc) => MeetingDoc) => void; people: string[]; /** Laid out like Bloom Growth's scorecard (the DM L10s). */ bloom?: boolean; today?: string }) {
+export function Scorecard({
+  doc,
+  edit,
+  people,
+  bloom = false,
+  today = "",
+  wide,
+  onWide,
+}: {
+  doc: MeetingDoc;
+  edit: (fn: (d: MeetingDoc) => MeetingDoc) => void;
+  people: string[];
+  /** Laid out like Bloom Growth's scorecard (the DM L10s). */
+  bloom?: boolean;
+  today?: string;
+  /** Port from Ask Bubbles: the table uses the whole page (the agenda column hidden); with `onWide`, a Full width / Collapse button. */
+  wide?: boolean;
+  onWide?: (wide: boolean) => void;
+}) {
   const order = newestFirst(doc);
   const [metric, setMetric] = useState("");
   const [owner, setOwner] = useState(people[0] ?? "");
   const [goal, setGoal] = useState("");
   const [format, setFormat] = useState<MetricFormat>("percent");
   const [higher, setHigher] = useState(true);
+  /*
+   * Port from Ask Bubbles, Bloom-style: the form is closed until "Add metric" is pressed, a button next to "Add week"
+   * (the owner, 18 Nov 2026: "make this collapasable"; the same request as the sibling app's).
+   */
+  const [adding, setAdding] = useState(false);
 
   const addMetric = () => {
     if (!metric.trim()) return;
@@ -94,7 +117,14 @@ export function Scorecard({ doc, edit, people, bloom = false, today = "" }: { do
 
   const form = (
     <div className="rounded-[10px] border border-dashed border-line bg-cream/60 p-3 print:hidden" data-testid="add-metric">
-      <div className="mb-2 text-xs font-bold text-muted">Add metric</div>
+      <div className="mb-2 flex items-center justify-between gap-2 text-xs font-bold text-muted">
+        Add metric
+        {bloom && (
+          <Button variant="link" onClick={() => setAdding(false)}>
+            Done
+          </Button>
+        )}
+      </div>
       <div className="flex flex-wrap items-center gap-2">
         <input aria-label="Metric name" value={metric} onChange={(e) => setMetric(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addMetric()} placeholder="Metric name…" className={cx(inputClass, "min-w-[220px] flex-1")} />
         <select aria-label="Metric owner" value={owner} onChange={(e) => setOwner(e.target.value)} className={cx(inputClass, "w-44")}>
@@ -121,18 +151,39 @@ export function Scorecard({ doc, edit, people, bloom = false, today = "" }: { do
 
   return (
     <div className="flex flex-col gap-3">
-      {/* Bloom-style: "Add metric" at the top, above the table, like "Add new rock" (the owner's request, 15 Nov 2026). */}
-      {bloom && form}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="m-0 text-sm text-muted print:hidden">Most recent week first. Tap any cell to edit.</p>
-        <Button variant="outline" className="print:hidden" onClick={() => edit(addWeek)}>
-          Add week
-        </Button>
-      </div>
+      {bloom ? (
+        /*
+         * Port from Ask Bubbles: the buttons first, on the left, where they are seen (the owner, 18 Nov 2026: 'make "add a
+         * week" button visible please'; it sat at the far right). On a phone they wrap.
+         */
+        <div className="flex flex-wrap items-center gap-2 print:hidden" data-testid="scorecard-toolbar">
+          <Button variant="primary" onClick={() => edit(addWeek)}>
+            + Add week
+          </Button>
+          <Button variant="outline" aria-expanded={adding} aria-controls="add-metric-form" onClick={() => setAdding((a) => !a)}>
+            Add metric
+          </Button>
+          {onWide && (
+            <Button variant="outline" aria-pressed={!!wide} title={wide ? "Show the agenda again" : "Hide the agenda so the table uses the whole page"} onClick={() => onWide(!wide)}>
+              {wide ? "⤡ Collapse" : "⤢ Full width"}
+            </Button>
+          )}
+          <p className="m-0 basis-full text-sm text-muted sm:ml-auto sm:basis-auto">Most recent week first. Tap any cell to edit.</p>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="m-0 text-sm text-muted print:hidden">Most recent week first. Tap any cell to edit.</p>
+          <Button variant="outline" className="print:hidden" onClick={() => edit(addWeek)}>
+            Add week
+          </Button>
+        </div>
+      )}
+      {/* Bloom-style: the form opens above the table when "Add metric" is pressed. */}
+      {bloom && adding && <div id="add-metric-form">{form}</div>}
       {doc.scorecard.length > 0 && bloom ? (
         <BloomTable doc={doc} edit={edit} order={order} today={today} />
       ) : doc.scorecard.length === 0 ? (
-        <p className="m-0 rounded-[10px] border border-dashed border-line p-4 text-sm text-muted">No metrics yet. Add the first one {bloom ? "above" : "below"}.</p>
+        <p className="m-0 rounded-[10px] border border-dashed border-line p-4 text-sm text-muted">No metrics yet. {bloom ? "Press Add metric to add the first one." : "Add the first one below."}</p>
       ) : (
         <div className="overflow-x-auto rounded-[10px] border border-line bg-white shadow-card">
           <table className="w-full border-collapse text-sm">
@@ -242,7 +293,7 @@ function BloomTable({ doc, edit, order, today }: { doc: MeetingDoc; edit: (fn: (
                     <span className="sr-only">{owner}</span>
                   </span>
                 </td>
-                <td className="min-w-[170px] px-3 py-2 font-semibold">
+                <td className="min-w-[120px] px-3 py-2 font-semibold sm:min-w-[170px]">
                   <span className="flex items-center justify-between gap-2">
                     {r.metric}
                     <button

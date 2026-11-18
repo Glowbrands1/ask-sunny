@@ -776,3 +776,40 @@ describe("owner menus list the DM-or-higher people from Woven", () => {
     expect(options(screen.getByLabelText("Issue owner"))).toEqual(expected);
   });
 });
+
+describe("rocks owner menus list the DM-or-higher people from Woven too", () => {
+  it('"add all of them in rocks drop down too pls" (the owner, 18 Nov 2026): the add form and the rock panel offer them; no empty sections for them', () => {
+    render(
+      <MeetingView info={info} initial={loaded(3, { rocks: [{ id: "k1", title: "Open two rooms", owner: "Avery Quill", status: "on-track", milestones: [] }] })} save={vi.fn() as unknown as SaveFn} end={vi.fn() as unknown as EndFn} viewer={viewer} roster={roster} hubMeetingUrl={HUB} pollMs={0} debounceMs={0} today="2026-11-18" ownerPeople={["Avery Quill", "Dee Wren", "Eli Sorrel"]} />,
+    );
+    const options = (select: HTMLElement) => [...(select as HTMLSelectElement).options].map((o) => o.textContent);
+    const expected = ["Company", ...roster.members.map((m) => m.name), "Dee Wren", "Eli Sorrel"];
+    fireEvent.click(within(screen.getByRole("region", { name: "Agenda" })).getAllByRole("button", { name: /Rock Review/ })[0]);
+    expect(options(screen.getByLabelText("New rock owner"))).toEqual(expected);
+    // The extra people get no "No rocks for …" section.
+    expect(screen.queryByRole("region", { name: /Dee Wren/ })).toBeNull();
+    expect(document.body.textContent).not.toContain("No rocks for Dee Wren");
+    fireEvent.click(screen.getByRole("button", { name: "Edit Open two rooms" }));
+    expect(options(screen.getByLabelText("Owner of Open two rooms"))).toEqual(expected);
+    // A rock added for one of them shows under their name.
+    fireEvent.click(screen.getByRole("button", { name: "Close rock editor" }));
+    fireEvent.change(screen.getByLabelText("New rock title"), { target: { value: "Coach the new leads" } });
+    fireEvent.change(screen.getByLabelText("New rock owner"), { target: { value: "Dee Wren" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add rock" }));
+    expect(screen.getAllByRole("region", { name: /Dee Wren/ }).length).toBeGreaterThan(0);
+  });
+});
+
+describe("Scorecard Full width (port from Ask Bubbles)", () => {
+  it("Full width hides the agenda column on the Scorecard page only; Collapse brings it back", () => {
+    window.localStorage.clear();
+    renderView();
+    const agendaButton = (n: RegExp) => within(screen.getByRole("region", { name: "Agenda" })).getAllByRole("button", { name: n })[0];
+    fireEvent.click(agendaButton(/Scorecard/));
+    fireEvent.click(screen.getByRole("button", { name: "⤢ Full width" }));
+    expect(screen.queryByRole("region", { name: "Agenda" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "⤡ Collapse" }));
+    expect(screen.getByRole("region", { name: "Agenda" })).toBeTruthy();
+    window.localStorage.clear();
+  });
+});

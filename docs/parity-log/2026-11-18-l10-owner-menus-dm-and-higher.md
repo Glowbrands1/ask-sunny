@@ -9,3 +9,7 @@ are listed by sign-in email in the deployment's `L10_OWNER_MENU_EXCLUDE_EMAILS`.
 
 **Sibling app: not ported.** Requested for Ask Sunny's meeting only. Ask Bubbles has the same owner menus (the Hub's
 roster for the BCS DM L10) and the same Woven tables; port the two files and the page wiring if its team asks.
+
+**Then (the owner, 18 Nov 2026):** "add all of them in rocks drop down too pls": the Rock Review's owner menus (add,
+attach to owner, company-rock lead, duplicate) offer the same list; the owner sections still follow the meeting's own
+people, so nobody gets an empty section until they have a rock.

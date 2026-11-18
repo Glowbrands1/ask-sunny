@@ -262,10 +262,17 @@ export function Rocks({
   today,
   saveStatus,
   bloom = false,
+  ownerOptions,
 }: {
   rocks: Rock[];
   onChange: (next: Rock[]) => void;
   people: string[];
+  /**
+   * Ask Sunny: the names the owner menus offer (add, attach, lead, duplicate), when longer than `people`: the meeting's
+   * people plus every DM or higher from Woven (owners.server.ts; the owner, 18 Nov 2026: "add all of them in rocks drop
+   * down too"). The owner sections still follow `people`, so nobody gets an empty section until they have a rock.
+   */
+  ownerOptions?: string[];
   today: string;
   /** The meeting's save status in words, shown quietly in the rock panel's footer. */
   saveStatus?: string;
@@ -292,7 +299,7 @@ export function Rocks({
   const [title, setTitle] = useState("");
   const [owner, setOwner] = useState("Company");
   const [due, setDue] = useState("");
-  const owners = ["Company", ...people];
+  const owners = ["Company", ...(ownerOptions ?? people)];
   const archivedCount = rocks.filter((r) => r.archived).length;
   const add = () => {
     if (!title.trim()) return;
