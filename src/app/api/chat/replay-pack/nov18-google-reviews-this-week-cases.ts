@@ -36,7 +36,8 @@ export const NOV18_GOOGLE_REVIEWS_THIS_WEEK_CASES: ReplayCase[] = [
     id: "nov18-google-reviews-this-week",
     title: `"${QUESTION}": the model is given this reporting week and last from the Google Reviews page, and no "no report figures" rule`,
     report: REPORT,
-    status: { open: `${FLAG} is not on in production: set it to 1 in Vercel, then list it in production-flags.json and mark this case fixed` },
+    // ${FLAG} is on in production from 18 Nov 2026 (the owner asked; listed in production-flags.json).
+    status: "fixed",
     fixFlags: [FLAG],
     async run(t) {
       await start(t).say(QUESTION);
@@ -68,6 +69,19 @@ export const NOV18_GOOGLE_REVIEWS_THIS_WEEK_CASES: ReplayCase[] = [
       expect(salons).toHaveLength(1);
       expect(salons[0]).toMatchObject({ this_week: 2, this_week_all_ratings: 2, last_week: 3, last_week_all_ratings: 4 });
       expect(output.weeks).toContain("this week opened Sunday 2026-11-15");
+    },
+  },
+  {
+    // Audit before merge (18 Nov 2026): "review" as a verb on a write-up turn matched the weekly patterns, so a forms
+    // turn would get every salon's review figures and customer quotes once the flag is on.
+    id: "nov18-review-verb-write-up-not-google-reviews",
+    title: '"Can you review this write-up for Jane today?": no Google review block on a forms turn',
+    report: "Audit, 18 Nov 2026 (ask-sunny#1105 before merge): a write-up turn read as a Google review question",
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      await start(t).say("Can you review this write-up for Jane today?");
+      expect(t.lastReportData?.() ?? "").not.toContain("GOOGLE REVIEWS");
     },
   },
 ];
