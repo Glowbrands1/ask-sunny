@@ -202,6 +202,31 @@ export function recordAssistantSpend(userId: string, call: TokenUsage | null, pe
   void persist({ source: "l10_assistant", userId, calls: [row] });
 }
 
+/**
+ * The chat as the model reads it. A reply that failed part-way can leave a lookup (a tool call) without its result in
+ * the saved chat; sent back as it is, the model API refuses the whole request, so every later message in that chat
+ * failed too, even "hi" (Ask Sunny, 18 Nov 2026). Unfinished lookups are left out.
+ */
+export function modelMessages(messages: UIMessage[]) {
+  return convertToModelMessages(messages, { ignoreIncompleteToolCalls: true });
+}
+
+/**
+ * Why the model API refused a request (its own error message, e.g. "tools.5.custom.input_schema: …"), for the log: the
+ * position in the request, never its content. Quoted values are cut out and the text is capped.
+ */
+export function apiErrorReason(e: { message?: string; responseBody?: string } | null | undefined): string | null {
+  let text = "";
+  try {
+    const body = e?.responseBody ? (JSON.parse(e.responseBody) as { error?: { type?: string; message?: string } }) : null;
+    text = [body?.error?.type, body?.error?.message].filter(Boolean).join(": ");
+  } catch {
+    /* not JSON */
+  }
+  text ||= e?.message ?? "";
+  return text ? text.replace(/"[^"]*"|'[^']*'|`[^`]*`/g, "…").slice(0, 300) : null;
+}
+
 /** The usage of the steps that finished (for a stopped answer, whose total never arrives). */
 function sumSteps(steps: readonly { usage: LanguageModelUsage }[]): LanguageModelUsage | undefined {
   if (steps.length === 0) return undefined;
@@ -248,7 +273,7 @@ export async function streamHubAssistant(input: { config: HubAssistantConfig; me
     model: anthropic(modelId),
     system,
     // Images and PDFs the person attached go to the model as file parts (Claude reads PDFs natively), as in the Hub.
-    messages: await convertToModelMessages(input.messages),
+    messages: await modelMessages(input.messages),
     tools: { ...webTools(config), ...hubTools(config, input.email, input.meetingKey), ...(app && input.viewer ? app.appTools(input.viewer, app.lastQuestion(input.messages)) : {}) },
     stopWhen: stepCountIs(config.maxSteps),
     maxOutputTokens: config.maxOutputTokens,
@@ -278,10 +303,10 @@ export async function streamHubAssistant(input: { config: HubAssistantConfig; me
     // Web results and cited pages show as sources under the answer, as in the Hub.
     sendSources: true,
     onError: (error) => {
-      const e = error as { name?: string; statusCode?: number };
+      const e = error as { name?: string; statusCode?: number; message?: string; responseBody?: string };
       // AI TIME LIMITS: a timeout gets its own log line (route, call, duration; no content).
       if (isTimeoutError(error) && !input.signal?.aborted) logAiTimeout(deep ? "l10_assistant_deep" : "l10_assistant", Date.now() - startedAt, L10_TOTAL_TIMEOUT_MS, "l10_assistant");
-      console.error("[l10-assistant] stream error", JSON.stringify({ name: e?.name ?? "unknown", status: e?.statusCode ?? null, deep }));
+      console.error("[l10-assistant] stream error", JSON.stringify({ name: e?.name ?? "unknown", status: e?.statusCode ?? null, deep, reason: apiErrorReason(e) }));
       return "The assistant could not answer just now. Please try again in a minute.";
     },
   });
