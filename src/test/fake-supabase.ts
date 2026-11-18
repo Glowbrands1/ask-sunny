@@ -164,6 +164,10 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: null }> {
     this.filters.push((row) => row[column] !== undefined && row[column] !== null && String(row[column]) >= String(value));
     return this;
   }
+  lte(column: string, value: string | number) {
+    this.filters.push((row) => row[column] !== undefined && row[column] !== null && String(row[column]) <= String(value));
+    return this;
+  }
   /**
    * An exact, case-insensitive match (no `%` or `_`): what `findOpenIncidentDraft` sends for
    * the employee's name. OFF unless a test turns it on (`modelExactIlike`): until 6 Nov 2026 the

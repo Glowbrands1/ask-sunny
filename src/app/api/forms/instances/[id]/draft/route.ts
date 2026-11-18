@@ -2699,6 +2699,32 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         console.info("[draft] removed dates the manager did not state", { instanceId: id, removed: undated.removed });
       }
     }
+    /*
+     * LIVE FIX (QA, 18 Nov 2026; Pau's test chat): a loop card citing "All Locations Dress Code Policy, JBA Policy Manual
+     * p.15" saved Type of Offense "Standards of Conduct" and Policy Violated "Standards of Conduct — All Locations Dress
+     * Code": the box came from the manual section's place, not the card. The box follows the card's heading, read
+     * against this form's own Type of Offense labels ("Dress Code Violation" is the Dress Code; "Attendance Policy" the
+     * Attendance), and Policy Violated is the card's own heading line with its page. A heading no label names (Late
+     * Opening) is left as the readers above set it.
+     */
+    if (loopCardHeading && !keeps("policy_violated")) {
+      const headingWords = new Set(loopCardHeading.toLowerCase().match(/[a-z0-9]+/g) ?? []);
+      const generic = new Set(["policy", "policies", "violation", "violations", "of", "the", "for", "and"]);
+      const options = groups.find((group) => group.key === "offense_type")?.options ?? [];
+      const box = options
+        .filter((option) => option.key !== "other")
+        .map((option) => ({ key: option.key, core: (option.label.toLowerCase().match(/[a-z0-9]+/g) ?? []).filter((word) => !generic.has(word)) }))
+        .filter((option) => option.core.length > 0 && option.core.every((word) => headingWords.has(word)))
+        .sort((a, b) => b.core.length - a.core.length)[0];
+      const cardLine = typeof body.cardPolicyLine === "string" ? body.cardPolicyLine.split(";")[0]!.trim().slice(0, 200) : "";
+      if (box) {
+        const keepOther = (draftedPayload.checked.offense_type ?? []).includes("other") && cardOther !== null;
+        draftedPayload.checked = { ...draftedPayload.checked, offense_type: [box.key, ...(keepOther ? ["other"] : [])] };
+        if (cardLine && fields.some((field) => field.key === "policy_violated")) {
+          draftedPayload.values = { ...draftedPayload.values, policy_violated: cardLine };
+        }
+      }
+    }
     // The citation line above is rebuilt from the cited sections; the card's Other goes back on it.
     if (cardOtherOnViolated && typeof draftedPayload.values.policy_violated === "string") {
       draftedPayload.values = { ...draftedPayload.values, policy_violated: cardOtherViolated(draftedPayload.values.policy_violated) };

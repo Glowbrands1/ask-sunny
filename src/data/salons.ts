@@ -67,7 +67,7 @@
  * retired file grouped the salons into invented districts — "District 1 —
  * Omaha & St Joseph", "District 2 — Lincoln & Central Nebraska" — that exist
  * nowhere in the reporting data. Production groups them by the manager who
- * runs them: Patterson, Dugan, Cotton. So a district-scoped account resolved
+ * runs them: Dugan, Cotton, Harrison (Patterson until 18 Nov 2026, now the region only). So a district-scoped account resolved
  * through a taxonomy that did not correspond to the business, and the salons it
  * would have admitted were not the salons that district contains. No live
  * account holds a district scope today, so nothing was mis-authorized — but
@@ -126,10 +126,11 @@ export interface ProductionDistrict extends ProductionArea {
 const PATTERSON = "Patterson, Madeline";
 const DUGAN = "Dugan, Rachael";
 const COTTON = "Cotton, Sarah";
+const HARRISON = "Harrison, Shelley";
 
-const DIST_PATTERSON = "dist-patterson-madeline";
 const DIST_DUGAN = "dist-dugan-rachael";
 const DIST_COTTON = "dist-cotton-sarah";
+const DIST_HARRISON = "dist-harrison-shelley";
 const REGION_PATTERSON = "reg-patterson-madeline";
 
 function salon(
@@ -153,7 +154,7 @@ function salon(
 
 /** The fifteen, in salon-number order, as reporting lists them. */
 export const PRODUCTION_SALONS: readonly ProductionSalon[] = [
-  salon("0306", "MO Kansas City Wornall", DIST_PATTERSON, PATTERSON),
+  salon("0306", "MO Kansas City Wornall", DIST_COTTON, COTTON),
   salon("0307", "NE Grand Island", DIST_DUGAN, DUGAN),
   salon("0309", "NE Kearney", DIST_DUGAN, DUGAN),
   salon("0310", "NE Lincoln 27th Street", DIST_DUGAN, DUGAN),
@@ -161,12 +162,12 @@ export const PRODUCTION_SALONS: readonly ProductionSalon[] = [
   salon("0312", "NE Lincoln Pine Lake", DIST_DUGAN, DUGAN),
   salon("0313", "NE Omaha 132nd and Maple", DIST_COTTON, COTTON),
   salon("0314", "NE Omaha 144th and Center", DIST_COTTON, COTTON),
-  salon("0394", "MO Kansas City Liberty", DIST_PATTERSON, PATTERSON),
+  salon("0394", "MO Kansas City Liberty", DIST_COTTON, COTTON),
   salon("0410", "NE Omaha Pacific", DIST_COTTON, COTTON),
   salon("0462", "KS Manhattan", DIST_DUGAN, DUGAN),
-  salon("0463", "KS Shawnee Mission Pkwy", DIST_PATTERSON, PATTERSON),
-  salon("0468", "KS Lawrence", DIST_PATTERSON, PATTERSON),
-  salon("0476", "KS Overland Park", DIST_PATTERSON, PATTERSON),
+  salon("0463", "KS Shawnee Mission Pkwy", DIST_HARRISON, HARRISON),
+  salon("0468", "KS Lawrence", DIST_HARRISON, HARRISON),
+  salon("0476", "KS Overland Park", DIST_HARRISON, HARRISON),
   salon("0495", "MO St Joseph", DIST_COTTON, COTTON),
 ];
 
@@ -178,7 +179,7 @@ export const PRODUCTION_SALONS: readonly ProductionSalon[] = [
 export const PRODUCTION_DISTRICTS: readonly ProductionDistrict[] = [
   { id: DIST_COTTON, name: COTTON, regionId: REGION_PATTERSON },
   { id: DIST_DUGAN, name: DUGAN, regionId: REGION_PATTERSON },
-  { id: DIST_PATTERSON, name: PATTERSON, regionId: REGION_PATTERSON },
+  { id: DIST_HARRISON, name: HARRISON, regionId: REGION_PATTERSON },
 ];
 
 export const PRODUCTION_REGIONS: readonly ProductionArea[] = [

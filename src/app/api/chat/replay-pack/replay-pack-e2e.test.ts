@@ -89,6 +89,8 @@ const state = vi.hoisted(() => ({
   manualVersionChecks: 0,
   /** The grounding block the answering model was last given (`lastGrounding`). */
   lastGrounding: "",
+  /** The FORMS ON FILE block the answering model was last given (`lastFormRecords`). */
+  lastFormRecords: "",
   /** What the slot model (record_intent_slots) reads this turn, when a case sets it — as a production trace shows. */
   slotsRead: {} as Record<string, unknown>,
   /** The employee the AI reader quotes this turn, when a case sets it (it is checked against the roster as in production). */
@@ -316,11 +318,12 @@ vi.mock("@/lib/ai/call-claude", () => ({
       usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 },
     };
   },
-  callClaude: async (input?: { system?: string; grounding?: string; formEditTool?: { data: string; onToolUse: (call: unknown) => void } | null }) => {
+  callClaude: async (input?: { system?: string; grounding?: string; formRecords?: string | null; formEditTool?: { data: string; onToolUse: (call: unknown) => void } | null }) => {
     /* PR 6: a model call made inside a loop tool counts toward the step limit, as the real call notes itself. */
     (await import("@/lib/ai/model-call-scope")).noteModelCall();
     state.chatModelCalls += 1;
     state.lastGrounding = String(input?.grounding ?? "");
+    state.lastFormRecords = String(input?.formRecords ?? "");
     // REPLAY_RECORD (QA, 10 Nov 2026): the system prompt each answer was asked with, as a hash, so two versions of the
     // prompt's assembly can be compared case by case (the stage-timing split of buildSystemPrompt's awaits).
     systemPrompts.texts.push(String(input?.system ?? ""));
@@ -821,6 +824,8 @@ function joinOverview() {
   for (const row of store.form_instances ?? []) {
     const template = store.form_templates!.find((entry) => entry.id === row.template_id);
     const version = store.form_template_versions.find((entry) => entry.id === row.template_version_id);
+    // A row a case puts on file directly (no template in the store) keeps the form it names.
+    if (!template && row.template_name) continue;
     Object.assign(row, { template_key: template?.key, template_name: template?.name, layout_family: template?.layout_family, template_version: version?.version });
   }
 }
@@ -846,6 +851,7 @@ beforeEach(async () => {
   state.manualReads = 0;
   state.manualVersionChecks = 0;
   state.lastGrounding = "";
+  state.lastFormRecords = "";
   state.readerEmployee = null;
   state.slotsOnlyIfSaid = false;
   state.remapObservation = null;
@@ -1034,6 +1040,7 @@ function context(): ReplayContext {
       state.fullManualLoads = true;
     },
     lastGrounding: () => state.lastGrounding,
+    lastFormRecords: () => state.lastFormRecords,
     manualAlsoHas: (chunks) => {
       state.manualExtra = [...chunks];
       // The slot reader's heading index is cached per scope: an earlier case's index would not have these passages.

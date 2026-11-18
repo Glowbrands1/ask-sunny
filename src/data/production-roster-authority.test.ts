@@ -95,10 +95,12 @@ describe("the production roster", () => {
      * Manager names, not invented geography. If reporting's `district_label`
      * changes, this is where it surfaces.
      */
+    // Changed on purpose (the owner, 18 Nov 2026): Patterson runs the region, and her five salons went to Cotton and
+    // Harrison, so Patterson is no longer a district (an empty one would authorize nothing).
     expect(PRODUCTION_DISTRICTS.map((d) => d.name).sort()).toEqual([
       "Cotton, Sarah",
       "Dugan, Rachael",
-      "Patterson, Madeline",
+      "Harrison, Shelley",
     ]);
     expect(PRODUCTION_REGIONS).toHaveLength(1);
 
@@ -125,12 +127,16 @@ describe("the production roster", () => {
       "NE Lincoln O Street",
       "NE Lincoln Pine Lake",
     ]);
-    expect(names("Patterson, Madeline")).toEqual([
-      "KS Lawrence",
-      "KS Overland Park",
-      "KS Shawnee Mission Pkwy",
+    // Changed on purpose (the owner, 18 Nov 2026): Liberty and Wornall moved to Cotton; Lawrence, Overland Park and Shawnee to Harrison.
+    expect(names("Patterson, Madeline")).toEqual([]);
+    expect(names("Harrison, Shelley")).toEqual(["KS Lawrence", "KS Overland Park", "KS Shawnee Mission Pkwy"]);
+    expect(names("Cotton, Sarah")).toEqual([
       "MO Kansas City Liberty",
       "MO Kansas City Wornall",
+      "MO St Joseph",
+      "NE Omaha 132nd and Maple",
+      "NE Omaha 144th and Center",
+      "NE Omaha Pacific",
     ]);
   });
 

@@ -28,6 +28,13 @@ export const DISTRICT_OVERRIDES: readonly DistrictOverride[] = [
     reportedLabel: "Patterson, Madeline",
     correctLabel: "Dugan, Rachael",
   },
+  // The DM L10 run-through (17 Nov 2026) and the owner, 18 Nov 2026: Liberty and Wornall are Sarah Cotton's; Lawrence,
+  // Overland Park and Shawnee are Shelley Harrison's district. The workbook still lists all five under Patterson.
+  { salonNumber: "0394", storeName: "MO Kansas City Liberty", reportedLabel: "Patterson, Madeline", correctLabel: "Cotton, Sarah" },
+  { salonNumber: "0306", storeName: "MO Kansas City Wornall", reportedLabel: "Patterson, Madeline", correctLabel: "Cotton, Sarah" },
+  { salonNumber: "0468", storeName: "KS Lawrence", reportedLabel: "Patterson, Madeline", correctLabel: "Harrison, Shelley" },
+  { salonNumber: "0476", storeName: "KS Overland Park", reportedLabel: "Patterson, Madeline", correctLabel: "Harrison, Shelley" },
+  { salonNumber: "0463", storeName: "KS Shawnee Mission Pkwy", reportedLabel: "Patterson, Madeline", correctLabel: "Harrison, Shelley" },
 ];
 
 function sameLabel(a: string, b: string): boolean {

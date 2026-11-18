@@ -57,6 +57,18 @@ function topicAfterName(clause: string, employeeName: string | null | undefined)
 /** What happened, in the manager's own words, short enough for a write-in; or null. */
 export function managerIssueWords(notes: string, employeeName?: string | null): string | null {
   const lines = (notes ?? "").split("\n").map((line) => line.trim()).filter(Boolean);
+  /*
+   * The topic the manager led into after the person's name ("Coaching for <name> on greeting guests at the door"), in any
+   * line, comes first: a loop card's account line ("What happened: <name> is not greeting guests …", which Create now
+   * drafts from) is the write-up, never the topic (QA, 18 Nov 2026).
+   */
+  for (const line of lines) {
+    if (FIELD_LINE.test(line) || /^what happened\s*:/i.test(line)) continue;
+    for (const part of line.split(/(?<=[.!?])\s+|[,;]\s+/)) {
+      const named = topicAfterName(part.trim().replace(/[.!?\s]+$/, ""), employeeName);
+      if (named) return named.length > LONGEST ? null : named;
+    }
+  }
   const stated = lines.find((line) => /^what happened\s*:/i.test(line));
   const source = stated ? [stated.replace(/^what happened\s*:\s*/i, "")] : lines.filter((line) => !FIELD_LINE.test(line));
   const skipQuestions = otherWriteInNotAQuestionEnabled();

@@ -8,7 +8,7 @@ import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 import { businessToday } from "@/lib/business-date";
 import { appConfig } from "./app-config";
 import { isoDate, monthDayToIso, readDates, sameDate, withoutDates } from "./dates";
-import { candidateNameWords, chatFormsActor } from "@/lib/forms/chat-form-records";
+import { candidateNameWords, chatFormsActor, formDateRangeFromInput, formKindFromText } from "@/lib/forms/chat-form-records";
 import { CURRENT_MESSAGE_ID, holdsPhrase, identifiedTurns, verifyEvidence, withoutMessageIdTags, type IdentifiedTurn } from "./evidence";
 import { answeredNameQuestions, answerNamesSomeoneElse, everKeptOrUsedTyped, isConfirmedSpelling, latestTurnAnswersFor, latestTurnConfirms, latestTurnKeepsOrUsesTyped, latestTurnKeepsTyped, spellingKeysConfirmedFor, spellingKeysConfirmedForName, type NameQuestionView } from "./confirmed-spelling";
 import { AFFIRMATIVE, displayName, editDistance, matchEmployeeName, nameConfirmationQuestion, readNameConfirmation, type RosterEmployee } from "@/lib/forms/employee-match";
@@ -1281,8 +1281,55 @@ export async function listStaffTool(context: ToolContext, effects: ToolEffects, 
 
 /* ---------------------------------------------------------- past forms --- */
 
-export async function findPastForms(context: ToolContext, input: { employee_name?: unknown; form?: unknown; date?: unknown; about?: unknown; forms_on_file_evidence?: unknown; open?: unknown }, effects?: ToolEffects): Promise<ToolResult> {
+/** A period list ("who got a CA this month?") reads every such form, up to this many. */
+const PERIOD_LIST_LIMIT = 100;
+
+/*
+ * "WHO GOT A CA THIS MONTH?" (the owner, 18 Nov 2026, on the sibling app: "why capped at 20"). With no employee, a form
+ * kind or a period lists every such form this manager may see, read by form date and form name in the query (not the
+ * newest rows filtered after), and says whether the list is complete or stopped at its cap.
+ */
+async function findFormsInPeriod(context: ToolContext, input: { form?: unknown; date_from?: unknown; date_to?: unknown; forms_on_file_evidence?: unknown }): Promise<ToolResult> {
+  const asked = formsOnFileAsked(context, input.forms_on_file_evidence);
+  if (!asked.ok) return privacyRefusal(asked.reason);
+  const today = context.today || businessToday();
+  const range = formDateRangeFromInput(input.date_from, input.date_to, today);
+  const kind = typeof input.form === "string" ? formKindFromText(input.form) : null;
+  if (!range && !kind) return { reason_code: "missing_input", error: "Give the employee's name, or the period (date_from, date_to) or kind of form asked about." };
+  const actor = await chatFormsActor(context.actor).catch(() => undefined);
+  if (actor === undefined) return { reason_code: "read_failed", error: "Form Monitoring could not be read just now. Say so; do not say there are no forms." };
+  if (actor === null) return { reason_code: "scope", error: "This manager's role cannot view Form Monitoring, so past forms cannot be listed." };
+  try {
+    const rows = visibleInstances(actor, await listInstances("all", PERIOD_LIST_LIMIT, {
+      ...instanceListFilterFor(actor),
+      ...(range ? { formDateFrom: range.from, formDateTo: range.to } : {}),
+      ...(kind ? { templateNameWords: kind.templateNameWords } : {}),
+    })).slice(0, PERIOD_LIST_LIMIT);
+    const complete = rows.length < PERIOD_LIST_LIMIT;
+    return {
+      period: range ? { from: range.from, to: range.to } : null,
+      form_kind: kind?.label ?? null,
+      forms: rows.map((row) => ({
+        instance_id: row.id,
+        form: row.templateName,
+        employee: row.employeeName,
+        status: row.status,
+        form_date: row.formDate,
+        salon: salonLabel(row.locationId, row.locationName) ?? `no ${locationWord()}`,
+      })),
+      complete,
+      note: complete
+        ? "Every such form this manager can see, read by form date: never say the list is capped or that some may be missing. A draft is not on file."
+        : `The list stops at ${PERIOD_LIST_LIMIT}; there may be more. Say so, and that Form Monitoring has the full list.`,
+    };
+  } catch {
+    return { reason_code: "read_failed", error: "Form Monitoring could not be read just now. Say so; do not say there are no forms." };
+  }
+}
+
+export async function findPastForms(context: ToolContext, input: { employee_name?: unknown; form?: unknown; date?: unknown; date_from?: unknown; date_to?: unknown; about?: unknown; forms_on_file_evidence?: unknown; open?: unknown }, effects?: ToolEffects): Promise<ToolResult> {
   const typed = typeof input.employee_name === "string" ? input.employee_name.trim() : "";
+  if (typed === "" && input.open !== true && (input.date_from || input.date_to || input.form)) return findFormsInPeriod(context, input);
   if (typed === "") return { reason_code: "missing_input", error: "Give the employee's name." };
   const asked = await formsOnFileAskedFor(context, input.forms_on_file_evidence, typed);
   if (!asked.ok) return privacyRefusal(asked.reason, asked.reasonCode);
@@ -1353,6 +1400,9 @@ export async function findPastForms(context: ToolContext, input: { employee_name
       });
       if (narrowed.length > 0) rows = narrowed;
     }
+    /* A period for this person ("Remy's CAs this month"): only the forms dated in it. */
+    const period = formDateRangeFromInput(input.date_from, input.date_to, today);
+    if (period) rows = rows.filter((row) => (row.formDate ?? "") >= period.from && (row.formDate ?? "") <= period.to);
     const about = typeof input.about === "string" ? words(input.about).filter((word) => word.length > 3) : [];
     if (about.length > 0 && rows.length > 1 && rows.length <= 8) {
       const scored = await Promise.all(rows.map(async (row) => {
@@ -1446,6 +1496,8 @@ export async function findPastForms(context: ToolContext, input: { employee_name
     }
     return {
       forms,
+      /* Never a silent cut ("why capped at 20", 18 Nov 2026): more than the 20 listed are on file for this person. */
+      ...(rows.length > forms.length ? { more_on_file: rows.length - forms.length, more_note: `${rows.length - forms.length} more forms are on file for this person than listed; say so, or narrow by form or dates.` } : {}),
       ...(withdrawn ? { card_withdrawn: `The ${withdrawn} card proposed earlier this turn was withdrawn: the manager asked to open a form on file, not to make one.` } : {}),
       ...(closeSpelling ? { close_spelling_of: { typed: untrusted(typed), on_file: closeSpelling } } : {}),
       ...(onScreenChoice ?? {}),

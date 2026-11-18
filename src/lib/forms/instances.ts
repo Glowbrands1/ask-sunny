@@ -225,6 +225,19 @@ export interface InstanceListFilter {
    * is dropped rather than escaped.
    */
   employeeNameWords?: string[];
+  /**
+   * Only rows whose form date (`form_date`) is on or after / on or before this
+   * day, as YYYY-MM-DD. Used by the AI's forms lookup so "who got a CA this
+   * month?" reads every form in the month rather than the newest `limit` rows
+   * and filtering after. Anything not shaped YYYY-MM-DD is ignored.
+   */
+  formDateFrom?: string;
+  formDateTo?: string;
+  /**
+   * Only rows whose form (template) name contains ANY of these words,
+   * case-insensitive ("corrective", "coach"). Letters only, as `employeeNameWords`.
+   */
+  templateNameWords?: string[];
 }
 
 export async function listInstances(
@@ -236,6 +249,11 @@ export async function listInstances(
 
   const nameWords = (filter?.employeeNameWords ?? []).filter((word) => /^[a-z]+$/i.test(word));
   if (filter?.employeeNameWords && nameWords.length === 0) return [];
+  const templateWords = (filter?.templateNameWords ?? []).filter((word) => /^[a-z]+$/i.test(word));
+  if (filter?.templateNameWords && templateWords.length === 0) return [];
+  const isoDay = (value: string | undefined) => (value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null);
+  const dateFrom = isoDay(filter?.formDateFrom);
+  const dateTo = isoDay(filter?.formDateTo);
 
   /** The view and name filters, applied identically to every read below. */
   function scoped() {
@@ -243,6 +261,11 @@ export async function listInstances(
     if (nameWords.length > 0) {
       query = query.or(nameWords.map((word) => `employee_name.ilike.*${word}*`).join(","));
     }
+    if (templateWords.length > 0) {
+      query = query.or(templateWords.map((word) => `template_name.ilike.*${word}*`).join(","));
+    }
+    if (dateFrom) query = query.gte("form_date", dateFrom);
+    if (dateTo) query = query.lte("form_date", dateTo);
     // `archived_at` is presentation, not status — see the migration. The active
     // list is the default because it is what somebody opening the screen wants.
     if (view === "active") return query.is("archived_at", null);
