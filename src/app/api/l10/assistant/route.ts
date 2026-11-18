@@ -44,7 +44,7 @@ export async function POST(req: Request) {
   const problem = attachmentProblem(messages, config.attachments);
   if (problem) return json(413, { error: "attachment", message: problem });
 
-  return streamHubAssistant({ config, messages, deep: body.deep === true, email: viewer.email, userId: viewer.userId, meetingKey: key, signal: req.signal });
+  return streamHubAssistant({ config, messages, deep: body.deep === true, email: viewer.email, userId: viewer.userId, meetingKey: key, signal: req.signal, viewer: { userId: viewer.userId, role: viewer.role, scope: viewer.scope } });
 }
 
 /** Whether the panel should show the chat. Returns no secrets. */
