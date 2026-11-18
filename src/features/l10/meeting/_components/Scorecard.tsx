@@ -14,6 +14,7 @@ const TONE: Record<CellTone, string> = {
   bad: "font-semibold text-red-700",
   near: "text-ink",
   good: "font-semibold text-green-700",
+  plain: "text-ink",
 };
 
 /** Bloom-style cells (the DM L10s): tinted green on goal, red off goal, and an empty box for a week not entered yet. */
@@ -23,6 +24,7 @@ const BLOOM_TONE: Record<CellTone, string> = {
   bad: "bg-[#fbe4e4] font-semibold text-[#8a1c1c]",
   near: "bg-[#fbe4e4] text-[#8a1c1c]",
   good: "bg-[#e1f1e4] font-semibold text-[#154a21]",
+  plain: "bg-white text-ink",
 };
 
 function Cell({ row, week, label, onCommit, bloom = false }: { row: ScorecardRow; week: number; label: string; onCommit: (v: number | null) => void; bloom?: boolean }) {
