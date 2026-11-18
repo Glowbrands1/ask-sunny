@@ -106,7 +106,7 @@ export function MeetingView({
   const advanced = useRef<Partial<Record<AgendaKey, boolean>>>({});
   const [notice, setNotice] = useState("");
   const people = roster.members.map((m) => m.name);
-  // Ask Sunny: the owner menus for to-dos and issues also list every DM-or-higher person from Woven (owners.server.ts).
+  // Ask Sunny: the owner menus for to-dos, issues and rocks also list every DM-or-higher person from Woven (owners.server.ts).
   const owners = ownerMenu(people, ownerPeople);
   // The agenda panel can be tucked away; the choice is remembered in this browser for this person.
   const [agendaHidden, setAgendaHidden] = useStoredFlag(`l10-agenda-hidden:${viewer.id}`);
@@ -565,7 +565,7 @@ export function MeetingView({
             {bloom && view === "conclude" && !timer.started && <LastMeetingConclusion last={last} />}
             {view === "business-best" && <BusinessBest attendees={attendees} onChange={(next) => edit((d) => ({ ...d, attendees: keepHiddenAttendees(d.attendees, next) }))} />}
             {view === "scorecard" && <Scorecard doc={doc} edit={edit} people={people} bloom={bloom} today={today} />}
-            {view === "rocks" && <Rocks rocks={doc.rocks} onChange={(rocks) => edit((d) => ({ ...d, rocks }))} people={people} today={today} saveStatus={statusText(status)} bloom={bloom} />}
+            {view === "rocks" && <Rocks rocks={doc.rocks} onChange={(rocks) => edit((d) => ({ ...d, rocks }))} people={people} ownerOptions={owners} today={today} saveStatus={statusText(status)} bloom={bloom} />}
             {view === "headlines" && <Headlines headlines={doc.headlines} onChange={(headlines) => edit((d) => ({ ...d, headlines }))} author={people[0] ?? ""} />}
             {view === "todos" && <Todos todos={doc.todos} onChange={(todos) => edit((d) => ({ ...d, todos }))} people={owners} today={today} bloom={bloom} />}
             {view === "ids" && <Ids doc={doc} edit={edit} session={timer.sessionId ?? "pending"} meetingKey={info.key} voter={{ id: viewer.id, name: viewer.name || viewer.label }} attendees={attendees} addedBy={myName} headlines={agenda.some((a) => a.key === "headlines")} bloom={bloom} people={owners} />}
