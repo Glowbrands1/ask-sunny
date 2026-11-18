@@ -1270,6 +1270,13 @@ describe("new flags default off and wrappers are inert", () => {
           // the person holds the meeting's role. No existing page, chat or form behaviour changes.
           ":(exclude)src/app/(app)/meetings",
           ":(exclude)src/features/l10",
+          // AI TRAINING tab (requested by Paulyne, 18 Nov 2026, both apps): the JBA AI Training app
+          // rebuilt as new pages and components, with its own tables and permission. No existing
+          // page, chat or form behaviour changes. navigation.ts gains its one sidebar entry.
+          ":(exclude)src/components/shell/navigation.ts",
+          ":(exclude)src/components/shell/navigation.test.ts",
+          ":(exclude)src/app/(app)/ai-training",
+          ":(exclude)src/features/ai-training",
           // Times shown in the business zone (CT) (Pau via QA, 15 Nov 2026: "The whole app and chat should be in CT"):
           // display formatting only, on purpose and not behind a flag; the stored values stay UTC.
           ":(exclude)src/features/admin/analytics/feedback-queue.tsx",
