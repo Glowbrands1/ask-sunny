@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils/cn";
 import { usePreference, writePreference } from "@/lib/utils/client-store";
 import { JumpToRow } from "./jump-to-row";
 import { SidebarNav } from "./sidebar";
+import { UpdateNotice } from "./update-notice";
 import { GlobalSearch } from "./global-search";
 
 const COLLAPSE_KEY = "ask-sunny:sidebar-collapsed";
@@ -146,6 +147,9 @@ export function AppShell({
         </div>
       </header>
       </div>
+
+      {/* Once-a-day "we're updating the chat" notice: dialog on desktop, banner on phones. */}
+      <UpdateNotice />
 
       {/*
         THE SHORTCUTS LIVE IN THE CHROME. All six already exist in the left
