@@ -58,7 +58,8 @@ export const NOV18_FORMS_ON_FILE_DATE_RANGE_CASES: ReplayCase[] = [
     id: "nov18-forms-on-file-date-range-who-got-a-ca-this-month",
     title: `"${QUESTION}" with 25 November CAs behind 20 newer coaching forms: the model is given every November CA, and told the list is complete`,
     report: REPORT,
-    status: { open: `${FLAG} is off in production: the question is not read as a forms question, or reads the newest 20 forms of every kind` },
+    // Fixed in production by FORMS_ON_FILE_DATE_RANGE_ENABLED (on in Vercel, 18 Nov 2026, the owner's request).
+    status: "fixed",
     fixFlags: [FLAG],
     async run(t) {
       vi.setSystemTime(new Date("2026-11-18T18:00:00Z"));
