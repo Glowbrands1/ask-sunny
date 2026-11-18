@@ -202,6 +202,22 @@ export function recordAssistantSpend(userId: string, call: TokenUsage | null, pe
   void persist({ source: "l10_assistant", userId, calls: [row] });
 }
 
+/**
+ * Why the model API refused a request (its own error message, e.g. "tools.5.custom.input_schema: …"), for the log: the
+ * position in the request, never its content. Quoted values are cut out and the text is capped.
+ */
+export function apiErrorReason(e: { message?: string; responseBody?: string } | null | undefined): string | null {
+  let text = "";
+  try {
+    const body = e?.responseBody ? (JSON.parse(e.responseBody) as { error?: { type?: string; message?: string } }) : null;
+    text = [body?.error?.type, body?.error?.message].filter(Boolean).join(": ");
+  } catch {
+    /* not JSON */
+  }
+  text ||= e?.message ?? "";
+  return text ? text.replace(/"[^"]*"|'[^']*'|`[^`]*`/g, "…").slice(0, 300) : null;
+}
+
 /** The usage of the steps that finished (for a stopped answer, whose total never arrives). */
 function sumSteps(steps: readonly { usage: LanguageModelUsage }[]): LanguageModelUsage | undefined {
   if (steps.length === 0) return undefined;
@@ -278,10 +294,10 @@ export async function streamHubAssistant(input: { config: HubAssistantConfig; me
     // Web results and cited pages show as sources under the answer, as in the Hub.
     sendSources: true,
     onError: (error) => {
-      const e = error as { name?: string; statusCode?: number };
+      const e = error as { name?: string; statusCode?: number; message?: string; responseBody?: string };
       // AI TIME LIMITS: a timeout gets its own log line (route, call, duration; no content).
       if (isTimeoutError(error) && !input.signal?.aborted) logAiTimeout(deep ? "l10_assistant_deep" : "l10_assistant", Date.now() - startedAt, L10_TOTAL_TIMEOUT_MS, "l10_assistant");
-      console.error("[l10-assistant] stream error", JSON.stringify({ name: e?.name ?? "unknown", status: e?.statusCode ?? null, deep }));
+      console.error("[l10-assistant] stream error", JSON.stringify({ name: e?.name ?? "unknown", status: e?.statusCode ?? null, deep, reason: apiErrorReason(e) }));
       return "The assistant could not answer just now. Please try again in a minute.";
     },
   });
