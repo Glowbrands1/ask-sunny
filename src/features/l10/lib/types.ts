@@ -101,6 +101,8 @@ export interface Issue {
   owner?: string;
   /** Flagged with the "!" priority mark (the Bloom-style meetings, 15 Nov 2026). */
   priority?: boolean;
+  /** When the "!" was set, so the marks show as 1, 2, 3 in the order picked (lib/priority.ts, 17 Nov 2026). */
+  priorityOrder?: number;
   resolvedSession?: string | null;
   /** Which IDS list an open issue sits on. Missing means "short" (every issue written before the split). */
   term?: IssueTerm;
