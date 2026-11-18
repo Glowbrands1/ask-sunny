@@ -20,8 +20,7 @@ import { usePreference, writePreference } from "@/lib/utils/client-store";
  * Desktop and tablet get a centred dialog. Phones (< 640px) get a slim banner
  * under the top bar instead — a modal on a phone covers the whole screen.
  *
- * Colours are the semantic tokens only, so Ask Bubbles shows it in its own
- * palette with no change here.
+ * Colours are the semantic tokens only, so it follows the app's own palette.
  */
 
 const KEY_PREFIX = "ask-sunny:update-notice-dismissed";
