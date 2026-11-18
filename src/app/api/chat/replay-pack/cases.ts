@@ -72,6 +72,16 @@ export interface ReplayContext {
   manualVersionChecks?(): number;
   /** The grounding block the answering model was given on its last answer. */
   lastGrounding?(): string;
+  /** The REPORT DATA block the answering model was last given (empty when none): Google reviews in chat, 18 Nov 2026. */
+  lastReportData?(): string;
+  /** The answering model's last system prompt (its report-figure rule): Google reviews in chat, 18 Nov 2026. */
+  lastSystem?(): string;
+  /**
+   * The Google Reviews page holds the harness's fixed figures for this case (every listing: 2 reviews this reporting
+   * week, both qualifying; 4 last week, 3 qualifying; week of Sun 15 Nov 2026). Without it the page's reads go to the
+   * fake database, which holds no review.
+   */
+  reviewsOnFile?(): void;
   /** The FORMS ON FILE block the answering model was last given (empty when none): FORMS_ON_FILE_DATE_RANGE, 18 Nov 2026. */
   lastFormRecords?(): string;
   /** What the revision model writes on the next revision. */

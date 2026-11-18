@@ -91,6 +91,11 @@ const state = vi.hoisted(() => ({
   lastGrounding: "",
   /** The FORMS ON FILE block the answering model was last given (`lastFormRecords`). */
   lastFormRecords: "",
+  /** The REPORT DATA and the system prompt the answering model was last given (`lastReportData`, `lastSystem`). */
+  lastReportData: "",
+  lastSystem: "",
+  /** `t.reviewsOnFile()`: the Google Reviews page holds the fixed figures below, this case only. */
+  reviewsOnFile: false,
   /** What the slot model (record_intent_slots) reads this turn, when a case sets it — as a production trace shows. */
   slotsRead: {} as Record<string, unknown>,
   /** The employee the AI reader quotes this turn, when a case sets it (it is checked against the roster as in production). */
@@ -318,12 +323,14 @@ vi.mock("@/lib/ai/call-claude", () => ({
       usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 },
     };
   },
-  callClaude: async (input?: { system?: string; grounding?: string; formRecords?: string | null; formEditTool?: { data: string; onToolUse: (call: unknown) => void } | null }) => {
+  callClaude: async (input?: { system?: string; grounding?: string; reportData?: string | null; formRecords?: string | null; formEditTool?: { data: string; onToolUse: (call: unknown) => void } | null }) => {
     /* PR 6: a model call made inside a loop tool counts toward the step limit, as the real call notes itself. */
     (await import("@/lib/ai/model-call-scope")).noteModelCall();
     state.chatModelCalls += 1;
     state.lastGrounding = String(input?.grounding ?? "");
     state.lastFormRecords = String(input?.formRecords ?? "");
+    state.lastReportData = String(input?.reportData ?? "");
+    state.lastSystem = String(input?.system ?? "");
     // REPLAY_RECORD (QA, 10 Nov 2026): the system prompt each answer was asked with, as a hash, so two versions of the
     // prompt's assembly can be compared case by case (the stage-timing split of buildSystemPrompt's awaits).
     systemPrompts.texts.push(String(input?.system ?? ""));
@@ -554,6 +561,51 @@ vi.mock("@/lib/knowledge", () => ({
 }));
 
 vi.mock("@/lib/reporting/read/report-briefing", () => ({ loadReportBriefing: async () => null }));
+
+/*
+ * THE GOOGLE REVIEWS PAGE'S READS (QA 18 Nov 2026, port from Ask Bubbles). Only for a case that calls
+ * `t.reviewsOnFile()`: fixed figures for the reporting week of Sun 15 Nov 2026, every listing: 2 reviews this week (both
+ * qualifying), 4 last week (3 qualifying), 6 qualifying month to date, average 4.6 of 40. Otherwise the real reads.
+ */
+vi.mock("@/lib/reviews/queries", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/reviews/queries")>();
+  const { goalContext } = await import("@/lib/reviews/goal");
+  const { GOOGLE_REVIEW_LOCATIONS } = await import("@/lib/reviews/store-codes");
+  return {
+    ...actual,
+    loadReviewsSnapshot: async (...args: Parameters<typeof actual.loadReviewsSnapshot>) =>
+      state.reviewsOnFile
+        ? ({
+            empty: false,
+            lastSyncAt: new Date().toISOString(),
+            goal: goalContext("2026-11-18", 10),
+            currentWeek: "2026-11-15",
+            previousWeek: "2026-11-08",
+            locations: GOOGLE_REVIEW_LOCATIONS.map((listing) => ({
+              storeCode: listing.storeCode,
+              locationName: listing.googleLabel,
+              district: null,
+              salonNumber: listing.salonNumber,
+              listingState: "verified",
+              anchorReviewId: `anchor-${listing.storeCode}`,
+              anchorReviewer: null,
+              historical: 0,
+              reviewsThisWeek: 2,
+              qualifyingThisWeek: 2,
+              lastWeek: 4,
+              qualifyingLastWeek: 3,
+              qualifyingMonthToDate: 6,
+              unanswered: 0,
+              criticalOpen: 0,
+              averageRating: 4.6,
+              total: 40,
+            })),
+          } as unknown as Awaited<ReturnType<typeof actual.loadReviewsSnapshot>>)
+        : actual.loadReviewsSnapshot(...args),
+    loadReviewFeed: async (...args: Parameters<typeof actual.loadReviewFeed>) =>
+      state.reviewsOnFile ? { reviews: [], total: 0, truncated: false } : actual.loadReviewFeed(...args),
+  };
+});
 vi.mock("@/lib/reporting/read/employee-facts", () => ({
   loadEmployeeFacts: async () => null,
   NO_EMPLOYEE_DATA_REASON: "no dataset",
@@ -852,6 +904,9 @@ beforeEach(async () => {
   state.manualVersionChecks = 0;
   state.lastGrounding = "";
   state.lastFormRecords = "";
+  state.lastReportData = "";
+  state.lastSystem = "";
+  state.reviewsOnFile = false;
   state.readerEmployee = null;
   state.slotsOnlyIfSaid = false;
   state.remapObservation = null;
@@ -1041,6 +1096,11 @@ function context(): ReplayContext {
     },
     lastGrounding: () => state.lastGrounding,
     lastFormRecords: () => state.lastFormRecords,
+    lastReportData: () => state.lastReportData,
+    lastSystem: () => state.lastSystem,
+    reviewsOnFile: () => {
+      state.reviewsOnFile = true;
+    },
     manualAlsoHas: (chunks) => {
       state.manualExtra = [...chunks];
       // The slot reader's heading index is cached per scope: an earlier case's index would not have these passages.
