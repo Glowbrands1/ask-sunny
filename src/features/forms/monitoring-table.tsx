@@ -48,6 +48,7 @@ import { cn } from "@/lib/utils/cn";
 import { formatDate } from "@/lib/utils/date";
 import { downloadFormPdf, formsFetch } from "./forms-fetch";
 import { RegisterRowActions } from "@/form-revisions/register-row-actions";
+import { MONITORING_PAGE_SIZE, nextShowCount } from "@/lib/forms/monitoring-page-size";
 
 /**
  * FORM MONITORING — the system of record, and the screen follow-ups are worked
@@ -159,6 +160,8 @@ export function MonitoringTable({
   today,
   attention,
   demo,
+  showCount = MONITORING_PAGE_SIZE,
+  hasMore = false,
 }: {
   forms: MonitoredForm[];
   notice: string | null;
@@ -188,6 +191,8 @@ export function MonitoringTable({
    * the moment somebody switches to Archived.
    */
   demo: { deletable: number; protected: number };
+  showCount?: number;
+  hasMore?: boolean;
 }) {
   const [templateName, setTemplateName] = React.useState<string>("all");
   const [downloading, setDownloading] = React.useState<string | null>(null);
@@ -364,12 +369,14 @@ export function MonitoringTable({
    * linked to — which is what lets the Overview send somebody straight to
    * `?followup=overdue`.
    */
-  function go(next: { view?: MonitoringView; followUp?: FollowUpFilter }) {
+  function go(next: { view?: MonitoringView; followUp?: FollowUpFilter; show?: number }) {
     const params = new URLSearchParams();
     const nextView = next.view ?? view;
     const nextFollowUp = next.followUp ?? followUp;
+    const nextShow = next.show ?? (next.view && next.view !== view ? MONITORING_PAGE_SIZE : showCount);
     if (nextView !== "active") params.set("view", nextView);
     if (nextFollowUp !== "all") params.set("followup", nextFollowUp);
+    if (nextShow > MONITORING_PAGE_SIZE) params.set("show", String(nextShow));
     const query = params.toString();
     router.push(query ? `/forms/monitoring?${query}` : "/forms/monitoring");
   }
@@ -489,6 +496,7 @@ export function MonitoringTable({
             </Select>
             <p className="ml-auto text-[12px] text-muted-foreground">
               {shown.length} form{shown.length === 1 ? "" : "s"}
+              {hasMore ? ` · newest ${forms.length} loaded` : ""}
             </p>
             {/*
               * The sweep only appears when there is something for it to do, and
@@ -763,6 +771,14 @@ export function MonitoringTable({
           </CardContent>
         </Card>
       )}
+
+      {hasMore && nextShowCount(showCount) !== null ? (
+        <div className="flex justify-center">
+          <Button variant="secondary" onClick={() => go({ show: nextShowCount(showCount) ?? showCount })}>
+            Load more forms
+          </Button>
+        </div>
+      ) : null}
 
       {/*
         * THE CONFIRMATION NAMES THE RECORD.

@@ -896,6 +896,30 @@ const MONITORING_MOUNT = [
    */
   "-                            {mayManage || mayTrack ? (",
   "+                            {mayManage || (form.followedUpAt && mayTrack) ? (",
+  /*
+   * Requested by Paulyne, 18 Nov 2026, both apps, no flag: "Load more forms".
+   * The page read the newest 200 forms and stopped, so older ones (overdue
+   * follow-ups the Overview still listed) could not be found here. The count
+   * rides in the URL (`?show=`), see src/lib/forms/monitoring-page-size.ts.
+   */
+  "+import { MONITORING_PAGE_SIZE, nextShowCount } from \"@/lib/forms/monitoring-page-size\";",
+  "+  showCount = MONITORING_PAGE_SIZE,",
+  "+  hasMore = false,",
+  "+  showCount?: number;",
+  "+  hasMore?: boolean;",
+  "-  function go(next: { view?: MonitoringView; followUp?: FollowUpFilter }) {",
+  "+  function go(next: { view?: MonitoringView; followUp?: FollowUpFilter; show?: number }) {",
+  "+    const nextShow = next.show ?? (next.view && next.view !== view ? MONITORING_PAGE_SIZE : showCount);",
+  "+    if (nextShow > MONITORING_PAGE_SIZE) params.set(\"show\", String(nextShow));",
+  "+              {hasMore ? ` \u00b7 newest ${forms.length} loaded` : \"\"}",
+  "+      {hasMore && nextShowCount(showCount) !== null ? (",
+  "+        <div className=\"flex justify-center\">",
+  "+          <Button variant=\"secondary\" onClick={() => go({ show: nextShowCount(showCount) ?? showCount })}>",
+  "+            Load more forms",
+  "+          </Button>",
+  "+        </div>",
+  "+      ) : null}",
+  "+",
 ];
 
 /*

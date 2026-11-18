@@ -113,6 +113,8 @@ function table(
     view?: "active" | "archived" | "all";
     attention?: { overdue: number; dueThisWeek: number; needsAttention: number };
     demo?: { deletable: number; protected: number };
+    showCount?: number;
+    hasMore?: boolean;
   } = {},
 ) {
   return render(
@@ -124,6 +126,8 @@ function table(
       today={TODAY}
       attention={options.attention ?? NO_ATTENTION}
       demo={options.demo ?? { deletable: 0, protected: 0 }}
+      showCount={options.showCount}
+      hasMore={options.hasMore}
     />,
   );
 }
@@ -643,5 +647,29 @@ describe("the row menu \"…\" opens with something in it", () => {
     await userEvent.click(rowFor("Done One").ui.getByRole("button", { name: "More actions for Done One" }));
     const items = await screen.findAllByRole("menuitem");
     expect(items.map((item) => item.textContent)).toEqual(["Reopen follow-up"]);
+  });
+});
+
+/*
+ * Reported 18 Nov 2026: test forms listed as overdue on the Overview could not
+ * be found in Form Monitoring ("doesnt show in my form registry"). The page
+ * loaded the newest 200 forms and stopped; those forms had ~500 newer ones.
+ */
+describe("Load more", () => {
+  it("is offered when the server holds more forms, and asks for the next page in the URL", async () => {
+    table([form()], { hasMore: true });
+    await userEvent.click(screen.getByRole("button", { name: "Load more forms" }));
+    expect(navigated.pushes.at(-1)).toBe("/forms/monitoring?show=400");
+  });
+
+  it("keeps the filters and adds a page to what is already loaded", async () => {
+    table([form()], { hasMore: true, showCount: 400, followUp: "overdue", view: "all" });
+    await userEvent.click(screen.getByRole("button", { name: "Load more forms" }));
+    expect(navigated.pushes.at(-1)).toBe("/forms/monitoring?view=all&followup=overdue&show=600");
+  });
+
+  it("is not offered when every form is already loaded", () => {
+    table([form()], { hasMore: false });
+    expect(screen.queryByRole("button", { name: "Load more forms" })).toBeNull();
   });
 });
