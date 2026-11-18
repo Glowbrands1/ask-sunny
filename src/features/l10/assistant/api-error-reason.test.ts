@@ -16,3 +16,21 @@ describe("apiErrorReason", () => {
     expect(apiErrorReason(null)).toBeNull();
   });
 });
+
+// 18 Nov 2026, the screenshot: after one failed answer, "hello" and "hi" failed too. The failed reply was saved with a
+// lookup that never finished, and the whole chat was sent back with it. Unfinished lookups are left out now.
+describe("modelMessages", () => {
+  it("leaves out a lookup that never finished, and keeps the rest of the chat", async () => {
+    const { modelMessages } = await import("./assistant.server");
+    const chat = [
+      { id: "1", role: "user", parts: [{ type: "text", text: "how is Kearney doing this month" }] },
+      { id: "2", role: "assistant", parts: [{ type: "tool-read_stats", toolCallId: "t1", state: "input-available", input: { report: "comp", salon: "Kearney" } }] },
+      { id: "3", role: "user", parts: [{ type: "text", text: "hi" }] },
+    ];
+    const out = await modelMessages(chat as never);
+    const json = JSON.stringify(out);
+    expect(json).not.toContain("tool-call");
+    expect(json).toContain("how is Kearney doing this month");
+    expect(json).toContain('"hi"');
+  });
+});
