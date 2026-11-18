@@ -10,7 +10,7 @@ const cx = (...classes: (string | false | null | undefined)[]) => classes.filter
 import { PrintButton } from "@/features/l10/meeting/_components/PrintButton";
 import { readDoc } from "@/features/l10/lib/doc";
 import type { CellTone } from "@/features/l10/lib/doc";
-import { hasReference, isMeetingKey } from "@/features/l10/lib/config";
+import { hasReference, hasRocks, isMeetingKey } from "@/features/l10/lib/config";
 import { listRecaps, openMeeting } from "@/features/l10/data.server";
 import { L10Frame } from "@/features/l10/L10Frame";
 import { requireAuthenticatedPage } from "@/lib/auth/page";
@@ -259,6 +259,8 @@ async function Report({ meetingKey: key, mine }: { meetingKey: string; mine: Awa
         </nav>
       </section>
 
+      {/* The STC SD L10s run without rocks, so their reports have no Goals page (lib/config.ts hasRocks). */}
+      {hasRocks(key) && (
       <Sheet id="goals" title="Goals" subtitle={subtitle}>
         <p className="m-0 text-sm font-semibold" data-testid="rocks-done">
           {fromTracker
@@ -286,8 +288,9 @@ async function Report({ meetingKey: key, mine }: { meetingKey: string; mine: Awa
           ))}
         </div>
       </Sheet>
+      )}
 
-      {/* The STC DM L10 has no Reference views, so its report has no Business Plan or org chart (lib/config.ts hasReference). */}
+      {/* The STC DM and SD L10s have no Reference views, so their reports have no Business Plan or org chart (lib/config.ts hasReference). */}
       {hasReference(key) && (
         <>
       <Sheet id="business-plan" title="Business Plan" subtitle={subtitle}>

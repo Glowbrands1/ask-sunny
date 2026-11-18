@@ -502,7 +502,7 @@ function Chat({ meetingKey, scope, deep, onDeepChange }: { meetingKey: string; s
             )}
           </div>
         </form>
-        <p className="m-0 px-1 text-center text-[11px] text-muted">Can&apos;t change data. Reads this meeting from the Leadership Hub. Check important answers.</p>
+        <p className="m-0 px-1 text-center text-[11px] text-muted">Can&apos;t change data. Reads this meeting from the Leadership Hub, and your Ask Sunny reports, Google reviews and forms on file. Check important answers.</p>
       </div>
     </div>
     </ChatPeople>

@@ -6,6 +6,7 @@ import { Button, cx, inputClass } from "@/features/l10/ui/ui";
 import { inWeek, initials, ownerColor, weekBounds, weekRange } from "@/features/l10/lib/bloom";
 import { addWeek, cellTone, formatValue, newestFirst, newItemId, parseCell, setCell, shortDate, type CellTone } from "@/features/l10/lib/doc";
 import type { MeetingDoc, MetricFormat, ScorecardRow } from "@/features/l10/lib/types";
+import { SD_SALON_METRICS } from "@/features/l10/lib/config";
 
 const TONE: Record<CellTone, string> = {
   empty: "text-muted",
@@ -74,7 +75,13 @@ export function Scorecard({
   today = "",
   wide,
   onWide,
+  salons = [],
 }: {
+  /**
+   * Ask Sunny: the salons on this meeting's per-salon scorecard (the STC SD L10s: config.ts SD_DISTRICT_SALONS). With
+   * any, the page offers "Set up the salon scorecard", and the table lists each salon with its DM.
+   */
+  salons?: readonly { number: string; name: string }[];
   doc: MeetingDoc;
   edit: (fn: (d: MeetingDoc) => MeetingDoc) => void;
   people: string[];
@@ -96,6 +103,7 @@ export function Scorecard({
    * (the owner, 18 Nov 2026: "make this collapasable"; the same request as the sibling app's).
    */
   const [adding, setAdding] = useState(false);
+  const missingSalons = salons.filter((s) => !doc.scorecard.some((r) => r.salon === s.name));
 
   const addMetric = () => {
     if (!metric.trim()) return;
@@ -179,6 +187,9 @@ export function Scorecard({
         </div>
       )}
       {/* Bloom-style: the form opens above the table when "Add metric" is pressed. */}
+      {bloom && missingSalons.length > 0 && (
+        <SalonSetup salons={missingSalons} people={people} onAdd={(rows) => edit((d) => ({ ...d, scorecard: [...d.scorecard, ...rows.map((r): ScorecardRow => ({ ...r, weeks: d.weekEndings.map(() => null) }))] }))} />
+      )}
       {bloom && adding && <div id="add-metric-form">{form}</div>}
       {doc.scorecard.length > 0 && bloom ? (
         <BloomTable doc={doc} edit={edit} order={order} today={today} />
@@ -244,8 +255,10 @@ const bloomHead = "bg-ink text-xs font-bold tracking-[0.06em] text-white";
  * week shaded. Rows are grouped by owner with a gap between groups; older weeks scroll sideways. Same cells, same saves.
  */
 function BloomTable({ doc, edit, order, today }: { doc: MeetingDoc; edit: (fn: (d: MeetingDoc) => MeetingDoc) => void; order: number[]; today: string }) {
+  // Grouped by owner; a salon's metrics (the STC SD L10s) group under the salon instead, headed by its name and DM.
   const groups = new Map<string, ScorecardRow[]>();
-  for (const r of doc.scorecard) groups.set(r.owner, [...(groups.get(r.owner) ?? []), r]);
+  const groupOf = (r: ScorecardRow) => (typeof r.salon === "string" && r.salon ? `salon:${r.salon}` : r.owner);
+  for (const r of doc.scorecard) groups.set(groupOf(r), [...(groups.get(groupOf(r)) ?? []), r]);
   const current = (i: number) => inWeek(doc.weekEndings[i], today);
   return (
     <div className="overflow-x-auto rounded-[10px] border border-line bg-white shadow-card" data-testid="bloom-scorecard">
@@ -283,8 +296,19 @@ function BloomTable({ doc, edit, order, today }: { doc: MeetingDoc; edit: (fn: (
             ))}
           </tr>
         </thead>
-        {[...groups].map(([owner, rows]) => (
-          <tbody key={owner} aria-label={`${owner}'s metrics`} className="border-t-[10px] border-cream first-of-type:border-t-0">
+        {[...groups].map(([group, rows]) => {
+          const salon = rows[0].salon;
+          const owner = rows[0].owner;
+          return (
+          <tbody key={group} aria-label={salon ? `${salon} (${owner})` : `${owner}'s metrics`} className="border-t-[10px] border-cream first-of-type:border-t-0">
+            {salon && (
+              <tr data-salon-row className="bg-cream/70">
+                <th scope="rowgroup" colSpan={3 + order.length} className="px-3 py-1.5 text-left text-sm">
+                  <span className="sticky left-3 font-bold">{salon}</span>
+                  <span className="sticky left-3 font-normal text-muted"> · DM: {owner}</span>
+                </th>
+              </tr>
+            )}
             {rows.map((r) => (
               <tr key={r.id} data-owner-row={ownerColor(owner)} className="border-t border-rule">
                 <td className="sticky left-0 z-10 bg-white px-3 py-2">
@@ -316,8 +340,61 @@ function BloomTable({ doc, edit, order, today }: { doc: MeetingDoc; edit: (fn: (
               </tr>
             ))}
           </tbody>
-        ))}
+          );
+        })}
       </table>
     </div>
+  );
+}
+
+/**
+ * Ask Sunny: "Set up the salon scorecard" on an STC SD L10 (17 Nov 2026: "list each store individually with its assigned
+ * DM"; the metrics "YOY Revenue, Club Close, PPTA, Spa per Unique, SMS Opt-in %"). Pick the DM, type each metric's goal
+ * once, tick the salons: each ticked salon gets the five metrics, owned by that DM. Shown while a salon of the
+ * district has no metrics yet; Add metric and the ✕ on each row work as for any metric.
+ */
+function SalonSetup({ salons, people, onAdd }: { salons: readonly { number: string; name: string }[]; people: string[]; onAdd: (rows: ScorecardRow[]) => void }) {
+  const [dm, setDm] = useState(people[0] ?? "");
+  const [goals, setGoals] = useState<Record<string, string>>({});
+  const [picked, setPicked] = useState<Record<string, boolean>>({});
+  const chosen = salons.filter((s) => picked[s.number] !== false);
+  const add = () => {
+    const rows: ScorecardRow[] = [];
+    for (const s of chosen)
+      for (const m of SD_SALON_METRICS) {
+        const typed = (goals[m.metric] ?? "").trim();
+        const goalValue = Number(typed.replace(/[^0-9.-]/g, "")) || 0;
+        rows.push({ id: newItemId(), metric: m.metric, owner: dm, goal: typed || "—", goalValue, higherIsBetter: true, format: m.format, weeks: [], salon: s.name });
+      }
+    if (rows.length) onAdd(rows);
+  };
+  return (
+    <section aria-label="Set up the salon scorecard" className="flex flex-col gap-3 rounded-[10px] border border-dashed border-line bg-cream/60 p-3 print:hidden" data-testid="salon-setup">
+      <div className="text-xs font-bold text-muted">Set up the salon scorecard: each salon with its DM and the five metrics</div>
+      <div className="flex flex-wrap items-center gap-2">
+        <select aria-label="DM for these salons" value={dm} onChange={(e) => setDm(e.target.value)} className={cx(inputClass, "w-48")}>
+          {people.map((p) => (
+            <option key={p}>{p}</option>
+          ))}
+        </select>
+        {SD_SALON_METRICS.map((m) => (
+          <input key={m.metric} aria-label={`Goal for ${m.metric}`} value={goals[m.metric] ?? ""} onChange={(e) => setGoals((g) => ({ ...g, [m.metric]: e.target.value }))} placeholder={`${m.metric} goal`} className={cx(inputClass, "w-40")} />
+        ))}
+      </div>
+      <fieldset className="m-0 flex flex-wrap gap-x-4 gap-y-1 border-0 p-0">
+        <legend className="sr-only">Salons</legend>
+        {salons.map((s) => (
+          <label key={s.number} className="flex min-h-9 items-center gap-1.5 text-sm">
+            <input type="checkbox" checked={picked[s.number] !== false} onChange={(e) => setPicked((p) => ({ ...p, [s.number]: e.target.checked }))} />
+            {s.name}
+          </label>
+        ))}
+      </fieldset>
+      <div>
+        <Button variant="primary" disabled={!chosen.length || !dm} onClick={add}>
+          {`Add ${chosen.length} salon${chosen.length === 1 ? "" : "s"}`}
+        </Button>
+      </div>
+    </section>
   );
 }

@@ -74,3 +74,15 @@ document as `meetingHistory` (the Hub keeps unknown fields). Times are Central. 
 Copy this folder, the `(app)/meetings` routes, `/api/l10/assistant` and the sidebar wiring; set `PARTNER_ID` to
 `"ask-bubbles"` and `L10_TAB_LABELS` for `bcs-dm` / `bcs-gm`; add those keys to the Hub's `l10.partner_meetings`.
 See `docs/parity-log/2026-11-13-dm-l10-tab-leadership-hub.md`.
+
+## The STC SD L10s (17 Nov 2026)
+
+Three district meeting spaces, `stc-sd-one`, `stc-sd-two` and `stc-sd-three` (`lib/config.ts` `STC_SD_KEYS`): each its own Hub
+meeting, so each has its own attendees, scorecard, to-dos, IDS list and meeting history. Bloom-style, no rocks, no
+Reference views, agenda Segue · Scorecard · To-dos · IDS · Conclude (`NO_ROCKS_AGENDA`, used until the Hub serves its own).
+The scorecard lists each salon of the district (`SD_DISTRICT_SALONS`, by salon number) with its DM and the five metrics
+(`SD_SALON_METRICS`): "Set up the salon scorecard" on the Scorecard page adds them, with the goals typed once.
+
+Which DM hosts which district, and every person in it, is the Hub's (its meeting names and roles): this repository is
+public. A tab shows once the Hub has the meeting and the allowlist row `('ask-sunny', 'stc-sd-…')`; its label is the
+Hub's name for the meeting.

@@ -1,3 +1,4 @@
+import type { AccessScope, Role } from "@/types";
 import "server-only";
 
 import { pageAuthorizationEnforced, pageIdentity } from "@/lib/auth/page";
@@ -42,7 +43,9 @@ export interface L10Viewer {
   displayName: string;
   /** Ask Sunny's own user id and role, for its spend guard (never sent to the Hub). */
   userId: string;
-  role: string;
+  role: Role;
+  /** Ask Sunny's own salon access, for the assistant's report and review reads (never sent to the Hub). */
+  scope: AccessScope;
 }
 
 /** The signed-in person, only when their identity is verified (never in demo mode or without the partner secret). */
@@ -52,7 +55,7 @@ export async function l10Viewer(): Promise<L10Viewer | null> {
     if (!pageAuthorizationEnforced()) return null;
     const identity = await pageIdentity();
     if (!identity?.verified || !identity.email) return null;
-    return { email: identity.email, displayName: identity.displayName, userId: identity.subject, role: identity.role };
+    return { email: identity.email, displayName: identity.displayName, userId: identity.subject, role: identity.role, scope: identity.scope };
   } catch {
     return null;
   }
@@ -79,6 +82,7 @@ export async function listMyMeetings(): Promise<MeetingInfo[]> {
 }
 
 /** Ask Sunny's name for each meeting's tab. */
+/** The STC SD L10s (stc-sd-one, -two, -three) have no entry: their tabs carry the Hub's name for each district's meeting. */
 export const L10_TAB_LABELS: Record<string, string> = { "stc-dm": "DM L10" };
 
 export interface L10Tab {

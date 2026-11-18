@@ -135,6 +135,7 @@ export function Ids({
   attendees = [],
   addedBy = "",
   headlines = true,
+  rocks = true,
   bloom = false,
   people = [],
 }: {
@@ -150,6 +151,8 @@ export function Ids({
   addedBy?: string;
   /** Whether the meeting's agenda has a Headlines section; without one, an issue cannot be converted into a headline. */
   headlines?: boolean;
+  /** Whether the meeting's agenda has a Rocks section (not the SD L10s); without one, no "Convert to Rock". */
+  rocks?: boolean;
   /**
    * Laid out like Bloom Growth's Issues page (the DM L10s; the owner's request, 15 Nov 2026): an owner picker when
    * adding, a "!" priority mark and the owner's initials on each row, and an Oldest / Newest sort.
@@ -226,9 +229,12 @@ export function Ids({
         <Button variant="outline" onClick={() => edit((d) => ({ ...d, todos: [...d.todos, { id: newItemId(), text: active.title, owner: "—", due: "Next wk", done: false } as Todo] }))}>
           To-Do
         </Button>
-        <Button variant="outline" onClick={() => edit((d) => ({ ...d, rocks: [...d.rocks, { id: newItemId(), title: active.title, owner: "Company", status: "on-track", milestones: [] } as Rock] }))}>
-          Rock
-        </Button>
+        {/* Only where the meeting has a Rocks section (not the SD L10s): it would land in a hidden list. */}
+        {rocks && (
+          <Button variant="outline" onClick={() => edit((d) => ({ ...d, rocks: [...d.rocks, { id: newItemId(), title: active.title, owner: "Company", status: "on-track", milestones: [] } as Rock] }))}>
+            Rock
+          </Button>
+        )}
         {/* Only where the meeting has a Headlines section (not the STC DM or Leadership L10): it would land in a hidden list. */}
         {headlines && (
           <Button variant="outline" onClick={() => edit((d) => ({ ...d, headlines: [...d.headlines, { id: newItemId(), kind: "customer", text: active.title, author: "IDS" } as Headline] }))}>

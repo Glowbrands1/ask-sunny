@@ -4,8 +4,8 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Button, ButtonLink, Card, Modal, cx } from "@/features/l10/ui/ui";
-import { agendaFromRoster, bloomStyle, cadenceLabel, hintsFromRoster, referenceFromRoster, segueName, type AgendaKey, type MeetingKey, type Roster } from "@/features/l10/lib/config";
-import { buildRecap, effectiveAttendees, keepHiddenAttendees, markRecapped, newItemId } from "@/features/l10/lib/doc";
+import { agendaFromRoster, salonsFor, bloomStyle, cadenceLabel, hintsFromRoster, referenceFromRoster, segueName, type AgendaKey, type MeetingKey, type Roster } from "@/features/l10/lib/config";
+import { buildRecap, effectiveAttendees, keepHiddenAttendees, markRecapped, newItemId, ratingAttendees } from "@/features/l10/lib/doc";
 import { elapsedSeconds, emptyTimer, endedTimer, formatClock, pausedTimer, plannedSeconds, isReferenceView, readTimer, resumedTimer, startMeeting, type View } from "@/features/l10/lib/timer";
 import type { LoadedMeeting, MeetingInfo, RecapRow } from "@/features/l10/lib/types";
 import { pastMeetings } from "@/features/l10/lib/past";
@@ -121,6 +121,10 @@ export function MeetingView({
   const isLeader = !!timer.leader && timer.leader === viewer.id;
   /** The signed-in person's full name (from the meeting's people), saved on each issue they add. */
   const myName = (mentionPeople.find((p) => p.id === viewer.id)?.name ?? viewer.name ?? "").trim();
+  // Only a person the Hub lists for this meeting (by their sign-in id), with their full name, gets a rating row of their own.
+  const meListed = (mentionPeople.find((p) => p.id === viewer.id)?.name ?? "").trim();
+  /** Who rates the meeting at Conclude: the attendees, plus the signed-in person if they are not listed (see ratingAttendees). */
+  const raters = ratingAttendees(attendees, doc.attendees ?? [], meListed);
   const live = timer.started && !timer.ended;
   // The first render uses the server's render time (the same number on the server and in the browser), so the clock
   // text the server sent matches what the browser renders first (no hydration mismatch); it catches up right after.
@@ -265,7 +269,7 @@ export function MeetingView({
       }
       const sessionKey = timer.sessionId ?? "pending";
       const id = timer.sessionId ?? new Date(serverNow()).toISOString();
-      const res = await endFn(info.key, buildRecap(doc, attendees, sessionKey, id, elapsed));
+      const res = await endFn(info.key, buildRecap(doc, raters, sessionKey, id, elapsed));
       if (!res.ok) {
         setEndError(res.message);
         return false;
@@ -569,18 +573,26 @@ export function MeetingView({
             {bloom && view === "business-best" && <SegueQuestion value={typeof doc.segueQuestion === "string" ? doc.segueQuestion : ""} onChange={(v) => edit((d) => ({ ...d, segueQuestion: v }))} saveStatus={readOnly ? undefined : statusText(status)} />}
             {bloom && view === "conclude" && !timer.started && <LastMeetingConclusion last={last} />}
             {view === "business-best" && <BusinessBest attendees={attendees} onChange={(next) => edit((d) => ({ ...d, attendees: keepHiddenAttendees(d.attendees, next) }))} />}
-            {view === "scorecard" && <Scorecard doc={doc} edit={edit} people={people} bloom={bloom} today={today} {...(bloom ? { wide: scorecardWide, onWide: setScorecardWide } : {})} />}
+            {view === "scorecard" && <Scorecard doc={doc} edit={edit} people={people} bloom={bloom} today={today} {...(bloom ? { wide: scorecardWide, onWide: setScorecardWide } : {})} salons={salonsFor(key)} />}
             {view === "rocks" && <Rocks rocks={doc.rocks} onChange={(rocks) => edit((d) => ({ ...d, rocks }))} people={people} ownerOptions={owners} today={today} saveStatus={statusText(status)} bloom={bloom} />}
             {view === "headlines" && <Headlines headlines={doc.headlines} onChange={(headlines) => edit((d) => ({ ...d, headlines }))} author={people[0] ?? ""} />}
             {view === "todos" && <Todos todos={doc.todos} onChange={(todos) => edit((d) => ({ ...d, todos }))} people={owners} today={today} bloom={bloom} />}
-            {view === "ids" && <Ids doc={doc} edit={edit} session={timer.sessionId ?? "pending"} meetingKey={info.key} voter={{ id: viewer.id, name: viewer.name || viewer.label }} attendees={attendees} addedBy={myName} headlines={agenda.some((a) => a.key === "headlines")} bloom={bloom} people={owners} />}
+            {view === "ids" && <Ids doc={doc} edit={edit} session={timer.sessionId ?? "pending"} meetingKey={info.key} voter={{ id: viewer.id, name: viewer.name || viewer.label }} attendees={attendees} addedBy={myName} headlines={agenda.some((a) => a.key === "headlines")} rocks={agenda.some((a) => a.key === "rocks")} bloom={bloom} people={owners} />}
             {view === "conclude" && !(bloom && !timer.started) && (
               <Conclude
                 meetingKey={info.key}
                 doc={doc}
-                attendees={attendees}
+                attendees={raters}
+                me={meListed || myName}
                 edit={edit}
-                onRate={(id, rating) => edit((d) => ({ ...d, attendees: keepHiddenAttendees(d.attendees, attendees.map((a) => (a.id === id ? { ...a, rating } : a))) }))}
+                // Only the row pressed changes (read from the latest document, so two people rating at once both keep theirs).
+                onRate={(id, rating) =>
+                  edit((d) => {
+                    const rows = ratingAttendees(effectiveAttendees(roster, d.attendees ?? []), d.attendees ?? [], meListed);
+                    const row = rows.find((a) => a.id === id);
+                    return row ? { ...d, attendees: keepHiddenAttendees(d.attendees ?? [], rows.map((a) => (a.id === id ? { ...a, rating } : a))) } : d;
+                  })
+                }
                 end={endFn}
                 flushNow={flushNow}
                 sessionKey={timer.sessionId ?? "pending"}

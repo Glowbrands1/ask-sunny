@@ -19,6 +19,8 @@ export interface ScorecardRow {
   format: MetricFormat;
   bidirectional?: boolean;
   weeks: (number | null)[];
+  /** Ask Sunny: the salon this metric is for, on the STC SD L10s' per-salon scorecard (17 Nov 2026). The Hub keeps it. */
+  salon?: string;
   [extra: string]: unknown;
 }
 

@@ -2,7 +2,7 @@
 import { cellTone, displayName, formatDuration, formatHeld, formatValue, rockSections, shortDate, type CellTone } from "./doc";
 import { childrenOf, readSeats, type Seat } from "./seats";
 import type { Issue, MeetingDoc, RecapRow, Rock, ScorecardRow, Vto } from "./types";
-import { hasReference, type Roster } from "./config";
+import { hasReference, hasRocks, type Roster } from "./config";
 import { rockGroups, rockScore, type Status as TStatus, type TRock, type TrackerV2 } from "@/features/l10/lib/tracker/v2";
 
 /**
@@ -300,8 +300,9 @@ export function trackerGoals(t: TrackerV2, quarter: string): (GoalsSection & { p
 
 /** The report's sections in order for one meeting. */
 export function reportSections(key: string): { id: string; title: string }[] {
-  // A meeting without the Reference views (the STC DM L10) prints no Business Plan or Organizational Chart either.
-  const own = MEETING_SECTIONS.filter((s) => hasReference(key) || (s.id !== "business-plan" && s.id !== "org-chart"));
+  // A meeting without the Reference views (the STC DM and SD L10s) prints no Business Plan or Organizational Chart
+  // either; one without rocks (the STC SD L10s) prints no Goals page.
+  const own = MEETING_SECTIONS.filter((s) => (hasReference(key) || (s.id !== "business-plan" && s.id !== "org-chart")) && (hasRocks(key) || s.id !== "goals"));
   return [...own, ...(hasCompanyPages(key) ? NOT_TRACKED.map((t) => ({ id: t.id, title: t.title })) : [])];
 }
 

@@ -54,6 +54,19 @@ export function keepHiddenAttendees(saved: Attendee[], shown: Attendee[]): Atten
   return [...shown, ...saved.filter((a) => !names.has(a.name))];
 }
 
+/**
+ * Ask Sunny and Ask Bubbles: the people who rate the meeting at Conclude. Everyone shown on the segue list, plus the
+ * signed-in person when they are not on it (someone in the meeting who is not on the Hub's display list), so every
+ * attendee can submit their own rating (the DM L10 run-through, 17 Nov 2026: "Make sure every meeting attendee can
+ * submit their own meeting rating"). Their row keeps whatever they saved before (matched by name).
+ */
+export function ratingAttendees(shown: Attendee[], saved: Attendee[], me: string): Attendee[] {
+  const name = me.trim();
+  if (!name || shown.some((a) => a.name.trim().toLowerCase() === name.toLowerCase())) return shown;
+  const was = saved.find((a) => a.name.trim().toLowerCase() === name.toLowerCase());
+  return [...shown, was ?? { id: `att-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`, name, role: "", shared: false, rating: null }];
+}
+
 /* ── Scorecard ──────────────────────────────────────────────────────────── */
 
 /** Newest week first, as indexes into `weeks`. */

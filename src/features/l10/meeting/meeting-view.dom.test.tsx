@@ -813,3 +813,101 @@ describe("Scorecard Full width (port from Ask Bubbles)", () => {
     window.localStorage.clear();
   });
 });
+
+// The DM L10 run-through (17 Nov 2026), in its words: "Conclude: Make sure every meeting attendee can submit their own
+// meeting rating."
+describe("Conclude: every meeting attendee can submit their own meeting rating", () => {
+  const timer = { started: true, running: true, startedAt: Date.now(), leader: "hub-user-2", leaderLabel: "Bo", sessionId: "s9" };
+  const attendees = [
+    { id: "att-avery", name: "Avery Quill", role: "Visionary", shared: true, rating: null },
+    { id: "att-bo", name: "Bo Lark", role: "Integrator", shared: true, rating: 8 },
+    { id: "att-cy", name: "Cy Marlow", role: "", shared: true, rating: null },
+  ];
+  const lastSaved = (save: ReturnType<typeof vi.fn>) => (save.mock.calls.at(-1)![2] as { attendees: { name: string; rating: number | null }[] }).attendees;
+
+  it("an attendee on the list sees their own row first, marked (you), and saves their own rating", async () => {
+    const save = vi.fn().mockResolvedValue({ ok: true, version: 4, updatedAt: "2026-11-17T00:00:00Z" } satisfies SaveOutcome);
+    renderView({ save: save as unknown as SaveFn, mentionPeople: [{ id: "hub-user-1", name: "Avery Quill" }, { id: "hub-user-2", name: "Bo Lark" }], initial: loaded(3, { attendees, timer }) });
+    fireEvent.click(within(screen.getByRole("region", { name: "Agenda" })).getByRole("button", { name: /Conclude/ }));
+    const groups = within(screen.getByRole("region", { name: "Ratings" })).getAllByRole("group");
+    expect(groups[0].getAttribute("aria-label")).toBe("Rating for Avery Quill");
+    expect(screen.getByText("(you)")).toBeTruthy();
+    expect(screen.getByTestId("ratings-waiting").textContent).toBe("Not rated yet: Avery Quill, Cy Marlow");
+    fireEvent.click(screen.getByRole("button", { name: "Avery Quill: 9" }));
+    await waitFor(() => expect(save).toHaveBeenCalled());
+    expect(lastSaved(save)).toEqual(expect.arrayContaining([expect.objectContaining({ name: "Avery Quill", rating: 9 }), expect.objectContaining({ name: "Bo Lark", rating: 8 })]));
+    expect(screen.getByTestId("ratings-waiting").textContent).toBe("Not rated yet: Cy Marlow");
+  });
+
+  it("someone in the meeting who is not on the attendee list still gets a row and can rate", async () => {
+    const save = vi.fn().mockResolvedValue({ ok: true, version: 4, updatedAt: "2026-11-17T00:00:00Z" } satisfies SaveOutcome);
+    renderView({ save: save as unknown as SaveFn, mentionPeople: [{ id: "hub-user-1", name: "Dana Fenn" }, { id: "hub-user-2", name: "Bo Lark" }], initial: loaded(3, { attendees, timer }) });
+    fireEvent.click(within(screen.getByRole("region", { name: "Agenda" })).getByRole("button", { name: /Conclude/ }));
+    expect(within(screen.getByRole("region", { name: "Ratings" })).getAllByRole("group")[0].getAttribute("aria-label")).toBe("Rating for Dana Fenn");
+    fireEvent.click(screen.getByRole("button", { name: "Dana Fenn: 10" }));
+    await waitFor(() => expect(save).toHaveBeenCalled());
+    expect(lastSaved(save)).toEqual(expect.arrayContaining([expect.objectContaining({ name: "Dana Fenn", rating: 10 }), expect.objectContaining({ name: "Bo Lark", rating: 8 })]));
+    expect(screen.getByRole("button", { name: "Dana Fenn: 10" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByTestId("rating-average").textContent).toBe("9.0");
+  });
+});
+
+// 17 Nov 2026: "SD L10 in Ask Sunny ... We don't use rocks at the GM/SD level, so the agenda for both should be:
+// 1. Segue 2. Scorecard 3. To-dos 4. IDS 5. Conclude" and "Ask Sunny will need three separate district meeting spaces".
+// "On the STC SD scorecard, please list each store individually with its assigned DM" with the metrics "YOY Revenue,
+// Club Close, PPTA, Spa per Unique, SMS Opt-in %".
+describe("the STC SD L10s", () => {
+  const sd = (key: string): MeetingInfo => ({ key, name: "STC SD L10", team: "STC Salon Directors", cadence: "Thursdays · 90 min", description: "" });
+  const view = (key: string, save = vi.fn() as unknown as SaveFn, doc: Record<string, unknown> = {}) =>
+    render(<MeetingView info={sd(key)} initial={loaded(3, { weekEndings: ["11/08/2026", "11/15/2026"], ...doc })} save={save} end={vi.fn() as unknown as EndFn} viewer={viewer} roster={roster} hubMeetingUrl={HUB} pollMs={0} debounceMs={0} today="2026-11-17" dateLabel="Tue, Nov 17" />);
+
+  it("three district meetings, each Segue, Scorecard, To-dos, IDS, Conclude, Bloom-style, without Rocks or the Reference views", async () => {
+    const { MEETING_KEYS, STC_SD_KEYS } = await import("@/features/l10/lib/config");
+    expect(STC_SD_KEYS).toEqual(["stc-sd-one", "stc-sd-two", "stc-sd-three"]);
+    for (const key of STC_SD_KEYS) expect(MEETING_KEYS).toContain(key);
+    view("stc-sd-two", vi.fn() as unknown as SaveFn, { issues: [{ id: "i1", title: "Short on staff", notes: "", resolved: false }] });
+    const items = within(screen.getByRole("region", { name: "Agenda" })).getAllByRole("listitem").map((li) => li.textContent);
+    expect(items).toEqual(["1 · Segue5m", "2 · Scorecard5m", "3 · To-dos5m", "4 · IDS60m", "5 · Conclude5m"]);
+    expect(document.body.textContent).toContain("Thursdays · 80 min");
+    expect(screen.queryByRole("button", { name: "Business Plan" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /4 · IDS/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Short on staff", expanded: false }));
+    expect(within(screen.getByRole("region", { name: "Issue detail" })).queryByRole("button", { name: "Rock" })).toBeNull();
+    const { reportSections } = await import("@/features/l10/lib/report");
+    expect(reportSections("stc-sd-one").map((s) => s.title)).toEqual(["Issues", "Metrics", "Meeting Recaps"]);
+  });
+
+  it("sets up the salon scorecard: each salon of the district with its DM and the five metrics, listed salon by salon", async () => {
+    const save = vi.fn().mockResolvedValue({ ok: true, version: 4, updatedAt: "2026-11-17T00:00:00Z" } satisfies SaveOutcome);
+    view("stc-sd-three", save as unknown as SaveFn);
+    fireEvent.click(within(screen.getByRole("region", { name: "Agenda" })).getByRole("button", { name: /Scorecard/ }));
+    const setup = within(screen.getByRole("region", { name: "Set up the salon scorecard" }));
+    expect(setup.getAllByRole("checkbox").map((c) => c.parentElement?.textContent)).toEqual(["Lawrence", "Overland Park", "Shawnee"]);
+    fireEvent.change(setup.getByLabelText("DM for these salons"), { target: { value: "Bo Lark" } });
+    fireEvent.change(setup.getByLabelText("Goal for Club Close"), { target: { value: "≥ 30%" } });
+    fireEvent.click(setup.getByRole("checkbox", { name: "Shawnee" }));
+    fireEvent.click(setup.getByRole("button", { name: "Add 2 salons" }));
+
+    const table = within(screen.getByTestId("bloom-scorecard"));
+    expect(table.getAllByRole("rowgroup").filter((g) => g.tagName === "TBODY").map((g) => g.getAttribute("aria-label"))).toEqual(["Lawrence (Bo Lark)", "Overland Park (Bo Lark)"]);
+    const lawrence = within(table.getByRole("rowgroup", { name: "Lawrence (Bo Lark)" }));
+    expect(lawrence.getByRole("rowheader", { name: /Lawrence/ }).textContent).toBe("Lawrence · DM: Bo Lark");
+    expect(lawrence.getAllByRole("row").slice(1).map((r) => r.querySelectorAll("td")[1]?.textContent?.replace("✕", "").trim())).toEqual(["YOY Revenue", "Club Close", "PPTA", "Spa per Unique", "SMS Opt-in %"]);
+    // Shawnee was left out, so the set-up stays for it.
+    expect(within(screen.getByRole("region", { name: "Set up the salon scorecard" })).getAllByRole("checkbox").map((c) => c.parentElement?.textContent)).toEqual(["Shawnee"]);
+
+    await waitFor(() => expect(save).toHaveBeenCalled());
+    const rows = (save.mock.calls.at(-1)![2] as { scorecard: { metric: string; owner: string; salon?: string; goal: string; goalValue: number; format: string; weeks: unknown[] }[] }).scorecard;
+    expect(rows).toHaveLength(10);
+    expect(rows.find((r) => r.salon === "Overland Park" && r.metric === "Club Close")).toMatchObject({ owner: "Bo Lark", goal: "≥ 30%", goalValue: 30, format: "percent", weeks: [null, null] });
+  });
+
+  it("each district lists only its own salons", async () => {
+    const { SD_DISTRICT_SALONS } = await import("@/features/l10/lib/config");
+    expect(SD_DISTRICT_SALONS["stc-sd-one"].map((s) => s.name)).toEqual(["Manhattan", "Lincoln O Street", "Lincoln 27th", "Lincoln Pine Lake", "Grand Island", "Kearney"]);
+    expect(SD_DISTRICT_SALONS["stc-sd-two"].map((s) => s.name)).toEqual(["Omaha Maple", "Omaha Center", "Omaha Pacific", "St. Joseph", "Liberty", "Wornall"]);
+    expect(SD_DISTRICT_SALONS["stc-sd-three"].map((s) => s.name)).toEqual(["Lawrence", "Overland Park", "Shawnee"]);
+    const { salonByNumber } = await import("@/data/salons");
+    for (const list of Object.values(SD_DISTRICT_SALONS)) for (const s of list) expect(salonByNumber(s.number)).toBeTruthy();
+  });
+});

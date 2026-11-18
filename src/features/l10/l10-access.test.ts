@@ -105,6 +105,20 @@ describe("the DM L10 tab", () => {
     expect(await l10TabsForLayout()).toEqual([{ key: "stc-dm", href: "/meetings/stc-dm", label: "DM L10" }]);
   });
 
+  // 17 Nov 2026: "Ask Sunny will need three separate district meeting spaces". Each is its own Hub meeting; its tab
+  // carries the Hub's name for it (this public repository has no names), and a person sees only the districts the Hub
+  // lists them on.
+  it("an SD L10 shows as its own tab with the Hub's name; a district the Hub does not list does not show", async () => {
+    signedIn();
+    const SD = { ...STC, key: "stc-sd-two", name: "SD L10 · District 2", team: "STC Salon Directors" };
+    hub.answer = () => ({ status: 200, body: { user_id: "h1", name: "Avery Quill", meetings: [STC, SD, { ...SD, key: "stc-sd-nine" }] } });
+    const { l10TabsForLayout } = await import("./data.server");
+    expect(await l10TabsForLayout()).toEqual([
+      { key: "stc-dm", href: "/meetings/stc-dm", label: "DM L10" },
+      { key: "stc-sd-two", href: "/meetings/stc-sd-two", label: "SD L10 · District 2" },
+    ]);
+  });
+
   it("does not show for a person the Hub does not list (not an attendee, or no Hub account)", async () => {
     signedIn("not.attending@example.test");
     hub.answer = () => ({ status: 200, body: { user_id: null, name: null, meetings: [] } });
