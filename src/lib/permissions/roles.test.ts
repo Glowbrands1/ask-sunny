@@ -33,11 +33,18 @@ import type { Permission, Role } from "@/types";
  * away from every manager — a regression wearing a security fix's clothes.
  */
 
-/** Exactly what the brief specifies an Employee may do. Nothing else. */
-const EMPLOYEE_ALLOWED: Permission[] = ["ask_questions", "view_knowledge", "view_videos"];
+/**
+ * Exactly what the brief specifies an Employee may do. Nothing else.
+ *
+ * `view_ai_training` joined on purpose (Nov 2026): the JBA AI Training program
+ * moved into this app and is for every member of staff. It reads lessons and
+ * submits the reader's own responses; editing the program stays with the admin
+ * console roles.
+ */
+const EMPLOYEE_ALLOWED: Permission[] = ["ask_questions", "view_knowledge", "view_videos", "view_ai_training"];
 
 describe("the Employee role", () => {
-  it("holds exactly the three capabilities it is specified to hold", () => {
+  it("holds exactly the four capabilities it is specified to hold", () => {
     expect([...DEFAULT_PERMISSION_MATRIX.employee].sort()).toEqual([...EMPLOYEE_ALLOWED].sort());
   });
 

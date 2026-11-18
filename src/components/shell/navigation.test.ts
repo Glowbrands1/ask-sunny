@@ -239,7 +239,7 @@ describe("what each role sees on the rail", () => {
     }
   });
 
-  it("shows an Employee exactly Ask Sunny and Videos", () => {
+  it("shows an Employee exactly Ask Sunny, Videos and AI Training", () => {
     /*
      * KNOWLEDGE BASE IS GONE FROM HERE, and that is the change rather than a
      * regression. The rail entry opens the corpus's MANAGEMENT screen — the
@@ -251,7 +251,8 @@ describe("what each role sees on the rail", () => {
      * opens the document behind one at `/knowledge/document/[id]`. That route
      * has no rail entry because nobody navigates to it — a citation does.
      */
-    expect(labelsFor("employee").sort()).toEqual(["Ask Sunny", "Videos"].sort());
+    // AI TRAINING (Nov 2026) is the staff AI training program, for every role.
+    expect(labelsFor("employee").sort()).toEqual(["AI TRAINING", "Ask Sunny", "Videos"].sort());
   });
 
   it("hides the Knowledge Base entry from every role below the admin console", () => {
@@ -391,6 +392,7 @@ describe("what each role sees on the rail", () => {
       "/chat": "src/app/(app)/chat/page.tsx",
       "/knowledge": "src/app/(app)/knowledge/page.tsx",
       "/videos": "src/app/(app)/videos/page.tsx",
+      "/ai-training": "src/app/(app)/ai-training/page.tsx",
       "/resources": "src/app/(app)/resources/page.tsx",
       "/reviews": "src/app/(app)/reviews/page.tsx",
       "/forms/monitoring": "src/app/(app)/forms/monitoring/page.tsx",

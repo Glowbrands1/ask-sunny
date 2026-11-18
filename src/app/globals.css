@@ -1685,3 +1685,84 @@
     border-color: var(--color-line) !important;
   }
 }
+
+/*
+ * AI TRAINING — lesson and page text (`features/ai-training/training-markdown.tsx`).
+ *
+ * The lessons were written in Notion and use its callout colours to mark kinds
+ * of box (🎓 goals, 💡 tips, 🔒 privacy…). The tints are Notion's own pastel
+ * shades, kept so an imported lesson reads the way its author laid it out. They
+ * are scoped to `.training-callout-*` and mean nothing anywhere else.
+ */
+:root {
+  --training-callout-gray: #f1f1ef;
+  --training-callout-brown: #f4eeee;
+  --training-callout-orange: #fbecdd;
+  --training-callout-yellow: #fbf3db;
+  --training-callout-green: #edf3ec;
+  --training-callout-blue: #e7f3f8;
+  --training-callout-purple: #f6f3f9;
+  --training-callout-pink: #faf1f5;
+  --training-callout-red: #fdebec;
+}
+
+@layer components {
+  .training-prose {
+    max-width: 48rem;
+    color: var(--body-foreground);
+    font-size: 15px;
+    line-height: 1.7;
+  }
+  .training-prose p { margin: 0.6rem 0; }
+  .training-prose .training-h1,
+  .training-prose .training-h2,
+  .training-prose .training-h3 {
+    color: var(--foreground);
+    font-weight: 700;
+    line-height: 1.25;
+  }
+  .training-prose .training-h1 { font-size: 1.6rem; margin: 1.6rem 0 0.7rem; }
+  .training-prose .training-h2 { font-size: 1.3rem; margin: 1.4rem 0 0.5rem; }
+  .training-prose .training-h3 { font-size: 1.1rem; margin: 1.2rem 0 0.4rem; }
+  .training-prose ul { list-style: disc; padding-left: 1.5rem; margin: 0.5rem 0; }
+  .training-prose ol { list-style: decimal; padding-left: 1.5rem; margin: 0.5rem 0; }
+  .training-prose li { margin: 0.2rem 0; }
+  .training-prose blockquote {
+    border-left: 3px solid var(--border-strong);
+    padding-left: 1rem;
+    color: var(--muted-foreground);
+    font-style: italic;
+  }
+  .training-prose code {
+    background: var(--surface-muted);
+    padding: 0.1rem 0.35rem;
+    border-radius: 4px;
+    font-size: 0.9em;
+  }
+  .training-prose pre code { background: transparent; padding: 0; }
+  .training-prose hr { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
+  .training-prose a { color: var(--foreground); text-decoration: underline; text-underline-offset: 3px; }
+  .training-prose table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .training-prose th,
+  .training-prose td { border: 1px solid var(--border); padding: 0.5rem 0.75rem; text-align: left; vertical-align: top; }
+  .training-prose th { background: var(--surface-muted); font-weight: 600; }
+  .training-callout {
+    display: flex;
+    gap: 0.75rem;
+    margin: 1.25rem 0;
+    border-radius: var(--radius-md);
+    padding: 1rem 1.25rem;
+    color: var(--foreground);
+  }
+  .training-callout > div > :first-child { margin-top: 0; }
+  .training-callout > div > :last-child { margin-bottom: 0; }
+  .training-callout-gray { background: var(--training-callout-gray); }
+  .training-callout-brown { background: var(--training-callout-brown); }
+  .training-callout-orange { background: var(--training-callout-orange); }
+  .training-callout-yellow { background: var(--training-callout-yellow); }
+  .training-callout-green { background: var(--training-callout-green); }
+  .training-callout-blue { background: var(--training-callout-blue); }
+  .training-callout-purple { background: var(--training-callout-purple); }
+  .training-callout-pink { background: var(--training-callout-pink); }
+  .training-callout-red { background: var(--training-callout-red); }
+}

@@ -163,6 +163,12 @@ export type Permission =
   | "view_forms_workspace"
   | "view_videos"
   | "manage_videos"
+  /**
+   * OPEN AI TRAINING — the JBA AI Training program's lessons, policy and best
+   * practices, and submitting a response to a lesson. Every role holds it;
+   * EDITING the program is the admin console roles' (`ADMIN_CONSOLE_ROLES`).
+   */
+  | "view_ai_training"
   | "view_reports"
   | "view_google_reviews"
   | "manage_knowledge"

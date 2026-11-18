@@ -84,6 +84,7 @@ export const PERMISSIONS: Permission[] = [
   "manage_form_records",
   "view_videos",
   "manage_videos",
+  "view_ai_training",
   "view_knowledge",
   "view_forms_workspace",
   "view_manager_resources",
@@ -133,6 +134,7 @@ export const PERMISSION_LABEL: Record<Permission, string> = {
   manage_form_templates: "Manage form templates",
   manage_form_records: "Delete and archive filed forms",
   view_videos: "View training videos",
+  view_ai_training: "Open AI Training",
   manage_videos: "Manage training videos",
   view_reports: "View reports & analytics",
   view_google_reviews: "View Google reviews",
@@ -165,6 +167,7 @@ export const PERMISSION_GROUP: Record<Permission, string> = {
   manage_form_templates: "Forms",
   manage_form_records: "Forms",
   view_videos: "Knowledge",
+  view_ai_training: "Knowledge",
   manage_videos: "Knowledge",
   manage_knowledge: "Knowledge",
   view_ai_usage: "Administration",
@@ -190,6 +193,8 @@ const EMPLOYEE_PERMISSIONS: Permission[] = [
   "ask_questions",
   "view_knowledge",
   "view_videos",
+  // AI Training is for every member of staff, frontline included.
+  "view_ai_training",
 ];
 
 const SALON_DIRECTOR_PERMISSIONS: Permission[] = [
@@ -238,6 +243,7 @@ const SALON_DIRECTOR_PERMISSIONS: Permission[] = [
   "create_employment_change_form",
   "view_form_monitoring",
   "view_videos",
+  "view_ai_training",
   "view_reports",
   "view_google_reviews",
 ];
@@ -290,6 +296,7 @@ export const DEFAULT_PERMISSION_MATRIX: PermissionMatrix = {
         ? []
         : (["view_form_monitoring"] as Permission[])),
     "view_videos",
+    "view_ai_training",
     "view_google_reviews",
     // Previously reachable, so still reachable — see SALON_DIRECTOR_PERMISSIONS.
     "view_overview",

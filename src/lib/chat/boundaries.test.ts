@@ -155,8 +155,11 @@ describe("the permission model is unchanged", () => {
      * 26 -> 27 is `create_employment_change_form`, which gates the Demotion
      * and Position Transfer forms. It is granted to the roles that already
      * file Corrective Action Forms and reads no conversation.
+     *
+     * 27 -> 28 is `view_ai_training`, the JBA AI Training program's lessons
+     * and lesson submissions. It reads no chat history and opens no chat route.
      */
-    expect(PERMISSIONS).toHaveLength(27);
+    expect(PERMISSIONS).toHaveLength(28);
   });
 
   it("still has exactly the eight roles it had", () => {
