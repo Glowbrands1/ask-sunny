@@ -1328,7 +1328,7 @@ function chatHalf(half: 0 | 1): string[] {
   return half === 0 ? all.slice(0, middle) : all.slice(middle);
 }
 /*
- * THE REPLAY PACK IN SIXTHS (QA, 9 Nov 2026 in halves; thirds 12 Nov; quarters 13 Nov; fifths 15 Nov 2026, "QA 15 Nov:
+ * THE REPLAY PACK IN EIGHTHS (QA, 9 Nov 2026 in halves; thirds 12 Nov; quarters 13 Nov; fifths 15 Nov 2026, "QA 15 Nov:
  * quarter 2 passed 9 min after batch G's cases", ETIMEDOUT at 540 s on ask-sunny#1011; sixths 16 Nov 2026: fifth 4 of 5
  * timed out at 540 s on ask-sunny#1056 after #1054's and #1056's cases, ETIMEDOUT, no assertion failed): its child timed out at
  * 540 s on CI (ask-sunny#713, #717; main 7e8dcdb6 with halves; ask-sunny#839 with thirds, its first third at 540 s;
@@ -1336,7 +1336,10 @@ function chatHalf(half: 0 | 1): string[] {
  * it is split by case, not by file: six children run that file with one sixth of the cases each (`REPLAY_PACK_PART`
  * "i/6", interleaved by id so the heavy cases spread out), and one child runs the pack's other test files (a few
  * seconds). Every case and every file still runs exactly once, with every new flag off. No timeout is raised.
+ * Eighths since 18 Nov 2026: sixth 6 of 6 timed out at 540 s on main 063fd1a (after #1094) and on ask-sunny#1099, twice,
+ * ETIMEDOUT, no assertion failed; the passing run before it (main d2e0d78) already took about 9 of its 10 minutes.
  */
+const REPLAY_PACK_PARTS = 8;
 const REPLAY_PACK_E2E = `${REPLAY_PACK}/replay-pack-e2e.test.ts`;
 /** The pack's own test files besides the e2e (registry, policy-line, step-b-live-check, …): one child, a few seconds. */
 function replayPackOtherFiles(): string[] {
@@ -1351,12 +1354,11 @@ const CHILDREN: readonly { readonly name: string; readonly paths: () => readonly
   { name: `${CHAT} (without the replay pack), second half by name`, paths: () => chatHalf(1) },
   { name: "src/app/api/forms", paths: () => ["src/app/api/forms"] },
   { name: `${REPLAY_PACK}, its test files other than the e2e`, paths: () => replayPackOtherFiles() },
-  { name: `${REPLAY_PACK}, the cases in sixth 1 of 6`, paths: () => [REPLAY_PACK_E2E], env: { REPLAY_PACK_PART: "0/6" } },
-  { name: `${REPLAY_PACK}, the cases in sixth 2 of 6`, paths: () => [REPLAY_PACK_E2E], env: { REPLAY_PACK_PART: "1/6" } },
-  { name: `${REPLAY_PACK}, the cases in sixth 3 of 6`, paths: () => [REPLAY_PACK_E2E], env: { REPLAY_PACK_PART: "2/6" } },
-  { name: `${REPLAY_PACK}, the cases in sixth 4 of 6`, paths: () => [REPLAY_PACK_E2E], env: { REPLAY_PACK_PART: "3/6" } },
-  { name: `${REPLAY_PACK}, the cases in sixth 5 of 6`, paths: () => [REPLAY_PACK_E2E], env: { REPLAY_PACK_PART: "4/6" } },
-  { name: `${REPLAY_PACK}, the cases in sixth 6 of 6`, paths: () => [REPLAY_PACK_E2E], env: { REPLAY_PACK_PART: "5/6" } },
+  ...Array.from({ length: REPLAY_PACK_PARTS }, (_part, i) => ({
+    name: `${REPLAY_PACK}, the cases in eighth ${i + 1} of ${REPLAY_PACK_PARTS}`,
+    paths: () => [REPLAY_PACK_E2E],
+    env: { REPLAY_PACK_PART: `${i}/${REPLAY_PACK_PARTS}` },
+  })),
 ];
 
 /*
