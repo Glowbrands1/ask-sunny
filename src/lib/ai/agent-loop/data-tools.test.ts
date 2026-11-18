@@ -114,6 +114,16 @@ describe("read_reviews", () => {
     expect(shown).not.toContain("0306");
   });
 
+  it('port from Ask Bubbles (QA, 18 Nov 2026): "How many Google reviews did we get this week?" — this reporting week and last, every rating and qualifying, per salon and together, with the weeks named', async () => {
+    const { deps: d } = deps({ loadReviewsSnapshot: async () => ({ ...SNAPSHOT, currentWeek: "2026-11-08", previousWeek: "2026-11-01" }) as ReviewsSnapshot });
+    const result = await readReviews(ctx(MANAGER, "How many Google reviews did we get this week?"), {}, d);
+    const salons = result.salons as Record<string, unknown>[];
+    expect(salons.every((salon) => salon.this_week === 2 && salon.this_week_all_ratings === 2 && salon.last_week === 1 && salon.last_week_all_ratings === 1)).toBe(true);
+    expect(result.all_salons).toMatchObject({ this_week: 4, this_week_all_ratings: 4, last_week: 2, last_week_all_ratings: 2 });
+    expect(result.weeks).toBe("Reporting weeks run Sunday to Saturday, Central time: this week opened Sunday 2026-11-08, last week opened Sunday 2026-11-01.");
+    expect(String(result.note)).toContain("never say there are no review figures");
+  });
+
   it("the last sync comes back already in Central time, never UTC (Pau, 15 Nov 2026: \"the whole app and chat should be in CT\"; the chat had said \"2026-11-14 12:01 UTC\")", async () => {
     const { deps: d } = deps();
     const result = await readReviews(ctx(MANAGER, PAU_REVIEWS), {}, d);

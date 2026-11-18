@@ -177,6 +177,10 @@ const text = (value: unknown): string | null => (typeof value === "string" && va
 
 /* ---------------------------------------------------------------- read_reviews --- */
 
+function sumOf<T>(rows: readonly T[], pick: (row: T) => number): number {
+  return rows.reduce((total, row) => total + pick(row), 0);
+}
+
 /**
  * read_reviews({salon?, period?}): the Google Reviews page's figures for the salons this caller may see. Month to date
  * against the monthly goal, this reporting week, the average star, and up to five of the latest reviews (date, stars,
@@ -210,6 +214,10 @@ export async function readReviews(context: DataToolContext, input: { salon?: unk
       name: salonName(location.salonNumber, location.locationName),
       count: status === "not_counting" ? null : location.qualifyingMonthToDate,
       this_week: location.qualifyingThisWeek,
+      /* Port from Ask Bubbles (QA, 18 Nov 2026): every review this reporting week and last, beside the qualifying counts. */
+      this_week_all_ratings: location.reviewsThisWeek,
+      last_week: location.qualifyingLastWeek,
+      last_week_all_ratings: location.lastWeek,
       average: location.averageRating === null ? null : Math.round(location.averageRating * 100) / 100,
       goal: goal.target,
       vs_goal: GOAL_STATUS_LABEL[status],
@@ -241,14 +249,31 @@ export async function readReviews(context: DataToolContext, input: { salon?: unk
     source: REVIEWS_SOURCE,
     period: `${formatGoalMonth(goal)} ${goal.monthStart.slice(0, 4)} month to date, ${formatMonthToDate(goal)} (Central time); this_week is the open reporting week`,
     salons,
+    /* Port from Ask Bubbles (QA, 18 Nov 2026): the reporting weeks' dates, so "this week" and "last week" are named. */
+    ...(snapshot.currentWeek && snapshot.previousWeek
+      ? { weeks: `Reporting weeks run Sunday to Saturday, Central time: this week opened Sunday ${snapshot.currentWeek}, last week opened Sunday ${snapshot.previousWeek}.` }
+      : {}),
     ...(summary
-      ? { all_salons: { salons_counting: summary.counting, count: summary.qualifyingMonthToDate, combined_goal: summary.combinedTarget, at_goal: summary.atGoal, on_pace: summary.onPace, behind_pace: summary.behindPace } }
+      ? {
+          all_salons: {
+            salons_counting: summary.counting,
+            count: summary.qualifyingMonthToDate,
+            combined_goal: summary.combinedTarget,
+            at_goal: summary.atGoal,
+            on_pace: summary.onPace,
+            behind_pace: summary.behindPace,
+            this_week: sumOf(locations, (location) => location.qualifyingThisWeek),
+            this_week_all_ratings: sumOf(locations, (location) => location.reviewsThisWeek),
+            last_week: sumOf(locations, (location) => location.qualifyingLastWeek),
+            last_week_all_ratings: sumOf(locations, (location) => location.lastWeek),
+          },
+        }
       : {}),
     latest,
     /* Central time, already converted (Pau, 15 Nov 2026: "The whole app and chat should be in CT"); the database stays UTC. */
     last_sync: formatBusinessTime(snapshot.lastSyncAt) ?? null,
     ...(restricted && RANKING.test(context.question) ? { others: OTHERS_NOT_VISIBLE } : {}),
-    note: "count is qualifying (3, 4 or 5 star) reviews month to date; goal is per salon per month. Give only figures written here, with the period and salon each is for.",
+    note: "count is qualifying (3, 4 or 5 star) reviews month to date; goal is per salon per month. this_week and last_week are qualifying reviews in that reporting week; *_all_ratings count every star rating. Give only figures written here, with the period and salon each is for, and never say there are no review figures when they are written here.",
   };
 }
 
