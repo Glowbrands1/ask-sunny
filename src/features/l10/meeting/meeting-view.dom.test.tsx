@@ -799,3 +799,17 @@ describe("rocks owner menus list the DM-or-higher people from Woven too", () => 
     expect(screen.getAllByRole("region", { name: /Dee Wren/ }).length).toBeGreaterThan(0);
   });
 });
+
+describe("Scorecard Full width (port from Ask Bubbles)", () => {
+  it("Full width hides the agenda column on the Scorecard page only; Collapse brings it back", () => {
+    window.localStorage.clear();
+    renderView();
+    const agendaButton = (n: RegExp) => within(screen.getByRole("region", { name: "Agenda" })).getAllByRole("button", { name: n })[0];
+    fireEvent.click(agendaButton(/Scorecard/));
+    fireEvent.click(screen.getByRole("button", { name: "⤢ Full width" }));
+    expect(screen.queryByRole("region", { name: "Agenda" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "⤡ Collapse" }));
+    expect(screen.getByRole("region", { name: "Agenda" })).toBeTruthy();
+    window.localStorage.clear();
+  });
+});

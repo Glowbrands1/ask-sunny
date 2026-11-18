@@ -110,6 +110,9 @@ export function MeetingView({
   const owners = ownerMenu(people, ownerPeople);
   // The agenda panel can be tucked away; the choice is remembered in this browser for this person.
   const [agendaHidden, setAgendaHidden] = useStoredFlag(`l10-agenda-hidden:${viewer.id}`);
+  // Port from Ask Bubbles: on the Bloom-style Scorecard, "Full width" hides the agenda column so the table uses the
+  // whole page (the owner, 18 Nov 2026: "make this … wide have the option to do that"). Remembered in this browser.
+  const [scorecardWide, setScorecardWide] = useStoredFlag(`l10-scorecard-wide:${viewer.id}`);
   const attendees = effectiveAttendees(roster, doc.attendees);
 
   /* ── The shared clock ─────────────────────────────────────────────── */
@@ -468,6 +471,7 @@ export function MeetingView({
         </Card>
       ) : (
         <div className="flex flex-wrap items-start gap-4">
+          {!(bloom && view === "scorecard" && scorecardWide) && (
           <Card aria-label="Agenda" className={cx("flex flex-col gap-1 print:hidden", agendaHidden ? "flex-[0_0_auto]" : "flex-[0_1_280px] max-[700px]:flex-auto")}>
             <div className="mb-2 flex items-center justify-between gap-2">
               <h2 className="m-0 text-base font-bold">{agendaHidden ? "Agenda" : `Agenda · ${agenda.reduce((s, a) => s + a.minutes, 0)} min`}</h2>
@@ -518,6 +522,7 @@ export function MeetingView({
               </>
             )}
           </Card>
+          )}
 
           <div className="flex min-w-0 flex-[999_1_520px] flex-col gap-4" inert={conflict ? true : undefined} aria-busy={conflict ? true : undefined}>
             {bloom && <LastMeetingSummary last={last} />}
@@ -564,7 +569,7 @@ export function MeetingView({
             {bloom && view === "business-best" && <SegueQuestion value={typeof doc.segueQuestion === "string" ? doc.segueQuestion : ""} onChange={(v) => edit((d) => ({ ...d, segueQuestion: v }))} saveStatus={readOnly ? undefined : statusText(status)} />}
             {bloom && view === "conclude" && !timer.started && <LastMeetingConclusion last={last} />}
             {view === "business-best" && <BusinessBest attendees={attendees} onChange={(next) => edit((d) => ({ ...d, attendees: keepHiddenAttendees(d.attendees, next) }))} />}
-            {view === "scorecard" && <Scorecard doc={doc} edit={edit} people={people} bloom={bloom} today={today} />}
+            {view === "scorecard" && <Scorecard doc={doc} edit={edit} people={people} bloom={bloom} today={today} {...(bloom ? { wide: scorecardWide, onWide: setScorecardWide } : {})} />}
             {view === "rocks" && <Rocks rocks={doc.rocks} onChange={(rocks) => edit((d) => ({ ...d, rocks }))} people={people} ownerOptions={owners} today={today} saveStatus={statusText(status)} bloom={bloom} />}
             {view === "headlines" && <Headlines headlines={doc.headlines} onChange={(headlines) => edit((d) => ({ ...d, headlines }))} author={people[0] ?? ""} />}
             {view === "todos" && <Todos todos={doc.todos} onChange={(todos) => edit((d) => ({ ...d, todos }))} people={owners} today={today} bloom={bloom} />}
