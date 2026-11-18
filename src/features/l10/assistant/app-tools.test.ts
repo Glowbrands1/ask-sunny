@@ -5,7 +5,8 @@ vi.hoisted(() => {
 });
 vi.mock("server-only", () => ({}));
 const forms = vi.hoisted(() => ({ calls: [] as unknown[], block: "FORMS ON FILE (FORM MONITORING)\n- Wren Halvorsen: Corrective Action, Written Warning, 11/12/2026" as string | null }));
-vi.mock("@/lib/forms/chat-form-records", () => ({
+vi.mock("@/lib/forms/chat-form-records", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/forms/chat-form-records")>()),
   loadFormRecords: async (input: unknown) => {
     forms.calls.push(input);
     return forms.block === null ? null : { block: forms.block };
@@ -69,6 +70,16 @@ describe("the DM L10 assistant reads Ask Sunny's own data", () => {
     forms.block = null;
     expect(await run(appTools(viewer, "q"), "read_forms_on_file", {})).toMatchObject({ refused: expect.stringMatching(/cannot view Form Monitoring/) });
     forms.block = "x";
+  });
+
+  /* The owner, 18 Nov 2026 (sibling app): "who got a CA this month?" read "the 20 most recent forms"; "why capped at 20". */
+  it("reads a period by form date and kind, not the newest 20 forms", async () => {
+    await run(appTools(viewer, "who got a CA this month?"), "read_forms_on_file", { form: "CA", date_from: "2026-11-01", date_to: "2026-11-18" });
+    expect(forms.calls[0]).toMatchObject({
+      narrowFromQuestion: true,
+      range: { from: "2026-11-01", to: "2026-11-18" },
+      kind: { templateNameWords: ["corrective"] },
+    });
   });
 
   it("takes the person's latest message as the question", () => {

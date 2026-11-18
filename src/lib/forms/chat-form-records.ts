@@ -164,6 +164,187 @@ export function matchRowsToQuestion(
   return { named, possible };
 }
 
+/* ------------------------------------------------------- dates and kinds --- */
+
+/*
+ * "WHO GOT A CA THIS MONTH?" — EVERY FORM IN THE RANGE, NOT THE NEWEST 20
+ * (the owner, 18 Nov 2026, on the sibling app's Leadership Assistant: "why capped at 20"). A question that named
+ * nobody read the 20 newest forms of every kind and left the model to pick November's corrective actions out of
+ * them; in a busy month the 20 ended before the 1st. A range or a kind of form now narrows the QUERY (form date,
+ * form name), as the name words already do, and the list says whether it is every such form or stopped at its cap.
+ */
+
+/** A span of form dates, inclusive, as YYYY-MM-DD, and how to say it. */
+export interface FormDateRange {
+  from: string;
+  to: string;
+  label: string;
+}
+
+/** A kind of form the question asks about, as words of the form's name. */
+export interface FormKind {
+  label: string;
+  templateNameWords: string[];
+}
+
+const MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+const MONTH_RE = "(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)";
+
+function pad(value: number): string {
+  return String(value).padStart(2, "0");
+}
+
+function isoOf(date: Date): string {
+  return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`;
+}
+
+function dayOf(iso: string): Date {
+  const [year, month, day] = iso.split("-").map(Number);
+  return new Date(Date.UTC(year!, (month ?? 1) - 1, day ?? 1));
+}
+
+function addDays(iso: string, days: number): string {
+  const date = dayOf(iso);
+  date.setUTCDate(date.getUTCDate() + days);
+  return isoOf(date);
+}
+
+function monthRange(year: number, monthIndex: number): FormDateRange {
+  const last = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
+  const name = MONTHS[monthIndex]!;
+  return {
+    from: `${year}-${pad(monthIndex + 1)}-01`,
+    to: `${year}-${pad(monthIndex + 1)}-${pad(last)}`,
+    label: `${name[0]!.toUpperCase()}${name.slice(1)} ${year}`,
+  };
+}
+
+function monthIndexOf(word: string): number {
+  return MONTHS.findIndex((month) => month.startsWith(word.toLowerCase().slice(0, 3)));
+}
+
+/** "11/1", "11/1/26", "2026-11-01" as YYYY-MM-DD, the year defaulting to today's. Null when not a date. */
+function parseDay(text: string, today: string): string | null {
+  const isoMatch = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(text.trim());
+  if (isoMatch) return `${isoMatch[1]}-${pad(Number(isoMatch[2]))}-${pad(Number(isoMatch[3]))}`;
+  const us = /^(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?$/.exec(text.trim());
+  if (!us) return null;
+  const month = Number(us[1]);
+  const day = Number(us[2]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  const year = us[3] ? (us[3].length === 2 ? 2000 + Number(us[3]) : Number(us[3])) : Number(today.slice(0, 4));
+  return `${year}-${pad(month)}-${pad(day)}`;
+}
+
+/**
+ * The span of form dates a question asks about ("this month", "last week", "in October", "since 11/1", "the last
+ * 30 days"), or null when it names none. Pure; weeks start on Monday; `today` is the business date.
+ */
+export function formDateRangeFromQuestion(question: string, today: string): FormDateRange | null {
+  const text = question.toLowerCase().replace(/\s+/g, " ");
+  const year = Number(today.slice(0, 4));
+  const monthIndex = Number(today.slice(5, 7)) - 1;
+
+  if (/\btoday\b/.test(text)) return { from: today, to: today, label: "today" };
+  if (/\byesterday\b/.test(text)) {
+    const day = addDays(today, -1);
+    return { from: day, to: day, label: "yesterday" };
+  }
+  const lastN = /\b(?:last|past|previous)\s+(\d{1,3})\s+(days?|weeks?|months?)\b/.exec(text);
+  if (lastN) {
+    const count = Number(lastN[1]);
+    const unit = lastN[2]!;
+    const days = unit.startsWith("day") ? count : unit.startsWith("week") ? count * 7 : count * 30;
+    return { from: addDays(today, -(days - 1)), to: today, label: `the last ${count} ${unit}` };
+  }
+  const weekday = (dayOf(today).getUTCDay() + 6) % 7; // Monday 0
+  if (/\b(?:this|current)\s+week\b/.test(text)) return { from: addDays(today, -weekday), to: today, label: "this week" };
+  if (/\b(?:last|past|previous)\s+week\b/.test(text)) {
+    const monday = addDays(today, -weekday - 7);
+    return { from: monday, to: addDays(monday, 6), label: "last week" };
+  }
+  if (/\b(?:this|current)\s+month\b|\bmonth to date\b|\bmtd\b/.test(text)) {
+    return { ...monthRange(year, monthIndex), to: today, label: `this month (${monthRange(year, monthIndex).label})` };
+  }
+  if (/\b(?:last|past|previous)\s+month\b/.test(text)) {
+    const previous = monthIndex === 0 ? monthRange(year - 1, 11) : monthRange(year, monthIndex - 1);
+    return { ...previous, label: `last month (${previous.label})` };
+  }
+  if (/\b(?:this|current)\s+year\b|\bytd\b|\byear to date\b/.test(text)) return { from: `${year}-01-01`, to: today, label: `this year (${year})` };
+  if (/\b(?:last|past|previous)\s+year\b/.test(text)) return { from: `${year - 1}-01-01`, to: `${year - 1}-12-31`, label: `last year (${year - 1})` };
+
+  const since = /\bsince\s+(\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?|\d{4}-\d{1,2}-\d{1,2})\b/.exec(text);
+  if (since) {
+    const from = parseDay(since[1]!, today);
+    if (from && from <= today) return { from, to: today, label: `since ${from}` };
+  }
+  const between = /\b(?:from|between)\s+(\S+)\s+(?:to|and|through|until|-)\s+(\S+)/.exec(text);
+  if (between) {
+    const from = parseDay(between[1]!, today);
+    const to = parseDay(between[2]!.replace(/[?.,!]+$/, ""), today);
+    if (from && to && from <= to) return { from, to, label: `${from} to ${to}` };
+  }
+  // "in October", "for nov", "during September 2026", "october's"; "may" only after in/for/during (it is also a verb).
+  const named = new RegExp(`\\b(?:in|for|during|from|of)\\s+${MONTH_RE}\\b(?:\\s+(\\d{4}))?|\\b${MONTH_RE}(?:'s)?\\s+(\\d{4})\\b|\\b${MONTH_RE}['’]s\\b`).exec(text);
+  if (named) {
+    const word = named[1] ?? named[3] ?? named[5]!;
+    const index = monthIndexOf(word);
+    const givenYear = named[2] ?? named[4];
+    if (index >= 0) {
+      // A month later in the year than today, with no year given, is last year's.
+      const resolvedYear = givenYear ? Number(givenYear) : index > monthIndex ? year - 1 : year;
+      const range = monthRange(resolvedYear, index);
+      return range.to > today && range.from <= today ? { ...range, to: today } : range;
+    }
+  }
+  return null;
+}
+
+/** An explicit range from a tool's date_from / date_to (YYYY-MM-DD or 11/1), or null. */
+export function formDateRangeFromInput(from: unknown, to: unknown, today: string): FormDateRange | null {
+  const start = typeof from === "string" && from.trim() ? parseDay(from, today) : null;
+  const end = typeof to === "string" && to.trim() ? parseDay(to, today) : null;
+  if (!start && !end) return null;
+  const range = { from: start ?? "1900-01-01", to: end ?? today };
+  if (range.from > range.to) return null;
+  return { ...range, label: start && end ? `${range.from} to ${range.to}` : start ? `since ${range.from}` : `up to ${range.to}` };
+}
+
+const FORM_KINDS: ReadonlyArray<{ pattern: RegExp; kind: FormKind }> = [
+  { pattern: /\b(?:cas?|cafs?|corrective(?: actions?)?|write[- ]?ups?|written up|wrote up|warnings?|disciplinary|discipline)\b/, kind: { label: "Corrective Action form", templateNameWords: ["corrective"] } },
+  { pattern: /\b(?:follow[- ]?up coachings?)\b/, kind: { label: "Follow-Up Coaching form", templateNameWords: ["follow"] } },
+  { pattern: /\b(?:coach(?:ing|ings|ed)?)\b/, kind: { label: "Coaching form", templateNameWords: ["coaching"] } },
+  { pattern: /\b(?:exit(?: forms?| interviews?)?|resignations?|resigned|terminations?|terminated|quit)\b/, kind: { label: "Resignation/Exit form", templateNameWords: ["exit", "resignation"] } },
+  { pattern: /\b(?:epps?|performance plans?)\b/, kind: { label: "EPP form", templateNameWords: ["epp"] } },
+];
+
+/** The kind of form a question or a tool's `form` input names, or null for every kind. Pure; the first kind named wins. */
+export function formKindFromText(text: string | null | undefined): FormKind | null {
+  const lower = (text ?? "").toLowerCase().replace(/\s+/g, " ");
+  if (!lower) return null;
+  let best: { at: number; kind: FormKind } | null = null;
+  for (const { pattern, kind } of FORM_KINDS) {
+    const match = pattern.exec(lower);
+    if (match && (best === null || match.index < best.at)) best = { at: match.index, kind };
+  }
+  return best?.kind ?? null;
+}
+
+/**
+ * FORMS_ON_FILE_DATE_RANGE_ENABLED: a question about forms already filed in a period or of a kind that the records
+ * gate's wording misses ("who got a CA this month?", "how many coachings last week", "show me October's write-ups").
+ * A kind of form, and a period or a who / how many / list ask; never a request to make one ("make a CA for last week").
+ */
+export function isFormRangeQuestion(question: string, today: string): boolean {
+  const text = question.toLowerCase().replace(/\s+/g, " ");
+  if (!formKindFromText(text)) return false;
+  if (/\b(?:make|create|draft|draw|start|write|do|need|prepare|fill|generate|new)\b(?! (?:on file|filed))/.test(text) && !/\b(?:who|how many|which|list|show)\b/.test(text)) return false;
+  return formDateRangeFromQuestion(text, today) !== null || /\b(?:who (?:got|gets|received|had|has|was|were)|how many|which (?:employees|people|team members|staff)|list (?:all|every|the)|show (?:me )?(?:all|every|the))\b/.test(text);
+}
+
+/* Words that name a date or a kind of form, never a person ("november", "ca"). */
+const RANGE_WORDS = new Set([...MONTHS, "jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "sept", "oct", "nov", "dec", "mtd", "ytd", "days", "day", "between", "through", "got", "gotten", "received", "had", "resignation", "resignations", "resigned", "termination", "terminations", "terminated", "quit", "follow", "who", "whom"]);
+
 /* ---------------------------------------------------------------- render --- */
 
 export const FORM_RECORDS_HEADING = "FORMS ON FILE (FORM MONITORING)";
@@ -269,9 +450,12 @@ export function renderFormRecordsBlock(input: {
   today: string;
   /** CROSS_CHAT_REPLY_GUARD_ENABLED: the asking user's id, to mark who created each row. */
   viewerId?: string | null;
+  /** The form dates and kind the list was read for; `recent` is then every such form, up to `limit`. */
+  narrowed?: { range: FormDateRange | null; kind: FormKind | null; limit: number } | null;
 }): string {
   const viewerId = input.viewerId ?? null;
   const { words, matches, recent, today } = input;
+  const narrowed = input.narrowed && (input.narrowed.range || input.narrowed.kind) ? input.narrowed : null;
   const sections: string[] = [
     FORM_RECORDS_HEADING,
     `${RECORDS_RULES} ${scopeSentence(input.visibility)}${viewerId ? ` ${CREATED_BY_RULE}` : ""}${formRecordsNoJudgementEnabled() ? ` ${RECORDS_NO_JUDGEMENT_RULE}` : ""}`,
@@ -298,6 +482,19 @@ export function renderFormRecordsBlock(input: {
     }
     const draftsBlock = notOnFileSection(drafts, today, viewerId);
     if (draftsBlock) sections.push(draftsBlock);
+    if (narrowed) sections.push(narrowedSentence(narrowed, matches.named.length + matches.possible.length));
+  } else if (narrowed) {
+    const filed = onFileRows(recent);
+    const drafts = draftRows(recent);
+    const what = narrowedWhat(narrowed);
+    sections.push(
+      filed.length > 0
+        ? `The question names nobody. Every ${narrowedWhat(narrowed, false)} this user can see (${filed.length}), newest first:\n${filed.map((row) => describeRow(row, today, viewerId)).join("\n")}`
+        : `No ${what} are on file at the ${scopeWordPlural()} this user can see. Say so plainly.`,
+    );
+    const draftsBlock = notOnFileSection(drafts, today, viewerId);
+    if (draftsBlock) sections.push(draftsBlock);
+    sections.push(narrowedSentence(narrowed, recent.length));
   } else if (recent.length > 0) {
     const filed = onFileRows(recent);
     const drafts = draftRows(recent);
@@ -316,6 +513,22 @@ export function renderFormRecordsBlock(input: {
   }
 
   return sections.join("\n\n");
+}
+
+function scopeWordPlural(): string {
+  return "salons";
+}
+
+function narrowedWhat(narrowed: { range: FormDateRange | null; kind: FormKind | null }, plural = true): string {
+  const noun = `${narrowed.kind?.label ?? "form"}${plural ? "s" : ""}`;
+  return narrowed.range ? `${noun} dated ${narrowed.range.label} (${narrowed.range.from} to ${narrowed.range.to})` : noun;
+}
+
+/** Whether the narrowed list is every such form, or stopped at its cap. */
+function narrowedSentence(narrowed: { range: FormDateRange | null; kind: FormKind | null; limit: number }, count: number): string {
+  return count >= narrowed.limit
+    ? `This list stops at ${narrowed.limit} forms, so there may be more ${narrowedWhat(narrowed)}. Say so, and that Forms → Form Monitoring has the full list.`
+    : `This is every ${narrowedWhat(narrowed, false)} this user can see, read by form date — not a sample of recent forms. Never say the list is capped or that older ones may be missing.`;
 }
 
 export const FORM_RECORDS_UNAVAILABLE_BLOCK = `${FORM_RECORDS_HEADING}
@@ -350,6 +563,8 @@ export async function chatFormsActor(actor: FormRecordsActor): Promise<FormsActo
 
 const MATCH_LIMIT = 50;
 const RECENT_LIMIT = 20;
+/** A list read by form date or kind: every such form up to this many, then the list says it stopped. */
+export const NARROWED_LIMIT = 100;
 
 /**
  * The FORMS ON FILE block for this turn, or null when this caller may not read
@@ -368,6 +583,15 @@ export async function loadFormRecords(input: {
   today?: string;
   /** CROSS_CHAT_REPLY_GUARD_ENABLED: mark which rows the asking user created. */
   markCreator?: boolean;
+  /**
+   * Read the form dates and kind of form from the question ("CAs this month") and narrow the query to them
+   * (FORMS_ON_FILE_DATE_RANGE_ENABLED in chat; always for the AI tools that pass `range` / `kind`).
+   */
+  narrowFromQuestion?: boolean;
+  /** An explicit span of form dates (a tool's date_from / date_to); wins over the question's. */
+  range?: FormDateRange | null;
+  /** An explicit kind of form (a tool's `form`); wins over the question's. */
+  kind?: FormKind | null;
 }): Promise<{ block: string } | null> {
   const { actor } = input;
   // Fails closed: no verified identity, no read. Chat is live-only, so this is
@@ -382,23 +606,43 @@ export async function loadFormRecords(input: {
     const visibility = formsActor.visibility!;
     const filter = instanceListFilterFor(formsActor);
 
+    const narrowing = input.narrowFromQuestion === true || input.range != null || input.kind != null;
+    const range = input.range ?? (input.narrowFromQuestion ? formDateRangeFromQuestion(input.question, today) : null);
+    const kind = input.kind ?? (input.narrowFromQuestion ? formKindFromText(input.question) : null);
+    const narrowed = range || kind ? { range, kind, limit: NARROWED_LIMIT } : null;
+    const narrowFilter = {
+      ...(range ? { formDateFrom: range.from, formDateTo: range.to } : {}),
+      ...(kind ? { templateNameWords: kind.templateNameWords } : {}),
+    };
+    // A month or "who" is never a person's name in a narrowed question ("CAs in november").
+    const nameWordsOf = (text: string) => (narrowing ? candidateNameWords(text).filter((word) => !RANGE_WORDS.has(word)) : candidateNameWords(text));
+
     let nameSource = input.question;
-    let words = candidateNameWords(nameSource);
-    if (words.length === 0 && input.previousQuestion) {
+    let words = nameWordsOf(nameSource);
+    if (words.length === 0 && input.previousQuestion && !narrowed) {
       nameSource = input.previousQuestion;
-      words = candidateNameWords(nameSource);
+      words = nameWordsOf(nameSource);
     }
 
     if (words.length > 0) {
       // PRIVATE_CREATOR_FORMS: over-read, then trim to the page; off, the page itself.
       const rows = visibleInstances(
         formsActor,
-        await listInstances("all", privateAwareLimit(MATCH_LIMIT), { ...filter, employeeNameWords: words }),
+        await listInstances("all", privateAwareLimit(MATCH_LIMIT), { ...filter, ...narrowFilter, employeeNameWords: words }),
       ).slice(0, MATCH_LIMIT);
       const matches = matchRowsToQuestion(rows, words, nameSource);
       if (matches.named.length > 0 || matches.possible.length > 0) {
-        return { block: renderFormRecordsBlock({ visibility, words, matches, recent: [], today, viewerId }) };
+        return { block: renderFormRecordsBlock({ visibility, words, matches, recent: [], today, viewerId, narrowed }) };
       }
+    }
+
+    if (narrowed && !(words.length > 0 && looksLikeItNamesSomebody(nameSource))) {
+      // Archived forms count: "who got a CA this month" asks what was filed, not what is on the active shelf.
+      const rows = visibleInstances(
+        formsActor,
+        await listInstances("all", privateAwareLimit(NARROWED_LIMIT), { ...filter, ...narrowFilter }),
+      ).slice(0, NARROWED_LIMIT);
+      return { block: renderFormRecordsBlock({ viewerId, visibility, words, matches: null, recent: rows, today, narrowed }) };
     }
 
     const recent = visibleInstances(formsActor, await listInstances("active", privateAwareLimit(RECENT_LIMIT), filter)).slice(0, RECENT_LIMIT);
@@ -416,6 +660,7 @@ export async function loadFormRecords(input: {
         matches: named ? { named: [], possible: [] } : null,
         recent,
         today,
+        narrowed: named ? narrowed : null,
       }),
     };
   } catch {
