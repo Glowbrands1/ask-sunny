@@ -216,8 +216,24 @@ export async function createInlineForm({
    * qualified: a draft with usable turns is unchanged. Off, as before. See
    * `draftNotesFromCard`.
    */
+  /*
+   * LIVE FIX (QA, 18 Nov 2026; Pau's test chat): "Ca for <the manager herself> she was wearing mini skirt on 9/12", then
+   * "for <employee>". The agent loop's card carried the account ("<first> was wearing a mini skirt on 9/12."), but its
+   * request was only the second turn, so the notes were "for <employee>": nothing was drafted and the saved Observation
+   * was blank. A loop card that carries an account drafts from the card's own lines (its account first), with the
+   * manager's turns it cites after them. A loop card with no account is as before (the blank-details notice).
+   */
+  const loopCard = proposal.fromAgentLoop ? draftNotesFromCard(proposal) : null;
   const notes =
-    draftNotesAreUsable(fromTurns) || !remapDraftSourcesClientEnabled() ? fromTurns : draftNotesFromCard(proposal);
+    loopCard && draftNotesAreUsable(loopCard)
+      ? {
+          ...loopCard,
+          text: draftNotesAreUsable(fromTurns) ? `${loopCard.text}\n\n${fromTurns.text}` : loopCard.text,
+          usedMessageIds: fromTurns.usedMessageIds,
+        }
+      : draftNotesAreUsable(fromTurns) || !remapDraftSourcesClientEnabled()
+        ? fromTurns
+        : draftNotesFromCard(proposal);
   if (!draftNotesAreUsable(notes)) {
     return { reference, draftWarning: NO_NOTES_WARNING };
   }
