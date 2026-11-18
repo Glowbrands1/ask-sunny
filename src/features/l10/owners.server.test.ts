@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /*
  * "Can we add myself, and any other DM or higher role as a drop down option to add to-do's and issues?" (17 Nov 2026).
@@ -29,7 +29,7 @@ vi.mock("@/lib/supabase/server", () => ({
 import { leadershipOwnerNames, qualifiesForOwnerMenu } from "./owners.server";
 import { ownerMenu } from "./lib/ownerMenu";
 
-const row = (id: string, effective: string | null, app: string | null, appStatus = "active", status = "active") => ({ employee_id: id, employment_status: status, effective_role: effective, app_user_role: app, app_user_status: appStatus });
+const row = (id: string, effective: string | null, app: string | null, appStatus = "active", status = "active") => ({ employee_id: id, email_address: `${id}@example.test`, employment_status: status, effective_role: effective, app_user_role: app, app_user_status: appStatus });
 const person = (id: string, first: string, last: string, extra: Record<string, unknown> = {}) => ({ id, first_name: first, last_name: last, preferred_first_name: null, termination_date: null, ...extra });
 
 beforeEach(() => {
@@ -54,7 +54,16 @@ beforeEach(() => {
   ];
 });
 
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 describe("DM-or-higher people from Woven for the L10 owner menus", () => {
+  it('"add them in the drop down except" the people named in L10_OWNER_MENU_EXCLUDE_EMAILS (the owner, 18 Nov 2026)', async () => {
+    vi.stubEnv("L10_OWNER_MENU_EXCLUDE_EMAILS", " E3@Example.test , e7@example.test,not-an-email");
+    expect(await leadershipOwnerNames()).toEqual(["Avery Quill", "Bobby Lark"]);
+  });
+
   it("lists active Woven employees who are DM or higher by Woven's role or by their active Ask Sunny account, with Woven full names", async () => {
     expect(await leadershipOwnerNames()).toEqual(["Avery Quill", "Bobby Lark", "Cy Marlow"]);
     // Only the rows that can qualify are read, then only those people's names.
