@@ -116,7 +116,8 @@ export function draftNotesFromCard(
   proposal: Pick<
     ChatFormProposal,
     "employeeName" | "employeeRole" | "locationName" | "formDate" | "issue" | "warningLevel" | "payrollDeduct" | "priorActions"
-  >,
+  > &
+    Partial<Pick<ChatFormProposal, "payrollDeductAmount">>,
 ): DraftNotes {
   const issue = proposal.issue?.trim() ?? "";
   if (issue.length < DRAFT_NOTES_MINIMUM) return { text: "", usedMessageIds: [], truncated: false };
@@ -129,6 +130,9 @@ export function draftNotesFromCard(
     `What happened: ${issue}`,
     proposal.warningLevel ? `Type of warning: ${level[proposal.warningLevel]}` : null,
     proposal.payrollDeduct ? `Payroll deduct applicable: ${proposal.payrollDeduct === "yes" ? "Yes" : "No"}` : null,
+    proposal.payrollDeduct === "yes" && proposal.payrollDeductAmount
+      ? `Payroll deduct amount: $${String(proposal.payrollDeductAmount).replace(/^\$/, "")}`
+      : null,
     proposal.priorActions?.trim() ? `Prior actions: ${proposal.priorActions.trim()}` : null,
   ].filter((line): line is string => line !== null);
   return { text: lines.join("\n"), usedMessageIds: [], truncated: false };
