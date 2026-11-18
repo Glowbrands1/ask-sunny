@@ -54,7 +54,6 @@ The Hub's page code runs unchanged except:
 | Assistant @-mentions: everyone the person shares a meeting with | this meeting's people | one meeting here |
 | Assistant: web search / fetch tool version 20260318 | 20260209 | the newest in `@ai-sdk/anthropic` for AI SDK 6; see PARITY.md |
 | IDS ranking ("Everyone's top three", Rank buttons, Priority badges) | off (`RANKING = false` in `Ids.tsx`) | the team works IDS as in Bloom Growth, without ranking (14 Nov 2026) |
-| Bloom-style IDS "!" priority mark | a priority number (1, 2, 3 …) per issue; numbered issues on top in that order | the DM L10 run-through, 17 Nov 2026; see PARITY.md |
 
 When the Hub's meeting page changes, re-copy the file and re-apply the row above that concerns it. The full audit, file by file, is in [PARITY.md](./PARITY.md).
 

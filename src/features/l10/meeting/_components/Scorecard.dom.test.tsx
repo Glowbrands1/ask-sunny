@@ -35,8 +35,11 @@ afterEach(() => {
 });
 
 describe("Bloom-style scorecard (the owner's feedback)", () => {
-  it('"Add metric" is at the top, above the table, and saves a row with name, owner, goal, unit and direction', () => {
+  // Changed on purpose 18 Nov 2026 (port from Ask Bubbles): the form was always open at the top; it now opens from an
+  // "Add metric" button next to "Add week" (the tests below).
+  it('"Add metric" opens the form above the table, and saves a row with name, owner, goal, unit and direction', () => {
     render(<Harness />);
+    fireEvent.click(screen.getByRole("button", { name: "Add metric", expanded: false }));
     const form = screen.getByTestId("add-metric");
     expect(form.compareDocumentPosition(screen.getByTestId("bloom-scorecard")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     const f = within(form);
@@ -47,6 +50,40 @@ describe("Bloom-style scorecard (the owner's feedback)", () => {
     fireEvent.change(f.getByLabelText("Direction"), { target: { value: "lower" } });
     fireEvent.click(f.getByRole("button", { name: "Add metric" }));
     expect(saved.at(-1)!.scorecard.at(-1)).toMatchObject({ metric: "Callbacks", owner: "Bo Lark", goal: "≤ 3", goalValue: 3, format: "number", higherIsBetter: false, weeks: [null, null, null] });
+  });
+
+  it('make "add a week" button visible please and make this collapasable (the owner, 18 Nov 2026)', () => {
+    render(<Harness />);
+    const toolbar = within(screen.getByTestId("scorecard-toolbar"));
+    // "+ Add week" first, a filled button; it adds a week.
+    const buttons = toolbar.getAllByRole("button");
+    expect(buttons[0].textContent).toBe("+ Add week");
+    expect(buttons[0].className).not.toBe(toolbar.getByRole("button", { name: "Add metric" }).className);
+    fireEvent.click(buttons[0]);
+    expect(saved.at(-1)!.weekEndings).toHaveLength(4);
+    // The Add metric form is closed until asked for, and closes again.
+    expect(screen.queryByTestId("add-metric")).toBeNull();
+    fireEvent.click(toolbar.getByRole("button", { name: "Add metric", expanded: false }));
+    expect(screen.getByTestId("add-metric")).toBeTruthy();
+    fireEvent.click(within(screen.getByTestId("add-metric")).getByRole("button", { name: "Done" }));
+    expect(screen.queryByTestId("add-metric")).toBeNull();
+  });
+
+  it("wide have the option to do that (the owner, 18 Nov 2026): Full width / Collapse", () => {
+    function Wide() {
+      const [wide, setWide] = useState(false);
+      return (
+        <>
+          <span data-testid="wide">{String(wide)}</span>
+          <Scorecard doc={start()} edit={() => {}} people={["Avery Quill"]} bloom today="2026-11-12" wide={wide} onWide={setWide} />
+        </>
+      );
+    }
+    render(<Wide />);
+    fireEvent.click(screen.getByRole("button", { name: "⤢ Full width", pressed: false }));
+    expect(screen.getByTestId("wide").textContent).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "⤡ Collapse", pressed: true }));
+    expect(screen.getByTestId("wide").textContent).toBe("false");
   });
 
   it("week headers show the range on two lines, start over end, newest first", () => {

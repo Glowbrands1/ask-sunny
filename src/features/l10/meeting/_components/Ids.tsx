@@ -6,8 +6,8 @@ import confetti from "canvas-confetti";
 import { Button, cx, inputClass } from "@/features/l10/ui/ui";
 import { MentionField, MentionText, useMentionPlain, useMentionRoster } from "@/features/l10/ui/Mentions";
 import { SharedFiles } from "./SharedFiles";
-import { orderByPriority, priorityNumbers, togglePriorityNumber, withoutPriorityNumber } from "@/features/l10/lib/bloom";
 import { RANKS, canVote, groupRanks, issueTerm, myRank, newItemId, picksByVoter, recentlySolved, searchIssues, sortIssues, toggleSolved, toggleVote, usesPreviousOrder, type Rank, type Voter } from "@/features/l10/lib/doc";
+import { byPriority, priorityNumbers, togglePriority } from "@/features/l10/lib/priority";
 import type { Attendee, Headline, Issue, IssueTerm, MeetingDoc, Rock, Todo } from "@/features/l10/lib/types";
 
 /**
@@ -21,12 +21,11 @@ const RANKING = false;
 export type IdsTab = IssueTerm | "solved";
 const TAB_LABEL: Record<IdsTab, string> = { short: "Short term", long: "Long-term", solved: "Recently solved" };
 
-/** Moving an issue between the lists releases its votes, old shared rank and priority number (only short-term issues are ranked or numbered). */
+/** Moving an issue between the lists releases its votes and old shared rank (only short-term issues are ranked). */
 function withTerm(i: Issue, term: IssueTerm): Issue {
   const copy = { ...i, term } as Record<string, unknown>;
   delete copy.votes;
   delete copy.rank;
-  delete copy.priorityNumber;
   return copy as Issue;
 }
 
@@ -152,12 +151,11 @@ export function Ids({
   addedBy?: string;
   /** Whether the meeting's agenda has a Headlines section; without one, an issue cannot be converted into a headline. */
   headlines?: boolean;
-  /** Whether the meeting's agenda has a Rocks section (the GM and SD L10s have none); without one, no "Convert to Rock". */
+  /** Whether the meeting's agenda has a Rocks section (not the SD L10s); without one, no "Convert to Rock". */
   rocks?: boolean;
   /**
    * Laid out like Bloom Growth's Issues page (the DM L10s; the owner's request, 15 Nov 2026): an owner picker when
-   * adding, a priority number (1, 2, 3 …, 17 Nov 2026; it replaced the "!" mark) and the owner's initials on each row,
-   * and an Oldest / Newest sort.
+   * adding, a "!" priority mark and the owner's initials on each row, and an Oldest / Newest sort.
    */
   bloom?: boolean;
   /** The meeting's people, for the owner picker. */
@@ -175,9 +173,10 @@ export function Ids({
 
   const setIssues = (fn: (xs: Issue[]) => Issue[]) => edit((d) => ({ ...d, issues: fn(d.issues) }));
   const sorted = sortIssues(doc.issues);
-  // Bloom-style: the numbered issues on top in their order (1, 2, 3 …), then Oldest (the order they were added) or Newest first.
-  const ordered = bloom ? orderByPriority(newestFirst ? [...sorted].reverse() : sorted) : sorted;
-  const numbers = bloom ? priorityNumbers(doc.issues) : new Map<string, number>();
+  // Bloom-style: Oldest (the order they were added) or Newest first, with the "!" issues on top.
+  // Port from Ask Bubbles (lib/priority.ts): the priorities on top as 1, 2, 3 in the order they were picked.
+  const numbers = priorityNumbers(doc.issues);
+  const ordered = bloom ? byPriority(newestFirst ? [...sorted].reverse() : sorted, numbers) : sorted;
   const filtered = searchIssues(ordered, query);
   const roomRanks = groupRanks(doc.issues);
   const shortTerm = filtered.filter((i) => !i.resolved && issueTerm(i) === "short");
@@ -186,16 +185,6 @@ export function Ids({
   const lists: Record<IdsTab, Issue[]> = { short: shortTerm, long: longTerm, solved };
   const patch = (id: string, p: Partial<Issue>) => setIssues((xs) => xs.map((i) => (i.id === id ? { ...i, ...p } : i)));
 
-  /**
-   * Solve or reopen. A solved issue gives up its priority number, so the next one becomes #1; on the Bloom-style pages,
-   * solving the opened issue opens the next numbered one, so the room works the list in order (17 Nov 2026).
-   */
-  const solve = (issue: Issue) => {
-    if (!issue.resolved) confetti();
-    const next = !issue.resolved && bloom && activeId === issue.id ? orderByPriority(shortTerm).find((x) => x.id !== issue.id && numbers.has(x.id)) : undefined;
-    setIssues((xs) => toggleSolved(xs, issue.id, session).map((x) => (x.id === issue.id ? withoutPriorityNumber(x) : x)));
-    if (next) setActiveId(next.id);
-  };
   const add = () => {
     const t = text.trim();
     if (!t) return;
@@ -217,7 +206,10 @@ export function Ids({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <MentionField aria-label="Issue title" value={active.title} onChange={(v) => patch(active.id, { title: v })} wrapperClassName="min-w-[220px]" className="w-full text-lg font-bold" />
         <div className="flex gap-2">
-          <Button variant={active.resolved ? "secondary" : "primary"} onClick={() => solve(active)}>
+          <Button variant={active.resolved ? "secondary" : "primary"} onClick={() => {
+            if (!active.resolved) confetti();
+            setIssues((xs) => toggleSolved(xs, active.id, session));
+          }}>
             {active.resolved ? "Reopen" : "Solve"}
           </Button>
           <Button variant="outline" className="text-[#8a1c1c]" onClick={() => remove(active.id)}>
@@ -264,21 +256,17 @@ export function Ids({
     return (
       <li key={i.id} className={cx("rounded-[10px] border shadow-card", isActive ? "border-bronze bg-sunny" : "border-line bg-white")}>
         <div className="flex flex-wrap items-center gap-2 p-2.5">
-          {/* The priority number (1, 2, 3 …): press to give the issue the next number, press again to clear it. Open short-term issues only. */}
-          {bloom && !i.resolved && issueTerm(i) === "short" && (() => {
+          {bloom && (() => {
             const n = numbers.get(i.id);
             return (
               <button
                 type="button"
-                aria-pressed={n !== undefined}
-                aria-label={n !== undefined ? `Priority ${n}: ${plain(i.title)}` : `Set priority: ${plain(i.title)}`}
-                title={n !== undefined ? `Priority ${n}. Click to clear it.` : "Click to give this issue the next priority number"}
+                aria-pressed={!!i.priority}
+                aria-label={`Priority${n ? ` ${n}` : ""}: ${plain(i.title)}`}
+                title={n ? `Priority ${n}. Click to clear.` : i.priority ? "Priority. Click to clear." : "Mark as the next priority"}
+                onClick={() => setIssues((xs) => togglePriority(xs, i.id))}
                 data-testid="priority-number"
-                onClick={() => setIssues((xs) => togglePriorityNumber(xs, i.id))}
-                className={cx(
-                  "flex size-8 flex-none items-center justify-center rounded-full border-2 font-mono text-sm font-extrabold",
-                  n !== undefined ? "border-[#b42323] bg-[#b42323] text-white" : "border-line bg-white text-muted hover:border-[#b42323] hover:text-[#b42323]",
-                )}
+                className={cx("flex size-8 flex-none items-center justify-center rounded-full border-2 text-sm font-extrabold tabular-nums", i.priority ? "border-[#b42323] bg-[#b42323] text-white" : "border-line bg-white text-muted hover:border-[#b42323] hover:text-[#b42323]")}
               >
                 {n ?? (i.priority ? "!" : "")}
               </button>
@@ -355,7 +343,10 @@ export function Ids({
             </span>
           ) : (
             <>
-              <Button variant="outline" aria-label={`${i.resolved ? "Reopen" : "Solve"} ${plain(i.title)}`} onClick={() => solve(i)}>
+              <Button variant="outline" aria-label={`${i.resolved ? "Reopen" : "Solve"} ${plain(i.title)}`} onClick={() => {
+                if (!i.resolved) confetti();
+                setIssues((xs) => toggleSolved(xs, i.id, session));
+              }}>
                 {i.resolved ? "Reopen" : "Solve"}
               </Button>
               {/* Move between the lists right from the row (also in the opened issue). Solved issues stay where they are. */}

@@ -101,13 +101,10 @@ export interface Issue {
   addedBy?: string;
   /** Who owns the issue (the New Issue bar's owner picker on the Bloom-style meetings, 15 Nov 2026). */
   owner?: string;
-  /** Flagged with the "!" priority mark (the Bloom-style meetings, 15 Nov 2026). Replaced by `priorityNumber`; still read. */
+  /** Flagged with the "!" priority mark (the Bloom-style meetings, 15 Nov 2026). */
   priority?: boolean;
-  /**
-   * Ask Sunny and Ask Bubbles: the IDS priority number (1, 2, 3 …) pressed on a Bloom-style meeting (17 Nov 2026). It
-   * only orders the issues: the number shown is worked out from it (lib/bloom.ts `priorityNumbers`).
-   */
-  priorityNumber?: number;
+  /** When the "!" was set, so the marks show as 1, 2, 3 in the order picked (lib/priority.ts, 17 Nov 2026). */
+  priorityOrder?: number;
   resolvedSession?: string | null;
   /** Which IDS list an open issue sits on. Missing means "short" (every issue written before the split). */
   term?: IssueTerm;

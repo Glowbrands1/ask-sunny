@@ -136,10 +136,13 @@ describe("the DM L10 page in Ask Sunny", () => {
 
   // Changed on purpose 15 Nov 2026: the STC DM L10's pages are laid out like Bloom Growth's, so the floating Add to IDS
   // button became the New Issue bar (owner, issue, Enter), inline at the top of each page since the owner's report below.
-  it("has the New Issue bar in place of the floating Add to IDS button", () => {
+  // Changed on purpose 17 Nov 2026 (port from Ask Bubbles): the New Issue bar became a floating "+ New Issue" button
+  // that opens a window, so a page never shows two places to add an issue.
+  it("has the New Issue button in place of the floating Add to IDS button", () => {
     renderView();
-    expect(screen.queryByRole("button", { name: /Add to IDS/ })).toBeNull();
-    expect(screen.getByRole("form", { name: "New Issue" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Add to IDS/ })).toBeNull();
+    expect(screen.getByRole("button", { name: "+ New Issue" }).hasAttribute("data-page-fab")).toBe(true);
+    expect(screen.queryByRole("form", { name: "New Issue" })).toBeNull();
   });
 
   it("IDS has Short term, Long-term and Recently solved tabs, as in the Hub", () => {
@@ -401,25 +404,27 @@ describe("Bloom-style page: what every page shares", () => {
     resolved_issues: ["Front desk coverage"],
   };
 
-  it('the New Issue bar is inline at the top of each page, not pinned to the bottom ("why is the issue at the bottom? It should be at the top, after Round-robin: check off")', async () => {
+  // Replaces the 15 Nov test of the inline bar: the To-do and IDS pages showed it next to their own add row.
+  it('"in ask sunny DM L10 there 2 of these, just need 1" (the owner, 17 Nov 2026)', () => {
     renderView();
-    const bar = () => screen.getByRole("form", { name: "New Issue" });
-    // The segue page: right under the "Round-robin: check off each attendee as they share" banner.
-    const banner = screen.getByText("Round-robin: check off each attendee as they share.").parentElement!;
-    expect(banner.nextElementSibling).toBe(bar());
-    // Not fixed to the window (it spanned the window over Ask Sunny's sidebar footer), and not a floating button.
-    expect(bar().className).not.toMatch(/\bfixed\b/);
-    expect(bar().hasAttribute("data-page-fab")).toBe(false);
-    // Every other agenda page: right after the section's title and hint.
+    const agenda = within(screen.getByRole("region", { name: "Agenda" }));
     for (const section of [/Scorecard/, /Rock Review/, /To-do List/, /· IDS/, /Conclude/]) {
-      fireEvent.click(within(screen.getByRole("region", { name: "Agenda" })).getAllByRole("button", { name: section })[0]);
-      const heading = screen.getByRole("heading", { level: 2, name: new RegExp(section.source.replace("· ", "")) });
-      expect(heading.parentElement!.nextElementSibling, `${section}`).toBe(bar());
+      fireEvent.click(agenda.getAllByRole("button", { name: section })[0]);
+      // No banner on the page, only the floating button.
+      expect(screen.queryByRole("form", { name: "New Issue" }), `${section}`).toBeNull();
+      expect(screen.getByRole("button", { name: "+ New Issue" }).className).toMatch(/\bfixed\b/);
     }
-    // The "i" shortcut still goes to it.
-    (document.activeElement as HTMLElement | null)?.blur();
+    // To-do List: one add row (the to-do's own); IDS: one issue field (its own).
+    fireEvent.click(agenda.getAllByRole("button", { name: /To-do List/ })[0]);
+    expect(screen.queryAllByPlaceholderText(/New Issue/)).toHaveLength(0);
+    fireEvent.click(agenda.getAllByRole("button", { name: /· IDS/ })[0]);
+    expect(screen.getAllByRole("textbox", { name: /issue/i }).map((t) => t.getAttribute("aria-label"))).toEqual(["Identify a new issue"]);
+    // The button, and the "i" shortcut, open the New Issue window.
+    fireEvent.click(screen.getByRole("button", { name: "+ New Issue" }));
+    expect(screen.getByRole("dialog", { name: "New Issue" })).toBeTruthy();
+    fireEvent.click(within(screen.getByRole("dialog", { name: "New Issue" })).getByRole("button", { name: "Cancel" }));
     fireEvent.keyDown(document, { key: "i" });
-    expect(document.activeElement).toBe(within(bar()).getByRole("textbox", { name: "New Issue" }));
+    expect(screen.getByRole("dialog", { name: "New Issue" })).toBeTruthy();
   });
 
   it("Meeting Notes opens the shared notes pad in a side panel, saves as meetingNotes, and Esc closes it", async () => {
@@ -477,9 +482,10 @@ describe("Bloom-style page: what every page shares", () => {
     expect(body.getByText("Issues solved").nextSibling?.textContent).toBe("2");
   });
 
-  it("the New Issue bar saves the issue with its owner and who added it", async () => {
+  it("the New Issue button saves the issue with its owner and who added it", async () => {
     const save = vi.fn().mockResolvedValue({ ok: true, version: 4, updatedAt: "2026-11-15T00:00:00Z" } satisfies SaveOutcome);
     renderView({ save: save as unknown as SaveFn, initial: loaded(3, { issues: [] }), mentionPeople: [{ id: "hub-user-1", name: "Avery Quill" }] });
+    fireEvent.click(screen.getByRole("button", { name: "+ New Issue" }));
     const bar = within(screen.getByRole("form", { name: "New Issue" }));
     fireEvent.change(bar.getByLabelText("Issue owner"), { target: { value: "Cy Marlow" } });
     fireEvent.change(bar.getByRole("textbox", { name: "New Issue" }), { target: { value: "Late shift handover" } });
@@ -701,10 +707,30 @@ describe("Bloom-style page: Rocks and To-dos", () => {
 });
 
 // IDS on the Bloom-style STC DM L10 (the owner's request, 15 Nov 2026), as in the Hub.
-// Changed on purpose (DM L10 run-through, 17 Nov 2026): the "!" toggle became a priority number (1, 2, 3 …); an issue
-// flagged "!" before that still sorts right after the numbered ones and shows "!" in its circle.
 describe("Bloom-style page: IDS", () => {
-  it("rows have a priority circle, the owner's initials, Solve and the term button; ! issues first; Oldest / Newest", async () => {
+  it('"in ask sunny, we should be able to label 1 2 3 and appear that they are indeed 1 2 3 in ranking" (the owner, 17 Nov 2026)', async () => {
+    const save = vi.fn().mockResolvedValue({ ok: true, version: 4, updatedAt: "2026-11-17T00:00:00Z" } satisfies SaveOutcome);
+    renderView({
+      save: save as unknown as SaveFn,
+      initial: loaded(3, { issues: ["Alpha", "Bravo", "Charlie", "Delta"].map((t, n) => ({ id: `i${n + 1}`, title: t, notes: "", resolved: false })) }),
+    });
+    fireEvent.click(within(screen.getByRole("region", { name: "Agenda" })).getAllByRole("button", { name: /· IDS/ })[0]);
+    const shown = () =>
+      within(screen.getByRole("list", { name: "Open issues" }))
+        .getAllByRole("listitem")
+        .map((li) => `${li.querySelector("[data-testid=priority-number]")?.textContent ?? ""}${li.querySelector("[aria-expanded] .font-semibold")?.textContent}`);
+    fireEvent.click(screen.getByRole("button", { name: "Priority: Charlie" }));
+    fireEvent.click(screen.getByRole("button", { name: "Priority: Alpha" }));
+    fireEvent.click(screen.getByRole("button", { name: "Priority: Delta" }));
+    expect(shown()).toEqual(["1Charlie", "2Alpha", "3Delta", "Bravo"]);
+    fireEvent.click(screen.getByRole("button", { name: "Priority 1: Charlie" }));
+    expect(shown()).toEqual(["1Alpha", "2Delta", "Bravo", "Charlie"]);
+    await waitFor(() => expect(save).toHaveBeenCalled());
+    const issues = (save.mock.calls.at(-1)![2] as { issues: { title: string; priority?: boolean; priorityOrder?: number }[] }).issues;
+    expect(issues.filter((i) => i.priority).sort((a, b) => a.priorityOrder! - b.priorityOrder!).map((i) => i.title)).toEqual(["Alpha", "Delta"]);
+  });
+
+  it("rows have a ! circle, the owner's initials, Solve and the term button; ! issues first; Oldest / Newest", async () => {
     const save = vi.fn().mockResolvedValue({ ok: true, version: 4, updatedAt: "2026-11-15T00:00:00Z" } satisfies SaveOutcome);
     renderView({
       save: save as unknown as SaveFn,
@@ -720,60 +746,71 @@ describe("Bloom-style page: IDS", () => {
     const titles = () => within(screen.getByRole("list", { name: "Open issues" })).getAllByRole("listitem").map((li) => li.querySelector("[aria-expanded] .font-semibold")?.textContent);
     expect(titles()).toEqual(["Third issue", "First issue", "Second issue"]);
     const first = within(within(screen.getByRole("list", { name: "Open issues" })).getAllByRole("listitem")[1]);
-    expect(first.getByRole("button", { name: "Set priority: First issue" }).getAttribute("aria-pressed")).toBe("false");
+    expect(first.getByRole("button", { name: "Priority: First issue" }).getAttribute("aria-pressed")).toBe("false");
     expect(first.getByTitle("Bo Lark").textContent).toBe("BLOwner: Bo Lark");
     expect(first.getByRole("button", { name: "Solve First issue" })).toBeTruthy();
     expect(first.getByRole("button", { name: "Move to long-term: First issue" })).toBeTruthy();
     fireEvent.change(screen.getByLabelText("Sort issues"), { target: { value: "newest" } });
     expect(titles()).toEqual(["Third issue", "Second issue", "First issue"]);
-    fireEvent.click(screen.getByRole("button", { name: "Set priority: Second issue" }));
+    fireEvent.click(screen.getByRole("button", { name: "Priority: Second issue" }));
     await waitFor(() => expect(save).toHaveBeenCalled());
-    expect((save.mock.calls.at(-1)![2] as { issues: { id: string; priorityNumber?: number }[] }).issues.find((i) => i.id === "i2")?.priorityNumber).toBe(1);
+    expect((save.mock.calls.at(-1)![2] as { issues: { id: string; priority?: boolean }[] }).issues.find((i) => i.id === "i2")?.priority).toBe(true);
   });
+});
 
-  // The DM L10 run-through (17 Nov 2026), in its words: "IDS prioritization: The numbering is still off. We need to
-  // assign topics a priority of 1, 2, 3, etc., and have them move into that order as we select them. We should then
-  // work through and solve issues in that order."
-  it("assigns topics a priority of 1, 2, 3, etc., and they move into that order as we select them; then we solve in that order", async () => {
-    const save = vi.fn().mockResolvedValue({ ok: true, version: 4, updatedAt: "2026-11-17T00:00:00Z" } satisfies SaveOutcome);
-    renderView({
-      save: save as unknown as SaveFn,
-      initial: loaded(3, {
-        issues: ["Alpha", "Bravo", "Charlie", "Delta", "Echo"].map((t, n) => ({ id: `i${n + 1}`, title: t, notes: "", resolved: false })),
-      }),
-    });
-    fireEvent.click(screen.getByRole("button", { name: /\d · IDS/ }));
-    const open = () => within(screen.getByRole("list", { name: "Open issues" })).getAllByRole("listitem");
-    const titles = () => open().map((li) => li.querySelector("[aria-expanded] .font-semibold")?.textContent);
-    const circles = () => open().map((li) => within(li).getByTestId("priority-number").textContent);
-    expect(titles()).toEqual(["Alpha", "Bravo", "Charlie", "Delta", "Echo"]);
+// "Can we add myself, and any other DM or higher role as a drop down option to add to-do's and issues?" (17 Nov 2026).
+describe("owner menus list the DM-or-higher people from Woven", () => {
+  it("to-dos, the New Issue window and IDS offer the meeting's people first, then the others", () => {
+    render(
+      <MeetingView info={info} initial={loaded(3, { todos: [], issues: [] })} save={vi.fn() as unknown as SaveFn} end={vi.fn() as unknown as EndFn} viewer={viewer} roster={roster} hubMeetingUrl={HUB} pollMs={0} debounceMs={0} today="2026-11-17" ownerPeople={["Avery Quill", "Dee Wren", "Eli Sorrel"]} />,
+    );
+    const options = (select: HTMLElement) => [...(select as HTMLSelectElement).options].map((o) => o.textContent);
+    const expected = [...roster.members.map((m) => m.name), "Dee Wren", "Eli Sorrel"];
+    const agenda = within(screen.getByRole("region", { name: "Agenda" }));
+    fireEvent.click(agenda.getAllByRole("button", { name: /To-do List/ })[0]);
+    expect(options(screen.getByLabelText("To-do owner"))).toEqual(expected);
+    fireEvent.click(screen.getByRole("button", { name: "+ New Issue" }));
+    expect(options(within(screen.getByRole("dialog", { name: "New Issue" })).getByLabelText("Issue owner"))).toEqual(expected);
+    fireEvent.click(within(screen.getByRole("dialog", { name: "New Issue" })).getByRole("button", { name: "Cancel" }));
+    fireEvent.click(agenda.getAllByRole("button", { name: /· IDS/ })[0]);
+    expect(options(screen.getByLabelText("Issue owner"))).toEqual(expected);
+  });
+});
 
-    // Selected in the order Delta, Bravo, Echo: they take 1, 2, 3 and move to the top in that order.
-    fireEvent.click(screen.getByRole("button", { name: "Set priority: Delta" }));
-    expect(titles()).toEqual(["Delta", "Alpha", "Bravo", "Charlie", "Echo"]);
-    fireEvent.click(screen.getByRole("button", { name: "Set priority: Bravo" }));
-    fireEvent.click(screen.getByRole("button", { name: "Set priority: Echo" }));
-    expect(titles()).toEqual(["Delta", "Bravo", "Echo", "Alpha", "Charlie"]);
-    expect(circles()).toEqual(["1", "2", "3", "", ""]);
-    // More than three: "1, 2, 3, etc."
-    fireEvent.click(screen.getByRole("button", { name: "Set priority: Alpha" }));
-    expect(circles()).toEqual(["1", "2", "3", "4", ""]);
+describe("rocks owner menus list the DM-or-higher people from Woven too", () => {
+  it('"add all of them in rocks drop down too pls" (the owner, 18 Nov 2026): the add form and the rock panel offer them; no empty sections for them', () => {
+    render(
+      <MeetingView info={info} initial={loaded(3, { rocks: [{ id: "k1", title: "Open two rooms", owner: "Avery Quill", status: "on-track", milestones: [] }] })} save={vi.fn() as unknown as SaveFn} end={vi.fn() as unknown as EndFn} viewer={viewer} roster={roster} hubMeetingUrl={HUB} pollMs={0} debounceMs={0} today="2026-11-18" ownerPeople={["Avery Quill", "Dee Wren", "Eli Sorrel"]} />,
+    );
+    const options = (select: HTMLElement) => [...(select as HTMLSelectElement).options].map((o) => o.textContent);
+    const expected = ["Company", ...roster.members.map((m) => m.name), "Dee Wren", "Eli Sorrel"];
+    fireEvent.click(within(screen.getByRole("region", { name: "Agenda" })).getAllByRole("button", { name: /Rock Review/ })[0]);
+    expect(options(screen.getByLabelText("New rock owner"))).toEqual(expected);
+    // The extra people get no "No rocks for …" section.
+    expect(screen.queryByRole("region", { name: /Dee Wren/ })).toBeNull();
+    expect(document.body.textContent).not.toContain("No rocks for Dee Wren");
+    fireEvent.click(screen.getByRole("button", { name: "Edit Open two rooms" }));
+    expect(options(screen.getByLabelText("Owner of Open two rooms"))).toEqual(expected);
+    // A rock added for one of them shows under their name.
+    fireEvent.click(screen.getByRole("button", { name: "Close rock editor" }));
+    fireEvent.change(screen.getByLabelText("New rock title"), { target: { value: "Coach the new leads" } });
+    fireEvent.change(screen.getByLabelText("New rock owner"), { target: { value: "Dee Wren" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add rock" }));
+    expect(screen.getAllByRole("region", { name: /Dee Wren/ }).length).toBeGreaterThan(0);
+  });
+});
 
-    // Clearing #2 closes the gap: Echo becomes 2, Alpha 3.
-    fireEvent.click(screen.getByRole("button", { name: "Priority 2: Bravo" }));
-    expect(titles()).toEqual(["Delta", "Echo", "Alpha", "Bravo", "Charlie"]);
-    expect(circles()).toEqual(["1", "2", "3", "", ""]);
-
-    // Work through in order: open #1, Solve it, and #2 opens next and becomes #1.
-    fireEvent.click(screen.getByRole("button", { name: "Delta", expanded: false }));
-    fireEvent.click(within(screen.getByRole("region", { name: "Issue detail" })).getByRole("button", { name: "Solve" }));
-    expect(titles()).toEqual(["Echo", "Alpha", "Bravo", "Charlie"]);
-    expect(circles()).toEqual(["1", "2", "", ""]);
-    expect(screen.getByRole("button", { name: "Echo", expanded: true })).toBeTruthy();
-    await waitFor(() => expect(save).toHaveBeenCalled());
-    const saved = (save.mock.calls.at(-1)![2] as { issues: { title: string; resolved: boolean; priorityNumber?: number }[] }).issues;
-    expect(saved.find((i) => i.title === "Delta")).toMatchObject({ resolved: true });
-    expect(saved.find((i) => i.title === "Delta")?.priorityNumber).toBeUndefined();
+describe("Scorecard Full width (port from Ask Bubbles)", () => {
+  it("Full width hides the agenda column on the Scorecard page only; Collapse brings it back", () => {
+    window.localStorage.clear();
+    renderView();
+    const agendaButton = (n: RegExp) => within(screen.getByRole("region", { name: "Agenda" })).getAllByRole("button", { name: n })[0];
+    fireEvent.click(agendaButton(/Scorecard/));
+    fireEvent.click(screen.getByRole("button", { name: "⤢ Full width" }));
+    expect(screen.queryByRole("region", { name: "Agenda" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "⤡ Collapse" }));
+    expect(screen.getByRole("region", { name: "Agenda" })).toBeTruthy();
+    window.localStorage.clear();
   });
 });
 
@@ -812,33 +849,6 @@ describe("Conclude: every meeting attendee can submit their own meeting rating",
     expect(lastSaved(save)).toEqual(expect.arrayContaining([expect.objectContaining({ name: "Dana Fenn", rating: 10 }), expect.objectContaining({ name: "Bo Lark", rating: 8 })]));
     expect(screen.getByRole("button", { name: "Dana Fenn: 10" }).getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByTestId("rating-average").textContent).toBe("9.0");
-  });
-});
-
-// The DM L10 run-through (17 Nov 2026), in its words: "Scorecard layout: The scorecard sits too far to the right,
-// leaving a lot of unused space. Please center it within the main content area and make it easier to review additional
-// details without scrolling to the bottom of the page to access the horizontal scrollbar."
-describe("Bloom-style Scorecard: full width under the agenda, scrolls inside the window", () => {
-  it("draws the table outside the page column, centred, in a box no taller than the window, with Newer / Older weeks", () => {
-    renderView({
-      initial: loaded(3, {
-        weekEndings: ["11/08/2026", "11/15/2026"],
-        scorecard: [{ id: "m1", metric: "Sales", owner: "Avery Quill", goal: "≥ 5", goalValue: 5, higherIsBetter: true, format: "number", weeks: [4, 6] }],
-      }),
-    });
-    fireEvent.click(within(screen.getByRole("region", { name: "Agenda" })).getByRole("button", { name: /Scorecard/ }));
-    const table = screen.getByTestId("bloom-scorecard");
-    // Not inside the column beside the agenda, but in the full-width block after it.
-    expect(screen.getByTestId("scorecard-full-width").contains(table)).toBe(true);
-    expect(screen.getByTestId("scorecard-full-width").contains(screen.getByTestId("add-metric"))).toBe(false);
-    expect(table.parentElement!.className).toContain("mx-auto");
-    expect(table.className).toContain("max-h-[calc(100dvh-7rem)]");
-    expect(table.className).toContain("overflow-auto");
-    expect(screen.getAllByTestId("bloom-scorecard")).toHaveLength(1);
-    table.scrollBy = vi.fn();
-    fireEvent.click(screen.getByRole("button", { name: "Show older weeks" }));
-    expect(table.scrollBy).toHaveBeenCalledWith(expect.objectContaining({ left: expect.any(Number) }));
-    expect((table.scrollBy as ReturnType<typeof vi.fn>).mock.calls[0][0].left).toBeGreaterThan(0);
   });
 });
 

@@ -17,7 +17,7 @@ import { Headlines } from "./_components/Headlines";
 import { Ids } from "./_components/Ids";
 import { PrintButton } from "./_components/PrintButton";
 import { ParkIt } from "./_components/ParkIt";
-import { LastMeetingSummary, MeetingNotes, NewIssueBar } from "./_components/BloomShell";
+import { LastMeetingSummary, MeetingNotes, NewIssueButton } from "./_components/BloomShell";
 import { LastMeetingConclusion, LastWeekFeedback, SegueQuestion } from "./_components/BloomSections";
 import { BusinessPlan } from "./_components/BusinessPlan";
 import { Rocks } from "./_components/Rocks";
@@ -26,6 +26,7 @@ import { Todos } from "./_components/Todos";
 import { statusText, useMeetingSync, type LoadFn, type SaveFn } from "./useMeetingSync";
 import { useStoredFlag } from "./useStoredFlag";
 import { useLeaveGuard } from "./useLeaveGuard";
+import { ownerMenu } from "@/features/l10/lib/ownerMenu";
 import { MentionRoster } from "@/features/l10/ui/Mentions";
 import type { Person } from "@/features/l10/lib/mentions";
 
@@ -52,7 +53,10 @@ export function MeetingView({
   debounceMs,
   pollMs,
   recaps = [],
+  ownerPeople = [],
 }: {
+  /** Ask Sunny: DM-or-higher people from Woven, added after the meeting's own people in the to-do and issue owner menus. */
+  ownerPeople?: string[];
   /** Open on a reference view (from a link such as ?view=accountability). */
   initialView?: "accountability" | "business-plan";
   info: MeetingInfo;
@@ -102,8 +106,13 @@ export function MeetingView({
   const advanced = useRef<Partial<Record<AgendaKey, boolean>>>({});
   const [notice, setNotice] = useState("");
   const people = roster.members.map((m) => m.name);
+  // Ask Sunny: the owner menus for to-dos, issues and rocks also list every DM-or-higher person from Woven (owners.server.ts).
+  const owners = ownerMenu(people, ownerPeople);
   // The agenda panel can be tucked away; the choice is remembered in this browser for this person.
   const [agendaHidden, setAgendaHidden] = useStoredFlag(`l10-agenda-hidden:${viewer.id}`);
+  // Port from Ask Bubbles: on the Bloom-style Scorecard, "Full width" hides the agenda column so the table uses the
+  // whole page (the owner, 18 Nov 2026: "make this … wide have the option to do that"). Remembered in this browser.
+  const [scorecardWide, setScorecardWide] = useStoredFlag(`l10-scorecard-wide:${viewer.id}`);
   const attendees = effectiveAttendees(roster, doc.attendees);
 
   /* ── The shared clock ─────────────────────────────────────────────── */
@@ -112,9 +121,9 @@ export function MeetingView({
   const isLeader = !!timer.leader && timer.leader === viewer.id;
   /** The signed-in person's full name (from the meeting's people), saved on each issue they add. */
   const myName = (mentionPeople.find((p) => p.id === viewer.id)?.name ?? viewer.name ?? "").trim();
-  /** Who rates the meeting at Conclude: the attendees, plus the signed-in person if they are not listed (see ratingAttendees). */
-  // Only a person the Hub lists for this meeting (by their sign-in id), with their full name, gets a row of their own.
+  // Only a person the Hub lists for this meeting (by their sign-in id), with their full name, gets a rating row of their own.
   const meListed = (mentionPeople.find((p) => p.id === viewer.id)?.name ?? "").trim();
+  /** Who rates the meeting at Conclude: the attendees, plus the signed-in person if they are not listed (see ratingAttendees). */
   const raters = ratingAttendees(attendees, doc.attendees ?? [], meListed);
   const live = timer.started && !timer.ended;
   // The first render uses the server's render time (the same number on the server and in the browser), so the clock
@@ -219,9 +228,8 @@ export function MeetingView({
         setTimeout(() => document.querySelector<HTMLInputElement>('input[aria-label="New to-do"]')?.focus(), 60);
       } else if (e.key === "i" || e.key === "I") {
         e.preventDefault();
-        // A Bloom-style meeting has the New Issue bar instead of the Add to IDS window.
-        if (bloom) document.querySelector<HTMLInputElement>('form[aria-label="New Issue"] input[aria-label="New Issue"]')?.focus();
-        else setParkOpen(true);
+        // A Bloom-style meeting has the New Issue window instead of the Add to IDS one; the same key opens either.
+        setParkOpen(true);
       } else if (e.key === "?") {
         e.preventDefault();
         setHelp((h) => !h);
@@ -276,12 +284,6 @@ export function MeetingView({
       setEndBusy(false);
     }
   };
-
-  // The Bloom-style meetings' New Issue bar, inline at the top of each agenda page (not on the reference views).
-  const newIssueBar =
-    !readOnly && bloom && !isReferenceView(view) ? (
-      <NewIssueBar people={people} me={myName} onAdd={(title, owner) => edit((d) => ({ ...d, issues: [...d.issues, { id: newItemId(), title, notes: "", resolved: false, owner, ...(myName ? { addedBy: myName } : {}) }] }))} />
-    ) : null;
 
   return (
     <MentionRoster value={mentionPeople}>
@@ -473,6 +475,7 @@ export function MeetingView({
         </Card>
       ) : (
         <div className="flex flex-wrap items-start gap-4">
+          {!(bloom && view === "scorecard" && scorecardWide) && (
           <Card aria-label="Agenda" className={cx("flex flex-col gap-1 print:hidden", agendaHidden ? "flex-[0_0_auto]" : "flex-[0_1_280px] max-[700px]:flex-auto")}>
             <div className="mb-2 flex items-center justify-between gap-2">
               <h2 className="m-0 text-base font-bold">{agendaHidden ? "Agenda" : `Agenda · ${agenda.reduce((s, a) => s + a.minutes, 0)} min`}</h2>
@@ -523,6 +526,7 @@ export function MeetingView({
               </>
             )}
           </Card>
+          )}
 
           <div className="flex min-w-0 flex-[999_1_520px] flex-col gap-4" inert={conflict ? true : undefined} aria-busy={conflict ? true : undefined}>
             {bloom && <LastMeetingSummary last={last} />}
@@ -565,17 +569,15 @@ export function MeetingView({
               <p className="m-0 mt-0.5 text-sm text-muted">{view === "business-plan" ? "Vision, core values and the 1- and 3-year picture. Edits save for everyone." : view === "accountability" ? "One name per seat. Changes save for the whole team." : hints[view]}</p>
             </div>
 
-            {/* The New Issue bar: right after the title and hint (the segue page puts it under its round-robin banner). */}
-            {newIssueBar && view !== "business-best" && newIssueBar}
             <fieldset disabled={!!readOnly} className="m-0 flex min-w-0 flex-col gap-4 border-0 p-0">
             {bloom && view === "business-best" && <SegueQuestion value={typeof doc.segueQuestion === "string" ? doc.segueQuestion : ""} onChange={(v) => edit((d) => ({ ...d, segueQuestion: v }))} saveStatus={readOnly ? undefined : statusText(status)} />}
             {bloom && view === "conclude" && !timer.started && <LastMeetingConclusion last={last} />}
-            {view === "business-best" && <BusinessBest attendees={attendees} onChange={(next) => edit((d) => ({ ...d, attendees: keepHiddenAttendees(d.attendees, next) }))} afterBanner={newIssueBar} />}
-            {view === "scorecard" && <Scorecard doc={doc} edit={edit} people={people} bloom={bloom} today={today} part={bloom ? "controls" : "all"} salons={salonsFor(key)} />}
-            {view === "rocks" && <Rocks rocks={doc.rocks} onChange={(rocks) => edit((d) => ({ ...d, rocks }))} people={people} today={today} saveStatus={statusText(status)} bloom={bloom} />}
+            {view === "business-best" && <BusinessBest attendees={attendees} onChange={(next) => edit((d) => ({ ...d, attendees: keepHiddenAttendees(d.attendees, next) }))} />}
+            {view === "scorecard" && <Scorecard doc={doc} edit={edit} people={people} bloom={bloom} today={today} {...(bloom ? { wide: scorecardWide, onWide: setScorecardWide } : {})} salons={salonsFor(key)} />}
+            {view === "rocks" && <Rocks rocks={doc.rocks} onChange={(rocks) => edit((d) => ({ ...d, rocks }))} people={people} ownerOptions={owners} today={today} saveStatus={statusText(status)} bloom={bloom} />}
             {view === "headlines" && <Headlines headlines={doc.headlines} onChange={(headlines) => edit((d) => ({ ...d, headlines }))} author={people[0] ?? ""} />}
-            {view === "todos" && <Todos todos={doc.todos} onChange={(todos) => edit((d) => ({ ...d, todos }))} people={people} today={today} bloom={bloom} />}
-            {view === "ids" && <Ids doc={doc} edit={edit} session={timer.sessionId ?? "pending"} meetingKey={info.key} voter={{ id: viewer.id, name: viewer.name || viewer.label }} attendees={attendees} addedBy={myName} headlines={agenda.some((a) => a.key === "headlines")} rocks={agenda.some((a) => a.key === "rocks")} bloom={bloom} people={people} />}
+            {view === "todos" && <Todos todos={doc.todos} onChange={(todos) => edit((d) => ({ ...d, todos }))} people={owners} today={today} bloom={bloom} />}
+            {view === "ids" && <Ids doc={doc} edit={edit} session={timer.sessionId ?? "pending"} meetingKey={info.key} voter={{ id: viewer.id, name: viewer.name || viewer.label }} attendees={attendees} addedBy={myName} headlines={agenda.some((a) => a.key === "headlines")} rocks={agenda.some((a) => a.key === "rocks")} bloom={bloom} people={owners} />}
             {view === "conclude" && !(bloom && !timer.started) && (
               <Conclude
                 meetingKey={info.key}
@@ -605,20 +607,20 @@ export function MeetingView({
             </fieldset>
 
           </div>
-          {/*
-            Ask Sunny and Ask Bubbles: the Bloom-style scorecard table goes full width under the agenda and the page's
-            column, centred, instead of beside the agenda (the DM L10 run-through, 17 Nov 2026). See Scorecard `part`.
-          */}
-          {bloom && view === "scorecard" && (
-            <fieldset disabled={!!readOnly} inert={conflict ? true : undefined} className="m-0 flex w-full min-w-0 flex-col border-0 p-0" data-testid="scorecard-full-width">
-              <Scorecard doc={doc} edit={edit} people={people} bloom today={today} part="table" />
-            </fieldset>
-          )}
         </div>
       )}
 
       {/* Room at the bottom so the floating Add to IDS button never covers the last rows. */}
-      {!bloom && <div aria-hidden className="h-20" />}
+      <div aria-hidden className="h-20" />
+      {!readOnly && bloom && (
+        <NewIssueButton
+          open={parkOpen}
+          setOpen={setParkOpen}
+          people={owners}
+          me={myName}
+          onAdd={(title, owner) => edit((d) => ({ ...d, issues: [...d.issues, { id: newItemId(), title, notes: "", resolved: false, owner, ...(myName ? { addedBy: myName } : {}) }] }))}
+        />
+      )}
       {!readOnly && !bloom && <ParkIt open={parkOpen} setOpen={setParkOpen} onPark={(title) => edit((d) => ({ ...d, issues: [...d.issues, { id: newItemId(), title, notes: "", resolved: false, ...(myName ? { addedBy: myName } : {}) }] }))} />}
     </MentionRoster>
   );
