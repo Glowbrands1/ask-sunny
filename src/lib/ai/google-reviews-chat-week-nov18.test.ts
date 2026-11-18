@@ -269,3 +269,25 @@ describe(`Port from Ask Bubbles, QA 18 Nov 2026: "${QUESTION}"`, () => {
     });
   });
 });
+
+// Audit before merge (18 Nov 2026): these forms and policy turns matched the weekly patterns and would get every salon's
+// review figures and customer quotes once GOOGLE_REVIEWS_IN_CHAT_ENABLED is on.
+describe("not a Google review question: review as a verb, or a guest complaint in a form", () => {
+  it.each([
+    "Can you review this write-up for Jane today?",
+    "Please review the attendance policy with me today",
+    "write a coaching form for Jane, she got bad reviews from guests",
+    "Can you review the CA I wrote for Jamie yesterday?",
+    "she got bad reviews from guests and was late yesterday",
+  ])("%s", async (question) => {
+    const { isGoogleReviewQuestion } = await import("./google-reviews-chat");
+    expect(isGoogleReviewQuestion(question)).toBe(false);
+  });
+  it.each(["How many Google reviews did we get this week?", "Which salon got the most reviews last week?", "What are our latest reviews?", "any bad google reviews this week?"])(
+    "still a review question: %s",
+    async (question) => {
+      const { isGoogleReviewQuestion } = await import("./google-reviews-chat");
+      expect(isGoogleReviewQuestion(question)).toBe(true);
+    },
+  );
+});

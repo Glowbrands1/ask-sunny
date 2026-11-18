@@ -40,7 +40,7 @@ const GOOGLE_REVIEW_PATTERNS: readonly RegExp[] = [
    * The weekly section's questions (port from Ask Bubbles, QA 18 Nov 2026): last
    * week, the average rating and the latest reviews are Google review questions too.
    */
-  /\breviews?\b[\s\S]{0,60}\b(?:last week|this past week|past week|yesterday|today)\b/i,
+  /\breviews\b[\s\S]{0,60}\b(?:last week|this past week|past week|yesterday|today)\b/i,
   /\b(?:recent|latest|newest|new|last few)\s+(?:google\s+)?reviews\b/i,
   /\baverage\s+(?:star\s+)?rating\b/i,
   /\b(?:bad|negative|good|positive|[1-5][- ]?star|one[- ]star|five[- ]star)\s+reviews\b/i,
@@ -49,9 +49,19 @@ const GOOGLE_REVIEW_PATTERNS: readonly RegExp[] = [
 /** A review of a person or a document, not a Google review. */
 const OTHER_REVIEW = /\b(?:policy|performance|annual|employee|coaching|90[- ]day|manager|peer)\s+reviews?\b/i;
 
+/**
+ * A turn about a form or a person (a Corrective Action, coaching, write-up, policy, attendance), where "review" is the
+ * verb or a guest's complaint, not a Google review question (audit, 18 Nov 2026: "Can you review this write-up for
+ * Jane today?" and "write a coaching form for Jane, she got bad reviews from guests" matched).
+ */
+const FORM_OR_PERSON_CONTEXT =
+  /\b(?:ca|cas|corrective actions?|write[- ]?ups?|coaching|form|forms|policy|policies|attendance|late|tardy|tardies|no[- ]call|no[- ]show|terminat\w*|warning|verbal|written|counsel\w*|disciplin\w*|suspen\w*|handbook|manual)\b/i;
+
 export function isGoogleReviewQuestion(question: string): boolean {
   if (!GOOGLE_REVIEW_PATTERNS.some((pattern) => pattern.test(question))) return false;
-  if (OTHER_REVIEW.test(question) && !/\bgoogle\b/i.test(question)) return false;
+  const saysGoogle = /\bgoogle\b/i.test(question);
+  if (OTHER_REVIEW.test(question) && !saysGoogle) return false;
+  if (FORM_OR_PERSON_CONTEXT.test(question) && !saysGoogle) return false;
   return true;
 }
 
