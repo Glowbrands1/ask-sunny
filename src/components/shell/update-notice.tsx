@@ -24,7 +24,6 @@ import { usePreference, writePreference } from "@/lib/utils/client-store";
  * palette with no change here.
  */
 
-export const UPDATE_NOTICE_CONTACT = "Paulyne.camacho@glowbrands.com";
 const KEY_PREFIX = "ask-sunny:update-notice-dismissed";
 const PHONE_QUERY = "(max-width: 639px)";
 
@@ -62,14 +61,8 @@ function NoticeBody({ name }: { name: string }) {
         capabilities. You can still use it to create forms as usual.
       </p>
       <p>
-        If you encounter any issues, please feel free to reach out to me at{" "}
-        <a
-          href={`mailto:${UPDATE_NOTICE_CONTACT}`}
-          className="font-semibold break-all text-foreground underline underline-offset-2"
-        >
-          {UPDATE_NOTICE_CONTACT}
-        </a>{" "}
-        so I can look into them.
+        If you encounter any issues, please feel free to reach out to the Admins so they can look
+        into them.
       </p>
       <p>Thank you for your patience!</p>
     </>
@@ -104,13 +97,7 @@ export function UpdateNotice({ today }: { today?: string } = {}) {
         <Sparkles className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />
         <p className="min-w-0 flex-1">
           Hello{name ? ` ${name}` : ""}! We&rsquo;re updating the chat — forms still work as usual.
-          Issues?{" "}
-          <a
-            href={`mailto:${UPDATE_NOTICE_CONTACT}`}
-            className="font-semibold break-all underline underline-offset-2"
-          >
-            {UPDATE_NOTICE_CONTACT}
-          </a>
+          Any issues? Please reach out to the Admins.
         </p>
         <Button size="sm" onClick={dismiss} className="shrink-0">
           OK

@@ -37,3 +37,12 @@ describe("the chat update notice", () => {
     expect(greetingName("  ")).toBe("");
   });
 });
+
+describe("the notice's contact line", () => {
+  it("points people to the Admins and carries no personal email address", () => {
+    // Its own day: an earlier test dismissed 2026-11-18 in the shared preference cache.
+    render(<UpdateNotice today="2026-12-01" />);
+    expect(screen.getByText(/reach out to the Admins/)).toBeTruthy();
+    expect(document.body.innerHTML).not.toMatch(/@glowbrands\.com|mailto:/);
+  });
+});
