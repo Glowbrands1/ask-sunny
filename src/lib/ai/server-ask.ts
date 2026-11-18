@@ -35,6 +35,7 @@ import {
   reformatKeepsSourcesEnabled,
   formFullRemapEnabled,
   crossChatReplyGuardEnabled,
+  formsOnFileDateRangeEnabled,
   manualNegatedListNoteEnabled,
   remapIncidentFixEnabled,
   questionNotFormEnabled,
@@ -78,7 +79,7 @@ import {
 import { detectTemplateIntent } from "@/lib/forms/template-intent";
 import { buildFormInventory, publishedEntries } from "@/lib/forms/inventory";
 import { listTemplateSummaries, type TemplateSummary } from "@/lib/forms/repository";
-import { isFormRecordsQuestion, loadFormRecords } from "@/lib/forms/chat-form-records";
+import { isFormRangeQuestion, isFormRecordsQuestion, loadFormRecords } from "@/lib/forms/chat-form-records";
 import { namesAPerson } from "@/lib/forms/names-a-person";
 import { withRosterOnlyNames } from "@/lib/forms/roster-only-names";
 import { priorFormsReadingForChat } from "@/lib/forms/prior-forms";
@@ -1421,7 +1422,8 @@ async function answerQuestionUntraced(
    */
   const readsFormRecords =
     pastFormsFirst ||
-    (isFormRecordsQuestion(request.question) &&
+    ((isFormRecordsQuestion(request.question) ||
+      (formsOnFileDateRangeEnabled() && isFormRangeQuestion(request.question, request.context.todayIso))) &&
       (!crossChatGuard || asksAboutRecords(request.question) || refersBack(request.question, request.history)));
   const formRecordsPromise = readsFormRecords
     ? loadFormRecords({
@@ -1430,6 +1432,7 @@ async function answerQuestionUntraced(
         previousQuestion: previousManagerTurn(request),
         today: request.context.todayIso,
         ...(crossChatGuard ? { markCreator: true } : {}),
+        ...(formsOnFileDateRangeEnabled() ? { narrowFromQuestion: true } : {}),
       })
     : Promise.resolve(null);
 

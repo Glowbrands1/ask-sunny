@@ -4957,3 +4957,16 @@ export function formEditTouchesUpdatedAtEnabled(): boolean {
 export function nearMissNeverSeatedEnabled(): boolean {
   return envFlag("NEAR_MISS_NEVER_SEATED_ENABLED");
 }
+
+/**
+ * FORMS_ON_FILE_DATE_RANGE_ENABLED (18 Nov 2026; the owner on the sibling app's Leadership Assistant: "who got a CA this
+ * month?" answered from "the 20 most recent forms … older November forms may not appear", "why capped at 20"; same flag
+ * in both apps; default off). A FORMS ON FILE question that names a span of dates ("this month", "last week", "in
+ * October", "since 11/1") or a kind of form ("CAs", "coachings", "exit forms") reads every such form by form date and
+ * name, up to 100, instead of the newest 20 of every kind, and says whether the list is every such form or stopped at
+ * its cap (`forms/chat-form-records.ts`). The Leadership Assistant's and the agent loop's form tools narrow by their
+ * own date and form inputs without this flag. Off, as before.
+ */
+export function formsOnFileDateRangeEnabled(): boolean {
+  return envFlag("FORMS_ON_FILE_DATE_RANGE_ENABLED");
+}

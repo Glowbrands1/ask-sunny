@@ -72,6 +72,8 @@ export interface ReplayContext {
   manualVersionChecks?(): number;
   /** The grounding block the answering model was given on its last answer. */
   lastGrounding?(): string;
+  /** The FORMS ON FILE block the answering model was last given (empty when none): FORMS_ON_FILE_DATE_RANGE, 18 Nov 2026. */
+  lastFormRecords?(): string;
   /** What the revision model writes on the next revision. */
   revisionWrites(values: Record<string, string>): void;
   /** What the answering model says on its next turns (null: the default answer). */
