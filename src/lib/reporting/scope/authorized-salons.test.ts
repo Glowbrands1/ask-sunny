@@ -40,7 +40,8 @@ const ADMIN: AccessScope = {
 
 const DISTRICT_3: AccessScope = {
   level: "district",
-  primaryAreaId: "dist-patterson-madeline",
+  // Shelley Harrison's district since 18 Nov 2026 (Lawrence, Overland Park, Shawnee); Patterson's before.
+  primaryAreaId: "dist-harrison-shelley",
   alsoCoversAreaIds: [],
 };
 
@@ -92,12 +93,12 @@ describe("an unrestricted account is not narrowed", () => {
 });
 
 describe("district and region scopes resolve through the roster", () => {
-  it("gives the Patterson district exactly the salons the roster puts in it", () => {
-    const expected = PRODUCTION_SALONS.filter((entry) => entry.districtId === "dist-patterson-madeline")
+  it("gives the Harrison district exactly the salons the roster puts in it", () => {
+    const expected = PRODUCTION_SALONS.filter((entry) => entry.districtId === "dist-harrison-shelley")
       .map((entry) => salonNumberOf(entry.id))
       .sort();
     expect(authorizedSalonNumbers(DISTRICT_3)).toEqual(expected);
-    expect(authorizedSalonNumbers(DISTRICT_3)).toContain("0306");
+    expect(authorizedSalonNumbers(DISTRICT_3)).toContain("0468");
   });
 
   it("gives the region every salon, because production has exactly one", () => {
@@ -200,7 +201,7 @@ describe("the location-id spelling of the same entitlement", () => {
   });
 
   it("covers a district's salons", () => {
-    expect(authorizedLocationIds(DISTRICT_3)).toContain("loc-0306");
+    expect(authorizedLocationIds(DISTRICT_3)).toContain("loc-0468");
     expect(authorizedLocationIds(DISTRICT_3)!.length).toBeGreaterThan(1);
   });
 });
@@ -222,7 +223,7 @@ describe("salon ids keep their leading zeros", () => {
 describe("the notice names the assignment", () => {
   it("labels a salon, a district and a region", () => {
     expect(scopeAreaLabel(WORNALL)).toBe("MO Kansas City Wornall");
-    expect(scopeAreaLabel(DISTRICT_3)).toContain("Patterson");
+    expect(scopeAreaLabel(DISTRICT_3)).toContain("Harrison");
     expect(scopeAreaLabel(REGION_A)).toContain("Patterson");
   });
 
@@ -290,28 +291,28 @@ describe("additional locations (explicit salons)", () => {
   it("a district manager given one extra salon gets that salon in addition to the district", () => {
     /*
      * THE GAP THIS CLOSES. `loc-0462` is in Dugan's district, so use a salon
-     * OUTSIDE Cotton's: Cotton + Liberty. Before, the salon id was read as a
+     * OUTSIDE Cotton's: Cotton + Lawrence (Liberty, the salon used here before 18 Nov 2026, is Cotton's now). Before, the salon id was read as a
      * district id, matched nothing, and the assignment looked saved but did
      * nothing.
      */
     const numbers = authorizedSalonNumbers({
       level: "district",
       primaryAreaId: "dist-cotton-sarah",
-      alsoCoversAreaIds: ["loc-0394"],
+      alsoCoversAreaIds: ["loc-0468"],
     })!;
     const cotton = PRODUCTION_SALONS.filter((s) => s.districtId === "dist-cotton-sarah").map((s) => s.salonNumber);
-    expect(numbers.sort()).toEqual([...cotton, "0394"].sort());
+    expect(numbers.sort()).toEqual([...cotton, "0468"].sort());
   });
 
   it("an explicit salon on a district scope adds ONE salon, never its district", () => {
     const numbers = authorizedSalonNumbers({
       level: "district",
       primaryAreaId: "dist-cotton-sarah",
-      alsoCoversAreaIds: ["loc-0394"],
+      alsoCoversAreaIds: ["loc-0468"],
     })!;
-    // Liberty is Patterson's; Patterson's other salons must not come with it.
-    expect(numbers).not.toContain("0306");
-    expect(numbers).not.toContain("0468");
+    // Lawrence is Harrison's; Harrison's other salons must not come with it (Liberty / Patterson before 18 Nov 2026).
+    expect(numbers).not.toContain("0476");
+    expect(numbers).not.toContain("0463");
   });
 
   it("a district id on a salon scope still grants nothing (no widening)", () => {
