@@ -757,3 +757,22 @@ describe("Bloom-style page: IDS", () => {
     expect((save.mock.calls.at(-1)![2] as { issues: { id: string; priority?: boolean }[] }).issues.find((i) => i.id === "i2")?.priority).toBe(true);
   });
 });
+
+// "Can we add myself, and any other DM or higher role as a drop down option to add to-do's and issues?" (17 Nov 2026).
+describe("owner menus list the DM-or-higher people from Woven", () => {
+  it("to-dos, the New Issue window and IDS offer the meeting's people first, then the others", () => {
+    render(
+      <MeetingView info={info} initial={loaded(3, { todos: [], issues: [] })} save={vi.fn() as unknown as SaveFn} end={vi.fn() as unknown as EndFn} viewer={viewer} roster={roster} hubMeetingUrl={HUB} pollMs={0} debounceMs={0} today="2026-11-17" ownerPeople={["Avery Quill", "Dee Wren", "Eli Sorrel"]} />,
+    );
+    const options = (select: HTMLElement) => [...(select as HTMLSelectElement).options].map((o) => o.textContent);
+    const expected = [...roster.members.map((m) => m.name), "Dee Wren", "Eli Sorrel"];
+    const agenda = within(screen.getByRole("region", { name: "Agenda" }));
+    fireEvent.click(agenda.getAllByRole("button", { name: /To-do List/ })[0]);
+    expect(options(screen.getByLabelText("To-do owner"))).toEqual(expected);
+    fireEvent.click(screen.getByRole("button", { name: "+ New Issue" }));
+    expect(options(within(screen.getByRole("dialog", { name: "New Issue" })).getByLabelText("Issue owner"))).toEqual(expected);
+    fireEvent.click(within(screen.getByRole("dialog", { name: "New Issue" })).getByRole("button", { name: "Cancel" }));
+    fireEvent.click(agenda.getAllByRole("button", { name: /· IDS/ })[0]);
+    expect(options(screen.getByLabelText("Issue owner"))).toEqual(expected);
+  });
+});
