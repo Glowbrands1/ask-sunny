@@ -12,8 +12,9 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function AiTrainingLessonPage({ params }: { params: Promise<{ track: string; slug: string }> }) {
-  const { track, slug } = await params;
+  // The guard is the first await: nothing is read before the permission is checked.
   const identity = await requirePagePermission("view_ai_training");
+  const { track, slug } = await params;
   const isAdmin = viewerIsAdmin(identity);
 
   const loaded = await readOrExplain(async () => {
