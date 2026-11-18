@@ -91,8 +91,9 @@ const TONE: Record<CellTone, string> = {
   bad: "font-semibold text-red-700",
   near: "text-ink",
   good: "font-semibold text-green-700",
+  plain: "text-ink",
 };
-const MARK: Record<CellTone, string> = { empty: "", negative: "✗", bad: "✗", near: "", good: "✓" };
+const MARK: Record<CellTone, string> = { empty: "", negative: "✗", bad: "✗", near: "", good: "✓", plain: "" };
 
 function Chip({ status }: { status: StatusWord }) {
   return <span className={cx("inline-flex rounded-full px-2.5 py-0.5 text-xs font-bold whitespace-nowrap", STATUS[status])}>{status}</span>;
