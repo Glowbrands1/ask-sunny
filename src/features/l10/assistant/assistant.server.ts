@@ -9,7 +9,7 @@ import { persistSpendRow } from "@/lib/ai/chat-trace";
 import type { TokenUsage } from "@/lib/ai/model-prices";
 
 import { callHub, type HubAnswer } from "../partner/client.server";
-import { APP_TOOLS_NOTE, appTools, lastQuestion, type AppToolsViewer } from "./app-tools.server";
+import type { AppToolsViewer } from "./app-tools.server";
 
 type JSONSchema7 = Exclude<Parameters<typeof jsonSchema>[0], PromiseLike<unknown> | (() => unknown)>;
 
@@ -239,15 +239,17 @@ export async function streamHubAssistant(input: { config: HubAssistantConfig; me
     recorded = true;
     recordAssistantSpend(input.userId, spendFromUsage(modelId, usage), persistSpendRow, webSearchCount(steps));
   };
+  // This app's own reads (loaded only when answering: they pull in the report and forms code).
+  const app = input.viewer ? await import("./app-tools.server") : null;
   // The Hub's system prompt with the Hub's cache breakpoint (Anthropic caches tools + system as one prefix).
-  const system: SystemModelMessage = { role: "system", content: input.viewer ? config.system + APP_TOOLS_NOTE : config.system, providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } } };
+  const system: SystemModelMessage = { role: "system", content: app ? config.system + app.APP_TOOLS_NOTE : config.system, providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } } };
   const startedAt = Date.now();
   const result = streamText({
     model: anthropic(modelId),
     system,
     // Images and PDFs the person attached go to the model as file parts (Claude reads PDFs natively), as in the Hub.
     messages: await convertToModelMessages(input.messages),
-    tools: { ...webTools(config), ...hubTools(config, input.email, input.meetingKey), ...(input.viewer ? appTools(input.viewer, lastQuestion(input.messages)) : {}) },
+    tools: { ...webTools(config), ...hubTools(config, input.email, input.meetingKey), ...(app && input.viewer ? app.appTools(input.viewer, app.lastQuestion(input.messages)) : {}) },
     stopWhen: stepCountIs(config.maxSteps),
     maxOutputTokens: config.maxOutputTokens,
     abortSignal: input.signal,
