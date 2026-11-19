@@ -288,17 +288,6 @@ export async function savePageAction(input: {
   });
 }
 
-/** For the Manage screens: the other app's name when publishing to it is set up, else null. Editors only. */
-export async function syncAvailable(): Promise<{ otherAppName: string } | null> {
-  try {
-    await administrator();
-  } catch {
-    return null;
-  }
-  const cfg = syncConfig();
-  return cfg ? { otherAppName: cfg.otherAppName } : null;
-}
-
 export async function reviewSubmissionAction(input: {
   id: string;
   status: SubmissionStatus;

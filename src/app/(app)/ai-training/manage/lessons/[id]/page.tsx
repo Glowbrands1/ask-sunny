@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { ensureAiTrainingEditor, readOrExplain } from "@/features/ai-training/data.server";
 import { LessonEditor } from "@/features/ai-training/lesson-editor";
 import { getLessonById, loadCatalog } from "@/lib/ai-training/repository";
+import { syncConfig } from "@/lib/ai-training/sync";
 import { requirePagePermission } from "@/lib/auth/page";
 
 export const metadata: Metadata = {
@@ -37,6 +38,7 @@ export default async function EditLessonPage({
   return (
     <LessonEditor
       problem={loaded.problem}
+      otherAppName={syncConfig()?.otherAppName ?? null}
       catalog={loaded.data?.catalog ?? null}
       lesson={loaded.data?.lesson ?? null}
       isNew={id === "new"}

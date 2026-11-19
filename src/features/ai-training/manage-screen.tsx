@@ -37,6 +37,7 @@ import {
 } from "./actions";
 import { ModuleTitle } from "./module-title";
 import { STATUS_TONE, SubmissionBody, formatWhen } from "./submission-list";
+import { PublishToOtherBox, SaveOutcome, usePublishToOther } from "./publish-to-other";
 import { TrainingMarkdown } from "./training-markdown";
 
 export interface ManageData {
@@ -50,21 +51,33 @@ function useRun() {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
   function run<T>(work: () => Promise<ActionResult<T>>, after?: (value: T | undefined) => void) {
     setError(null);
+    setWarning(null);
     start(async () => {
       const result = await work();
       if (!result.ok) setError(result.message);
       else {
+        setWarning(result.warning ?? null);
         after?.(result.value);
         router.refresh();
       }
     });
   }
-  return { pending, error, run };
+  return { pending, error, warning, run };
 }
 
-export function ManageScreen({ problem, data }: { problem: string | null; data: ManageData | null }) {
+export function ManageScreen({
+  problem,
+  data,
+  otherAppName = null,
+}: {
+  problem: string | null;
+  data: ManageData | null;
+  /** The sibling app's name when publishing to it is set up; null hides the box. */
+  otherAppName?: string | null;
+}) {
   const waiting = data?.submissions.filter((s) => s.status === "pending").length ?? 0;
   return (
     <PageShell className="max-w-[1100px]">
@@ -82,8 +95,8 @@ export function ManageScreen({ problem, data }: { problem: string | null; data: 
             <TabsTrigger value="submissions">Submissions{waiting ? ` (${waiting} to review)` : ""}</TabsTrigger>
             <TabsTrigger value="import">Import</TabsTrigger>
           </TabsList>
-          <TabsContent value="lessons"><LessonsTab catalog={data.catalog} /></TabsContent>
-          <TabsContent value="pages"><PagesTab pages={data.pages} /></TabsContent>
+          <TabsContent value="lessons"><LessonsTab catalog={data.catalog} otherAppName={otherAppName} /></TabsContent>
+          <TabsContent value="pages"><PagesTab pages={data.pages} otherAppName={otherAppName} /></TabsContent>
           <TabsContent value="submissions"><SubmissionsTab submissions={data.submissions} /></TabsContent>
           <TabsContent value="import"><ImportTab /></TabsContent>
         </Tabs>
@@ -94,12 +107,13 @@ export function ManageScreen({ problem, data }: { problem: string | null; data: 
 
 /* ---------------- lessons ---------------- */
 
-function LessonsTab({ catalog }: { catalog: TrainingCatalog }) {
+function LessonsTab({ catalog, otherAppName }: { catalog: TrainingCatalog; otherAppName: string | null }) {
   const [trackId, setTrackId] = useState(catalog.tracks[0]?.id ?? "");
   const track = catalog.tracks.find((t) => t.id === trackId) ?? catalog.tracks[0];
   const groups = useMemo(() => (track ? groupTrackLessons(catalog, track.id) : []), [catalog, track]);
   const modules = catalog.modules.filter((m) => m.trackId === track?.id).sort((a, b) => a.sortOrder - b.sortOrder);
-  const { pending, error, run } = useRun();
+  const { pending, error, warning, run } = useRun();
+  const [publishToOther, setPublishToOther] = usePublishToOther();
 
   return (
     <div className="space-y-6">
@@ -125,9 +139,15 @@ function LessonsTab({ catalog }: { catalog: TrainingCatalog }) {
           ) : null}
         </div>
       </div>
-      {error ? <p className="text-sm text-status-failed" role="alert">{error}</p> : null}
+      {otherAppName ? (
+        <div className="rounded-md border border-border p-3">
+          <PublishToOtherBox otherAppName={otherAppName} checked={publishToOther} onChange={setPublishToOther} />
+          <p className="mt-1 text-xs text-muted-foreground">Applies to Publish, Unpublish and module changes on this tab. Deleting and reordering stay in this app.</p>
+        </div>
+      ) : null}
+      <SaveOutcome error={error} warning={warning} />
 
-      {track ? <Modules trackId={track.id} modules={modules} /> : null}
+      {track ? <Modules trackId={track.id} modules={modules} publishToOther={publishToOther} /> : null}
 
       {track ? (
         groups.length ? (
@@ -160,7 +180,7 @@ function LessonsTab({ catalog }: { catalog: TrainingCatalog }) {
                         variant="ghost"
                         size="sm"
                         disabled={pending}
-                        onClick={() => run(() => setLessonStatusAction(lesson.id, lesson.status === "published" ? "draft" : "published"))}
+                        onClick={() => run(() => setLessonStatusAction(lesson.id, lesson.status === "published" ? "draft" : "published", publishToOther))}
                       >
                         {lesson.status === "published" ? <><EyeOff aria-hidden /> Unpublish</> : <><Eye aria-hidden /> Publish</>}
                       </Button>
@@ -222,10 +242,10 @@ function AddTrack() {
   );
 }
 
-function Modules({ trackId, modules }: { trackId: string; modules: TrainingCatalog["modules"] }) {
+function Modules({ trackId, modules, publishToOther }: { trackId: string; modules: TrainingCatalog["modules"]; publishToOther: boolean }) {
   const [title, setTitle] = useState("");
   const [adminOnly, setAdminOnly] = useState(false);
-  const { pending, error, run } = useRun();
+  const { pending, error, warning, run } = useRun();
   return (
     <section>
       <h3 className="mb-2 text-base font-semibold text-foreground">Modules in this track</h3>
@@ -233,7 +253,7 @@ function Modules({ trackId, modules }: { trackId: string; modules: TrainingCatal
         {modules.length ? (
           <ul className="space-y-2">
             {modules.map((m) => (
-              <ModuleRow key={m.id} module={m} />
+              <ModuleRow key={m.id} module={m} publishToOther={publishToOther} />
             ))}
           </ul>
         ) : (
@@ -243,7 +263,7 @@ function Modules({ trackId, modules }: { trackId: string; modules: TrainingCatal
           className="flex flex-wrap items-center gap-2 border-t border-border pt-3"
           onSubmit={(e) => {
             e.preventDefault();
-            run(() => saveModuleAction({ id: null, trackId, title, adminOnly }), () => {
+            run(() => saveModuleAction({ id: null, trackId, title, adminOnly, publishToOther }), () => {
               setTitle("");
               setAdminOnly(false);
             });
@@ -253,16 +273,16 @@ function Modules({ trackId, modules }: { trackId: string; modules: TrainingCatal
           <CheckboxField id={`new-module-admin-${trackId}`} label="Admins only (archive)" checked={adminOnly} onCheckedChange={setAdminOnly} />
           <Button type="submit" variant="secondary" disabled={pending || !title.trim()}>Add module</Button>
         </form>
-        {error ? <p className="text-sm text-status-failed" role="alert">{error}</p> : null}
+        <SaveOutcome error={error} warning={warning} />
       </Card>
     </section>
   );
 }
 
-function ModuleRow({ module }: { module: TrainingCatalog["modules"][number] }) {
+function ModuleRow({ module, publishToOther }: { module: TrainingCatalog["modules"][number]; publishToOther: boolean }) {
   const [title, setTitle] = useState(module.title);
   const [adminOnly, setAdminOnly] = useState(module.adminOnly);
-  const { pending, error, run } = useRun();
+  const { pending, error, warning, run } = useRun();
   const changed = title.trim() !== module.title || adminOnly !== module.adminOnly;
   return (
     <li>
@@ -270,21 +290,21 @@ function ModuleRow({ module }: { module: TrainingCatalog["modules"][number] }) {
         className="flex flex-wrap items-center gap-2"
         onSubmit={(e) => {
           e.preventDefault();
-          run(() => saveModuleAction({ id: module.id, trackId: module.trackId, title, adminOnly }));
+          run(() => saveModuleAction({ id: module.id, trackId: module.trackId, title, adminOnly, publishToOther }));
         }}
       >
         <Input value={title} onChange={(e) => setTitle(e.target.value)} aria-label="Module name" className="min-w-64 flex-1" />
         <CheckboxField id={`module-admin-${module.id}`} label="Admins only" checked={adminOnly} onCheckedChange={setAdminOnly} />
         <Button type="submit" variant="ghost" size="sm" disabled={pending || !changed}>Save</Button>
       </form>
-      {error ? <p className="text-sm text-status-failed" role="alert">{error}</p> : null}
+      <SaveOutcome error={error} warning={warning} />
     </li>
   );
 }
 
 /* ---------------- pages ---------------- */
 
-function PagesTab({ pages }: { pages: TrainingPage[] }) {
+function PagesTab({ pages, otherAppName }: { pages: TrainingPage[]; otherAppName: string | null }) {
   const keys = [...TRAINING_PAGE_KEYS, ...pages.map((p) => p.key).filter((k) => !(TRAINING_PAGE_KEYS as readonly string[]).includes(k))];
   const [key, setKey] = useState<string>(keys[0]);
   const current = pages.find((p) => p.key === key);
@@ -303,23 +323,24 @@ function PagesTab({ pages }: { pages: TrainingPage[] }) {
           The Announcement shows at the top of AI Training. The Welcome text is kept from the old app and is not shown.
         </p>
       </div>
-      <PageEditor key={key} pageKey={key} page={current} />
+      <PageEditor key={key} pageKey={key} page={current} otherAppName={otherAppName} />
     </div>
   );
 }
 
-function PageEditor({ pageKey, page }: { pageKey: string; page: TrainingPage | undefined }) {
+function PageEditor({ pageKey, page, otherAppName }: { pageKey: string; page: TrainingPage | undefined; otherAppName: string | null }) {
   const [title, setTitle] = useState(page?.title ?? (TRAINING_PAGE_LABEL as Record<string, string>)[pageKey] ?? pageKey);
   const [body, setBody] = useState(page?.bodyMd ?? "");
   const [saved, setSaved] = useState(false);
-  const { pending, error, run } = useRun();
+  const { pending, error, warning, run } = useRun();
+  const [publishToOther, setPublishToOther] = usePublishToOther();
   return (
     <form
       className="space-y-3"
       onSubmit={(e) => {
         e.preventDefault();
         setSaved(false);
-        run(() => savePageAction({ key: pageKey, title, bodyMd: body }), () => setSaved(true));
+        run(() => savePageAction({ key: pageKey, title, bodyMd: body, publishToOther }), () => setSaved(true));
       }}
     >
       <div className="max-w-md">
@@ -327,8 +348,9 @@ function PageEditor({ pageKey, page }: { pageKey: string; page: TrainingPage | u
         <Input id="page-title" value={title} onChange={(e) => setTitle(e.target.value)} />
       </div>
       <MarkdownSplit value={body} onChange={setBody} label="Page content (Notion-style markdown)" />
-      {error ? <p className="text-sm text-status-failed" role="alert">{error}</p> : null}
-      <div className="flex items-center gap-3">
+      <SaveOutcome error={error} warning={warning} />
+      <div className="flex flex-wrap items-center gap-3">
+        <PublishToOtherBox otherAppName={otherAppName} checked={publishToOther} onChange={setPublishToOther} />
         <Button type="submit" disabled={pending}>{pending ? "Saving…" : "Save page"}</Button>
         {saved ? <span className="text-sm text-muted-foreground">Saved.</span> : null}
       </div>

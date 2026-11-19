@@ -14,6 +14,13 @@ vi.mock("next/navigation", () => ({
 const saveLessonAction = vi.fn<(input: unknown) => Promise<{ ok: true; value: string }>>(async () => ({ ok: true, value: "new-id" }));
 vi.mock("./actions", () => ({ saveLessonAction: (input: unknown) => saveLessonAction(input) }));
 
+// The checkbox measures itself; jsdom has no ResizeObserver (same stub as the sidebar test).
+globalThis.ResizeObserver ??= class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+} as unknown as typeof ResizeObserver;
+
 const { LessonEditor } = await import("./lesson-editor");
 
 const catalog: TrainingCatalog = {
@@ -59,5 +66,21 @@ describe("+ New module… in the lesson editor", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "Save" })[0]);
     await waitFor(() => expect(saveLessonAction).toHaveBeenCalledTimes(1));
     expect(saveLessonAction.mock.calls[0][0]).toMatchObject({ moduleId: null, newModuleTitle: "Module 2: Agents" });
+  });
+});
+
+describe("publishing a lesson to the other app", () => {
+  it("sends publishToOther only when the box is ticked", async () => {
+    render(<LessonEditor problem={null} catalog={catalog} lesson={null} isNew defaultTrackId="t1" otherAppName="Ask Bubbles" />);
+    fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Build an agent" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: "Also publish to Ask Bubbles" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Save" })[0]);
+    await waitFor(() => expect(saveLessonAction).toHaveBeenCalledTimes(1));
+    expect(saveLessonAction.mock.calls[0][0]).toMatchObject({ publishToOther: true });
+  });
+
+  it("has no box when sync is not set up", () => {
+    render(<LessonEditor problem={null} catalog={catalog} lesson={null} isNew defaultTrackId="t1" otherAppName={null} />);
+    expect(screen.queryByRole("checkbox", { name: /Also publish to/ })).toBeNull();
   });
 });

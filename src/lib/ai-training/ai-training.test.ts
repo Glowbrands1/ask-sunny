@@ -329,3 +329,20 @@ describe("publishing a change to the other app", () => {
     },
   );
 });
+
+describe("the Manage screens offer publishing to the other app", () => {
+  const screen = readFileSync("src/features/ai-training/manage-screen.tsx", "utf8");
+  it("passes the editor's choice to every save that can publish", () => {
+    expect(screen).toMatch(/saveModuleAction\(\{[^}]*publishToOther/);
+    expect(screen).toMatch(/setLessonStatusAction\([^)]*publishToOther\)/);
+    expect(screen).toMatch(/savePageAction\(\{[^}]*publishToOther/);
+    expect(screen).toContain("<PublishToOtherBox");
+    expect(screen).toContain("<SaveOutcome");
+  });
+
+  it("is told the other app's name by both Manage pages, from the server", () => {
+    for (const page of ["src/app/(app)/ai-training/manage/page.tsx", "src/app/(app)/ai-training/manage/lessons/[id]/page.tsx"]) {
+      expect(readFileSync(page, "utf8"), page).toContain("otherAppName={syncConfig()?.otherAppName ?? null}");
+    }
+  });
+});
