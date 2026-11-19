@@ -299,3 +299,33 @@ describe("Manage → Lessons", () => {
     expect(screen.indexOf("<Modules trackId")).toBeLessThan(screen.indexOf("groups.map("));
   });
 });
+
+describe("publishing a change to the other app", () => {
+  const actions = readFileSync("src/features/ai-training/actions.ts", "utf8");
+  const fn = (name: string) => {
+    const start = actions.indexOf(`export async function ${name}(`);
+    expect(start, name).toBeGreaterThan(-1);
+    const next = actions.indexOf("export async function", start + 10);
+    return actions.slice(start, next === -1 ? undefined : next);
+  };
+
+  it.each(["saveLessonAction", "setLessonStatusAction", "saveModuleAction", "savePageAction"])(
+    "%s can publish, only when asked, and only after its own save",
+    (name) => {
+      const body = fn(name);
+      expect(body).toContain("publishToOther");
+      expect(body).toContain("await administrator()");
+      const local = Math.max(body.indexOf("await saveLesson("), body.indexOf("await saveModule("), body.indexOf("await savePage("));
+      expect(local).toBeGreaterThan(-1);
+      expect(body.indexOf("await publish(identity,")).toBeGreaterThan(local);
+    },
+  );
+
+  it.each(["deleteLessonAction", "moveLessonAction", "reviewSubmissionAction", "submitLessonResponse", "importTableAction"])(
+    "%s never reaches the other app",
+    (name) => {
+      expect(fn(name)).not.toContain("await publish(");
+      expect(fn(name)).not.toContain("publishAfterSave(");
+    },
+  );
+});

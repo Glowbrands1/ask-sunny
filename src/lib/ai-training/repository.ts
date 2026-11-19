@@ -486,3 +486,49 @@ export async function updateOwnSubmission(
   if (error) fail("save your submission", error);
   return (data ?? []).length > 0;
 }
+
+/* ---------------- publishing to the other app ---------------- */
+
+const SYNC_COLUMNS = {
+  tracks: "id, slug, title, sort_order",
+  modules: "id, track_id, slug, title, sort_order, admin_only",
+  lessons: "id, track_id, module_id, slug, title, summary, body_md, week_number, sort_order, status, published_at",
+  pages: "key, title, body_md",
+} as const;
+
+/**
+ * The saved rows to send to the other app, with their parents so they exist
+ * there too: a lesson brings its track and module, a module its track.
+ * Column names are the importer's, so the receiver validates them as an import.
+ */
+export async function loadSyncBundle(target: { lessonId?: string; moduleId?: string; pageKey?: string }): Promise<{
+  tracks: Record<string, unknown>[];
+  modules: Record<string, unknown>[];
+  lessons: Record<string, unknown>[];
+  content_pages: Record<string, unknown>[];
+}> {
+  const db = getSupabaseAdmin();
+  const one = async (table: string, columns: string, column: string, value: string) => {
+    const { data, error } = await db.from(table).select(columns).eq(column, value).maybeSingle();
+    if (error) fail("read the saved change", error);
+    if (!data) fail("read the saved change", null);
+    return data as unknown as Record<string, unknown>;
+  };
+  const out = { tracks: [] as Record<string, unknown>[], modules: [] as Record<string, unknown>[], lessons: [] as Record<string, unknown>[], content_pages: [] as Record<string, unknown>[] };
+  if (target.pageKey) out.content_pages.push(await one("ai_training_pages", SYNC_COLUMNS.pages, "key", target.pageKey));
+  let moduleId = target.moduleId ?? null;
+  let trackId: string | null = null;
+  if (target.lessonId) {
+    const lesson = await one("ai_training_lessons", SYNC_COLUMNS.lessons, "id", target.lessonId);
+    out.lessons.push(lesson);
+    trackId = String(lesson.track_id);
+    moduleId = (lesson.module_id as string | null) ?? null;
+  }
+  if (moduleId) {
+    const mod = await one("ai_training_modules", SYNC_COLUMNS.modules, "id", moduleId);
+    out.modules.push(mod);
+    trackId = String(mod.track_id);
+  }
+  if (trackId) out.tracks.push(await one("ai_training_tracks", SYNC_COLUMNS.tracks, "id", trackId));
+  return out;
+}
