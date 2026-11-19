@@ -28,6 +28,7 @@ import {
   yearStart,
   weekEndOf,
 } from "./reporting-week";
+import { monthlyProgressStart } from "./monthly-progress";
 import { googleReviewsDayStartUtc, googleReviewsToday } from "./timezone";
 import {
   ratingBounds,
@@ -263,6 +264,42 @@ function lastFullMonthsQuery<
     .not("reporting_period_id", "is", null)
     .gte("counted_at", googleReviewsDayStartUtc(window.start))
     .lt("counted_at", googleReviewsDayStartUtc(window.endExclusive));
+}
+
+/** Rows read per page for the month-by-month table; PostgREST caps a page. */
+const MONTHLY_PAGE = 1000;
+/** A ceiling on the month-by-month read. Past it the table is refused, never shown low. */
+export const MONTHLY_PROGRESS_LIMIT = 20000;
+
+/**
+ * THE MONTH-BY-MONTH TABLE'S ROWS: every counted, qualifying review counting
+ * from the first month the table shows through today, by `counted_at` — the
+ * month-to-date predicate over more months. Read a page at a time, and refused
+ * rather than returned short: a partial read would be a wrong total.
+ */
+export async function loadMonthlyProgressRows(
+  today: string = googleReviewsToday(),
+): Promise<{ id: string; store_code: string; counted_at: string }[]> {
+  const supabase = getSupabaseAdmin();
+  const from = googleReviewsDayStartUtc(monthlyProgressStart(today));
+  const to = googleReviewsDayStartUtc(shiftDays(today, 1));
+  const rows: { id: string; store_code: string; counted_at: string }[] = [];
+  for (let offset = 0; offset < MONTHLY_PROGRESS_LIMIT; offset += MONTHLY_PAGE) {
+    const { data, error } = await supabase
+      .from("google_reviews_enriched")
+      .select("id,store_code,counted_at")
+      .not("reporting_period_id", "is", null)
+      .eq("eligible_for_weekly_count", true)
+      .gte("counted_at", from)
+      .lt("counted_at", to)
+      .order("id", { ascending: true })
+      .range(offset, offset + MONTHLY_PAGE - 1);
+    if (error) throw error;
+    const page = (data ?? []) as unknown as { id: string; store_code: string; counted_at: string }[];
+    rows.push(...page);
+    if (page.length < MONTHLY_PAGE) return rows;
+  }
+  throw new Error(`Month-by-month read exceeded ${MONTHLY_PROGRESS_LIMIT} reviews.`);
 }
 
 /**

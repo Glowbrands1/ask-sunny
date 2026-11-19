@@ -19,6 +19,7 @@ import {
 } from "@/lib/reviews/filters";
 import { DEFAULT_MONTHLY_REVIEW_GOAL, goalContext, isCounting } from "@/lib/reviews/goal";
 import type { ReviewFeed, ReviewsSnapshot } from "@/lib/reviews/queries";
+import { monthlyProgress } from "@/lib/reviews/monthly-progress";
 import { ratingDistribution } from "@/lib/reviews/rating-distribution";
 import { currentWeekStart, lastFullMonthsWindow, recentWeekStarts, weekEndOf } from "@/lib/reviews/reporting-week";
 import { GOOGLE_REVIEW_LOCATIONS } from "@/lib/reviews/store-codes";
@@ -269,6 +270,14 @@ export function ReviewsDemoScreen() {
         truncated: false,
       },
       ratingDistribution: ratingDistribution(perStar),
+      /* The seeded reviews, counted by when they were first seen. */
+      monthly: monthlyProgress(
+        inScope
+          .filter((review) => review.eligibleForWeeklyCount && review.periodStart !== null)
+          .map((review) => ({ id: review.id, store_code: review.storeCode, counted_at: review.firstSeenAt })),
+        snapshot.locations.map((location) => location.storeCode),
+        today,
+      ),
     };
   }, [params]);
 
@@ -280,6 +289,7 @@ export function ReviewsDemoScreen() {
       timeline={props.timeline}
       ratingDistribution={props.ratingDistribution}
       openReview={null}
+      monthly={props.monthly}
       /* No baseline setup exists behind a demo; its links would only bounce. */
       canManageAnchors={false}
     />
