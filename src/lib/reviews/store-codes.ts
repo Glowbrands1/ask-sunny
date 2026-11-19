@@ -71,7 +71,7 @@ export interface GoogleReviewLocation {
 
 /** The fifteen, in Google store-code order. */
 export const GOOGLE_REVIEW_LOCATIONS: readonly GoogleReviewLocation[] = [
-  { storeCode: "140", salonNumber: "0306", googleLabel: "Sun Tan City - MO Kansas City Wornall", verificationRequired: true },
+  { storeCode: "140", salonNumber: "0306", googleLabel: "Sun Tan City - MO Kansas City Wornall", verificationRequired: false },
   { storeCode: "141", salonNumber: "0307", googleLabel: "Sun Tan City - NE Grand Island", verificationRequired: false },
   { storeCode: "143", salonNumber: "0309", googleLabel: "Sun Tan City - NE Kearney", verificationRequired: false },
   { storeCode: "144", salonNumber: "0310", googleLabel: "Sun Tan City - NE Lincoln 27th Street", verificationRequired: false },
@@ -83,7 +83,7 @@ export const GOOGLE_REVIEW_LOCATIONS: readonly GoogleReviewLocation[] = [
   { storeCode: "254", salonNumber: "0410", googleLabel: "Sun Tan City - NE Omaha Pacific", verificationRequired: false },
   { storeCode: "306", salonNumber: "0462", googleLabel: "Sun Tan City - KS Manhattan", verificationRequired: false },
   { storeCode: "307", salonNumber: "0463", googleLabel: "Sun Tan City - KS Shawnee Mission Pkwy", verificationRequired: false },
-  { storeCode: "314", salonNumber: "0468", googleLabel: "Sun Tan City - KS Lawrence", verificationRequired: true },
+  { storeCode: "314", salonNumber: "0468", googleLabel: "Sun Tan City - KS Lawrence", verificationRequired: false },
   { storeCode: "373", salonNumber: "0476", googleLabel: "Sun Tan City - KS Overland Park", verificationRequired: false },
   { storeCode: "409", salonNumber: "0495", googleLabel: "Sun Tan City - MO St Joseph", verificationRequired: false },
 ];

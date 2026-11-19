@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   centralMonthOf,
+  firstFullCountedMonth,
   monthlyProgress,
   monthlyProgressStart,
   monthsBetween,
@@ -80,5 +81,55 @@ describe("per month, last 3 mos, last 6 mos and YTD", () => {
     expect(progress.months[0]).toBe("2026-08");
     expect(progress.l3Months).toEqual(["2026-11", "2026-12", "2027-01"]);
     expect([progress.rows[0].l3, progress.rows[0].l6, progress.rows[0].ytd]).toEqual([1, 2, 2]);
+  });
+});
+
+/**
+ * Nov 19 2026, on the month-by-month table: "its 0 … also backfill". Every
+ * month before a salon started counting (1 Oct 2026) read 0, although the
+ * earlier reviews are held. Those months now show the 3–5★ reviews Google
+ * dates to them.
+ */
+describe("months before a salon started counting", () => {
+  const TODAY = "2026-11-19";
+  const counted = [
+    { id: "c1", store_code: "A", counted_at: "2026-09-25T17:00:00Z" }, // anchor-counted, part of September
+    { id: "c2", store_code: "A", counted_at: "2026-10-05T17:00:00Z" },
+    { id: "c3", store_code: "A", counted_at: "2026-11-05T17:00:00Z" },
+  ];
+  const posted = [
+    { id: "p1", store_code: "A", google_absolute_date: "2026-03-10T17:00:00Z", google_estimated_at: null },
+    { id: "p2", store_code: "A", google_absolute_date: null, google_estimated_at: "2026-08-02T17:00:00Z" },
+    { id: "p3", store_code: "A", google_absolute_date: "2026-09-03T17:00:00Z", google_estimated_at: null },
+    { id: "p4", store_code: "A", google_absolute_date: "2026-09-26T17:00:00Z", google_estimated_at: null },
+    // Google gave no date: never placed by when ASK Sunny saw it.
+    { id: "p5", store_code: "A", google_absolute_date: null, google_estimated_at: null },
+    // October on is the goal count; a posted October review is not added twice.
+    { id: "p6", store_code: "A", google_absolute_date: "2026-10-05T17:00:00Z", google_estimated_at: null },
+  ];
+
+  it("knows the first month counted in full", () => {
+    expect(firstFullCountedMonth("2026-10-01T05:00:00Z")).toBe("2026-10");
+    expect(firstFullCountedMonth("2026-10-15T05:00:00Z")).toBe("2026-11");
+    expect(firstFullCountedMonth("2026-12-15T06:00:00Z")).toBe("2027-01");
+    expect(firstFullCountedMonth(null)).toBeNull();
+  });
+
+  it("shows reviews Google dates to each earlier month, and the goal count from October", () => {
+    const progress = monthlyProgress(counted, ["A"], TODAY, {
+      posted,
+      countingFrom: new Map([["A", "2026-10-01T05:00:00Z"]]),
+    });
+    const a = progress.rows[0];
+    expect(a.months).toEqual([0, 0, 1, 0, 0, 0, 0, 1, 2, 1, 1]);
+    expect(a.beforeCounting.filter(Boolean)).toHaveLength(9);
+    expect(a.beforeCounting.slice(-2)).toEqual([false, false]);
+    expect([a.l3, a.l6, a.ytd]).toEqual([4, 4, 6]);
+  });
+
+  it("without counting start dates, the counted figures stand as before", () => {
+    const a = monthlyProgress(counted, ["A"], TODAY).rows[0];
+    expect(a.months.slice(-3)).toEqual([1, 1, 1]);
+    expect(a.beforeCounting.some(Boolean)).toBe(false);
   });
 });

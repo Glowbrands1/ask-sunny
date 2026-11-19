@@ -28,7 +28,7 @@ import {
   yearStart,
   weekEndOf,
 } from "./reporting-week";
-import { monthlyProgressStart } from "./monthly-progress";
+import { monthlyProgressStart, type PostedReviewRow } from "./monthly-progress";
 import { googleReviewsDayStartUtc, googleReviewsToday } from "./timezone";
 import {
   ratingBounds,
@@ -279,25 +279,69 @@ export const MONTHLY_PROGRESS_LIMIT = 20000;
  */
 export async function loadMonthlyProgressRows(
   today: string = googleReviewsToday(),
-): Promise<{ id: string; store_code: string; counted_at: string }[]> {
+): Promise<MonthlyProgressRows> {
   const supabase = getSupabaseAdmin();
   const from = googleReviewsDayStartUtc(monthlyProgressStart(today));
   const to = googleReviewsDayStartUtc(shiftDays(today, 1));
-  const rows: { id: string; store_code: string; counted_at: string }[] = [];
+
+  const [counted, posted, locations] = await Promise.all([
+    readAllPages<{ id: string; store_code: string; counted_at: string }>((offset, size) =>
+      supabase
+        .from("google_reviews_enriched")
+        .select("id,store_code,counted_at")
+        .not("reporting_period_id", "is", null)
+        .eq("eligible_for_weekly_count", true)
+        .gte("counted_at", from)
+        .lt("counted_at", to)
+        .order("id", { ascending: true })
+        .range(offset, offset + size - 1),
+    ),
+    /*
+     * EVERY HELD 3–5★ REVIEW, counted or historical, with the dates Google gave
+     * — for the months before a salon started counting. Not narrowed by date in
+     * the query: the date a review is placed by is a precedence of two columns,
+     * decided in `monthly-progress.ts`, not one a filter can name.
+     */
+    readAllPages<PostedReviewRow>((offset, size) =>
+      supabase
+        .from("google_reviews_enriched")
+        .select("id,store_code,google_absolute_date,google_estimated_at")
+        .eq("eligible_for_weekly_count", true)
+        .order("id", { ascending: true })
+        .range(offset, offset + size - 1),
+    ),
+    supabase.from("google_review_locations").select("store_code,count_by_posted_date_from"),
+  ]);
+  if (locations.error) throw locations.error;
+
+  return {
+    counted,
+    posted,
+    countingFrom: new Map(
+      ((locations.data ?? []) as { store_code: string; count_by_posted_date_from: string | null }[]).map(
+        (row) => [row.store_code, row.count_by_posted_date_from],
+      ),
+    ),
+  };
+}
+
+export interface MonthlyProgressRows {
+  counted: { id: string; store_code: string; counted_at: string }[];
+  posted: PostedReviewRow[];
+  countingFrom: Map<string, string | null>;
+}
+
+/** Reads every page of a query; refused rather than returned short past the ceiling. */
+async function readAllPages<T>(
+  page: (offset: number, size: number) => PromiseLike<{ data: unknown; error: unknown }>,
+): Promise<T[]> {
+  const rows: T[] = [];
   for (let offset = 0; offset < MONTHLY_PROGRESS_LIMIT; offset += MONTHLY_PAGE) {
-    const { data, error } = await supabase
-      .from("google_reviews_enriched")
-      .select("id,store_code,counted_at")
-      .not("reporting_period_id", "is", null)
-      .eq("eligible_for_weekly_count", true)
-      .gte("counted_at", from)
-      .lt("counted_at", to)
-      .order("id", { ascending: true })
-      .range(offset, offset + MONTHLY_PAGE - 1);
+    const { data, error } = await page(offset, MONTHLY_PAGE);
     if (error) throw error;
-    const page = (data ?? []) as unknown as { id: string; store_code: string; counted_at: string }[];
-    rows.push(...page);
-    if (page.length < MONTHLY_PAGE) return rows;
+    const batch = (data ?? []) as T[];
+    rows.push(...batch);
+    if (batch.length < MONTHLY_PAGE) return rows;
   }
   throw new Error(`Month-by-month read exceeded ${MONTHLY_PROGRESS_LIMIT} reviews.`);
 }

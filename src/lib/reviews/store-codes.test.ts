@@ -39,6 +39,14 @@ const migration = readRepoFile(
   "20260917002000_google_reviews.sql",
 );
 const extensionList = readRepoFile("extension", "store-codes.js");
+const verifiedMigration = readRepoFile(
+  "supabase",
+  "migrations",
+  "20261119001000_google_review_listings_verified.sql",
+)
+  .split("\n")
+  .filter((line) => !line.trim().startsWith("--"))
+  .join("\n");
 
 /** The `('314', '0468', …)` rows of the migration's seed. */
 function seededPairs(): { storeCode: string; salonNumber: string }[] {
@@ -128,18 +136,17 @@ describe("the allowlist refuses everything else", () => {
   });
 });
 
-describe("the two listings Google marks as needing verification", () => {
-  it("names KS Lawrence and MO Kansas City Wornall, and keeps both", () => {
-    const flagged = listingsNeedingVerification();
-    expect(flagged.map((entry) => entry.storeCode).sort()).toEqual(["140", "314"]);
-    /*
-     * KEPT, NOT REMOVED. A Google verification problem is a fact about the
-     * listing; both salons are trading and stay in the roster, the leaderboard
-     * and every total.
-     */
-    for (const entry of flagged) {
-      expect(ALLOWED_STORE_CODES).toContain(entry.storeCode);
-      expect(salonByNumber(entry.salonNumber)).toBeDefined();
+/*
+ * CHANGED ON PURPOSE (19 Nov 2026): this used to assert that 140 and 314 need
+ * verification. Both were verified on Google — "canu remove this pls because
+ * its verified aldy in sunny" — and 20261119001000_google_review_listings_verified.sql
+ * marks them verified, so no listing needs verification now.
+ */
+describe("listings Google marks as needing verification", () => {
+  it("none, since MO Kansas City Wornall and KS Lawrence were verified", () => {
+    expect(listingsNeedingVerification()).toEqual([]);
+    for (const code of ["140", "314"]) {
+      expect(ALLOWED_STORE_CODES).toContain(code);
     }
   });
 });
@@ -159,10 +166,15 @@ describe("the three copies of the list agree", () => {
 
   it("matches the migration on which listings need verification", () => {
     const seed = migration.split("insert into public.google_review_locations")[1] ?? "";
+    // The seed's flags, less any listing a later migration marked verified.
+    const verifiedLater = new Set(
+      [...verifiedMigration.matchAll(/'(\d{1,8})'/g)].map((match) => match[1]),
+    );
     const flaggedInSql = [
       ...seed.matchAll(/\('(\d{1,8})',\s*'\d{3,4}',[^)]*'verification_required'\)/g),
     ]
       .map((match) => match[1])
+      .filter((code) => !verifiedLater.has(code))
       .sort();
 
     expect(flaggedInSql).toEqual(

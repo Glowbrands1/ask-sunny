@@ -139,9 +139,10 @@ export async function loadReviewsPage(
 
   const monthly = monthlyRows
     ? monthlyProgress(
-        monthlyRows,
+        monthlyRows.counted,
         snapshot.locations.map((location) => location.storeCode),
         today,
+        { posted: monthlyRows.posted, countingFrom: monthlyRows.countingFrom },
       )
     : null;
 
