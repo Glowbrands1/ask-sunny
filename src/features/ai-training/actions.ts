@@ -8,8 +8,10 @@ import type { LessonRow, ModuleRow, PageRow, TrackRow } from "@/lib/ai-training/
 import {
   createSubmission,
   deleteLesson,
+  deleteModule,
   getLessonById,
   importRows,
+  loadSyncBundle,
   moveLesson,
   reviewSubmission,
   saveLesson,
@@ -22,6 +24,8 @@ import type { LessonStatus, SubmissionStatus } from "@/lib/ai-training/types";
 import { authorizeRequest } from "@/lib/auth/server";
 import type { AuthenticatedIdentity } from "@/lib/auth/types";
 import { canEditAiTraining } from "@/lib/ai-training/editors";
+import { cleanNewModuleTitle } from "@/lib/ai-training/module-name";
+import { publishAfterSave, syncConfig } from "@/lib/ai-training/sync";
 
 /**
  * AI TRAINING'S SERVER FUNCTIONS.
@@ -39,7 +43,13 @@ import { canEditAiTraining } from "@/lib/ai-training/editors";
  * administrator needs to read.
  */
 
-export type ActionResult<T = undefined> = { ok: true; value?: T } | { ok: false; message: string };
+/** `warning`: saved here, but something after the save (publishing to the other app) did not work. */
+export type ActionResult<T = undefined> = { ok: true; value?: T; warning?: string } | { ok: false; message: string };
+
+/** Publishes the just-saved rows to the other app when the editor asked; a warning or nothing. */
+function publish(identity: AuthenticatedIdentity, asked: boolean | undefined, target: Parameters<typeof loadSyncBundle>[0]) {
+  return publishAfterSave({ publish: asked, cfg: syncConfig(), actorEmail: identity.email, load: () => loadSyncBundle(target) });
+}
 
 async function caller(): Promise<AuthenticatedIdentity> {
   const request = new Request("http://ai-training.internal/", { headers: new Headers(await headers()) });
@@ -55,6 +65,17 @@ async function administrator(): Promise<AuthenticatedIdentity> {
 async function attempt<T>(work: () => Promise<T>): Promise<ActionResult<T>> {
   try {
     return { ok: true, value: await work() };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Something went wrong.";
+    return { ok: false, message };
+  }
+}
+
+/** Like `attempt`, for a save that may also carry a warning about publishing it. */
+async function attemptSave<T>(work: () => Promise<{ value: T; warning?: string }>): Promise<ActionResult<T>> {
+  try {
+    const { value, warning } = await work();
+    return warning ? { ok: true, value, warning } : { ok: true, value };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Something went wrong.";
     return { ok: false, message };
@@ -151,27 +172,48 @@ export async function saveLessonAction(input: {
   bodyMd: string;
   weekNumber: string;
   status: LessonStatus;
-}): Promise<ActionResult<string>> {
-  return attempt(async () => {
-    await administrator();
+  /** Set when the editor chose "+ New module…": the module is created first, then the lesson saved into it. */
+  newModuleTitle?: string | null;
+  /** The "Also publish to <other app>" box. */
+  publishToOther?: boolean;
+}): Promise<ActionResult<{ lessonId: string; moduleId: string | null }>> {
+  return attemptSave(async () => {
+    const identity = await administrator();
     const title = textField(input.title, "Title", 300);
+    const trackId = id(input.trackId, "track");
+    const newModuleTitle = typeof input.newModuleTitle === "string" ? cleanNewModuleTitle(input.newModuleTitle) : null;
     const slug = slugify(textField(input.slug, "Slug", 160, false) || title);
     const week = typeof input.weekNumber === "string" ? input.weekNumber.trim() : "";
     if (week && !/^\d{1,4}$/.test(week)) throw new Error("Lesson number must be a whole number.");
     if (input.status !== "draft" && input.status !== "published") throw new Error("Unknown status.");
     if (typeof input.bodyMd !== "string" || input.bodyMd.length > 500_000) throw new Error("The lesson is too long.");
-    const saved = await saveLesson(input.id ? id(input.id, "lesson") : null, {
-      trackId: id(input.trackId, "track"),
-      moduleId: input.moduleId ? id(input.moduleId, "module") : null,
+    const createdModuleId = newModuleTitle
+      ? await saveModule(null, { trackId, title: newModuleTitle, slug: slugify(newModuleTitle), adminOnly: false })
+      : null;
+    const moduleId = createdModuleId ?? (input.moduleId ? id(input.moduleId, "module") : null);
+    const lessonInput = {
+      trackId,
+      moduleId,
       slug,
       title,
       summary: textField(input.summary, "Summary", 2000, false) || null,
       bodyMd: input.bodyMd,
       weekNumber: week ? Number(week) : null,
       status: input.status,
-    });
+    };
+    let saved: string;
+    try {
+      saved = await saveLesson(input.id ? id(input.id, "lesson") : null, lessonInput);
+    } catch (error) {
+      // Undo the module made for this lesson, so fixing the lesson and saving again does not clash with it.
+      if (createdModuleId) await deleteModule(createdModuleId).catch(() => undefined);
+      throw error;
+    }
     refresh();
-    return saved;
+    return {
+      value: { lessonId: saved, moduleId },
+      warning: await publish(identity, input.publishToOther, { lessonId: saved }),
+    };
   });
 }
 
@@ -184,15 +226,19 @@ export async function deleteLessonAction(lessonId: string): Promise<ActionResult
   });
 }
 
-export async function setLessonStatusAction(lessonId: string, status: LessonStatus): Promise<ActionResult> {
-  return attempt(async () => {
-    await administrator();
+export async function setLessonStatusAction(
+  lessonId: string,
+  status: LessonStatus,
+  publishToOther?: boolean,
+): Promise<ActionResult> {
+  return attemptSave(async () => {
+    const identity = await administrator();
     const found = await getLessonById(id(lessonId, "lesson"));
     if (!found) throw new Error("That lesson no longer exists.");
     if (status !== "draft" && status !== "published") throw new Error("Unknown status.");
     await saveLesson(found.id, { ...found, status });
     refresh();
-    return undefined;
+    return { value: undefined, warning: await publish(identity, publishToOther, { lessonId: found.id }) };
   });
 }
 
@@ -211,18 +257,19 @@ export async function saveModuleAction(input: {
   trackId: string;
   title: string;
   adminOnly: boolean;
+  publishToOther?: boolean;
 }): Promise<ActionResult> {
-  return attempt(async () => {
-    await administrator();
+  return attemptSave(async () => {
+    const identity = await administrator();
     const title = textField(input.title, "Module name", 300);
-    await saveModule(input.id ? id(input.id, "module") : null, {
+    const moduleId = await saveModule(input.id ? id(input.id, "module") : null, {
       trackId: id(input.trackId, "track"),
       title,
       slug: slugify(title),
       adminOnly: input.adminOnly === true,
     });
     refresh();
-    return undefined;
+    return { value: undefined, warning: await publish(identity, input.publishToOther, { moduleId }) };
   });
 }
 
@@ -236,14 +283,19 @@ export async function addTrackAction(title: string): Promise<ActionResult> {
   });
 }
 
-export async function savePageAction(input: { key: string; title: string; bodyMd: string }): Promise<ActionResult> {
-  return attempt(async () => {
-    await administrator();
+export async function savePageAction(input: {
+  key: string;
+  title: string;
+  bodyMd: string;
+  publishToOther?: boolean;
+}): Promise<ActionResult> {
+  return attemptSave(async () => {
+    const identity = await administrator();
     if (typeof input.key !== "string" || !/^[a-z0-9_]{1,60}$/.test(input.key)) throw new Error("Unknown page.");
     if (typeof input.bodyMd !== "string" || input.bodyMd.length > 500_000) throw new Error("The page is too long.");
     await savePage(input.key, textField(input.title, "Title", 300), input.bodyMd);
     refresh();
-    return undefined;
+    return { value: undefined, warning: await publish(identity, input.publishToOther, { pageKey: input.key }) };
   });
 }
 

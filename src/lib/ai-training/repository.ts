@@ -268,6 +268,11 @@ export async function saveLesson(id: string | null, input: LessonInput): Promise
   return (data as { id: string }).id;
 }
 
+export async function deleteModule(id: string): Promise<void> {
+  const { error } = await getSupabaseAdmin().from("ai_training_modules").delete().eq("id", id);
+  if (error) fail("remove the module", error);
+}
+
 export async function deleteLesson(id: string): Promise<void> {
   const { error } = await getSupabaseAdmin().from("ai_training_lessons").delete().eq("id", id);
   if (error) fail("delete the lesson", error);
@@ -305,7 +310,7 @@ export async function savePage(key: string, title: string, bodyMd: string): Prom
 export async function saveModule(
   id: string | null,
   input: { trackId: string; title: string; slug: string; adminOnly: boolean },
-): Promise<void> {
+): Promise<string> {
   const db = getSupabaseAdmin();
   if (id) {
     const { error } = await db
@@ -313,7 +318,7 @@ export async function saveModule(
       .update({ title: input.title, admin_only: input.adminOnly })
       .eq("id", id);
     if (error) fail("save the module", error);
-    return;
+    return id;
   }
   const { data: last } = await db
     .from("ai_training_modules")
@@ -322,14 +327,19 @@ export async function saveModule(
     .order("sort_order", { ascending: false })
     .limit(1)
     .maybeSingle();
-  const { error } = await db.from("ai_training_modules").insert({
-    track_id: input.trackId,
-    slug: input.slug,
-    title: input.title,
-    admin_only: input.adminOnly,
-    sort_order: ((last as { sort_order: number } | null)?.sort_order ?? 0) + 1,
-  });
+  const { data, error } = await db
+    .from("ai_training_modules")
+    .insert({
+      track_id: input.trackId,
+      slug: input.slug,
+      title: input.title,
+      admin_only: input.adminOnly,
+      sort_order: ((last as { sort_order: number } | null)?.sort_order ?? 0) + 1,
+    })
+    .select("id")
+    .single();
   if (error) fail(error.code === "23505" ? "add it: a module with that name already exists" : "add the module", error.code === "23505" ? null : error);
+  return (data as { id: string }).id;
 }
 
 export async function saveTrack(input: { slug: string; title: string }): Promise<void> {
@@ -481,3 +491,89 @@ export async function updateOwnSubmission(
   if (error) fail("save your submission", error);
   return (data ?? []).length > 0;
 }
+
+/* ---------------- publishing to the other app ---------------- */
+
+const SYNC_COLUMNS = {
+  tracks: "id, slug, title, sort_order",
+  modules: "id, track_id, slug, title, sort_order, admin_only",
+  lessons: "id, track_id, module_id, slug, title, summary, body_md, week_number, sort_order, status, published_at",
+  pages: "key, title, body_md",
+} as const;
+
+/**
+ * The saved rows to send to the other app, with their parents so they exist
+ * there too: a lesson brings its track and module, a module its track.
+ * Column names are the importer's, so the receiver validates them as an import.
+ */
+export async function loadSyncBundle(target: { lessonId?: string; moduleId?: string; pageKey?: string }): Promise<{
+  tracks: Record<string, unknown>[];
+  modules: Record<string, unknown>[];
+  lessons: Record<string, unknown>[];
+  content_pages: Record<string, unknown>[];
+}> {
+  const db = getSupabaseAdmin();
+  const one = async (table: string, columns: string, column: string, value: string) => {
+    const { data, error } = await db.from(table).select(columns).eq(column, value).maybeSingle();
+    if (error) fail("read the saved change", error);
+    if (!data) fail("read the saved change", null);
+    return data as unknown as Record<string, unknown>;
+  };
+  const out = { tracks: [] as Record<string, unknown>[], modules: [] as Record<string, unknown>[], lessons: [] as Record<string, unknown>[], content_pages: [] as Record<string, unknown>[] };
+  if (target.pageKey) out.content_pages.push(await one("ai_training_pages", SYNC_COLUMNS.pages, "key", target.pageKey));
+  let moduleId = target.moduleId ?? null;
+  let trackId: string | null = null;
+  if (target.lessonId) {
+    const lesson = await one("ai_training_lessons", SYNC_COLUMNS.lessons, "id", target.lessonId);
+    out.lessons.push(lesson);
+    trackId = String(lesson.track_id);
+    moduleId = (lesson.module_id as string | null) ?? null;
+  }
+  if (moduleId) {
+    const mod = await one("ai_training_modules", SYNC_COLUMNS.modules, "id", moduleId);
+    out.modules.push(mod);
+    trackId = String(mod.track_id);
+  }
+  if (trackId) out.tracks.push(await one("ai_training_tracks", SYNC_COLUMNS.tracks, "id", trackId));
+  return out;
+}
+
+/** Adds tracks this app does not have yet; an existing track keeps its own name and order. */
+export async function addMissingTracks(rows: TrackRow[]): Promise<number> {
+  if (!rows.length) return 0;
+  const { error } = await getSupabaseAdmin()
+    .from("ai_training_tracks")
+    .upsert(rows as unknown as Record<string, unknown>[], { onConflict: "id", ignoreDuplicates: true });
+  if (error) fail("add the track", error);
+  return rows.length;
+}
+
+/**
+ * Before a published change is saved here: does a DIFFERENT lesson, module or
+ * track here already use the same web address or name? Returns what the editor
+ * should do, in plain words (it is shown after "not published to <this app>: "),
+ * or null when nothing clashes.
+ */
+export async function findSyncClash(parsed: {
+  tracks: TrackRow[];
+  modules: ModuleRow[];
+  lessons: LessonRow[];
+}): Promise<string | null> {
+  const db = getSupabaseAdmin();
+  for (const t of parsed.tracks) {
+    const { data } = await db.from("ai_training_tracks").select("id").eq("slug", t.slug).neq("id", t.id).limit(1);
+    if (data?.length) return `it already has a different training track named like "${t.title}". Ask for help to line the two apps' tracks up.`;
+  }
+  for (const m of parsed.modules) {
+    const { data } = await db.from("ai_training_modules").select("title").eq("track_id", m.track_id).eq("slug", m.slug).neq("id", m.id).limit(1);
+    const other = (data as { title: string }[] | null)?.[0];
+    if (other) return `it already has a different module called "${other.title}" in this track. Rename this module and save again.`;
+  }
+  for (const l of parsed.lessons) {
+    const { data } = await db.from("ai_training_lessons").select("title").eq("track_id", l.track_id).eq("slug", l.slug).neq("id", l.id).limit(1);
+    const other = (data as { title: string }[] | null)?.[0];
+    if (other) return `it already has a different lesson ("${other.title}") using the web address "${l.slug}". Change this lesson's web address and save again.`;
+  }
+  return null;
+}
+

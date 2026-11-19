@@ -7,6 +7,7 @@ import { DEFAULT_PERMISSION_MATRIX, ROLES, canAccessAdminConsole, hasPermission 
 
 import { canShowLesson, groupTrackLessons, slugify, visibleCatalog } from "./catalog";
 import { aiTrainingEditorEmails, canEditAiTraining } from "./editors";
+import { cleanNewModuleTitle, nextModuleName } from "./module-name";
 import { detectTable, parseCsv, parseImportFiles } from "./import";
 import {
   extractPromptQuotes,
@@ -262,5 +263,104 @@ describe("slugs", () => {
     expect(slugify("Week 4: Writing with Claude!")).toBe("week-4-writing-with-claude");
     expect(slugify("Café prompts")).toBe("cafe-prompts");
     expect(slugify("!!!")).toBe("lesson");
+  });
+});
+
+describe("creating a module from the lesson editor", () => {
+  it("suggests the next module number, not counting the admin-only archive", () => {
+    const five = Array.from({ length: 5 }, () => ({ adminOnly: false }));
+    expect(nextModuleName([...five, { adminOnly: true }])).toBe("Module 6: ");
+    expect(nextModuleName([])).toBe("Module 1: ");
+  });
+
+  it("refuses a new module with no name beyond its number", () => {
+    expect(() => cleanNewModuleTitle("Module 6: ")).toThrow("Give the new module a name.");
+    expect(() => cleanNewModuleTitle("Module 6:")).toThrow("Give the new module a name.");
+    expect(() => cleanNewModuleTitle("   ")).toThrow("Give the new module a name.");
+    expect(cleanNewModuleTitle("  Module 6: Agents  ")).toBe("Module 6: Agents");
+    expect(cleanNewModuleTitle("Prompt library")).toBe("Prompt library");
+  });
+
+  it("saves the new module first, then the lesson into it", () => {
+    const actions = readFileSync("src/features/ai-training/actions.ts", "utf8");
+    const body = actions.slice(actions.indexOf("export async function saveLessonAction"));
+    const fn = body.slice(0, body.indexOf("export async function", 10));
+    expect(fn).toContain("newModuleTitle");
+    expect(fn).toContain("cleanNewModuleTitle(");
+    expect(fn.indexOf("saveModule(null,")).toBeGreaterThan(-1);
+    expect(fn.indexOf("saveModule(null,")).toBeLessThan(fn.indexOf("saveLesson("));
+  });
+});
+
+describe("Manage → Lessons", () => {
+  it("shows the module controls above the lesson list, where they are easy to find", () => {
+    const screen = readFileSync("src/features/ai-training/manage-screen.tsx", "utf8");
+    expect(screen.indexOf("<Modules trackId")).toBeGreaterThan(-1);
+    expect(screen.indexOf("<Modules trackId")).toBeLessThan(screen.indexOf("groups.map("));
+  });
+});
+
+describe("publishing a change to the other app", () => {
+  const actions = readFileSync("src/features/ai-training/actions.ts", "utf8");
+  const fn = (name: string) => {
+    const start = actions.indexOf(`export async function ${name}(`);
+    expect(start, name).toBeGreaterThan(-1);
+    const next = actions.indexOf("export async function", start + 10);
+    return actions.slice(start, next === -1 ? undefined : next);
+  };
+
+  it.each(["saveLessonAction", "setLessonStatusAction", "saveModuleAction", "savePageAction"])(
+    "%s can publish, only when asked, and only after its own save",
+    (name) => {
+      const body = fn(name);
+      expect(body).toContain("publishToOther");
+      expect(body).toContain("await administrator()");
+      const local = Math.max(body.indexOf("await saveLesson("), body.indexOf("await saveModule("), body.indexOf("await savePage("));
+      expect(local).toBeGreaterThan(-1);
+      expect(body.indexOf("await publish(identity,")).toBeGreaterThan(local);
+    },
+  );
+
+  it.each(["deleteLessonAction", "moveLessonAction", "reviewSubmissionAction", "submitLessonResponse", "importTableAction"])(
+    "%s never reaches the other app",
+    (name) => {
+      expect(fn(name)).not.toContain("await publish(");
+      expect(fn(name)).not.toContain("publishAfterSave(");
+    },
+  );
+});
+
+describe("the Manage screens offer publishing to the other app", () => {
+  const screen = readFileSync("src/features/ai-training/manage-screen.tsx", "utf8");
+  it("passes the editor's choice to every save that can publish", () => {
+    expect(screen).toMatch(/saveModuleAction\(\{[^}]*publishToOther/);
+    expect(screen).toMatch(/setLessonStatusAction\([^)]*publishToOther\)/);
+    expect(screen).toMatch(/savePageAction\(\{[^}]*publishToOther/);
+    expect(screen).toContain("<PublishToOtherBox");
+    expect(screen).toContain("<SaveOutcome");
+  });
+
+  it("is told the other app's name by both Manage pages, from the server", () => {
+    for (const page of ["src/app/(app)/ai-training/manage/page.tsx", "src/app/(app)/ai-training/manage/lessons/[id]/page.tsx"]) {
+      expect(readFileSync(page, "utf8"), page).toContain("otherAppName={syncConfig()?.otherAppName ?? null}");
+    }
+  });
+});
+
+describe("a failed lesson save after creating a module", () => {
+  it("removes the module it just created, so a retry does not clash with an orphan", () => {
+    const actions = readFileSync("src/features/ai-training/actions.ts", "utf8");
+    const body = actions.slice(actions.indexOf("export async function saveLessonAction"));
+    const fn = body.slice(0, body.indexOf("export async function", 10));
+    const create = fn.indexOf("saveModule(null,");
+    const undo = fn.indexOf("deleteModule(");
+    expect(create).toBeGreaterThan(-1);
+    expect(undo).toBeGreaterThan(create);
+    expect(fn.slice(create, undo)).toContain("catch");
+  });
+
+  it("returns the module's id so the editor can file the next save in it", () => {
+    const actions = readFileSync("src/features/ai-training/actions.ts", "utf8");
+    expect(actions).toContain("Promise<ActionResult<{ lessonId: string; moduleId: string | null }>>");
   });
 });

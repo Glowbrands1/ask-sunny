@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { ensureAiTrainingEditor, readOrExplain } from "@/features/ai-training/data.server";
 import { ManageScreen } from "@/features/ai-training/manage-screen";
 import { listPages, listSubmissionsForReview, loadCatalog } from "@/lib/ai-training/repository";
+import { syncConfig } from "@/lib/ai-training/sync";
 import { requirePagePermission } from "@/lib/auth/page";
 
 export const metadata: Metadata = {
@@ -25,5 +26,5 @@ export default async function ManageAiTrainingPage() {
     return { catalog, pages, submissions };
   });
 
-  return <ManageScreen problem={loaded.problem} data={loaded.data} />;
+  return <ManageScreen problem={loaded.problem} data={loaded.data} otherAppName={syncConfig()?.otherAppName ?? null} />;
 }
