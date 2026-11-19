@@ -46,6 +46,8 @@ import {
 import { WindowTag } from "./review-goal-parts";
 import { ReviewGoalTable } from "./reviews-goal-table";
 import { ReviewsLeaderboard } from "./reviews-leaderboard";
+import { ReviewsMonthlyTable } from "./reviews-monthly-table";
+import type { MonthlyProgress } from "@/lib/reviews/monthly-progress";
 import { ReviewsTabs } from "./reviews-tabs";
 import { ReviewsTimeline } from "./reviews-timeline";
 import { Stars } from "./review-stars";
@@ -205,11 +207,17 @@ export function ReviewsScreen({
   timeline,
   ratingDistribution,
   openReview,
+  monthly,
   canManageAnchors = false,
 }: {
   filters: ReviewFilters;
   snapshot: ReviewsSnapshot;
   feed: ReviewFeedData;
+  /**
+   * Qualifying reviews per salon per month, with L3, L6 and YTD. Undefined
+   * draws no section; null draws "could not be loaded".
+   */
+  monthly?: MonthlyProgress | null;
   /**
    * The over-time series, built from the review records rather than from the
    * reporting periods. See `lib/reviews/timeline.ts` for why the two are
@@ -334,6 +342,7 @@ export function ReviewsScreen({
             ratingDistribution={ratingDistribution}
             scoped={scoped}
             canManageAnchors={canManageAnchors}
+            monthly={monthly}
           />
         ) : null}
 
@@ -370,6 +379,7 @@ function OverviewView({
   ratingDistribution,
   scoped,
   canManageAnchors,
+  monthly,
 }: {
   filters: ReviewFilters;
   snapshot: ReviewsSnapshot;
@@ -377,6 +387,7 @@ function OverviewView({
   ratingDistribution: RatingDistribution;
   scoped: string | null;
   canManageAnchors: boolean;
+  monthly: MonthlyProgress | null | undefined;
 }) {
   const { summary, locations, goal } = snapshot;
   const month = formatGoalMonth(goal);
@@ -423,6 +434,16 @@ function OverviewView({
           <DistrictGoalTable districts={districts} filters={filters} goal={goal} />
         ) : null;
       })()}
+
+      {/* L3, L6 and YTD, month by month: progress over time, per salon. */}
+      {monthly !== undefined ? (
+        <ReviewsMonthlyTable
+          monthly={monthly}
+          locations={locations}
+          filters={filters}
+          target={goal.target}
+        />
+      ) : null}
 
       {/*
         ---------------------------------------------------------- over time --

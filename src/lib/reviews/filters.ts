@@ -115,6 +115,45 @@ export const WEEK_CURRENT = "current";
  * read time, like `current`.
  */
 export const WEEK_MONTH = "month";
+/**
+ * THE LONGER PERIODS: L3, L6 and YTD, CENTRAL.
+ *
+ * L3 and L6 are the last three / six FULL calendar months — on Nov 19, L3 is
+ * August through October and L6 is May through October; the current partial
+ * month is in neither, so two managers comparing L3 on different days of the
+ * same month see the same number. YTD is Jan 1 up to and including today.
+ *
+ * All three use the month-to-date counted-at rule over a longer window, so
+ * managers can see progress beyond this week or this month. Resolved at read
+ * time, like `current`: a link shared in October still means "the three months
+ * before this one" when opened in December.
+ */
+export const WEEK_LAST_THREE_MONTHS = "3months";
+export const WEEK_LAST_SIX_MONTHS = "6months";
+export const WEEK_YEAR_TO_DATE = "ytd";
+
+/** How many full months each L-period covers. */
+export const LAST_FULL_MONTHS: Readonly<Record<string, number>> = {
+  [WEEK_LAST_THREE_MONTHS]: 3,
+  [WEEK_LAST_SIX_MONTHS]: 6,
+};
+
+/** The full-month count a `week` value names, or null when it is not L3/L6. */
+export function lastFullMonthsOf(week: string): number | null {
+  return Object.prototype.hasOwnProperty.call(LAST_FULL_MONTHS, week)
+    ? LAST_FULL_MONTHS[week]
+    : null;
+}
+
+/** Every period value that is a named window rather than one reporting week. */
+export const NAMED_PERIODS: readonly string[] = [
+  WEEK_ALL,
+  WEEK_CURRENT,
+  WEEK_MONTH,
+  WEEK_LAST_THREE_MONTHS,
+  WEEK_LAST_SIX_MONTHS,
+  WEEK_YEAR_TO_DATE,
+];
 
 export interface ReviewFilters {
   /**
@@ -122,7 +161,7 @@ export interface ReviewFilters {
    */
   tab: ReviewsTab;
   /**
-   * `current`, `month`, `all`, or the `yyyy-mm-dd` Sunday of one reporting
+   * `current`, `month`, `3months`, `6months`, `ytd`, `all`, or the `yyyy-mm-dd` Sunday of one reporting
    * period.
    *
    * IT FILTERS ON THE PERIOD A REVIEW WAS ASSIGNED TO, not on when it was
@@ -205,8 +244,7 @@ export function parseReviewFilters(
 ): ReviewFilters {
   const weekRaw = first(params.week);
   const week =
-    weekRaw === WEEK_CURRENT ||
-    weekRaw === WEEK_MONTH ||
+    (weekRaw && NAMED_PERIODS.includes(weekRaw)) ||
     (weekRaw && ISO_DATE_PATTERN.test(weekRaw))
       ? weekRaw
       : WEEK_ALL;

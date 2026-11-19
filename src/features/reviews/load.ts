@@ -8,6 +8,7 @@ import {
   type ReviewFilters,
 } from "@/lib/reviews/filters";
 import {
+  loadMonthlyProgressRows,
   loadRatingDistribution,
   loadReviewDetail,
   loadReviewFeed,
@@ -16,6 +17,7 @@ import {
   type ReviewFeed,
   type ReviewsSnapshot,
 } from "@/lib/reviews/queries";
+import { monthlyProgress, type MonthlyProgress } from "@/lib/reviews/monthly-progress";
 import type { ReviewTimeline } from "@/lib/reviews/timeline";
 import type { DashboardReview, RatingDistribution } from "@/lib/reviews/types";
 
@@ -69,6 +71,12 @@ export type ReviewsPageProps =
       ratingDistribution: RatingDistribution;
       /** The review whose detail panel is open, when the URL names one. */
       openReview: DashboardReview | null;
+      /**
+       * Qualifying reviews per salon per month, with L3, L6 and YTD totals,
+       * for the salons the page is narrowed to. Null when it could not be
+       * read: the section then says so rather than printing low numbers.
+       */
+      monthly: MonthlyProgress | null;
       today: string;
       /**
        * Whether to OFFER the baseline setup screen from the anchor markers.
@@ -110,7 +118,7 @@ export async function loadReviewsPage(
    * than a round trip — and the leaderboard, the chart and the feed cannot end
    * up describing different moments in time.
    */
-  const [snapshot, feed, timeline, distribution, openReview, canManageAnchors] =
+  const [snapshot, feed, timeline, distribution, openReview, canManageAnchors, monthlyRows] =
     await Promise.all([
       loadReviewsSnapshot(filters, today),
       loadReviewFeed(filters, today),
@@ -125,7 +133,17 @@ export async function loadReviewsPage(
       loadRatingDistribution(filters),
       filters.openReviewId ? loadReviewDetail(filters.openReviewId) : Promise.resolve(null),
       pageCan("manage_integrations"),
+      /* Its own failure is its own: the rest of the page still renders. */
+      loadMonthlyProgressRows(today).catch(() => null),
     ]);
+
+  const monthly = monthlyRows
+    ? monthlyProgress(
+        monthlyRows,
+        snapshot.locations.map((location) => location.storeCode),
+        today,
+      )
+    : null;
 
   return {
     mode: "live",
@@ -135,6 +153,7 @@ export async function loadReviewsPage(
     timeline,
     ratingDistribution: distribution,
     openReview,
+    monthly,
     today,
     canManageAnchors,
   };

@@ -22,16 +22,21 @@ import {
 import { ratingDistribution } from "./rating-distribution";
 import {
   currentWeekStart,
+  lastFullMonthsWindow,
   monthStart,
   recentWeekStarts,
+  yearStart,
   weekEndOf,
 } from "./reporting-week";
+import { monthlyProgressStart } from "./monthly-progress";
 import { googleReviewsDayStartUtc, googleReviewsToday } from "./timezone";
 import {
   ratingBounds,
   WEEK_ALL,
   WEEK_CURRENT,
   WEEK_MONTH,
+  WEEK_YEAR_TO_DATE,
+  lastFullMonthsOf,
   type ReviewFilters,
 } from "./filters";
 import {
@@ -239,6 +244,62 @@ function monthToDateQuery<
     .not("reporting_period_id", "is", null)
     .gte("counted_at", googleReviewsDayStartUtc(monthStart(today)))
     .lt("counted_at", googleReviewsDayStartUtc(shiftDays(today, 1)));
+}
+
+/**
+ * THE LAST-FULL-MONTHS PREDICATE (L3, L6): the month-to-date rule over the closed
+ * months before this one — counted (never history), counting at an instant
+ * from Central midnight on the earliest 1st up to Central midnight on this
+ * month's 1st.
+ */
+function lastFullMonthsQuery<
+  Q extends {
+    not(column: string, operator: string, value: unknown): Q;
+    gte(column: string, value: string): Q;
+    lt(column: string, value: string): Q;
+  },
+>(query: Q, today: string, months: number): Q {
+  const window = lastFullMonthsWindow(months, today);
+  return query
+    .not("reporting_period_id", "is", null)
+    .gte("counted_at", googleReviewsDayStartUtc(window.start))
+    .lt("counted_at", googleReviewsDayStartUtc(window.endExclusive));
+}
+
+/** Rows read per page for the month-by-month table; PostgREST caps a page. */
+const MONTHLY_PAGE = 1000;
+/** A ceiling on the month-by-month read. Past it the table is refused, never shown low. */
+export const MONTHLY_PROGRESS_LIMIT = 20000;
+
+/**
+ * THE MONTH-BY-MONTH TABLE'S ROWS: every counted, qualifying review counting
+ * from the first month the table shows through today, by `counted_at` — the
+ * month-to-date predicate over more months. Read a page at a time, and refused
+ * rather than returned short: a partial read would be a wrong total.
+ */
+export async function loadMonthlyProgressRows(
+  today: string = googleReviewsToday(),
+): Promise<{ id: string; store_code: string; counted_at: string }[]> {
+  const supabase = getSupabaseAdmin();
+  const from = googleReviewsDayStartUtc(monthlyProgressStart(today));
+  const to = googleReviewsDayStartUtc(shiftDays(today, 1));
+  const rows: { id: string; store_code: string; counted_at: string }[] = [];
+  for (let offset = 0; offset < MONTHLY_PROGRESS_LIMIT; offset += MONTHLY_PAGE) {
+    const { data, error } = await supabase
+      .from("google_reviews_enriched")
+      .select("id,store_code,counted_at")
+      .not("reporting_period_id", "is", null)
+      .eq("eligible_for_weekly_count", true)
+      .gte("counted_at", from)
+      .lt("counted_at", to)
+      .order("id", { ascending: true })
+      .range(offset, offset + MONTHLY_PAGE - 1);
+    if (error) throw error;
+    const page = (data ?? []) as unknown as { id: string; store_code: string; counted_at: string }[];
+    rows.push(...page);
+    if (page.length < MONTHLY_PAGE) return rows;
+  }
+  throw new Error(`Month-by-month read exceeded ${MONTHLY_PROGRESS_LIMIT} reviews.`);
 }
 
 /**
@@ -537,6 +598,15 @@ export async function loadReviewFeed(
   } else if (filters.week === WEEK_MONTH) {
     /* The month-to-date predicate the snapshot counts with, so the two agree. */
     query = monthToDateQuery(query, today);
+  } else if (lastFullMonthsOf(filters.week) !== null) {
+    /* L3 / L6: the closed months before this one. */
+    query = lastFullMonthsQuery(query, today, lastFullMonthsOf(filters.week)!);
+  } else if (filters.week === WEEK_YEAR_TO_DATE) {
+    /* YTD: the month-to-date rule from Jan 1. */
+    query = query
+      .not("reporting_period_id", "is", null)
+      .gte("counted_at", googleReviewsDayStartUtc(yearStart(today)))
+      .lt("counted_at", googleReviewsDayStartUtc(shiftDays(today, 1)));
   } else if (filters.week !== WEEK_ALL) {
     query = query.eq("period_start", filters.week);
   }

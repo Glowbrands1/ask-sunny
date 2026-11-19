@@ -17,9 +17,12 @@ import {
   WEEK_ALL,
   WEEK_CURRENT,
   WEEK_MONTH,
+  WEEK_LAST_THREE_MONTHS,
+  WEEK_LAST_SIX_MONTHS,
+  WEEK_YEAR_TO_DATE,
   type ReviewFilters,
 } from "@/lib/reviews/filters";
-import { formatWeekRange } from "@/lib/reviews/reporting-week";
+import { formatMonthsWindow, formatWeekRange, lastFullMonthsWindow } from "@/lib/reviews/reporting-week";
 import { cn } from "@/lib/utils/cn";
 
 /**
@@ -112,6 +115,16 @@ export function ReviewsFilterBar({
     { value: WEEK_ALL, label: "All time" },
     { value: WEEK_CURRENT, label: "This week" },
     { value: WEEK_MONTH, label: "This month to date" },
+    /* L3 / L6 name their months, "L3 · Aug – Oct 2026": closed months, never this one. */
+    {
+      value: WEEK_LAST_THREE_MONTHS,
+      label: `L3 · last 3 full months (${formatMonthsWindow(lastFullMonthsWindow(3))})`,
+    },
+    {
+      value: WEEK_LAST_SIX_MONTHS,
+      label: `L6 · last 6 full months (${formatMonthsWindow(lastFullMonthsWindow(6))})`,
+    },
+    { value: WEEK_YEAR_TO_DATE, label: "YTD · year to date" },
     ...[...weekStarts]
       .reverse()
       .slice(1)
