@@ -6,6 +6,7 @@ import { NAV_SECTIONS } from "@/components/shell/navigation";
 import { DEFAULT_PERMISSION_MATRIX, ROLES, canAccessAdminConsole, hasPermission } from "@/lib/permissions";
 
 import { canShowLesson, groupTrackLessons, slugify, visibleCatalog } from "./catalog";
+import { aiTrainingEditorEmails, canEditAiTraining } from "./editors";
 import { detectTable, parseCsv, parseImportFiles } from "./import";
 import {
   extractPromptQuotes,
@@ -34,12 +35,36 @@ describe("the AI TRAINING tab", () => {
     for (const role of ROLES) expect(hasPermission(DEFAULT_PERMISSION_MATRIX, role, "view_ai_training"), role).toBe(true);
   });
 
-  it("is editable by the admin console roles only", () => {
-    expect(ROLES.filter(canAccessAdminConsole).sort()).toEqual(["admin", "developer", "owner"]);
+  // Changed on purpose: the client limited editing to four named people (2026-11-19),
+  // so the Manage screens check a named list instead of the admin console roles.
+  it("is editable by the named editors only, not by role", () => {
     const manage = readFileSync("src/app/(app)/ai-training/manage/page.tsx", "utf8");
-    expect(manage).toContain('requireAdminConsolePage("view_ai_training")');
+    expect(manage).toContain("ensureAiTrainingEditor(identity);");
+    expect(manage).not.toContain("requireAdminConsolePage");
     const editor = readFileSync("src/app/(app)/ai-training/manage/lessons/[id]/page.tsx", "utf8");
-    expect(editor).toContain('requireAdminConsolePage("view_ai_training")');
+    expect(editor).toContain("ensureAiTrainingEditor(identity);");
+    expect(editor).not.toContain("requireAdminConsolePage");
+    const actions = readFileSync("src/features/ai-training/actions.ts", "utf8");
+    expect(actions).not.toContain("canAccessAdminConsole");
+    expect(actions).toContain("canEditAiTraining(identity)");
+  });
+
+  it("matches the editor list by email, ignoring case and spaces, and fails closed", () => {
+    const list = aiTrainingEditorEmails(" Ana.Editor@example.com, ben@example.com;cy@example.com ");
+    expect(list).toEqual(["ana.editor@example.com", "ben@example.com", "cy@example.com"]);
+    expect(canEditAiTraining({ email: "ANA.EDITOR@example.com" }, list)).toBe(true);
+    expect(canEditAiTraining({ email: "someone.else@example.com" }, list)).toBe(false);
+    expect(canEditAiTraining({ email: "" }, list)).toBe(false);
+    expect(canEditAiTraining(null, list)).toBe(false);
+    // Unset or empty: nobody edits.
+    expect(aiTrainingEditorEmails(undefined)).toEqual([]);
+    expect(aiTrainingEditorEmails("")).toEqual([]);
+    expect(canEditAiTraining({ email: "ana.editor@example.com" }, aiTrainingEditorEmails(""))).toBe(false);
+  });
+
+  it("does not let an admin role edit unless the person is on the list", () => {
+    expect(ROLES.filter(canAccessAdminConsole).length).toBeGreaterThan(0);
+    expect(canEditAiTraining({ email: "admin.not.listed@example.com" }, ["ana.editor@example.com"])).toBe(false);
   });
 
   it("checks every Server Function's caller before doing anything", () => {

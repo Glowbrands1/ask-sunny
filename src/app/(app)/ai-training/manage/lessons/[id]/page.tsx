@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 
-import { readOrExplain } from "@/features/ai-training/data.server";
+import { ensureAiTrainingEditor, readOrExplain } from "@/features/ai-training/data.server";
 import { LessonEditor } from "@/features/ai-training/lesson-editor";
 import { getLessonById, loadCatalog } from "@/lib/ai-training/repository";
-import { requireAdminConsolePage } from "@/lib/auth/page";
+import { requirePagePermission } from "@/lib/auth/page";
 
 export const metadata: Metadata = {
   title: "Edit lesson",
@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** `/ai-training/manage/lessons/new?track=<id>` creates; a lesson id edits. Administrators only. */
+/** `/ai-training/manage/lessons/new?track=<id>` creates; a lesson id edits. The named AI Training editors only. */
 export default async function EditLessonPage({
   params,
   searchParams,
@@ -21,7 +21,8 @@ export default async function EditLessonPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ track?: string }>;
 }) {
-  await requireAdminConsolePage("view_ai_training");
+  const identity = await requirePagePermission("view_ai_training");
+  ensureAiTrainingEditor(identity);
   const { id } = await params;
   const { track } = await searchParams;
 
