@@ -21,7 +21,7 @@ import {
 import type { LessonStatus, SubmissionStatus } from "@/lib/ai-training/types";
 import { authorizeRequest } from "@/lib/auth/server";
 import type { AuthenticatedIdentity } from "@/lib/auth/types";
-import { canAccessAdminConsole } from "@/lib/permissions";
+import { canEditAiTraining } from "@/lib/ai-training/editors";
 
 /**
  * AI TRAINING'S SERVER FUNCTIONS.
@@ -48,7 +48,7 @@ async function caller(): Promise<AuthenticatedIdentity> {
 
 async function administrator(): Promise<AuthenticatedIdentity> {
   const identity = await caller();
-  if (!canAccessAdminConsole(identity.role)) throw new Error("Editing AI Training is limited to administrators.");
+  if (!canEditAiTraining(identity)) throw new Error("Editing AI Training is limited to its named editors.");
   return identity;
 }
 
@@ -99,7 +99,7 @@ export async function submitLessonResponse(input: {
     const lessonId = id(input?.lessonId, "lesson");
     const found = await getLessonById(lessonId);
     // A draft or archived lesson is not something staff can see, so not something they can submit to.
-    if (!found || (found.status !== "published" && !canAccessAdminConsole(identity.role))) throw new Error("That lesson is not available.");
+    if (!found || (found.status !== "published" && !canEditAiTraining(identity))) throw new Error("That lesson is not available.");
     const body = textField(input.body, "Your response", 20_000, false);
     const linkUrl = linkField(input.linkUrl);
     if (!body && !linkUrl) throw new Error("Write a response or add a link.");

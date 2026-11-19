@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 
-import { readOrExplain } from "@/features/ai-training/data.server";
+import { ensureAiTrainingEditor, readOrExplain } from "@/features/ai-training/data.server";
 import { ManageScreen } from "@/features/ai-training/manage-screen";
 import { listPages, listSubmissionsForReview, loadCatalog } from "@/lib/ai-training/repository";
-import { requireAdminConsolePage } from "@/lib/auth/page";
+import { requirePagePermission } from "@/lib/auth/page";
 
 export const metadata: Metadata = {
   title: "Manage AI Training",
@@ -11,9 +11,10 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
-/** Editing the program: administrators only, like every other management console here. */
+/** Editing the program: the named AI Training editors only (see `@/lib/ai-training/editors`). */
 export default async function ManageAiTrainingPage() {
-  await requireAdminConsolePage("view_ai_training");
+  const identity = await requirePagePermission("view_ai_training");
+  ensureAiTrainingEditor(identity);
 
   const loaded = await readOrExplain(async () => {
     const [catalog, pages, submissions] = await Promise.all([

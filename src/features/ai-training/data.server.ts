@@ -1,11 +1,26 @@
 import "server-only";
 
-import type { AuthenticatedIdentity } from "@/lib/auth/types";
-import { canAccessAdminConsole } from "@/lib/permissions";
+import { redirect } from "next/navigation";
 
-/** Whether the reader of an AI Training page may edit it: the admin console roles. */
+import { canEditAiTraining } from "@/lib/ai-training/editors";
+import { pageAuthorizationEnforced } from "@/lib/auth/page";
+import type { AuthenticatedIdentity } from "@/lib/auth/types";
+
+/** Whether the reader of an AI Training page may edit it: the named editors only. */
 export function viewerIsAdmin(identity: AuthenticatedIdentity | null): boolean {
-  return identity ? canAccessAdminConsole(identity.role) : false;
+  return canEditAiTraining(identity);
+}
+
+/**
+ * The second check on the Manage screens, after `requirePagePermission`. Anyone
+ * not on the editor list is sent back to the training itself rather than shown
+ * an error.
+ */
+export function ensureAiTrainingEditor(identity: AuthenticatedIdentity | null): void {
+  if (!pageAuthorizationEnforced()) return;
+  // Unreachable when enforcing (requirePagePermission redirects), but a null must never read as "allowed".
+  if (!identity) redirect("/login");
+  if (!canEditAiTraining(identity)) redirect("/ai-training?denied=manage_ai_training");
 }
 
 /**
