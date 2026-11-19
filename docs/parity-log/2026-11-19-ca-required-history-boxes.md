@@ -21,11 +21,15 @@ Same code in both apps; what differs:
   both apps): with it on, Finalize refuses a blank required box (HTTP 422 with
   the box's name); a draft may stay blank. Off, a form files as before. Neither
   production-flags.json changes: QA flips it.
-- **The chat is unchanged.** `prior_actions` keeps its key, so the AI loop, the
-  draft grounding and the Form Monitoring history lines keep reading and
-  writing box 2. Box 1 (`policy_manual_signed`) belongs to the form creator
-  (responsibility `manager`): nothing drafts it, and
-  `required-history-boxes.test.ts` checks the assistant's write is rejected.
-  The chat's intake question and a manual date a manager mentions
-  ("previous coaching jba manual 10-15-26", which still lists as a row in box
-  2) are left as they were; filling box 1 from chat is a separate change.
+- **Chat and box 2.** `prior_actions` keeps its key, so the AI loop, the draft
+  grounding and the Form Monitoring history lines keep reading and writing it.
+  A manual date a manager mentions ("previous coaching jba manual 10-15-26")
+  still lists as a row in box 2, and the chat's intake question keeps its
+  wording.
+- **Chat and box 1.** `policy_manual_signed` belongs to the form creator
+  (responsibility `manager`): nothing drafts it and the assistant's draft write
+  is rejected. The creator can set it by prompting the chat ("set the manual
+  date to 01/01/2026"): the patch path writes it as their own edit, only in
+  words the latest message holds (`verbatimKeys`, as the job title), and a
+  date they did not type is refused. An `edit_form` call with explicit values
+  still goes through the revision writer, which cannot write it.
