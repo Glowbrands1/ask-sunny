@@ -243,6 +243,7 @@ async function load(
     InstanceProtectedError: class extends Error {},
     // The route imports it to turn an unacknowledged finalize into a 409.
     UnverifiedPolicyError: class extends Error {},
+    RequiredFieldsBlankError: class extends Error {},
   }));
 
   const detail = await import("./instances/[id]/route");
