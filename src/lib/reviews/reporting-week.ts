@@ -59,6 +59,46 @@ export function monthStart(today: string = googleReviewsToday()): string {
 }
 
 /**
+ * THE LAST `count` FULL CALENDAR MONTHS, before the current one: the 1st of the
+ * earliest month (inclusive) to the 1st of the current month (exclusive). On
+ * Nov 19 with `count` 3 that is Aug 1 – Nov 1, i.e. August, September and
+ * October. The current, partial month is never in it — "full months" is what
+ * a manager comparing progress asked for.
+ */
+export function lastFullMonthsWindow(
+  count: number,
+  today: string = googleReviewsToday(),
+): { start: string; endExclusive: string } {
+  const year = Number(today.slice(0, 4));
+  const month = Number(today.slice(5, 7)); // 1-12
+  const index = year * 12 + (month - 1) - count;
+  const startYear = Math.floor(index / 12);
+  const startMonth = (index % 12) + 1;
+  return {
+    start: `${startYear}-${String(startMonth).padStart(2, "0")}-01`,
+    endExclusive: monthStart(today),
+  };
+}
+
+/** The first day of the current year, in the business zone. `yyyy-01-01`. */
+export function yearStart(today: string = googleReviewsToday()): string {
+  return `${today.slice(0, 4)}-01-01`;
+}
+
+/** "Aug – Oct 2026" for a window from `lastFullMonthsWindow`. */
+export function formatMonthsWindow(window: { start: string; endExclusive: string }): string {
+  const format = (iso: string, withYear: boolean) =>
+    new Intl.DateTimeFormat("en-US", {
+      month: "short",
+      ...(withYear ? { year: "numeric" } : {}),
+      timeZone: "UTC",
+    }).format(new Date(`${iso}T00:00:00Z`));
+  const last = shiftDays(window.endExclusive, -1);
+  const sameYear = window.start.slice(0, 4) === last.slice(0, 4);
+  return `${format(window.start, !sameYear)} – ${format(last, true)}`;
+}
+
+/**
  * A week rendered for a person: "Sep 13 – Sep 19".
  *
  * `timeZone: "UTC"` is not a mistake and not a contradiction of

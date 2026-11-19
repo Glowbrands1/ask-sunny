@@ -12,12 +12,15 @@ import {
   WEEK_ALL,
   WEEK_CURRENT,
   WEEK_MONTH,
+  WEEK_YEAR_TO_DATE,
+  NAMED_PERIODS,
+  lastFullMonthsOf,
   type ReviewFilters,
 } from "@/lib/reviews/filters";
 import { DEFAULT_MONTHLY_REVIEW_GOAL, goalContext, isCounting } from "@/lib/reviews/goal";
 import type { ReviewFeed, ReviewsSnapshot } from "@/lib/reviews/queries";
 import { ratingDistribution } from "@/lib/reviews/rating-distribution";
-import { currentWeekStart, recentWeekStarts, weekEndOf } from "@/lib/reviews/reporting-week";
+import { currentWeekStart, lastFullMonthsWindow, recentWeekStarts, weekEndOf } from "@/lib/reviews/reporting-week";
 import { GOOGLE_REVIEW_LOCATIONS } from "@/lib/reviews/store-codes";
 import { buildReviewTimeline } from "@/lib/reviews/timeline";
 import { googleReviewsToday } from "@/lib/reviews/timezone";
@@ -144,7 +147,16 @@ function matchesFeed(review: DashboardReview, filters: ReviewFilters, today: str
   }
   if (filters.week === WEEK_CURRENT && review.periodStart !== currentWeekStart(today)) return false;
   if (filters.week === WEEK_MONTH && review.firstSeenAt.slice(0, 7) !== today.slice(0, 7)) return false;
-  if (filters.week !== WEEK_ALL && filters.week !== WEEK_CURRENT && filters.week !== WEEK_MONTH) {
+  const fullMonths = lastFullMonthsOf(filters.week);
+  if (fullMonths !== null) {
+    const window = lastFullMonthsWindow(fullMonths, today);
+    const seen = review.firstSeenAt.slice(0, 10);
+    if (seen < window.start || seen >= window.endExclusive) return false;
+  }
+  if (filters.week === WEEK_YEAR_TO_DATE && review.firstSeenAt.slice(0, 4) !== today.slice(0, 4)) {
+    return false;
+  }
+  if (!NAMED_PERIODS.includes(filters.week)) {
     if (review.periodStart !== filters.week) return false;
   }
   if (filters.assignment === "historical") return false;

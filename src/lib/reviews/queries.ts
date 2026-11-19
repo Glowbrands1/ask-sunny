@@ -22,8 +22,10 @@ import {
 import { ratingDistribution } from "./rating-distribution";
 import {
   currentWeekStart,
+  lastFullMonthsWindow,
   monthStart,
   recentWeekStarts,
+  yearStart,
   weekEndOf,
 } from "./reporting-week";
 import { googleReviewsDayStartUtc, googleReviewsToday } from "./timezone";
@@ -32,6 +34,8 @@ import {
   WEEK_ALL,
   WEEK_CURRENT,
   WEEK_MONTH,
+  WEEK_YEAR_TO_DATE,
+  lastFullMonthsOf,
   type ReviewFilters,
 } from "./filters";
 import {
@@ -239,6 +243,26 @@ function monthToDateQuery<
     .not("reporting_period_id", "is", null)
     .gte("counted_at", googleReviewsDayStartUtc(monthStart(today)))
     .lt("counted_at", googleReviewsDayStartUtc(shiftDays(today, 1)));
+}
+
+/**
+ * THE LAST-FULL-MONTHS PREDICATE (L3, L6): the month-to-date rule over the closed
+ * months before this one — counted (never history), counting at an instant
+ * from Central midnight on the earliest 1st up to Central midnight on this
+ * month's 1st.
+ */
+function lastFullMonthsQuery<
+  Q extends {
+    not(column: string, operator: string, value: unknown): Q;
+    gte(column: string, value: string): Q;
+    lt(column: string, value: string): Q;
+  },
+>(query: Q, today: string, months: number): Q {
+  const window = lastFullMonthsWindow(months, today);
+  return query
+    .not("reporting_period_id", "is", null)
+    .gte("counted_at", googleReviewsDayStartUtc(window.start))
+    .lt("counted_at", googleReviewsDayStartUtc(window.endExclusive));
 }
 
 /**
@@ -537,6 +561,15 @@ export async function loadReviewFeed(
   } else if (filters.week === WEEK_MONTH) {
     /* The month-to-date predicate the snapshot counts with, so the two agree. */
     query = monthToDateQuery(query, today);
+  } else if (lastFullMonthsOf(filters.week) !== null) {
+    /* L3 / L6: the closed months before this one. */
+    query = lastFullMonthsQuery(query, today, lastFullMonthsOf(filters.week)!);
+  } else if (filters.week === WEEK_YEAR_TO_DATE) {
+    /* YTD: the month-to-date rule from Jan 1. */
+    query = query
+      .not("reporting_period_id", "is", null)
+      .gte("counted_at", googleReviewsDayStartUtc(yearStart(today)))
+      .lt("counted_at", googleReviewsDayStartUtc(shiftDays(today, 1)));
   } else if (filters.week !== WEEK_ALL) {
     query = query.eq("period_start", filters.week);
   }
