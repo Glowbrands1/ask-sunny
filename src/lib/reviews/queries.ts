@@ -98,6 +98,8 @@ export const TREND_WEEKS = 12;
  * window rather than quietly drawing a partial past as if it were complete.
  */
 export const TIMELINE_LIMIT = 5000;
+/** Rows per request for the over-time chart: the database never returns more than 1,000 at once. */
+export const TIMELINE_PAGE = 1000;
 
 /**
  * THE CEILING ON THE MONTH-TO-DATE READ.
@@ -729,23 +731,39 @@ export async function loadReviewTimeline(
     "district" | "storeCode" | "rating" | "status" | "qualifying" | "search"
   >,
 ): Promise<ReviewTimeline & { truncated: boolean }> {
-  const { data, error, count } = await scopeReviewQuery(TIMELINE_COLUMNS, filters)
-    .order("first_seen_at", { ascending: false })
-    .limit(TIMELINE_LIMIT);
-
   /*
-   * A CHART IS NOT WORTH TAKING THE PAGE DOWN FOR. Every other figure on the
-   * screen comes from a different read; a failure here draws an empty chart
-   * that says nothing is plotted, rather than a 500 over the leaderboard, the
-   * queue and the feed.
+   * READ A PAGE AT A TIME (Nov 19 2026, "none for oct?"). The database answers
+   * at most 1,000 rows per request whatever `limit` asks for, so a single read
+   * of up to TIMELINE_LIMIT silently stopped at 1,000. Once the history import
+   * stored 1,133 older reviews in one afternoon, the newest-first-seen 1,000
+   * were nearly all that import, and the reviews synced through October fell
+   * off the chart. Every page is read now, up to the ceiling.
    */
-  if (error) return { ...EMPTY_REVIEW_TIMELINE, truncated: false };
-
-  const rows = (data ?? []) as unknown as {
+  const rows: {
     google_absolute_date: string | null;
     google_estimated_at: string | null;
     first_seen_at: string;
-  }[];
+  }[] = [];
+  let total: number | null = null;
+  for (let offset = 0; offset < TIMELINE_LIMIT; offset += TIMELINE_PAGE) {
+    const { data, error, count } = await scopeReviewQuery(TIMELINE_COLUMNS, filters)
+      .order("first_seen_at", { ascending: false })
+      .order("id", { ascending: true })
+      .range(offset, Math.min(offset + TIMELINE_PAGE, TIMELINE_LIMIT) - 1);
+
+    /*
+     * A CHART IS NOT WORTH TAKING THE PAGE DOWN FOR. Every other figure on the
+     * screen comes from a different read; a failure here draws an empty chart
+     * that says nothing is plotted, rather than a 500 over the leaderboard, the
+     * queue and the feed.
+     */
+    if (error) return { ...EMPTY_REVIEW_TIMELINE, truncated: false };
+
+    const page = (data ?? []) as unknown as typeof rows;
+    rows.push(...page);
+    total = count ?? total;
+    if (page.length < TIMELINE_PAGE) break;
+  }
 
   const records: TimelineRecord[] = rows.map((row) => ({
     googleAbsoluteDate: row.google_absolute_date,
@@ -755,7 +773,7 @@ export async function loadReviewTimeline(
 
   return {
     ...buildReviewTimeline(records),
-    truncated: (count ?? rows.length) > rows.length,
+    truncated: (total ?? rows.length) > rows.length,
   };
 }
 
