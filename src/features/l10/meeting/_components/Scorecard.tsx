@@ -105,7 +105,10 @@ export function Scorecard({
    * (the owner, 18 Nov 2026: "make this collapasable"; the same request as the sibling app's).
    */
   const [adding, setAdding] = useState(false);
-  const missingSalons = salons.filter((s) => !doc.scorecard.some((r) => r.salon === s.name));
+  const salonNames = salons.map((s) => s.name);
+  // A salon counts as set up when any row is its, tagged or named "<salon> · <metric>" (the Hub's own setup), so the
+  // button is not offered again for salons the Hub already set up (19 Nov 2026: one district's scorecard had every salon twice).
+  const missingSalons = salons.filter((s) => !doc.scorecard.some((r) => salonOfRow(r, salonNames) === s.name));
 
   const addMetric = () => {
     if (!metric.trim()) return;
@@ -194,7 +197,7 @@ export function Scorecard({
       )}
       {bloom && adding && <div id="add-metric-form">{form}</div>}
       {doc.scorecard.length > 0 && bloom ? (
-        <BloomTable doc={doc} edit={edit} order={order} today={today} />
+        <BloomTable doc={doc} edit={edit} order={order} today={today} salons={salonNames} />
       ) : doc.scorecard.length === 0 ? (
         <p className="m-0 rounded-[10px] border border-dashed border-line p-4 text-sm text-muted">No metrics yet. {bloom ? "Press Add metric to add the first one." : "Add the first one below."}</p>
       ) : (
@@ -252,14 +255,35 @@ const tableHead = "bg-ink text-xs font-bold tracking-[0.06em] text-gold-head";
 const bloomHead = "bg-ink text-xs font-bold tracking-[0.06em] text-white";
 
 /**
+ * The salon a scorecard row is for: its `salon` tag (Ask Sunny's "Set up the salon scorecard"), else the salon its name
+ * starts with, "Manhattan · YOY Revenue" (the Hub sets up the STC SD L10s' scorecards that way). Only this meeting's
+ * salons count, so no other metric is ever read as a salon's.
+ */
+export function salonOfRow(r: ScorecardRow, salons: readonly string[]): string | null {
+  if (typeof r.salon === "string" && r.salon) return r.salon;
+  const prefix = r.metric.split(" · ")[0];
+  return prefix !== r.metric && salons.includes(prefix) ? prefix : null;
+}
+
+/** A row's metric under its salon's heading: "YOY Revenue", not "Manhattan · YOY Revenue" again. */
+export function metricInSalon(r: ScorecardRow, salon: string | null): string {
+  return salon && r.metric.startsWith(`${salon} · `) ? r.metric.slice(salon.length + 3) : r.metric;
+}
+
+/**
  * The scorecard as Bloom Growth lays it out (the DM L10s; the owner's request, 15 Nov 2026): Who (the owner's initials,
  * full name on hover), Metric, Goal, then the weeks newest first, each headed by its range ("2 Nov / 8 Nov") with this
  * week shaded. Rows are grouped by owner with a gap between groups; older weeks scroll sideways. Same cells, same saves.
+ * Each group starts with a divider row naming it (QA, 19 Nov 2026: "Is there also a way we can create some
+ * distinction around each salon, maybe a divider? It will make it easier to view-- and we will want that on bubbles too").
  */
-function BloomTable({ doc, edit, order, today }: { doc: MeetingDoc; edit: (fn: (d: MeetingDoc) => MeetingDoc) => void; order: number[]; today: string }) {
+function BloomTable({ doc, edit, order, today, salons = [] }: { doc: MeetingDoc; edit: (fn: (d: MeetingDoc) => MeetingDoc) => void; order: number[]; today: string; salons?: readonly string[] }) {
   // Grouped by owner; a salon's metrics (the STC SD L10s) group under the salon instead, headed by its name and DM.
   const groups = new Map<string, ScorecardRow[]>();
-  const groupOf = (r: ScorecardRow) => (typeof r.salon === "string" && r.salon ? `salon:${r.salon}` : r.owner);
+  const groupOf = (r: ScorecardRow) => {
+    const salon = salonOfRow(r, salons);
+    return salon ? `salon:${salon}` : r.owner;
+  };
   for (const r of doc.scorecard) groups.set(groupOf(r), [...(groups.get(groupOf(r)) ?? []), r]);
   const current = (i: number) => inWeek(doc.weekEndings[i], today);
   return (
@@ -299,18 +323,16 @@ function BloomTable({ doc, edit, order, today }: { doc: MeetingDoc; edit: (fn: (
           </tr>
         </thead>
         {[...groups].map(([group, rows]) => {
-          const salon = rows[0].salon;
+          const salon = salonOfRow(rows[0], salons);
           const owner = rows[0].owner;
           return (
           <tbody key={group} aria-label={salon ? `${salon} (${owner})` : `${owner}'s metrics`} className="border-t-[10px] border-cream first-of-type:border-t-0">
-            {salon && (
-              <tr data-salon-row className="bg-cream/70">
-                <th scope="rowgroup" colSpan={3 + order.length} className="px-3 py-1.5 text-left text-sm">
-                  <span className="sticky left-3 font-bold">{salon}</span>
-                  <span className="sticky left-3 font-normal text-muted"> · DM: {owner}</span>
-                </th>
-              </tr>
-            )}
+            <tr data-group-row data-salon-row={salon ? "" : undefined} className="border-t-2 border-ink/70 bg-cream/70">
+              <th scope="rowgroup" colSpan={3 + order.length} className="px-3 py-1.5 text-left text-sm">
+                <span className="sticky left-3 font-bold">{salon ?? owner}</span>
+                {salon && <span className="sticky left-3 font-normal text-muted"> · DM: {owner}</span>}
+              </th>
+            </tr>
             {rows.map((r) => (
               <tr key={r.id} data-owner-row={ownerColor(owner)} className="border-t border-rule">
                 <td className="sticky left-0 z-10 bg-white px-3 py-2">
@@ -321,7 +343,7 @@ function BloomTable({ doc, edit, order, today }: { doc: MeetingDoc; edit: (fn: (
                 </td>
                 <td className="min-w-[120px] px-3 py-2 font-semibold sm:min-w-[170px]">
                   <span className="flex items-center justify-between gap-2">
-                    {r.metric}
+                    {metricInSalon(r, salon)}
                     <button
                       type="button"
                       aria-label={`Remove metric ${r.metric}`}
