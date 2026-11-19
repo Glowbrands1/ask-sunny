@@ -305,7 +305,7 @@ export async function savePage(key: string, title: string, bodyMd: string): Prom
 export async function saveModule(
   id: string | null,
   input: { trackId: string; title: string; slug: string; adminOnly: boolean },
-): Promise<void> {
+): Promise<string> {
   const db = getSupabaseAdmin();
   if (id) {
     const { error } = await db
@@ -313,7 +313,7 @@ export async function saveModule(
       .update({ title: input.title, admin_only: input.adminOnly })
       .eq("id", id);
     if (error) fail("save the module", error);
-    return;
+    return id;
   }
   const { data: last } = await db
     .from("ai_training_modules")
@@ -322,14 +322,19 @@ export async function saveModule(
     .order("sort_order", { ascending: false })
     .limit(1)
     .maybeSingle();
-  const { error } = await db.from("ai_training_modules").insert({
-    track_id: input.trackId,
-    slug: input.slug,
-    title: input.title,
-    admin_only: input.adminOnly,
-    sort_order: ((last as { sort_order: number } | null)?.sort_order ?? 0) + 1,
-  });
+  const { data, error } = await db
+    .from("ai_training_modules")
+    .insert({
+      track_id: input.trackId,
+      slug: input.slug,
+      title: input.title,
+      admin_only: input.adminOnly,
+      sort_order: ((last as { sort_order: number } | null)?.sort_order ?? 0) + 1,
+    })
+    .select("id")
+    .single();
   if (error) fail(error.code === "23505" ? "add it: a module with that name already exists" : "add the module", error.code === "23505" ? null : error);
+  return (data as { id: string }).id;
 }
 
 export async function saveTrack(input: { slug: string; title: string }): Promise<void> {

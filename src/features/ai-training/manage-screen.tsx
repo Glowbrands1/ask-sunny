@@ -127,6 +127,8 @@ function LessonsTab({ catalog }: { catalog: TrainingCatalog }) {
       </div>
       {error ? <p className="text-sm text-status-failed" role="alert">{error}</p> : null}
 
+      {track ? <Modules trackId={track.id} modules={modules} /> : null}
+
       {track ? (
         groups.length ? (
           groups.map((group) => (
@@ -186,8 +188,6 @@ function LessonsTab({ catalog }: { catalog: TrainingCatalog }) {
           <EmptyState compact title="No lessons in this track yet" description="Add one with New lesson." />
         )
       ) : null}
-
-      {track ? <Modules trackId={track.id} modules={modules} /> : null}
     </div>
   );
 }

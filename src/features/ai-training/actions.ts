@@ -22,6 +22,7 @@ import type { LessonStatus, SubmissionStatus } from "@/lib/ai-training/types";
 import { authorizeRequest } from "@/lib/auth/server";
 import type { AuthenticatedIdentity } from "@/lib/auth/types";
 import { canEditAiTraining } from "@/lib/ai-training/editors";
+import { cleanNewModuleTitle } from "@/lib/ai-training/module-name";
 
 /**
  * AI TRAINING'S SERVER FUNCTIONS.
@@ -151,18 +152,27 @@ export async function saveLessonAction(input: {
   bodyMd: string;
   weekNumber: string;
   status: LessonStatus;
+  /** Set when the editor chose "+ New module…": the module is created first, then the lesson saved into it. */
+  newModuleTitle?: string | null;
 }): Promise<ActionResult<string>> {
   return attempt(async () => {
     await administrator();
     const title = textField(input.title, "Title", 300);
+    const trackId = id(input.trackId, "track");
+    const newModuleTitle = typeof input.newModuleTitle === "string" ? cleanNewModuleTitle(input.newModuleTitle) : null;
     const slug = slugify(textField(input.slug, "Slug", 160, false) || title);
     const week = typeof input.weekNumber === "string" ? input.weekNumber.trim() : "";
     if (week && !/^\d{1,4}$/.test(week)) throw new Error("Lesson number must be a whole number.");
     if (input.status !== "draft" && input.status !== "published") throw new Error("Unknown status.");
     if (typeof input.bodyMd !== "string" || input.bodyMd.length > 500_000) throw new Error("The lesson is too long.");
+    const moduleId = newModuleTitle
+      ? await saveModule(null, { trackId, title: newModuleTitle, slug: slugify(newModuleTitle), adminOnly: false })
+      : input.moduleId
+        ? id(input.moduleId, "module")
+        : null;
     const saved = await saveLesson(input.id ? id(input.id, "lesson") : null, {
-      trackId: id(input.trackId, "track"),
-      moduleId: input.moduleId ? id(input.moduleId, "module") : null,
+      trackId,
+      moduleId,
       slug,
       title,
       summary: textField(input.summary, "Summary", 2000, false) || null,

@@ -7,6 +7,7 @@ import { DEFAULT_PERMISSION_MATRIX, ROLES, canAccessAdminConsole, hasPermission 
 
 import { canShowLesson, groupTrackLessons, slugify, visibleCatalog } from "./catalog";
 import { aiTrainingEditorEmails, canEditAiTraining } from "./editors";
+import { cleanNewModuleTitle, nextModuleName } from "./module-name";
 import { detectTable, parseCsv, parseImportFiles } from "./import";
 import {
   extractPromptQuotes,
@@ -262,5 +263,39 @@ describe("slugs", () => {
     expect(slugify("Week 4: Writing with Claude!")).toBe("week-4-writing-with-claude");
     expect(slugify("Café prompts")).toBe("cafe-prompts");
     expect(slugify("!!!")).toBe("lesson");
+  });
+});
+
+describe("creating a module from the lesson editor", () => {
+  it("suggests the next module number, not counting the admin-only archive", () => {
+    const five = Array.from({ length: 5 }, () => ({ adminOnly: false }));
+    expect(nextModuleName([...five, { adminOnly: true }])).toBe("Module 6: ");
+    expect(nextModuleName([])).toBe("Module 1: ");
+  });
+
+  it("refuses a new module with no name beyond its number", () => {
+    expect(() => cleanNewModuleTitle("Module 6: ")).toThrow("Give the new module a name.");
+    expect(() => cleanNewModuleTitle("Module 6:")).toThrow("Give the new module a name.");
+    expect(() => cleanNewModuleTitle("   ")).toThrow("Give the new module a name.");
+    expect(cleanNewModuleTitle("  Module 6: Agents  ")).toBe("Module 6: Agents");
+    expect(cleanNewModuleTitle("Prompt library")).toBe("Prompt library");
+  });
+
+  it("saves the new module first, then the lesson into it", () => {
+    const actions = readFileSync("src/features/ai-training/actions.ts", "utf8");
+    const body = actions.slice(actions.indexOf("export async function saveLessonAction"));
+    const fn = body.slice(0, body.indexOf("export async function", 10));
+    expect(fn).toContain("newModuleTitle");
+    expect(fn).toContain("cleanNewModuleTitle(");
+    expect(fn.indexOf("saveModule(null,")).toBeGreaterThan(-1);
+    expect(fn.indexOf("saveModule(null,")).toBeLessThan(fn.indexOf("saveLesson("));
+  });
+});
+
+describe("Manage → Lessons", () => {
+  it("shows the module controls above the lesson list, where they are easy to find", () => {
+    const screen = readFileSync("src/features/ai-training/manage-screen.tsx", "utf8");
+    expect(screen.indexOf("<Modules trackId")).toBeGreaterThan(-1);
+    expect(screen.indexOf("<Modules trackId")).toBeLessThan(screen.indexOf("groups.map("));
   });
 });

@@ -10,10 +10,14 @@ import { EmptyState, Notice } from "@/components/ui/feedback";
 import { Input, Label, Select, Textarea } from "@/components/ui/field";
 import { PageHeader, PageShell } from "@/components/ui/layout";
 import { slugify } from "@/lib/ai-training/catalog";
+import { nextModuleName } from "@/lib/ai-training/module-name";
 import type { LessonStatus, TrainingCatalog, TrainingLesson } from "@/lib/ai-training/types";
 
 import { saveLessonAction } from "./actions";
 import { MarkdownSplit } from "./manage-screen";
+
+/** The Module list's value for "+ New module…". Never a real id (ids are UUIDs). */
+const NEW_MODULE = "__new__";
 
 export function LessonEditor({
   problem,
@@ -69,6 +73,7 @@ function Form({ catalog, lesson, defaultTrackId }: { catalog: TrainingCatalog; l
   const router = useRouter();
   const [trackId, setTrackId] = useState(lesson?.trackId ?? (catalog.tracks.some((t) => t.id === defaultTrackId) ? defaultTrackId! : catalog.tracks[0].id));
   const [moduleId, setModuleId] = useState(lesson?.moduleId ?? "");
+  const [newModuleTitle, setNewModuleTitle] = useState("");
   const [title, setTitle] = useState(lesson?.title ?? "");
   const [slug, setSlug] = useState(lesson?.slug ?? "");
   const [slugTouched, setSlugTouched] = useState(!!lesson);
@@ -93,7 +98,8 @@ function Form({ catalog, lesson, defaultTrackId }: { catalog: TrainingCatalog; l
           const result = await saveLessonAction({
             id: lesson?.id ?? null,
             trackId,
-            moduleId: moduleId || null,
+            moduleId: moduleId && moduleId !== NEW_MODULE ? moduleId : null,
+            newModuleTitle: moduleId === NEW_MODULE ? newModuleTitle : null,
             slug,
             title,
             summary,
@@ -132,10 +138,30 @@ function Form({ catalog, lesson, defaultTrackId }: { catalog: TrainingCatalog; l
         </div>
         <div>
           <Label htmlFor="lesson-module">Module</Label>
-          <Select id="lesson-module" value={moduleId} onChange={(e) => setModuleId(e.target.value)}>
+          <Select
+            id="lesson-module"
+            value={moduleId}
+            onChange={(e) => {
+              if (e.target.value === NEW_MODULE && moduleId !== NEW_MODULE) setNewModuleTitle(nextModuleName(modules));
+              setModuleId(e.target.value);
+            }}
+          >
             <option value="">No module</option>
             {modules.map((m) => <option key={m.id} value={m.id}>{m.title}{m.adminOnly ? " (admins only)" : ""}</option>)}
+            <option value={NEW_MODULE}>+ New module…</option>
           </Select>
+          {moduleId === NEW_MODULE ? (
+            <div className="mt-2">
+              <Label htmlFor="lesson-new-module">New module name</Label>
+              <Input
+                id="lesson-new-module"
+                value={newModuleTitle}
+                onChange={(e) => setNewModuleTitle(e.target.value)}
+                placeholder="Module 6: Working with agents"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">Created when you save this lesson.</p>
+            </div>
+          ) : null}
         </div>
         <div>
           <Label htmlFor="lesson-status">Status</Label>
