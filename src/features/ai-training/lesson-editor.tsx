@@ -129,9 +129,14 @@ function Form({
             publishToOther,
           });
           if (!result.ok) setError(result.message);
-          else if (!lessonId && result.value && !result.warning) router.replace(`/ai-training/manage/lessons/${result.value}`);
+          else if (!lessonId && result.value && !result.warning) router.replace(`/ai-training/manage/lessons/${result.value.lessonId}`);
           else {
-            if (!lessonId && result.value) setCreatedId(result.value);
+            if (!lessonId && result.value) setCreatedId(result.value.lessonId);
+            if (moduleId === NEW_MODULE && result.value?.moduleId) {
+              // The module now exists: the next save files the lesson in it rather than creating it again.
+              setModuleId(result.value.moduleId);
+              setNewModuleTitle("");
+            }
             setWarning(result.warning ?? null);
             setSaved(!result.warning);
             router.refresh();

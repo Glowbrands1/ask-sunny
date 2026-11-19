@@ -11,7 +11,9 @@ vi.mock("next/navigation", () => ({
   usePathname: () => "/ai-training/manage/lessons/new",
   useSearchParams: () => new URLSearchParams(),
 }));
-const saveLessonAction = vi.fn<(input: unknown) => Promise<{ ok: true; value: string }>>(async () => ({ ok: true, value: "new-id" }));
+const saveLessonAction = vi.fn<(input: unknown) => Promise<{ ok: true; value: { lessonId: string; moduleId: string | null } }>>(
+  async () => ({ ok: true, value: { lessonId: "new-id", moduleId: null } }),
+);
 vi.mock("./actions", () => ({ saveLessonAction: (input: unknown) => saveLessonAction(input) }));
 
 // The checkbox measures itself; jsdom has no ResizeObserver (same stub as the sidebar test).
@@ -82,5 +84,24 @@ describe("publishing a lesson to the other app", () => {
   it("has no box when sync is not set up", () => {
     render(<LessonEditor problem={null} catalog={catalog} lesson={null} isNew defaultTrackId="t1" otherAppName={null} />);
     expect(screen.queryByRole("checkbox", { name: /Also publish to/ })).toBeNull();
+  });
+});
+
+describe("saving again after creating a module", () => {
+  it("files the lesson in the module just created, instead of creating it a second time", async () => {
+    saveLessonAction.mockResolvedValueOnce({ ok: true, value: { lessonId: "l1", moduleId: "m-new" } });
+    const lesson = {
+      id: "l1", trackId: "t1", moduleId: null, slug: "build-an-agent", title: "Build an agent", summary: null,
+      bodyMd: "", weekNumber: null, sortOrder: 1, status: "draft" as const, publishedAt: null, updatedAt: "",
+    };
+    render(<LessonEditor problem={null} catalog={catalog} lesson={lesson} isNew={false} defaultTrackId="t1" />);
+    fireEvent.change(screen.getByLabelText("Module"), { target: { value: "__new__" } });
+    fireEvent.change(screen.getByLabelText("New module name"), { target: { value: "Module 2: Agents" } });
+    fireEvent.click(screen.getAllByRole("button", { name: "Save" })[0]);
+    await waitFor(() => expect(saveLessonAction).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.queryByLabelText("New module name")).toBeNull());
+    fireEvent.click((await screen.findAllByRole("button", { name: "Save" }))[0]);
+    await waitFor(() => expect(saveLessonAction).toHaveBeenCalledTimes(2));
+    expect(saveLessonAction.mock.calls[1][0]).toMatchObject({ moduleId: "m-new", newModuleTitle: null });
   });
 });

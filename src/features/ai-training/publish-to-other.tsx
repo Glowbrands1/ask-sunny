@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useSyncExternalStore } from "react";
 
 import { CheckboxField } from "@/components/ui/controls";
 
@@ -13,7 +13,17 @@ import { CheckboxField } from "@/components/ui/controls";
 
 const STORAGE_KEY = "ai-training:publish-to-other";
 
+/*
+ * One shared store for every box on the page, read with useSyncExternalStore:
+ * the server snapshot is always "unticked", so hydration matches, and the
+ * remembered choice shows straight after. When storage is blocked the choice
+ * lives in memory for this page only.
+ */
+let memory: boolean | null = null;
+const listeners = new Set<() => void>();
+
 function readRemembered(): boolean {
+  if (memory !== null) return memory;
   try {
     return window.localStorage.getItem(STORAGE_KEY) === "1";
   } catch {
@@ -21,17 +31,31 @@ function readRemembered(): boolean {
   }
 }
 
-export function usePublishToOther(): [boolean, (value: boolean) => void] {
-  const [checked, setChecked] = useState<boolean>(() => (typeof window === "undefined" ? false : readRemembered()));
-  function update(value: boolean) {
-    setChecked(value);
-    try {
-      window.localStorage.setItem(STORAGE_KEY, value ? "1" : "0");
-    } catch {
-      // storage blocked: the choice lasts for this screen only
-    }
+function subscribe(listener: () => void) {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+function remember(value: boolean) {
+  try {
+    window.localStorage.setItem(STORAGE_KEY, value ? "1" : "0");
+    memory = null;
+  } catch {
+    memory = value;
   }
-  return [checked, update];
+  listeners.forEach((listener) => listener());
+}
+
+export function usePublishToOther(): [boolean, (value: boolean) => void] {
+  const checked = useSyncExternalStore(subscribe, readRemembered, () => false);
+  return [checked, remember];
+}
+
+/** Test seam: forget the in-memory fallback between tests. */
+export function resetPublishToOtherForTests() {
+  memory = null;
 }
 
 export function PublishToOtherBox({

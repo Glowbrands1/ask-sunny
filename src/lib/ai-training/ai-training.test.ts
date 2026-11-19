@@ -346,3 +346,21 @@ describe("the Manage screens offer publishing to the other app", () => {
     }
   });
 });
+
+describe("a failed lesson save after creating a module", () => {
+  it("removes the module it just created, so a retry does not clash with an orphan", () => {
+    const actions = readFileSync("src/features/ai-training/actions.ts", "utf8");
+    const body = actions.slice(actions.indexOf("export async function saveLessonAction"));
+    const fn = body.slice(0, body.indexOf("export async function", 10));
+    const create = fn.indexOf("saveModule(null,");
+    const undo = fn.indexOf("deleteModule(");
+    expect(create).toBeGreaterThan(-1);
+    expect(undo).toBeGreaterThan(create);
+    expect(fn.slice(create, undo)).toContain("catch");
+  });
+
+  it("returns the module's id so the editor can file the next save in it", () => {
+    const actions = readFileSync("src/features/ai-training/actions.ts", "utf8");
+    expect(actions).toContain("Promise<ActionResult<{ lessonId: string; moduleId: string | null }>>");
+  });
+});

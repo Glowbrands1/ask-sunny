@@ -268,6 +268,11 @@ export async function saveLesson(id: string | null, input: LessonInput): Promise
   return (data as { id: string }).id;
 }
 
+export async function deleteModule(id: string): Promise<void> {
+  const { error } = await getSupabaseAdmin().from("ai_training_modules").delete().eq("id", id);
+  if (error) fail("remove the module", error);
+}
+
 export async function deleteLesson(id: string): Promise<void> {
   const { error } = await getSupabaseAdmin().from("ai_training_lessons").delete().eq("id", id);
   if (error) fail("delete the lesson", error);

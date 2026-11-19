@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { PublishToOtherBox, SaveOutcome, usePublishToOther } from "./publish-to-other";
+import { PublishToOtherBox, SaveOutcome, resetPublishToOtherForTests, usePublishToOther } from "./publish-to-other";
 
 /** THE "ALSO PUBLISH TO <OTHER APP>" BOX on the AI Training editing screens. */
 
@@ -38,6 +39,7 @@ let storage: MemoryStorage;
 beforeEach(() => {
   storage = new MemoryStorage();
   Object.defineProperty(window, "localStorage", { value: storage, configurable: true });
+  resetPublishToOtherForTests();
 });
 afterEach(() => {
   cleanup();
@@ -56,13 +58,19 @@ describe("PublishToOtherBox", () => {
     expect(box.getAttribute("aria-checked") ?? String((box as HTMLInputElement).checked)).toMatch(/false/);
   });
 
-  it("remembers the editor's last choice", () => {
+  it("remembers the editor's last choice", async () => {
     const first = render(<Harness otherAppName="Ask Bubbles" />);
     fireEvent.click(screen.getByRole("checkbox", { name: "Also publish to Ask Bubbles" }));
     first.unmount();
     render(<Harness otherAppName="Ask Bubbles" />);
     const box = screen.getByRole("checkbox", { name: "Also publish to Ask Bubbles" });
-    expect(box.getAttribute("aria-checked") ?? String((box as HTMLInputElement).checked)).toMatch(/true/);
+    await waitFor(() => expect(box.getAttribute("aria-checked") ?? String((box as HTMLInputElement).checked)).toMatch(/true/));
+  });
+
+  it("renders unticked first, as the server does, even when the last choice was ticked", () => {
+    storage.setItem("ai-training:publish-to-other", "1");
+    const html = renderToString(<Harness otherAppName="Ask Bubbles" />);
+    expect(html).toContain('aria-checked="false"');
   });
 
   it("still works, unticked, when the browser blocks storage", () => {

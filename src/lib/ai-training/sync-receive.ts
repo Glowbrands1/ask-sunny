@@ -53,7 +53,7 @@ export async function receiveSync(req: { headers: Headers; text(): Promise<strin
 
   const actor = (payload as { actorEmail?: unknown }).actorEmail;
   const email = typeof actor === "string" ? actor.trim().toLowerCase() : "";
-  if (!email || !deps.editors.includes(email)) return refuse(403, "you are not an AI Training editor in this app");
+  if (!email || !deps.editors.includes(email)) return refuse(403, "you are not on its AI Training editor list");
 
   const parsed = parseImportFiles([{ name: "sync.json", text }]);
   if (parsed.problems.length) return refuse(400, parsed.problems.join(" "));

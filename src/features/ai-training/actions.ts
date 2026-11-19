@@ -8,6 +8,7 @@ import type { LessonRow, ModuleRow, PageRow, TrackRow } from "@/lib/ai-training/
 import {
   createSubmission,
   deleteLesson,
+  deleteModule,
   getLessonById,
   importRows,
   loadSyncBundle,
@@ -175,7 +176,7 @@ export async function saveLessonAction(input: {
   newModuleTitle?: string | null;
   /** The "Also publish to <other app>" box. */
   publishToOther?: boolean;
-}): Promise<ActionResult<string>> {
+}): Promise<ActionResult<{ lessonId: string; moduleId: string | null }>> {
   return attemptSave(async () => {
     const identity = await administrator();
     const title = textField(input.title, "Title", 300);
@@ -186,12 +187,11 @@ export async function saveLessonAction(input: {
     if (week && !/^\d{1,4}$/.test(week)) throw new Error("Lesson number must be a whole number.");
     if (input.status !== "draft" && input.status !== "published") throw new Error("Unknown status.");
     if (typeof input.bodyMd !== "string" || input.bodyMd.length > 500_000) throw new Error("The lesson is too long.");
-    const moduleId = newModuleTitle
+    const createdModuleId = newModuleTitle
       ? await saveModule(null, { trackId, title: newModuleTitle, slug: slugify(newModuleTitle), adminOnly: false })
-      : input.moduleId
-        ? id(input.moduleId, "module")
-        : null;
-    const saved = await saveLesson(input.id ? id(input.id, "lesson") : null, {
+      : null;
+    const moduleId = createdModuleId ?? (input.moduleId ? id(input.moduleId, "module") : null);
+    const lessonInput = {
       trackId,
       moduleId,
       slug,
@@ -200,9 +200,20 @@ export async function saveLessonAction(input: {
       bodyMd: input.bodyMd,
       weekNumber: week ? Number(week) : null,
       status: input.status,
-    });
+    };
+    let saved: string;
+    try {
+      saved = await saveLesson(input.id ? id(input.id, "lesson") : null, lessonInput);
+    } catch (error) {
+      // Undo the module made for this lesson, so fixing the lesson and saving again does not clash with it.
+      if (createdModuleId) await deleteModule(createdModuleId).catch(() => undefined);
+      throw error;
+    }
     refresh();
-    return { value: saved, warning: await publish(identity, input.publishToOther, { lessonId: saved }) };
+    return {
+      value: { lessonId: saved, moduleId },
+      warning: await publish(identity, input.publishToOther, { lessonId: saved }),
+    };
   });
 }
 

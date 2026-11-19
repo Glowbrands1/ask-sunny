@@ -63,7 +63,7 @@ describe("receiveSync", () => {
 
   it("refuses someone who is not an editor in this app", async () => {
     const { deps: d, importRows } = deps({ editors: ["someone.else@example.com"] });
-    expect(await receiveSync(request(body), d)).toEqual({ status: 403, body: { error: "you are not an AI Training editor in this app" } });
+    expect(await receiveSync(request(body), d)).toEqual({ status: 403, body: { error: "you are not on its AI Training editor list" } });
     expect(importRows).not.toHaveBeenCalled();
   });
 
