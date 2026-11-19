@@ -65,20 +65,59 @@ describe("the month-by-month table", () => {
     expect(within(footer).getAllByRole("link").map((link) => link.textContent)).toEqual(["3", "3", "4"]);
   });
 
-  it("a salon that is not counting shows dashes, not zeros", () => {
+  /*
+   * CHANGED ON PURPOSE (Nov 19 2026, "its 0 … also backfill"): a salon that is
+   * not counting used to show dashes. Its months now show the reviews Google
+   * dates to them, underlined as before counting, and it is in the total.
+   */
+  it("a salon that is not counting shows the reviews Google dates to each month, marked as before counting", () => {
+    const withBefore = monthlyProgress(
+      [{ id: "1", store_code: "TX001", counted_at: "2026-10-15T17:00:00Z" }],
+      ["TX001", "TX002"],
+      "2026-11-19",
+      {
+        posted: [{ id: "9", store_code: "TX002", google_absolute_date: "2026-09-10T17:00:00Z", google_estimated_at: null }],
+        countingFrom: new Map([["TX001", "2026-10-01T05:00:00Z"], ["TX002", null]]),
+      },
+    );
     render(
       <ReviewsMonthlyTable
-        monthly={monthly}
+        monthly={withBefore}
         locations={[salon("TX001", "Lakeview Glow"), salon("TX002", "Brookside Sun", false)]}
         filters={EMPTY_REVIEW_FILTERS}
         target={10}
       />,
     );
     const row = screen.getByRole("row", { name: /Brookside Sun/ });
-    expect(within(row).queryAllByRole("link")).toHaveLength(0);
     expect(row.textContent).toContain("not counting");
+    expect(within(row).getAllByTitle(/before the salon started counting/)).toHaveLength(11);
+    expect(within(row).getAllByRole("link").map((link) => link.textContent)).toEqual(["1", "1", "1"]);
     const footer = screen.getByRole("row", { name: /All salons shown/ });
-    expect(within(footer).getAllByRole("link").map((link) => link.textContent)).toEqual(["2", "2", "3"]);
+    expect(within(footer).getAllByRole("link").map((link) => link.textContent)).toEqual(["2", "2", "2"]);
+  });
+
+  /*
+   * "for sunny its not aligned pls fix" (Nov 19 2026): the salon names were row
+   * headers and the total sat in a <tfoot>, neither of which the table's styles
+   * pad, so the names hugged the edge and the total row's figures slid left of
+   * their columns. Both are ordinary body cells now.
+   */
+  it("lines up: salon names and the total row are body cells, one per column", () => {
+    render(
+      <ReviewsMonthlyTable
+        monthly={monthly}
+        locations={[salon("TX001", "Lakeview Glow"), salon("TX002", "Brookside Sun")]}
+        filters={EMPTY_REVIEW_FILTERS}
+        target={10}
+      />,
+    );
+    const table = screen.getByRole("table", { name: "Qualifying reviews by month" });
+    expect(table.querySelector("tfoot")).toBeNull();
+    expect(table.querySelectorAll("tbody th")).toHaveLength(0);
+    const columns = table.querySelectorAll("thead th").length;
+    for (const tr of table.querySelectorAll("tbody tr")) {
+      expect(tr.querySelectorAll("td")).toHaveLength(columns);
+    }
   });
 
   it("says so when the figures could not be loaded", () => {

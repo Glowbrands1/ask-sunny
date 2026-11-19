@@ -30,9 +30,9 @@ import { formatNumber } from "@/lib/utils/format";
  * `ytd`) the records view offers, so the number and the list agree.
  *
  * A month at or over the monthly target is set heavier; the current month is
- * marked "to date" because it is not finished. A salon that is not counting
- * shows dashes, as the goal table does: its zero would be the configuration's,
- * not the salon's.
+ * marked "to date" because it is not finished. A month before the salon
+ * started counting shows the reviews Google dates to it, underlined (see
+ * `monthly-progress.ts`), rather than a 0.
  */
 export function ReviewsMonthlyTable({
   monthly,
@@ -82,11 +82,21 @@ export function ReviewsMonthlyTable({
     },
   ];
 
-  const cells = (row: MonthlyProgressRow, storeCode: string | null, counting: boolean) => (
+  const cells = (row: MonthlyProgressRow, storeCode: string | null) => (
     <>
       {row.months.map((count, position) => (
         <td key={monthly.months[position]} data-align="right" className="tabular-nums">
-          {counting ? (
+          {row.beforeCounting[position] ? (
+            <span
+              title="Reviews Google dates to this month, before the salon started counting toward its goal"
+              className={cn(
+                "underline decoration-dotted underline-offset-4",
+                count === 0 ? "text-muted-foreground" : "text-foreground/80",
+              )}
+            >
+              {formatNumber(count)}
+            </span>
+          ) : (
             <span
               className={cn(
                 count >= target ? "font-black text-foreground" : "text-foreground",
@@ -95,29 +105,23 @@ export function ReviewsMonthlyTable({
             >
               {formatNumber(count)}
             </span>
-          ) : (
-            <span className="text-muted-foreground">—</span>
           )}
         </td>
       ))}
       {totals.map((total) => (
         <td key={total.key} data-align="right" className="tabular-nums">
-          {counting ? (
-            <Link
-              href={reviewsHref({
-                ...filters,
-                tab: "reviews",
-                storeCode: storeCode ?? filters.storeCode,
-                week: total.week,
-                qualifying: "yes",
-              })}
-              className="inline-flex min-h-6 min-w-6 items-center justify-end text-[13px] font-black text-foreground hover:underline"
-            >
-              {formatNumber(row[total.key])}
-            </Link>
-          ) : (
-            <span className="text-muted-foreground">—</span>
-          )}
+          <Link
+            href={reviewsHref({
+              ...filters,
+              tab: "reviews",
+              storeCode: storeCode ?? filters.storeCode,
+              week: total.week,
+              qualifying: "yes",
+            })}
+            className="inline-flex min-h-6 min-w-6 items-center justify-end text-[13px] font-black text-foreground hover:underline"
+          >
+            {formatNumber(row[total.key])}
+          </Link>
         </td>
       ))}
     </>
@@ -136,7 +140,9 @@ export function ReviewsMonthlyTable({
           Qualifying reviews (3–5★) each month, counted the same way as month to date.
           L3 and L6 are the last 3 and 6 full months; the current month is not in them.
           Target {target} a month: {target * 3} for L3, {target * 6} for L6. Months at or
-          over target are bold. Select a total to see its reviews.
+          over target are bold. Underlined months are before the salon started counting:
+          they show the 3–5★ reviews Google dates to that month. Select a total to see
+          its reviews.
         </p>
       </div>
       <ScrollTable>
@@ -174,36 +180,26 @@ export function ReviewsMonthlyTable({
               const location = byCode.get(row.storeCode)!;
               return (
                 <tr key={row.storeCode}>
-                  <th scope="row" className="text-left text-[12px] font-bold">
+                  {/* An ordinary cell, not a row header: the table's padding is set on body cells. */}
+                  <td className="text-[12px] font-bold text-foreground">
                     {location.locationName}
                     <span className="block text-[10.5px] font-normal text-muted-foreground">
                       {row.storeCode}
                       {isCounting(location) ? "" : " · not counting"}
                     </span>
-                  </th>
-                  {cells(row, row.storeCode, isCounting(location))}
+                  </td>
+                  {cells(row, row.storeCode)}
                 </tr>
               );
             })}
-          </tbody>
-          {rows.length > 1 ? (
-            <tfoot>
-              <tr>
-                <th scope="row" className="text-left text-[12px] font-black">
-                  All salons shown
-                </th>
-                {/* Counting salons only: a dash above is not a zero to add. */}
-                {cells(
-                  sumRows(
-                    rows.filter((row) => isCounting(byCode.get(row.storeCode)!)),
-                    monthly.months.length,
-                  ),
-                  null,
-                  true,
-                )}
+            {/* The total is the last body row, so it takes the same padding and columns. */}
+            {rows.length > 1 ? (
+              <tr className="bg-surface-muted">
+                <td className="text-[12px] font-black text-foreground">All salons shown</td>
+                {cells(sumRows(rows, monthly.months.length), null)}
               </tr>
-            </tfoot>
-          ) : null}
+            ) : null}
+          </tbody>
         </table>
       </ScrollTable>
     </section>
@@ -220,13 +216,14 @@ function span(months: readonly string[]): string {
   return `${formatProgressMonth(first, crosses)} – ${formatProgressMonth(last, true)}`;
 }
 
-/** The rows on screen added up: the footer follows the table, not the estate. */
+/** The rows on screen added up: the total follows the table, not the estate. Every figure is a real count. */
 function sumRows(rows: readonly MonthlyProgressRow[], length: number): MonthlyProgressRow {
   const add = (pick: (row: MonthlyProgressRow) => number) =>
     rows.reduce((total, row) => total + pick(row), 0);
   return {
     storeCode: "all",
     months: Array.from({ length }, (_, position) => add((row) => row.months[position])),
+    beforeCounting: Array.from({ length }, (_, position) => rows.some((row) => row.beforeCounting[position])),
     l3: add((row) => row.l3),
     l6: add((row) => row.l6),
     ytd: add((row) => row.ytd),
