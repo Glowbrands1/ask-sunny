@@ -604,6 +604,21 @@ vi.mock("@/lib/reviews/queries", async (importOriginal) => {
         : actual.loadReviewsSnapshot(...args),
     loadReviewFeed: async (...args: Parameters<typeof actual.loadReviewFeed>) =>
       state.reviewsOnFile ? { reviews: [], total: 0, truncated: false } : actual.loadReviewFeed(...args),
+    /* L3, L6 and YTD (19 Nov 2026): every listing counted 2 qualifying reviews in each of Aug, Sep and Oct and 1 so far in Nov. */
+    loadMonthlyProgressRows: async (...args: Parameters<typeof actual.loadMonthlyProgressRows>) =>
+      state.reviewsOnFile
+        ? {
+            counted: GOOGLE_REVIEW_LOCATIONS.flatMap((listing) =>
+              ["2026-08-12", "2026-08-20", "2026-09-04", "2026-09-18", "2026-10-06", "2026-10-22", "2026-11-03"].map((day, index) => ({
+                id: `${listing.storeCode}-${index}`,
+                store_code: listing.storeCode,
+                counted_at: `${day}T18:00:00Z`,
+              })),
+            ),
+            posted: [],
+            countingFrom: new Map<string, string | null>(),
+          }
+        : actual.loadMonthlyProgressRows(...args),
   };
 });
 vi.mock("@/lib/reporting/read/employee-facts", () => ({
