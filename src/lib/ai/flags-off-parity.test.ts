@@ -1282,6 +1282,13 @@ describe("new flags default off and wrappers are inert", () => {
           ":(exclude)src/features/admin/analytics/feedback-queue.tsx",
           ":(exclude)src/features/admin/analytics/usage-shape.tsx",
           ":(exclude)src/features/reports/salon-performance/data-source-panel.tsx",
+          // Google Reviews L3 / L6 / YTD (a manager's request, 19 Nov 2026; Paulyne asked for it per
+          // month, both apps): three more Week filter options and a Month by month table on the
+          // Reviews Overview. Reviews page only; no chat or form behaviour changes.
+          ":(exclude)src/features/reviews/reviews-filter-bar.tsx",
+          ":(exclude)src/features/reviews/reviews-demo-screen.tsx",
+          ":(exclude)src/features/reviews/reviews-screen.tsx",
+          ":(exclude)src/features/reviews/reviews-monthly-table.tsx",
         ]),
       ).toBe("");
       expect(changedLines(diff(uiBase, [MONITORING_TABLE])).filter((line) => !MONITORING_MOUNT.includes(line))).toEqual([]);
