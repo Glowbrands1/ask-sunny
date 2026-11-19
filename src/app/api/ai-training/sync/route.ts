@@ -1,5 +1,5 @@
 import { aiTrainingEditorEmails } from "@/lib/ai-training/editors";
-import { importRows } from "@/lib/ai-training/repository";
+import { addMissingTracks, findSyncClash, importRows } from "@/lib/ai-training/repository";
 import { syncConfig } from "@/lib/ai-training/sync";
 import { receiveSync } from "@/lib/ai-training/sync-receive";
 
@@ -20,6 +20,8 @@ export async function POST(request: Request) {
     config: syncConfig(),
     editors: aiTrainingEditorEmails(),
     importRows,
+    addMissingTracks,
+    findClash: findSyncClash,
   });
   return Response.json(result.body, { status: result.status });
 }

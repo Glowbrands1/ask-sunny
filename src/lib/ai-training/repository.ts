@@ -537,3 +537,43 @@ export async function loadSyncBundle(target: { lessonId?: string; moduleId?: str
   if (trackId) out.tracks.push(await one("ai_training_tracks", SYNC_COLUMNS.tracks, "id", trackId));
   return out;
 }
+
+/** Adds tracks this app does not have yet; an existing track keeps its own name and order. */
+export async function addMissingTracks(rows: TrackRow[]): Promise<number> {
+  if (!rows.length) return 0;
+  const { error } = await getSupabaseAdmin()
+    .from("ai_training_tracks")
+    .upsert(rows as unknown as Record<string, unknown>[], { onConflict: "id", ignoreDuplicates: true });
+  if (error) fail("add the track", error);
+  return rows.length;
+}
+
+/**
+ * Before a published change is saved here: does a DIFFERENT lesson, module or
+ * track here already use the same web address or name? Returns what the editor
+ * should do, in plain words (it is shown after "not published to <this app>: "),
+ * or null when nothing clashes.
+ */
+export async function findSyncClash(parsed: {
+  tracks: TrackRow[];
+  modules: ModuleRow[];
+  lessons: LessonRow[];
+}): Promise<string | null> {
+  const db = getSupabaseAdmin();
+  for (const t of parsed.tracks) {
+    const { data } = await db.from("ai_training_tracks").select("id").eq("slug", t.slug).neq("id", t.id).limit(1);
+    if (data?.length) return `it already has a different training track named like "${t.title}". Ask for help to line the two apps' tracks up.`;
+  }
+  for (const m of parsed.modules) {
+    const { data } = await db.from("ai_training_modules").select("title").eq("track_id", m.track_id).eq("slug", m.slug).neq("id", m.id).limit(1);
+    const other = (data as { title: string }[] | null)?.[0];
+    if (other) return `it already has a different module called "${other.title}" in this track. Rename this module and save again.`;
+  }
+  for (const l of parsed.lessons) {
+    const { data } = await db.from("ai_training_lessons").select("title").eq("track_id", l.track_id).eq("slug", l.slug).neq("id", l.id).limit(1);
+    const other = (data as { title: string }[] | null)?.[0];
+    if (other) return `it already has a different lesson ("${other.title}") using the web address "${l.slug}". Change this lesson's web address and save again.`;
+  }
+  return null;
+}
+

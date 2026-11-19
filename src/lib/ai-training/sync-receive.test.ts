@@ -33,12 +33,18 @@ function request(payload: unknown, key: string | null = KEY) {
 
 function deps(overrides: Partial<ReceiveDeps> = {}) {
   const importRows = vi.fn(async (_table: string, rows: unknown[]) => rows.length);
+  const addMissingTracks = vi.fn(async (rows: unknown[]) => rows.length);
+  const findClash = vi.fn(async () => null as string | null);
   return {
     importRows,
+    addMissingTracks,
+    findClash,
     deps: {
       config: { url: "https://other.example.com", key: KEY, otherAppName: "Ask Sunny" },
       editors: ["ana.editor@example.com"],
       importRows,
+      addMissingTracks,
+      findClash,
       ...overrides,
     } as ReceiveDeps,
   };
@@ -92,11 +98,26 @@ describe("receiveSync", () => {
     expect((await receiveSync(request(huge), d)).status).toBe(413);
   });
 
-  it("saves parents before children: tracks, modules, lessons, then pages", async () => {
-    const { deps: d, importRows } = deps();
+  it("saves parents before children: missing tracks, then modules, lessons, pages", async () => {
+    const { deps: d, importRows, addMissingTracks } = deps();
     const result = await receiveSync(request(body), d);
     expect(result).toEqual({ status: 200, body: { ok: true, counts: { tracks: 1, modules: 1, lessons: 1, pages: 1 } } });
-    expect(importRows.mock.calls.map((c) => c[0])).toEqual(["tracks", "modules", "lessons", "pages"]);
+    expect(addMissingTracks).toHaveBeenCalledTimes(1);
+    expect(importRows.mock.calls.map((c) => c[0])).toEqual(["modules", "lessons", "pages"]);
+  });
+
+  it("never overwrites a track the other app already has, only adds a missing one", async () => {
+    const { deps: d, importRows } = deps();
+    await receiveSync(request(body), d);
+    expect(importRows.mock.calls.map((c) => c[0])).not.toContain("tracks");
+  });
+
+  it("checks for a name clash before writing anything, and writes nothing when there is one", async () => {
+    const clash = 'it already has a different lesson ("Old agent lesson") using the web address "build-an-agent". Change this lesson\'s web address and save again.';
+    const { deps: d, importRows, addMissingTracks } = deps({ findClash: vi.fn(async () => clash) });
+    expect(await receiveSync(request(body), d)).toEqual({ status: 409, body: { error: clash } });
+    expect(addMissingTracks).not.toHaveBeenCalled();
+    expect(importRows).not.toHaveBeenCalled();
   });
 
   it("explains a lesson whose web address is already taken in that track", async () => {
@@ -122,7 +143,7 @@ describe("receiveSync", () => {
 
   it("hides other database errors behind a plain message", async () => {
     const importRows = vi.fn(async () => {
-      throw new Error("AI Training: could not import the tracks (connection reset).");
+      throw new Error("AI Training: could not import the modules (connection reset).");
     });
     const { deps: d } = deps({ importRows });
     expect(await receiveSync(request(body), d)).toEqual({ status: 500, body: { error: "the change could not be saved there" } });

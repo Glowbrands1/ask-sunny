@@ -42,7 +42,9 @@ type Env = Record<string, string | undefined>;
 export function syncConfig(env: Env = process.env): SyncConfig | null {
   const url = (env.AI_TRAINING_SYNC_URL ?? "").trim().replace(/\/+$/, "");
   const key = (env.AI_TRAINING_SYNC_KEY ?? "").trim();
-  if (!/^https?:\/\//.test(url) || key.length < MIN_SYNC_KEY_LENGTH) return null;
+  // The key travels with every request, so only a secure address is accepted (plain http only for local testing).
+  const secure = /^https:\/\//.test(url) || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/.test(url);
+  if (!secure || key.length < MIN_SYNC_KEY_LENGTH) return null;
   return { url, key, otherAppName: (env.AI_TRAINING_SYNC_APP_NAME ?? "").trim() || "the other app" };
 }
 

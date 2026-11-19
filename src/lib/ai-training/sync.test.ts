@@ -39,6 +39,12 @@ describe("syncConfig", () => {
     ).toEqual(cfg);
   });
 
+  it("refuses an address that is not secure, except on this computer for testing", () => {
+    expect(syncConfig({ AI_TRAINING_SYNC_URL: "http://other.example.com", AI_TRAINING_SYNC_KEY: KEY })).toBeNull();
+    expect(syncConfig({ AI_TRAINING_SYNC_URL: "http://localhost:3001", AI_TRAINING_SYNC_KEY: KEY })?.url).toBe("http://localhost:3001");
+    expect(syncConfig({ AI_TRAINING_SYNC_URL: "http://127.0.0.1:3001", AI_TRAINING_SYNC_KEY: KEY })?.url).toBe("http://127.0.0.1:3001");
+  });
+
   it("names the other app generically when no name is set", () => {
     expect(syncConfig({ AI_TRAINING_SYNC_URL: "https://other.example.com", AI_TRAINING_SYNC_KEY: KEY })?.otherAppName).toBe("the other app");
   });

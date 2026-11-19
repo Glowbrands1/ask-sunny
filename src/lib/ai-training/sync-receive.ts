@@ -18,6 +18,10 @@ export interface ReceiveDeps {
   /** This app's editors (lower-case emails). */
   editors: readonly string[];
   importRows: (table: ImportTable, rows: ParsedImport[ImportTable]) => Promise<number>;
+  /** Adds tracks this app does not have; never changes one it has (its name and order stay this app's). */
+  addMissingTracks: (rows: ParsedImport["tracks"]) => Promise<number>;
+  /** A plain-language reason when a different lesson/module/track here already uses a name, else null. */
+  findClash: (parsed: ParsedImport) => Promise<string | null>;
 }
 
 export type ReceiveResult =
@@ -25,7 +29,7 @@ export type ReceiveResult =
   | { status: 400 | 401 | 403 | 404 | 409 | 413 | 500; body: { error: string } };
 
 export const MAX_SYNC_BYTES = 1_000_000;
-const ORDER: ImportTable[] = ["tracks", "modules", "lessons", "pages"];
+const ORDER: Exclude<ImportTable, "tracks">[] = ["modules", "lessons", "pages"];
 
 const digest = (value: string) => createHash("sha256").update(value).digest();
 
@@ -58,7 +62,16 @@ export async function receiveSync(req: { headers: Headers; text(): Promise<strin
   const parsed = parseImportFiles([{ name: "sync.json", text }]);
   if (parsed.problems.length) return refuse(400, parsed.problems.join(" "));
 
+  // Checked before anything is written, so a clash never leaves a half-copied change behind.
+  const clash = await deps.findClash(parsed).catch(() => null);
+  if (clash) return refuse(409, clash);
+
   const counts = { tracks: 0, modules: 0, lessons: 0, pages: 0 } as Record<ImportTable, number>;
+  try {
+    counts.tracks = await deps.addMissingTracks(parsed.tracks);
+  } catch {
+    return refuse(500, "the change could not be saved there");
+  }
   for (const table of ORDER) {
     try {
       counts[table] = await deps.importRows(table, parsed[table]);
@@ -66,8 +79,7 @@ export async function receiveSync(req: { headers: Headers; text(): Promise<strin
       const message = error instanceof Error ? error.message : "";
       if (/duplicate key|23505/i.test(message)) {
         if (table === "lessons") return refuse(409, "another lesson in this track already uses that web address");
-        if (table === "modules") return refuse(409, "a module with that name already exists");
-        return refuse(409, "a track with that name already exists");
+        return refuse(409, "a module with that name already exists");
       }
       return refuse(500, "the change could not be saved there");
     }
