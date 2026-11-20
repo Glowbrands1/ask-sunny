@@ -120,26 +120,25 @@ function locationIdForSalonNumber(salonNumber: string): string {
  */
 export async function readDirectoryRoster(): Promise<DirectoryRosterRow[]> {
   const supabase = getSupabaseAdmin();
-  const [people, affiliations, map, salons] = await Promise.all([
-    supabase
-      .from("employee_access_directory")
-      .select("id, first_name, last_name, preferred_first_name, employment_status")
-      .limit(5000),
-    supabase
-      .from("employee_location_affiliations")
-      .select("employee_id, woven_location_id")
-      .eq("active", true)
-      .limit(20000),
-    supabase
-      .from("woven_location_map")
-      .select("woven_location_id, salon_id")
-      .eq("status", "mapped")
-      .limit(1000),
-    supabase.from("salons").select("id, salon_number").limit(1000),
+  /*
+   * QA's code audit on 9e1d1f67 (item 18, 20 Nov 2026): every read is paged (`readAllPages`, ordered). The service answers
+   * at most 1,000 rows per request whatever `.limit()` says, so a directory past that (terminated people included) was cut
+   * short with no error, and the agent loop's "no longer active in Woven" check reported a terminated person as simply not
+   * on the staff list. Throws on a read error, as before.
+   */
+  const [peopleRows, affiliationRows, mapRows, salonRows] = await Promise.all([
+    readAllPages<Row>((from, to) =>
+      supabase.from("employee_access_directory").select("id, first_name, last_name, preferred_first_name, employment_status").order("id", { ascending: true }).range(from, to)),
+    readAllPages<Row>((from, to) =>
+      supabase.from("employee_location_affiliations").select("employee_id, woven_location_id").eq("active", true).order("employee_id", { ascending: true }).order("woven_location_id", { ascending: true }).range(from, to)),
+    readAllPages<Row>((from, to) =>
+      supabase.from("woven_location_map").select("woven_location_id, salon_id").eq("status", "mapped").order("woven_location_id", { ascending: true }).range(from, to)),
+    readAllPages<Row>((from, to) => supabase.from("salons").select("id, salon_number").order("id", { ascending: true }).range(from, to)),
   ]);
-  if (people.error || affiliations.error || map.error || salons.error) {
-    throw new Error("The employee directory could not be read.");
-  }
+  const people = { data: peopleRows };
+  const affiliations = { data: affiliationRows };
+  const map = { data: mapRows };
+  const salons = { data: salonRows };
 
   const salonNumberById = new Map(
     (salons.data ?? []).map((row) => [String(row.id), String(row.salon_number)]),
