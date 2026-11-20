@@ -76,6 +76,10 @@ import { rulesBookText } from "./rules-book";
  * edit_form's form_state ("It's saved on the draft", never "press Create"); the payroll line adds edit_form's
  * payroll_amount_missing (ask the amount in one question), and the stated line adds ", as you said" only for
  * stated_this_turn. No app, place, staff system or form key.
+ *
+ * Re-taken on purpose on 20 Nov 2026 (QA's code audit of coach_team, item C: "yes please", "go ahead and make them"
+ * went to wrong_tool): the coach_team line now sends any answer to its confirmation to coach_team, with four example
+ * answers. It names no app, place, staff system or form key; nothing else changed.
  */
 
 const fixture = (name: string): string => readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), "utf8");
