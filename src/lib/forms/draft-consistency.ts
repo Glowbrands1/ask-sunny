@@ -16,8 +16,7 @@ import { fold, wordsOf } from "./form-reducer";
  * before it is written, this reads it against what is KNOWN, never against
  * phrases:
  *
- *   - every word of the header's employee name that the manager's notes
- *     contain (the form's own employee, as the notes name her);
+ *   - (not the employee's name: Pau's first-name rule, QA's f078 below);
  *   - every date the notes state (the app's date reader, `datesInText`);
  *   - every amount the notes state (the app's amount reader, `payrollAmounts`);
  *
@@ -40,14 +39,13 @@ export interface DraftFact {
 export function draftFacts(input: { employeeName: string | null; notes: string; today: string }): DraftFact[] {
   const notes = input.notes ?? "";
   const facts: DraftFact[] = [];
-  const noted = new Set(wordsOf(notes));
-  const seen = new Set<string>();
-  for (const word of (input.employeeName ?? "").split(/\s+/).filter(Boolean)) {
-    const folded = wordsOf(word)[0];
-    if (!folded || seen.has(folded) || !noted.has(folded)) continue;
-    seen.add(folded);
-    facts.push({ kind: "name", shown: word, in: (text) => wordsOf(text).some((said) => said === folded || said.split("-").includes(folded)) });
-  }
+  /*
+   * QA's f078 (20 Nov 2026; production dpl_5bzJ): "ca for <First> <Last>, late on 11/18" drafted "<First> was late on
+   * 11/18" (the first name, by Pau's rule) and the note said "The draft left out <Last> in Observation of Offense". In
+   * this app the account names the person by their first name on purpose, so the form's own employee's name words
+   * (full, first or last) are never a fact the account left out. Dates and amounts are still checked. (`input.employeeName`
+   * is kept in the signature for the callers.)
+   */
   const dates = new Set<string>();
   for (const date of datesInText(notes, input.today)) {
     if (dates.has(date.iso)) continue;
