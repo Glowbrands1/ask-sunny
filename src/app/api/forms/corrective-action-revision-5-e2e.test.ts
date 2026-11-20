@@ -383,7 +383,9 @@ describe("creating a Corrective Action from chat", () => {
     expect(byKey.action_plan).toBe(`${REVIEW} ${CLOSING}`);
 
     const { text } = await download(id, "ca-rev5-created");
-    expect(text).toContain("List previously received coaching and/or corrective action with date signed");
+    // CHANGED ON PURPOSE, revision 9 (HR via Pau, 19 Nov 2026): the history box has a new label, and the manual box is beside it.
+    expect(text).toContain("List previous coaching and corrective actions and include date signed by employee in past 90 days");
+    expect(text).toContain("List date of JBA policy manual signed by employee");
     expect(text).toContain("Coaching - signed 09/02/2026");
     expect(text).toContain("Verbal warning - signed 09/21/2026");
     expect(text).not.toContain("Previous corrective action for this policy or issue");
