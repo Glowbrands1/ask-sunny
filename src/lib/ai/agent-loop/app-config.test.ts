@@ -63,6 +63,10 @@ import { rulesBookText } from "./rules-book";
  * propose_form's prior_on_file fill prior actions when the manager states none, and says it never sets the level. It
  * reads the same under every config; nothing else changed.
  *
+ * Re-taken on purpose on 20 Nov 2026 (QA item 23, a drafted team message reversed "isnt realostic"): one Replies line was
+ * added: a drafted message keeps the manager's own statements, negations included. It reads the same under every config;
+ * nothing else changed.
+ *
  * Re-taken on purpose on 20 Nov 2026 (item 18, Pau via QA: which-one choices that read alike): the which_form_question
  * line lists each form's choice line as given (status, date, salon, created time when two match) instead of "by date".
  * It reads the same under every config; nothing else changed.
