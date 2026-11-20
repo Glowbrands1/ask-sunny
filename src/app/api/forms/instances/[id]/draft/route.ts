@@ -98,6 +98,7 @@ import {
 } from "@/lib/forms/responsibility";
 import { stripPlaceholdersFromDraft } from "@/lib/forms/drafted-text";
 import { splitAppCitationLine } from "@/lib/forms/app-citation-line";
+import { withCardTimes } from "@/lib/forms/card-times";
 import { withoutUnstatedDates } from "@/lib/forms/form-date-grounding";
 import {
   FOLLOW_UP_TIMEFRAME_RULES,
@@ -332,6 +333,8 @@ interface DraftBody {
   cardOther?: string;
   /** HOTFIX (QA, 17 Nov 2026): the card came from the agent loop, so its policy is the form's (`loopCardHeading`). */
   cardFromLoop?: boolean;
+  /** QA (20 Nov 2026; c198): the agent loop card's own account, so the saved account keeps its times (`withCardTimes`). */
+  cardAccount?: string;
   /**
    * SAME_FORM_COPY_NEW_PERSON_ENABLED: the form the card was asked to copy
    * ("the same draft that we did with <name>"). Re-checked: this account's
@@ -2761,6 +2764,20 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       if (details.trim() !== "") {
         const { body: account } = splitAppCitationLine(details);
         draftedPayload.values = { ...draftedPayload.values, [detailsKey]: `${account}\n\nPolicy reference: ${coachingPolicyLine}` };
+      }
+    }
+    /*
+     * QA (20 Nov 2026; Runner 2's c198): the loop card's account held 9:15PM, 9:01 and 8:11 PM, and the saved observation
+     * kept only 8:11 PM. A clock time of the card's own account that the drafted account lost brings back the card's
+     * sentence that holds it (`withCardTimes`), before the app's citation line. A field the manager typed is never touched.
+     */
+    const accountKey = narrativeTargets[0];
+    if (body.cardFromLoop === true && typeof body.cardAccount === "string" && accountKey && !keeps(accountKey)) {
+      const drafted = draftedPayload.values[accountKey] ?? "";
+      if (drafted.trim() !== "") {
+        const { body: account, line: citation } = splitAppCitationLine(drafted);
+        const timed = withCardTimes(account, body.cardAccount.slice(0, 2_000));
+        if (timed !== account) draftedPayload.values = { ...draftedPayload.values, [accountKey]: citation ? `${timed}\n\n${citation}` : timed };
       }
     }
     const kept = draftMergeEnabled()
