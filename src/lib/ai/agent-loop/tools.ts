@@ -3394,7 +3394,8 @@ export async function proposeForm(
     sourceMessageIds: requestIds,
     formDate: exitTermination ? exitTermination.date : datesAsked.length > 0 || futureDate ? null : date ?? (fromAnotherRequest(proposal.formDate) ? null : proposal.formDate) ?? null,
     fromAgentLoop: true as const,
-    ...(level ? { warningLevel: level } : loopTermination ? { loopTermination: true as const } : {}),
+    /* QA item 17 (20 Nov 2026): an exit card the model decided is a termination (locked on the word) tells Create, as the CA's does. */
+    ...(level ? { warningLevel: level } : loopTermination || exitTermination ? { loopTermination: true as const } : {}),
     ...(whatHappened ? { issue: whatHappened } : {}),
     ...(payroll ? { payrollDeduct: payroll } : {}),
     ...(payroll === "yes" && amount ? { payrollDeductAmount: amount } : {}),
@@ -3613,6 +3614,11 @@ export async function proposeForm(
       return said && card.employeeRole && said.trim().toLowerCase() !== card.employeeRole.trim().toLowerCase() ? { title_differs: { woven: card.employeeRole, manager_said: said } } : {};
     })(),
     ...(template.key === appConfig().formKeys.exit ? { exit_dates: await exitDateLines(requestWords, today, Boolean(exitTermination)) } : {}),
+    /*
+     * QA item 17 (20 Nov 2026): the exit form's required last day worked, asked on the card when the manager has not said
+     * it, as the Corrective Action asks its level (the rules book's exit_unset line). A termination's effective date is it.
+     */
+    ...(template.key === appConfig().formKeys.exit && !exitTermination && !(await import("@/lib/forms/exit-facts")).readExitFacts(requestWords, today).lastDayWorked ? { exit_unset: ["last_day_worked"] } : {}),
     ...(exitTermination ? { exit_termination: { form_label: "Immediate involuntary separation", effective: exitTermination.date, ...(exitTermination.dated_today ? { dated_today: true } : {}) } } : {}),
     ...(jobTitleTyped ? { job_title_from_your_words: card.employeeRole } : {}),
     ...(whichSalon ? { which_salon: true } : {}),

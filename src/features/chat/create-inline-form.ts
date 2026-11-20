@@ -161,6 +161,11 @@ export async function createInlineForm({
        */
       ...(proposal.warningLevel ? { warningLevel: proposal.warningLevel } : proposal.loopTermination ? { warningLevel: "termination" } : {}),
       ...(proposal.fromAgentLoop ? { fromAgentLoop: true } : {}),
+      /*
+       * QA item 17 (20 Nov 2026): a loop termination's account, so an exit form's reason line is the manager's account
+       * (the loop checked it against their words). Create writes it only on a form that has that line.
+       */
+      ...(proposal.fromAgentLoop && proposal.loopTermination && proposal.issue ? { loopAccount: proposal.issue } : {}),
       locationId: proposal.locationId,
       source: "ask_sunny",
       /* The card's own id: a second press of it returns the draft it already made. */
