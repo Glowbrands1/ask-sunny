@@ -148,3 +148,25 @@ describe("withoutPersonPronouns", () => {
     expect(withoutPersonPronouns(plain, "Tamsin")).toEqual({ text: plain, replaced: 0 });
   });
 });
+
+/*
+ * QA (20 Nov 2026, board row f059; the live test of #1117, conv_mwoz3z9a2i44yx4, masked): the manager typed "Test Testy's
+ * shift lead, <L>, told her to clock out early and she refused", and the reply's account line kept "told her … she
+ * refused". The person TOLD is the listener, not part of what <L> said, and "and she refused" is that listener acting.
+ * <L> is invented (Corin Ashby), and is no roster leader here.
+ */
+describe("withoutPersonPronouns: the person told by someone else (f059)", () => {
+  it("names the listener of another person's instruction, and the same person in the joined clause", () => {
+    expect(withoutPersonPronouns("**Observation of Offense:** Corin Ashby, the shift lead, told her to clock out early and she refused.", "Test", ["Corin Ashby"]).text)
+      .toBe("**Observation of Offense:** Corin Ashby, the shift lead, told Test to clock out early and Test refused.");
+    expect(withoutPersonPronouns("Corin Ashby asked him not to leave the front desk, but he left anyway.", "Remy", ["Corin Ashby"]).text)
+      .toBe("Corin Ashby asked Remy not to leave the front desk, but Remy left anyway.");
+  });
+
+  it("keeps a peer's own reported clause, and the card person telling someone else", () => {
+    expect(withoutPersonPronouns("Juno Paxton asked whether she could swap shifts.", "Tamsin", ["Juno Paxton"]).text)
+      .toBe("Juno Paxton asked whether she could swap shifts.");
+    expect(withoutPersonPronouns("Tamsin told her manager she was sick.", "Tamsin", []).text)
+      .toBe("Tamsin told Tamsin's manager Tamsin was sick.");
+  });
+});
