@@ -1,5 +1,6 @@
 import "server-only";
 
+import { withFullOffRosterName } from "./off-roster-line";
 import { cardTurns, personKey, readLoopRecords, replyTurns, type CardRecord, type CardSlot, type ExitOfferSlot, type NameQuestionSlot, type PersonAskedSlot } from "./card-record";
 import { CLAUDE_EFFORT, CLAUDE_MAX_TOKENS, CLAUDE_MODEL } from "@/lib/config/models";
 import { MissingConfigurationError, requireEnv } from "@/lib/config/server-env";
@@ -653,6 +654,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   const openBefore = noop && input.openFormId ? await noop.formBeforeTurn(input.openFormId, input.request) : null;
   const steps: AgentLoopStep[] = [];
   const replyNames = new Set<string>();
+  const offRosterNames = new Set<string>();
   /* The tools this turn called so far (the hand-backs' too), for the item 7 check below. */
   const calledThisTurn = (tool: string) => steps.some((step) => step.tool === tool);
   /* Each model call's tokens and ms, for the trace (numbers only). */
@@ -808,6 +810,9 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     /* What the reply calls each person this turn's tools named (reply_name, by replyNameFor): the pronoun check's name. */
     const shownName = (result as { reply_name?: unknown }).reply_name;
     if (typeof shownName === "string" && shownName.trim()) replyNames.add(shownName.trim());
+    /* QA's f070: the full name a card used as typed (off_roster_name), for the not-on-the-staff-list line's guard. */
+    const typedAsIs = (result as { off_roster_name?: unknown; facts?: { off_roster_name?: unknown } }).facts?.off_roster_name ?? (result as { off_roster_name?: unknown }).off_roster_name;
+    if (typeof typedAsIs === "string" && typedAsIs.trim()) offRosterNames.add(typedAsIs.trim());
     steps.push({ step, tool: name, ms: Math.round(performance.now() - started), resultChars: JSON.stringify(result).length, ok: !("error" in result), ...(toolCalls > 0 ? { model_calls: toolCalls } : {}), ...stepReason(result, name) });
     return result;
   };
@@ -1251,6 +1256,12 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     text = named.text;
     pronounsReplaced = named.replaced;
   }
+  /*
+   * QA's f070 (20 Nov 2026): the not-on-the-staff-list line names the full name exactly as typed (the rules book's
+   * confirm-which-person lines), never the short reply name; with one such card this turn, code keeps it so
+   * (`withFullOffRosterName`, the app's own sentence matched by its shape).
+   */
+  if (offRosterNames.size === 1 && text) text = withFullOffRosterName(text, [...offRosterNames][0]!, appConfig().staffSystem);
   const cardSlot: CardSlot | null = effects.proposal
     ? { proposalId: effects.proposal.proposalId, employeeKey: effects.proposalEmployeeId ? personKey(effects.proposalEmployeeId) : null, nameKey: effects.proposal.employeeName ? personKey(effects.proposal.employeeName) : null, templateKey: effects.proposal.templateKey, templateName: effects.proposal.templateName ?? null, ...(effects.proposalAsked?.length ? { asked: effects.proposalAsked } : {}), ...(effects.proposalLevel ? { level: effects.proposalLevel } : {}), ...(effects.proposalPayroll ? { payroll: effects.proposalPayroll } : {}), ...(effects.proposalPayroll === "yes" && effects.proposalPayrollAmount ? { payrollAmount: effects.proposalPayrollAmount } : {}), ...(effects.proposal.policyLine ? { policyLine: effects.proposal.policyLine } : {}), ...(effects.proposalAccountKey ? { accountKey: effects.proposalAccountKey } : {}), ...(effects.proposal.formDate ? { incidentDate: effects.proposal.formDate } : {}) }
     : null;

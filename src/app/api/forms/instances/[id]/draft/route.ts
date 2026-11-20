@@ -215,6 +215,7 @@ import { twoSentenceActionPlan } from "@/lib/forms/action-plan-sentences";
 import { attendanceActionPlan, isAttendancePlan, missedMeetingNotLateness } from "@/lib/forms/attendance-action-plan";
 import { withPayrollSentence } from "@/lib/forms/plan-payroll-sentence";
 import { managerTypedActionPlan } from "@/lib/forms/manager-action-plan";
+import { loopCoachingWriteUp } from "@/lib/forms/loop-coaching-write-up";
 import { cardNotesPayrollAmount } from "@/lib/forms/card-payroll-amount";
 import {
   citeAttendanceForTardiness,
@@ -240,6 +241,7 @@ import { WARNING_TYPE_KEY } from "@/lib/forms/corrective-action-intake";
 import { WARNING_LEVEL_KEYS, WARNING_LEVEL_STATED_KEYS, warningLevelFromTurns, withoutModelWarningLevel } from "@/lib/forms/warning-level";
 import {
   COACHING_CONTEXT_RULES,
+  COACHING_TYPE_KEY,
   LANGUAGE_CLEANUP_RULES,
   guardCoachingFraming,
 } from "@/lib/forms/coaching-framing";
@@ -1650,7 +1652,22 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       ? guardCoachingFraming({ values: followUp.values, checked: followUp.checked }, notes)
       : { values: followUp.values, checked: followUp.checked, adjusted: [] as string[], underperformanceRefused: false };
     // OTHER_WRITE_IN_GUARD_ENABLED: a ticked "Other" gets its write-in in the manager's words, or is unticked.
-    const framing = guardOtherWriteIn(framed, notes, new Set(fields.map((field) => field.key)), loaded.instance.employeeName, typeof body.cardTopic === "string" ? body.cardTopic.trim().slice(0, 120) : null);
+    const otherWritten = guardOtherWriteIn(framed, notes, new Set(fields.map((field) => field.key)), loaded.instance.employeeName, typeof body.cardTopic === "string" ? body.cardTopic.trim().slice(0, 120) : null);
+    /*
+     * Pau via QA (20 Nov 2026, item 14): a loop coaching card's Create saves Observed as what was seen, an Expectation
+     * about the employee, and no Type of Coaching the manager did not name. See `loop-coaching-write-up.ts`.
+     */
+    const coachingDetailsKey = [...narrativeKeys].find((key) => fields.some((field) => field.key === key));
+    const framing =
+      isCoachingFamily && body.cardFromLoop === true
+        ? loopCoachingWriteUp(otherWritten, {
+            detailsKey: coachingDetailsKey,
+            notes,
+            employeeName: loaded.instance.employeeName,
+            typeOptions: groups.find((group) => group.key === COACHING_TYPE_KEY)?.options ?? [],
+            drafted: coachingDetailsKey ? dated.values[coachingDetailsKey] : undefined,
+          })
+        : otherWritten;
 
     /*
      * ========================================================================
