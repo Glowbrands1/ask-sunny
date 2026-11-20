@@ -7,6 +7,12 @@
 - [ ] `npm run lint`, `npx tsc --noEmit -p .` and the tests pass (CI shows green)
 - [ ] A regression test uses the reporter's exact wording (for a bug fix)
 
+## AI can read it
+
+<!-- New page, report, table, period or figure a manager could ask about? See CLAUDE.md section 5. -->
+- [ ] Yes: <tool / chat block> returns it, with a replay case
+- [ ] Not needed, because: <reason> (nothing new a manager could ask the AI about)
+
 ## Sibling app (Ask Bubbles)
 
 <!-- Pick one. See CLAUDE.md and docs/parity-log.md. -->
