@@ -329,6 +329,11 @@ function notTheOfferAnswer(check: AnswerEvidence, context: ToolContext, roster?:
   return check;
 }
 
+/** The card on screen is this person's card on this form (by roster id, else by name). */
+function sameCardOnScreen(onScreen: CardRecord | null | undefined, templateKey: string, employee: { readonly id?: string | null; readonly name: string }): boolean {
+  return Boolean(onScreen && onScreen.templateKey === templateKey && ((employee.id && onScreen.employeeKey === personKey(employee.id)) || onScreen.nameKey === personKey(employee.name)));
+}
+
 /** The card record's account key (QA, c163; PR 1c): the account as the model gave it and the incident date it gave, if any. */
 function cardAccountKey(account: string, incidentDate: unknown): string {
   const day = typeof incidentDate === "string" ? incidentDate.trim() : "";
@@ -3133,7 +3138,16 @@ export async function proposeForm(
   const carriedRecord = samePersonOnScreen
     ? ([...(context.cardRecords ?? [])].reverse().find((record) => isThisCard(record) && inRequest(record) && record.level) ?? (isThisCard(context.cardOnScreen) ? context.cardOnScreen : null))
     : null;
-  const carriedLevel = caOnlyFields && !asksNewForm ? (carriedRecord?.level ?? null) : null;
+  /*
+   * QA (20 Nov 2026; Runner 2's c263): "Write me a CA form for <A> having a black crewneck on … on 11/13 and 11/6" after
+   * "Please create a CA written warning for <A> for being out of dresscode on 11/13" was the SAME CA asked again with more
+   * detail; the model's new_form_evidence started it fresh and Written was lost. A new request keeps the level only when
+   * it is that same card asked again: this person's card on this form is on screen and THIS message states its incident
+   * date again. Another date ("another ca …, late on 11/14"), or none, still starts fresh.
+   */
+  const screenDate = sameCardOnScreen(context.cardOnScreen, template.key, employee) ? context.cardOnScreen!.incidentDate ?? null : null;
+  const sameIncidentAskedAgain = asksNewForm && screenDate !== null && latestDates.some((given) => monthDayToIso(given, today) === screenDate);
+  const carriedLevel = caOnlyFields && (!asksNewForm || sameIncidentAskedAgain) ? (carriedRecord?.level ?? null) : null;
   const level = askedLevel && levelCheck?.ok ? askedLevel : carriedLevel;
   /*
    * Fix batch item 7 (QA's targeted re-run, c163: a bare "yes" after "Payroll deduct and warning level aren't set" set

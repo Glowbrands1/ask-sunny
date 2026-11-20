@@ -55,10 +55,15 @@ export interface CardRecord {
    * for an older record.
    */
   readonly policyLine?: string | null;
+  /**
+   * QA (20 Nov 2026; Runner 2's c263): the card's incident date (ISO), a date of the form, never a name, so a request for
+   * the same CA asked again about the same incident keeps the level the card held. Null when none or for an older record.
+   */
+  readonly incidentDate?: string | null;
 }
 
 /** What a turn writes into `slots.agent_loop.card`. */
-export type CardSlot = Omit<CardRecord, "messageId" | "asked" | "level" | "policyLine" | "payroll" | "payrollAmount" | "accountKey"> & { readonly asked?: readonly string[]; readonly level?: "verbal" | "written"; readonly policyLine?: string; readonly payroll?: "yes" | "no"; readonly payrollAmount?: string; readonly accountKey?: string };
+export type CardSlot = Omit<CardRecord, "messageId" | "asked" | "level" | "policyLine" | "payroll" | "payrollAmount" | "accountKey" | "incidentDate"> & { readonly asked?: readonly string[]; readonly level?: "verbal" | "written"; readonly policyLine?: string; readonly payroll?: "yes" | "no"; readonly payrollAmount?: string; readonly accountKey?: string; readonly incidentDate?: string };
 
 function isCardSlot(value: unknown): value is CardSlot {
   const row = value as Partial<CardSlot> | null;
@@ -172,7 +177,7 @@ export async function readLoopRecords(conversationId: string | undefined, userId
       cards: rows.flatMap((row) => {
         const card = row.slots?.agent_loop?.card;
         return isCardSlot(card)
-          ? [{ proposalId: card.proposalId, employeeKey: card.employeeKey ?? null, nameKey: card.nameKey ?? null, templateKey: card.templateKey, templateName: card.templateName ?? null, messageId: row.message_id, questionKey: questionKeyOf(row), asked: Array.isArray(card.asked) ? card.asked.filter((field): field is string => typeof field === "string") : [], level: card.level === "verbal" || card.level === "written" ? card.level : null, policyLine: typeof card.policyLine === "string" ? card.policyLine : null, payroll: card.payroll === "yes" || card.payroll === "no" ? card.payroll : null, payrollAmount: typeof card.payrollAmount === "string" && /^\d+(?:\.\d+)?$/.test(card.payrollAmount) ? card.payrollAmount : null, accountKey: typeof card.accountKey === "string" && /^[0-9a-f]{16}$/.test(card.accountKey) ? card.accountKey : null }]
+          ? [{ proposalId: card.proposalId, employeeKey: card.employeeKey ?? null, nameKey: card.nameKey ?? null, templateKey: card.templateKey, templateName: card.templateName ?? null, messageId: row.message_id, questionKey: questionKeyOf(row), asked: Array.isArray(card.asked) ? card.asked.filter((field): field is string => typeof field === "string") : [], level: card.level === "verbal" || card.level === "written" ? card.level : null, policyLine: typeof card.policyLine === "string" ? card.policyLine : null, payroll: card.payroll === "yes" || card.payroll === "no" ? card.payroll : null, payrollAmount: typeof card.payrollAmount === "string" && /^\d+(?:\.\d+)?$/.test(card.payrollAmount) ? card.payrollAmount : null, accountKey: typeof card.accountKey === "string" && /^[0-9a-f]{16}$/.test(card.accountKey) ? card.accountKey : null, incidentDate: typeof card.incidentDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(card.incidentDate) ? card.incidentDate : null }]
           : [];
       }),
       nameQuestions: rows.flatMap((row) => {
