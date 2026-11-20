@@ -396,6 +396,14 @@ async function readOfficialPolicyManual(
 }
 
 /** SPEND_GUARD_ALL_CALLS_ENABLED: this route's Claude calls are counted (`ai/spend-meter.ts`). Off, as before. */
+
+/**
+ * QA f071 (20 Nov 2026): manual headings whose saved Policy Violated keeps the readers' "<box> — <section>" line in place
+ * of a loop card's own policy line. Time Records stays "Standards of Conduct — Time Records", as Pau was last told (QA).
+ * The app's own manual headings, lower-case; never the manager's words. Remove an entry to give it the card's line.
+ */
+const READERS_LINE_HEADINGS: ReadonlySet<string> = new Set(["time records"]);
+
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   return withSpendMeter("forms_draft", () => postFormsDraft(request, context));
 }
@@ -2781,7 +2789,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      * Code": the box came from the manual section's place, not the card. The box follows the card's heading, read
      * against this form's own Type of Offense labels ("Dress Code Violation" is the Dress Code; "Attendance Policy" the
      * Attendance), and Policy Violated is the card's own heading line with its page. A heading no label names (Late
-     * Opening) is left as the readers above set it.
+     * Opening) keeps the box the readers above set.
      */
     if (loopCardHeading && !keeps("policy_violated")) {
       const generic = new Set(["policy", "policies", "violation", "violations", "of", "the", "for", "and"]);
@@ -2803,9 +2811,15 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         const keepOther = (draftedPayload.checked.offense_type ?? []).includes("other") && cardOther !== null;
         const boxes = [box.key, ...(secondBox && secondBox.key !== box.key ? [secondBox.key] : [])];
         draftedPayload.checked = { ...draftedPayload.checked, offense_type: [...boxes, ...(keepOther ? ["other"] : [])] };
-        if (cardLine && fields.some((field) => field.key === "policy_violated")) {
-          draftedPayload.values = { ...draftedPayload.values, policy_violated: cardLine };
-        }
+      }
+      /*
+       * QA f071 (20 Nov 2026, live item 15): a card citing "Late Opening Policy, JBA Policy Manual p.15" saved Policy
+       * Violated "Attendance Policy — Late Opening", so the card and the form showed two labels. The card's line is the
+       * saved Policy Violated whether or not a Type of Offense label names its heading; the box is left as set above.
+       * Except the headings in `READERS_LINE_HEADINGS`, which keep the readers' "<box> — <section>".
+       */
+      if (cardLine && !READERS_LINE_HEADINGS.has(loopCardHeading.trim().toLowerCase()) && fields.some((field) => field.key === "policy_violated")) {
+        draftedPayload.values = { ...draftedPayload.values, policy_violated: cardLine };
       }
     }
     /*
