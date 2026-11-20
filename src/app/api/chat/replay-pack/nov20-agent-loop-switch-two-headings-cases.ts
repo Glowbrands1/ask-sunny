@@ -12,8 +12,9 @@ import { evidenceFrom, headingWith, lastResult, loopStandIn, type LoopDecision, 
  * Standards of Conduct Policy p.12" (#1154). T3 "actually make it a coaching form" → NO card, and the reply said "I made the
  * coaching form for **<P>**, but the policy field kept getting rejected on my end — I'll fix that and resend it in a
  * follow-up". Three rules:
- * 1. A Coaching card, like a Corrective Action, may cite two headings (#1154 allowed them on the CA only, so the switch made
- *    no card). Headings copied from the CA's card still follow c014 (QA, 16 Nov 2026): left off with policy_copied.
+ * 1. A card other than a Corrective Action cites one heading (Pau's two headings are the CA's only; QA's ruling, option b):
+ *    given two, it cites the first and leaves the second off, never refusing the card; and a same-request switch
+ *    (form_change_evidence) keeps the CA's heading as the card's own, never "copied from another form".
  * 2. The reply never says a form was made when propose_form returned no card this turn.
  * 3. The reply never promises later work ("a follow-up", "resend", "on my end").
  * QA's turns, word for word; invented name: Remy Calder (the pack's roster).
@@ -58,7 +59,7 @@ async function caWithTwoHeadings(t: ReplayContext) {
 export const NOV20_AGENT_LOOP_SWITCH_TWO_HEADINGS_CASES: ReplayCase[] = [
   {
     id: "nov20-f074-switch-two-heading-ca-to-coaching-makes-the-card",
-    title: "f074: T1 \"ca for <P>, late on 11/19\", T2 \"she was also rude to a guest\" (CA: Attendance; Standards of Conduct), T3 \"actually make it a coaching form\" (the same two headings, form_change_evidence): the Coaching card is made (never refused for the two headings; the copied headings follow c014: policy_copied), and the reply never says it was made when it was not",
+    title: "f074: T1 \"ca for <P>, late on 11/19\", T2 \"she was also rude to a guest\" (CA: Attendance; Standards of Conduct), T3 \"actually make it a coaching form\" (the same two headings, form_change_evidence): the Coaching card is made, citing the first heading as its own (the second left off: two are the CA's only), and the reply never says it was made when it was not",
     report: REPORT,
     status: "fixed",
     fixFlags: [FLAG],
@@ -79,10 +80,14 @@ export const NOV20_AGENT_LOOP_SWITCH_TWO_HEADINGS_CASES: ReplayCase[] = [
       const first = proposeResults(model.views)[0];
       expect(first?.reason_code ?? null, `the coaching card was refused:\n${JSON.stringify(first).slice(0, 600)}`).toBeNull();
       expect(thread.proposal?.templateKey, reply.content).toBe("coaching");
-      // The headings follow c014's ruling (QA, 16 Nov 2026): copied from the CA's card and not fitted to the coaching account,
-      // they are left off with the policy_copied fact, so the model chooses the coaching card's own; never no card at all.
-      expect(JSON.stringify(first), "the CA's copied headings were neither kept nor reported").toMatch(/"policy_copied":/);
+      // QA's ruling (20 Nov 2026, option b): two headings are the Corrective Action's only, so the coaching card cites the
+      // first and leaves the second off; a same-request switch keeps the CA's heading as this card's own (never copied).
+      expect((thread.proposal as { policyLine?: string } | undefined)?.policyLine ?? "", "the coaching card lost the request's heading").toMatch(/^Attendance/);
+      expect(JSON.stringify(first), "the second heading was not reported as not on this form").toMatch(/"field":"policy_second_heading","reason_code":"not_on_this_form"/);
+      expect(JSON.stringify(first), "the same request's heading was called copied").not.toMatch(/"policy_copied":/);
       expect(reply.content).not.toMatch(/follow-?up|resend|on my end/i);
+      const id = await thread.create();
+      expect(JSON.stringify(t.values(id)), "the saved coaching form does not cite the heading").toMatch(/Attendance/);
     },
   },
   {
@@ -108,6 +113,26 @@ export const NOV20_AGENT_LOOP_SWITCH_TWO_HEADINGS_CASES: ReplayCase[] = [
       expect(reply.formProposal ?? null, "a card was made (the case proves nothing)").toBeNull();
       expect(reply.content, `the reply claims the form was made:\n${reply.content}`).not.toMatch(/\bI (?:made|created|drafted)\b/i);
       expect(reply.content, `the reply promises later work:\n${reply.content}`).not.toMatch(/follow-?up|resend|on my end/i);
+    },
+  },
+  {
+    id: "nov20-f074-control-new-request-copied-heading-left-off",
+    title: "Control (c014's rule without a switch): after the two-heading CA, a NEW request \"also do a coaching form for Remy Calder on greeting guests\" (new_form_evidence) that copies the CA's Standards of Conduct gets it left off (policy_copied)",
+    report: REPORT,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      start(t);
+      const thread = await caWithTwoHeadings(t);
+      const said = "also do a coaching form for Remy Calder on greeting guests";
+      const model = loopStandIn((view): LoopDecision => {
+        if (lastResult(view, "propose_form")) return { text: "Here's the Coaching Form for **Remy Calder**." };
+        return { tool: "propose_form", input: { template_key: "coaching", employee_id: "e-2", what_happened: "Not greeting guests.", policy: headingWith(view, /standards of conduct/i), new_form_evidence: evidenceFrom(view, said) } };
+      });
+      t.loopModel!(model);
+      await thread.say(said);
+      expect(JSON.stringify(proposeResults(model.views)[0]), "a heading copied from the CA's card with no switch was kept").toMatch(/"policy_copied":/);
     },
   },
 ];

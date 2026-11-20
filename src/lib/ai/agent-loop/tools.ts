@@ -3128,18 +3128,20 @@ export async function proposeForm(
    * two offenses, "<heading>; <heading>", with an optional "; Other — <topic>" after them. One is the norm; never more than
    * two, and both must be headings of the manual. Every other form cites one, as before.
    */
-  /*
-   * QA's f074 (20 Nov 2026, live on 29270d58): "actually make it a coaching form" after a CA citing two headings made no
-   * card (the coaching card's "<heading>; <heading>" was not_a_heading). The forms whose cards always cite a policy (the
-   * Corrective Action, Coaching and Follow-Up Coaching; Pau, 17 Nov 2026: chosen the same way) may cite two.
-   */
-  const twoHeadingsAllowed = [appConfig().formKeys.corrective, appConfig().formKeys.coaching, appConfig().formKeys.followUpCoaching].includes(template.key);
+  const twoHeadingsAllowed = template.key === appConfig().formKeys.corrective;
   const beforeOther = askedOther ? askedPolicyWhole.slice(0, askedPolicyWhole.lastIndexOf(askedOther)).replace(/;\s*$/, "") : askedPolicyWhole;
   const headingParts = twoHeadingsAllowed ? beforeOther.split(";").map((part) => part.trim()).filter(Boolean) : [];
   if (headingParts.length > 2) {
-    return { reason_code: "too_many_headings", error: `A ${template.name} cites one heading, or two when the manager describes two offenses that two headings cover, never ${headingParts.length}. Propose the card again with the one or two headings that fit what happened.` };
+    return { reason_code: "too_many_headings", error: `A Corrective Action cites one heading, or two when the manager describes two offenses that two headings cover, never ${headingParts.length}. Propose the card again with the one or two headings that fit what happened.` };
   }
-  const askedPolicy = headingParts.length > 0 ? headingParts[0]! : askedOther && askedPolicyWhole.includes(";") ? askedPolicyWhole.split(";")[0]!.trim() : askedPolicyWhole;
+  /*
+   * QA's f074 (20 Nov 2026, live on 29270d58): "actually make it a coaching form" after a CA citing two headings made no
+   * card: the coaching card's "<heading>; <heading>" went to the manual whole and was not_a_heading. Two headings are the
+   * Corrective Action's only (Pau's ruling); any other form cites the first, and the second is left off (not_on_card).
+   */
+  const otherFormParts = !twoHeadingsAllowed && !askedOther ? askedPolicyWhole.split(";").map((part) => part.trim()).filter(Boolean) : [];
+  const secondLeftOff = otherFormParts.length > 1 ? otherFormParts.slice(1).join("; ") : null;
+  const askedPolicy = headingParts.length > 0 ? headingParts[0]! : otherFormParts.length > 1 ? otherFormParts[0]! : askedOther && askedPolicyWhole.includes(";") ? askedPolicyWhole.split(";")[0]!.trim() : askedPolicyWhole;
   const askedSecond = headingParts.length === 2 ? headingParts[1]! : null;
   let policyHeading: string | null = null;
   let secondHeading: string | null = null;
@@ -3280,20 +3282,18 @@ export async function proposeForm(
    * the model chose because it fits THIS card's account stays. What is left off is a heading COPIED from another form's
    * card in this chat (its card record's policy line), unnamed for this card and not fitted to it by the topic reader.
    */
-  const copiedFromAnotherForm = policyHeading !== null && (context.cardRecords ?? []).some((record) => record.templateKey !== template.key && typeof record.policyLine === "string" && record.policyLine.toLowerCase().includes(policyHeading!.toLowerCase()));
+  /*
+   * QA's ruling on f074 (20 Nov 2026, option b): a same-request switch ("actually make it a coaching form", verified
+   * form_change_evidence from this message) keeps the request's account, so the heading chosen for it on the CA's card is
+   * this card's own, never "copied from another form" (this changes c014's expectation for a switch, on purpose).
+   */
+  const switchedRequest = verifyEvidence(input.form_change_evidence, identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId), { thisTurnOnly: true }).ok;
+  const copiedFromAnotherForm = !switchedRequest && policyHeading !== null && (context.cardRecords ?? []).some((record) => record.templateKey !== template.key && typeof record.policyLine === "string" && record.policyLine.toLowerCase().includes(policyHeading!.toLowerCase()));
   /* Pau, 17 Nov: coaching always has policy and page: the forms whose cards always cite a manual heading (or Other). */
   const policyForms = new Set([appConfig().formKeys.corrective, appConfig().formKeys.coaching, appConfig().formKeys.followUpCoaching]);
   const policyNotForThisCard = template.key !== appConfig().formKeys.corrective && policyHeading !== null && copiedFromAnotherForm && !managerNamed && !(topicFits ?? []).some((heading) => headingKey(heading) === headingKey(policyHeading!));
   /* The heading is left off; an "Other — <topic>" beside it (after "; ") stays, as #1068's rules decide it. */
   if (policyNotForThisCard) policyLine = policyLine && policyLine.includes("; ") ? policyLine.split("; ").slice(1).join("; ") : null;
-  /*
-   * QA's f074: a second heading (now allowed on a Coaching card) is held to the same rule: copied from another form's card,
-   * unnamed for this card and not fitted to it, it is left off too.
-   */
-  const secondCopied = secondHeading !== null && template.key !== appConfig().formKeys.corrective && !managerNamed &&
-    (context.cardRecords ?? []).some((record) => record.templateKey !== template.key && typeof record.policyLine === "string" && record.policyLine.toLowerCase().includes(secondHeading!.toLowerCase())) &&
-    !(topicFits ?? []).some((heading) => headingKey(heading) === headingKey(secondHeading!));
-  if (secondCopied && policyLine) policyLine = policyLine.split("; ").filter((part) => !part.toLowerCase().startsWith(secondHeading!.toLowerCase())).join("; ") || null;
   const otherPart = askedOther || (/^other\b/i.test(askedPolicy) ? askedPolicy : "");
   if (otherPart) {
     const topic = otherPart.replace(/^other\s*[—:-]?\s*/i, "").trim() || cleaning || whatHappened.slice(0, 120);
@@ -3880,7 +3880,7 @@ export async function proposeForm(
      */
     /* Pau, 17 Nov: coaching always has policy and page. The Coaching and Follow-Up Coaching cards get the same fact as a CA. */
     ...(policyForms.has(template.key) && !awaiting && !askedPolicyWhole ? { policy_not_given: { note: "This card has no policy. Propose it again with policy: the one JBA Policy Manual heading that fits what happened (the headings are listed in your instructions). \"Other — <short topic>\" only for Must See Behaviors, a cleaning duty left undone, or when no section fits; then say so in your reply." } } : {}),
-    ...(policyNotForThisCard || secondCopied ? { policy_copied: { heading: [policyNotForThisCard ? policyHeading : null, secondCopied ? secondHeading : null].filter(Boolean).join("; "), note: `${[policyNotForThisCard ? policyHeading : null, secondCopied ? secondHeading : null].filter(Boolean).join("; ")} is the policy of another form's card in this chat, not chosen for this card. Propose the card again with the heading that fits THIS card's own account (the headings are listed in your instructions), never one copied from another form; "Other — <short topic>" when no section fits.` } } : {}),
+    ...(policyNotForThisCard ? { policy_copied: { heading: policyHeading, note: `${policyHeading} is the policy of another form's card in this chat, not chosen for this card. Propose the card again with the heading that fits THIS card's own account (the headings are listed in your instructions), never one copied from another form; "Other — <short topic>" when no section fits.` } } : {}),
     ...(accountGiven ? { request_words: untrusted(accountGiven) } : {}),
     /* The coaching topic was not kept: say none, or name it with evidence from the manager's message (see `coachingTopic`). */
     ...(askedTopic && !topicKept ? { topic_not_kept: { note: "That topic is not the manager's words from this request (or holds the person's name), so it is not on the card. Pass topic only as the manager named it, with topic_evidence quoting it." } } : {}),
@@ -3943,7 +3943,9 @@ export async function proposeForm(
    */
   const notOnCard: { field: string; reason_code: string }[] = [
     ...(dateFromAnotherRequest ? [{ field: "incident_date", reason_code: "date_from_another_request" }] : []),
-    ...(policyNotForThisCard || secondCopied ? [{ field: "policy", reason_code: "policy_not_for_this_card" }] : []),
+    ...(policyNotForThisCard ? [{ field: "policy", reason_code: "policy_not_for_this_card" }] : []),
+    /* QA's f074: a second heading on a form that cites one (Pau's two headings are the Corrective Action's only). */
+    ...(secondLeftOff ? [{ field: "policy_second_heading", reason_code: "not_on_this_form" }] : []),
     ...((modelLevel && level !== modelLevel) ? [{ field: "warning_level", reason_code: caOnlyFields ? "level_not_stated" : "not_on_this_form" }] : []),
     ...((askedTermination && !loopTermination) ? [{ field: "warning_level", reason_code: "termination_not_stated" }] : []),
     ...((askedPayroll && !payroll) ? [{ field: "payroll_deduct", reason_code: payrollFields ? "payroll_not_stated" : "not_on_this_form" }] : []),

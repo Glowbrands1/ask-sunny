@@ -98,7 +98,7 @@ import { fieldLabel, readableValue } from "./saved-diff";
  * CA", "here's the Coaching Form"), read only when propose_form made no card this turn; and later work the app cannot send.
  */
 const CLAIMS_A_FORM_MADE = /\b(?:I(?:'ve| have)?\s+(?:made|created|drafted|started|put together|set up|built)|here(?:'s| is)\s+(?:the|your))\b[^.\n]{0,60}?\b(?:form|card|CA|C\/A|coaching|corrective action)\b/i;
-const PROMISES_LATER_WORK = /\b(?:in a follow-?up|follow-?up (?:message|reply)|resend|re-send|on my end|I(?:'ll| will) (?:send (?:it|that|this) (?:again|later|over)|get back to you|follow up))\b/i;
+const PROMISES_LATER_WORK = /\b(?:in a follow-?up|follow-?up (?:message|reply)|resend|re-send|on my end|an issue on (?:my|our) end|a lookup problem|try (?:it )?again|I(?:'ll| will) (?:send (?:it|that|this) (?:again|later|over)|get back to you|follow up))\b/i;
 
 export { LOOP_FAILED_REPLY, STEP_LIMIT_REPLY };
 
@@ -1127,13 +1127,13 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
         if (claimsMade(text) || promises(text)) {
           const note = [
             ...(claimsMade(text) ? [`[app check] Your reply says a form was made, but propose_form made no card this turn (${proposeNoCard.join(", ")}). Nothing is on the manager's screen for it. Fix what propose_form said and propose again, or say plainly the card was not made and what is needed.`] : []),
-            ...(promises(text) ? ["[app check] Your reply promises later work (a follow-up, a resend, a fix on your end). You cannot send anything after this reply. Do it now, or say plainly what the manager can do."] : []),
+            ...(promises(text) ? ["[app check] Your reply promises later work (a follow-up, a resend) or blames an issue on your end. You cannot send anything after this reply, and a refusal is never a lookup problem, an issue on your end, or a reason to ask the manager to try again: act on what the tool said now, or say in one line what you need from them."] : []),
             "Then write your reply to the manager again.",
           ].join("\n");
           const again = await handBack(note);
           if (again) text = again;
           honestyReview = { claimed_made: claimsMade(text), promised: promises(text), fixed: !claimsMade(text) && !promises(text) };
-          if (claimsMade(text)) text = "That card wasn't made, so nothing new is on your screen for it. Send the request again, or tell me what to change (the policy, the form or the person).";
+          if (claimsMade(text)) text = "That card wasn't made, so nothing new is on your screen for it. Tell me the policy, form or person it should have, and I'll make it.";
           else if (promises(text)) text = text.split(/(?<=[.!?])\s+/).filter((sentence) => !PROMISES_LATER_WORK.test(sentence)).join(" ").trim();
         }
       }
