@@ -8,8 +8,8 @@ import { loopStandIn, type LoopDecision, type LoopView } from "./loop-stand-in";
  * A FORM ASKED FOR SOMEBODY ELSE DOES NOT CLOSE THIS CARD (c134; QA, 20 Nov 2026)
  * ============================================================================
  *
- * c134: an exit card for person A was still open, then the manager pasted a write-up about person B that asked for a
- * Corrective Action for B. Create on A's exit card refused: "This proposal is out of date: the conversation has since
+ * c134: an exit card for person A was still open, then the manager pasted a write-up about person B (an "Observation of
+ * Concern" with "Coaching & Expectations Moving Forward" and "further corrective action" in it, no request; Runner 2's shape). Create on A's exit card refused: "This proposal is out of date: the conversation has since
  * asked for a different form." Pau's rule: a later form request counts against a card only when it is for that card's
  * person or names no person. The control stays: the same person asking for another form is still refused. Each case
  * presses Create. Invented names only (Remy Calder on the staff list; Tessa Marlow, not).
@@ -39,6 +39,29 @@ const exitModel = loopStandIn((view): LoopDecision => {
   };
 });
 
+/** c134 T4, pasted with no other words (Runner 2's masked shape; the person's name invented). */
+const C134_PASTE = `Observation of Concern
+
+Following a review of employee hours worked and tanning history, it was confirmed that Tessa Marlow utilized tanning equipment while clocked in for scheduled shifts. This is a direct violation of Sun Tan City's Employee Tanning Privileges Policy, which strictly prohibits employees from tanning while on the clock.
+
+Company Policy & Expectations
+
+Per Sun Tan City's Employee Tanning Privileges Policy, the following expectations apply to all employees:
+
+No tanning while on the clock. Employees are strictly prohibited from utilizing tanning equipment while clocked in.
+
+Employee processing requirement: Another employee must be present to process each employee tanning session. Employees are not permitted to process their own tanning sessions.
+
+Tanning outside scheduled hours: Employees may tan before or after their scheduled shifts, provided they are clocked out, another employee is present to process the session, and the tanning session does not create a hardship for the business.
+
+Coaching & Expectations Moving Forward
+
+Tessa has been coached on the importance of adhering to company policies and maintaining accountability during scheduled working hours.
+
+Effective immediately, Tessa is expected to follow all employee tanning privileges policies without exception. All personal tanning sessions must take place while clocked out, be processed by another employee, and not interfere with salon operations.
+
+Any additional violations of this policy may result in further corrective action, up to and including termination of employment, in accordance with company policy and HR guidance.`;
+
 async function exitCard(t: ReplayContext, later: string) {
   vi.setSystemTime(new Date("2026-11-20T11:00:00Z"));
   t.directory([...STAFF]);
@@ -64,7 +87,11 @@ const fixed = (id: string, title: string, run: (t: ReplayContext) => Promise<voi
 });
 
 export const NOV20_AGENT_LOOP_OTHER_PERSON_FORM_REQUEST_CASES: ReplayCase[] = [
-  fixed("nov20-create-exit-card-after-ca-asked-for-another-person-c134", "c134: the exit card for Remy Calder, then a pasted write-up \"Please write up a corrective action for Tessa Marlow. On 11/12 Tessa Marlow was seen tanning while clocked in …\" (Tessa Marlow not on the staff list; no card for her): Create makes Remy Calder's exit card", async (t) => {
+  fixed("nov20-create-exit-card-after-pasted-write-up-c134", "c134: the exit card for Remy Calder, then the manager pastes an \"Observation of Concern\" write-up about Tessa Marlow (not on the staff list) tanning while clocked in, with \"Coaching & Expectations Moving Forward\", \"has been coached\" and \"further corrective action\" in it and no request (no card for her): Create makes Remy Calder's exit card", async (t) => {
+    const thread = await exitCard(t, C134_PASTE);
+    await expect(thread.create()).resolves.toBeTruthy();
+  }),
+  fixed("nov20-create-exit-card-after-ca-asked-for-another-person", "A form asked for somebody else: the exit card for Remy Calder, then \"Please write up a corrective action for Tessa Marlow. On 11/12 Tessa Marlow was seen tanning while clocked in …\" (no card for her): Create makes Remy Calder's exit card", async (t) => {
     const thread = await exitCard(t, "Please write up a corrective action for Tessa Marlow. On 11/12 Tessa Marlow was seen tanning while clocked in. Tessa Marlow was reminded that tanning on the clock is not allowed and Tessa Marlow said she understood.");
     await expect(thread.create()).resolves.toBeTruthy();
   }),
