@@ -12,7 +12,8 @@ import type { TrainingLesson, TrainingSubmission } from "@/lib/ai-training/types
  * the Submit block; Previous / Next at the bottom.
  */
 
-vi.mock("./actions", () => ({ submitLessonResponse: vi.fn(), editMySubmission: vi.fn() }));
+const submitLessonResponse = vi.fn();
+vi.mock("./actions", () => ({ submitLessonResponse: (input: unknown) => submitLessonResponse(input), editMySubmission: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), replace: vi.fn() }) }));
 
 const { LessonScreen } = await import("./lesson-screen");
@@ -129,6 +130,19 @@ describe("the lesson page", () => {
     expect(submit.getByText("Nothing submitted yet")).toBeTruthy();
     fireEvent.click(submit.getByRole("button", { name: /Submit your work/ }));
     expect(screen.getByRole("dialog")).toBeTruthy();
+  });
+
+  it("saves what you submit from the Submit block", async () => {
+    // Pau, 20 Nov 2026: "make sure that submissions also saves please".
+    submitLessonResponse.mockResolvedValue({ ok: true });
+    render(<LessonScreen problem={null} view={view(OLDER_LESSON)} mine={[]} nav={nav} isAdmin={false} />);
+    fireEvent.click(screen.getByRole("button", { name: /Submit your work/ }));
+    fireEvent.change(screen.getByLabelText("Your response"), { target: { value: "My closing checklist" } });
+    await act(async () => {
+      fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Submit" }));
+    });
+    expect(submitLessonResponse).toHaveBeenCalledWith({ lessonId: "l4", title: "", body: "My closing checklist", linkUrl: "" });
+    expect(screen.getByText(/your submission was sent for review/)).toBeTruthy();
   });
 
   it("says how many you have submitted and where the latest stands", () => {
