@@ -148,7 +148,8 @@ export const NOV16_AGENT_LOOP_FIRST_TURN_HOME_ASK_CASES: ReplayCase[] = [
       const out = answered.views.flatMap((view) => view.results).find((result) => result.tool === "find_past_forms")?.output as { card_on_screen?: unknown; ask_exactly?: string; which_form_question?: string } | undefined;
       expect(out?.card_on_screen, "the card on screen was not offered").toEqual({ form: "Coaching Form", created: false });
       expect(out?.which_form_question, "the plain which-one question was asked instead").toBeUndefined();
-      expect(yes.content, `the card on screen is not the first option:\n${yes.content}`).toMatch(/^Which one: the Coaching Form on screen, or one of the 2 forms on file \(Corrective Action Form from 2026-11-0\d; Corrective Action Form from 2026-11-0\d\)\?$/m);
+      // Changed on purpose (item 18, Pau via QA, 20 Nov 2026): each form on file is named by its choice line (form · status · date · salon).
+      expect(yes.content, `the card on screen is not the first option:\n${yes.content}`).toMatch(/^Which one: the Coaching Form on screen, or one of the 2 forms on file \(Corrective Action Form · finalized · dated 11\/0\d\/2026 · NE Kearney; Corrective Action Form · finalized · dated 11\/0\d\/2026 · NE Kearney\)\?$/m);
     },
   },
 ];
