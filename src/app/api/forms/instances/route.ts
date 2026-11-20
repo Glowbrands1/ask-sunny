@@ -65,6 +65,7 @@ import { rosterNamesFor } from "@/lib/forms/roster-names";
 import { allowsTeamSubject, isTeamSubject } from "@/lib/forms/team-subject";
 import { isDemoMode } from "@/lib/config/runtime";
 import { getTemplateByKey } from "@/lib/forms/repository";
+import { applyLoopFollowUpDefault } from "@/lib/forms/follow-up-default-write";
 import {
   PAYROLL_AMOUNT_KEY,
   PAYROLL_AMOUNT_STATED_KEYS,
@@ -603,7 +604,25 @@ export async function POST(request: Request) {
 
     await applyCardFacts(String(instance.id));
 
-    return NextResponse.json({ instance });
+    /*
+     * Pau (20 Nov 2026): a Corrective Action the agent loop creates gets its follow-up date, the one the manager
+     * stated or one week after the form date, so the follow-up its Action Plan promises is on the calendar. The
+     * card says it ("Follow-up: Fri, Nov 27 (change it anytime)."). See `follow-up-default.ts`.
+     */
+    const followUp = body.fromAgentLoop === true
+      ? await applyLoopFollowUpDefault({
+          instance: { ...instance, id: String(instance.id) },
+          managerWords: Array.isArray(body.conversation)
+            ? parseHistory(body.conversation).filter((turn) => turn.role === "user").map((turn) => String(turn.content)).join("\n")
+            : "",
+          actorId: actor.id,
+        }).catch(() => null)
+      : null;
+
+    return NextResponse.json({
+      instance: followUp ? { ...instance, followUpDate: followUp.date } : instance,
+      ...(followUp ? { followUpNotice: followUp.notice } : {}),
+    });
   } catch (error) {
     return errorResponse(error, "forms/instances/create");
   }

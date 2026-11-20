@@ -55,6 +55,7 @@ import { formatManualCitation } from "@/lib/ai/policy-citation-fields";
 import { redactSensitiveDefaults } from "@/lib/ai/sensitive-defaults";
 import { expandPolicyQuery } from "@/lib/knowledge/policy-retrieval";
 import type { SourceCitation } from "@/types";
+import { followUpChangeAsked, followUpLine, statedFollowUpDate } from "@/lib/forms/follow-up-default";
 import type { AccessScope, ChatFormProposal, ChatMessage, Role } from "@/types";
 import { accountKey, personKey, replyTurns, type CardRecord, type ExitOfferRecord, type NameQuestionRecord, type PersonAskedRecord, type TurnRecord } from "@/lib/ai/agent-loop/card-record";
 
@@ -4261,6 +4262,40 @@ export async function editForm(
       return { saved, refused, unchanged, now };
     };
     /*
+     * Pau (20 Nov 2026): the follow-up date is the manager's to change in chat ("change the follow up to 12/3", "move
+     * the follow up to next Friday"), with values follow_up_date or with no values. It is read from the manager's
+     * message, never the model's string, through the form's own date control's write. After today is never refused
+     * (G6); a day already past is.
+     */
+    const followUpAsked = followUpChangeAsked(context.question, editToday) ?? ("follow_up_date" in values ? statedFollowUpDate(context.question, editToday) : null);
+    let followUpSet: { from: string | null; to: string } | null = null;
+    if ("follow_up_date" in values || (followUpAsked && Object.keys(values).length === 0)) {
+      delete values.follow_up_date;
+      if (!followUpAsked) return { reason_code: "follow_up_date_not_stated", error: "This message gives no follow-up date. Nothing was written. Ask which day." };
+      if (followUpAsked < editToday) return { reason_code: "follow_up_date_passed", error: `${followUpAsked} has already passed (today is ${editToday}). Nothing was written. Ask which day.` };
+      const { setFollowUpDate, FollowUpError } = await import("@/lib/forms/instances");
+      try {
+        await setFollowUpDate(id, followUpAsked, context.actor.subject);
+      } catch (error) {
+        if (!(error instanceof FollowUpError)) throw error;
+        return { reason_code: "write_failed", error: `${error.message} Nothing was written.` };
+      }
+      followUpSet = { from: loaded.instance.followUpDate, to: followUpAsked };
+      const change = { field: "follow_up_date", before: loaded.instance.followUpDate ?? "", after: followUpAsked };
+      const merged = mergeSaved(effects.formUpdate, id, change.before === change.after ? [] : [change]);
+      effects.formUpdate = { instanceId: id, updated: merged.saved.map((row) => row.field), saved: merged.saved, putBack: merged.putBack };
+      if (Object.keys(values).length === 0) {
+        return {
+          updated: change.before === change.after ? [] : ["follow_up_date"],
+          saved: change.before === change.after ? [] : [change],
+          refused: [],
+          ...(change.before === change.after ? { already_set: [{ field: "follow_up_date", value: followUpAsked }] } : {}),
+          follow_up: followUpLine(followUpAsked),
+          note: "Tell the manager the follow-up date now on the form, from follow_up. Claim nothing else.",
+        };
+      }
+    }
+    /*
      * Batch G (G11, a production chat: "change date of document to 11-15-2026"): a date the manager typed in this message
      * for the document is theirs to set, after today or not (the reply says so). Only a date read from the account is
      * never after today.
@@ -4675,6 +4710,7 @@ export async function editForm(
       refused,
       /* QA's live finding (16 Nov 2026): what the change was saved on, so the reply never says "press Create" on a saved draft. */
       form_state: "saved_draft",
+      ...(followUpSet ? { follow_up: followUpLine(followUpSet.to) } : {}),
       /* "as you said" only for what this message stated (QA, 16 Nov 2026): an edit's level and payroll are this message's own. */
       ...(updated.some((field) => STATED_EDIT_FIELDS.has(field)) ? { stated_this_turn: updated.filter((field) => STATED_EDIT_FIELDS.has(field)) } : {}),
       ...(amountMissing ? { payroll_amount_missing: { ask_exactly: PAYROLL_AMOUNT_QUESTION } } : {}),
