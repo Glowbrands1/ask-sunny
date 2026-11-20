@@ -55,6 +55,10 @@ import { rulesBookText } from "./rules-book";
  * first name (it said **<employee>**, which contradicted the rule), and the lines that say which person it is keep the full
  * name. Then (QA and Pau): both lines say <reply_name>, which code decides (propose_form / edit_form's reply_name).
  *
+ * Re-taken on purpose on 20 Nov 2026 (QA item 23, a drafted team message reversed "isnt realostic"): one Replies line was
+ * added: a drafted message keeps the manager's own statements, negations included. It reads the same under every config;
+ * nothing else changed.
+ *
  * Re-taken on purpose on 16 Nov 2026 (QA, c019 in #1056): one line in "Which form" teaches that "Create a <form> from this
  * conversation" / "make it a <form> instead" for the same person and incident is the same request, not
  * new_form_evidence. It names no app, place, staff system or form key; nothing else changed.
