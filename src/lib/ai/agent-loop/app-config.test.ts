@@ -26,6 +26,10 @@ import { rulesBookText } from "./rules-book";
  * asks for exit_evidence's kind, and one line was added for a resignation told with no ask. Both read the same under
  * every config; nothing else changed.
  *
+ * Re-taken on purpose on 20 Nov 2026 (board f066, the form deletion record): the tool list gained read_form_deletions
+ * and the Business data rules one line for it (administrators only). Neither names the app, place, staff system or form
+ * key; nothing else changed.
+ *
  * Re-taken on purpose on 19 Nov 2026 (the Google Reviews page's L3, L6 and YTD): read_reviews's line in the prompt now
  * names L3, L6, YTD and each month, and the Business data rule says L3 / L6 are full months and come from read_reviews.
  * Both use the config's place word; nothing else changed.

@@ -11,7 +11,7 @@ import type { AccessScope, Role } from "@/types";
 
 import { PRODUCTION_SALONS } from "@/data/salons";
 
-import { FIGURES_MAX, OTHERS_NOT_VISIBLE, OUTSIDE_ACCESS, dataToolHandlers, figuresWithin, readReviews, readStats, salonsForTurn, type DataToolDeps } from "./data-tools";
+import { FIGURES_MAX, OTHERS_NOT_VISIBLE, OUTSIDE_ACCESS, dataToolHandlers, figuresWithin, readFormDeletions, readReviews, readStats, salonsForTurn, type DataToolDeps, type FormDeletionRow } from "./data-tools";
 
 /*
  * The agent loop's app data tools (QA, 15 Nov 2026): read_reviews and read_stats, with Pau's scope rules enforced in
@@ -100,6 +100,7 @@ function deps(overrides: Partial<DataToolDeps> = {}) {
       return BRIEFING;
     },
     readBreakdown: async () => null,
+    loadFormDeletions: async () => [],
     fetchDailyStatsGuide: vi.fn(async () => ({
       ok: true as const,
       grounding: { role: {} as never, documentId: "d", documentTitle: "DAILY STATS INTERPRETATION FRAMEWORK", matchedBy: "tag" as const, rows: [{ chunk_id: "c1", document_id: "d", document_title: "DAILY STATS INTERPRETATION FRAMEWORK", category: "operations", locator: "Section 2", content: "Lead with the one metric furthest from goal.", similarity: 0.9 } as never], presentGroups: [] },
@@ -292,7 +293,8 @@ describe("the scope rules", () => {
   });
 
   it("the handlers are keyed as the loop dispatches them", () => {
-    expect(Object.keys(dataToolHandlers(ctx(MANAGER, "")))).toEqual(["read_reviews", "read_stats"]);
+    // f066 (20 Nov 2026) added read_form_deletions, the admin-only deletion record: a third handler on purpose.
+    expect(Object.keys(dataToolHandlers(ctx(MANAGER, "")))).toEqual(["read_reviews", "read_stats", "read_form_deletions"]);
   });
 });
 
@@ -323,5 +325,51 @@ describe("the figures are never cut inside a line (F6, QA's live check: \"Manhat
 
   it("under the cap: the text as written, nothing named", () => {
     expect(figuresWithin("SALES TOTALS\nNE Kearney: Grand Total 1,234")).toEqual({ text: "SALES TOTALS\nNE Kearney: Grand Total 1,234", truncatedSalons: [] });
+  });
+});
+
+/*
+ * Board f066 (QA, Pau approved 20 Nov 2026): four Test Testy drafts were deleted and nothing said who. The deletion
+ * record is read by an admin only ("who deleted Test Testy's form"); a manager is refused and nothing is read.
+ */
+describe("read_form_deletions", () => {
+  const ROW: FormDeletionRow = {
+    templateName: "Corrective Action Form", employeeName: "Test Testy", formDate: "2026-11-17", status: "draft", locationName: "NE Kearney",
+    deletedBy: "u-quill", deletedByName: "Quill Harrow", deletedByRole: "district_manager", deletedVia: "route", deletedAt: "2026-11-20T15:30:00Z",
+  };
+
+  it("an admin reads who deleted the form, when and how", async () => {
+    const asked: unknown[] = [];
+    const { deps: d } = deps({ loadFormDeletions: async (input) => (asked.push(input), [ROW]) });
+    const result = (await readFormDeletions(ctx(ADMIN, "who deleted Test Testy's form", "admin"), { employee_name: "Test Testy" }, d)) as { deletions: Record<string, unknown>[] };
+    expect(asked).toEqual([{ employeeName: "Test Testy", limit: 20 }]);
+    expect(result.deletions).toEqual([
+      expect.objectContaining({ form: "Corrective Action Form", employee: "Test Testy", form_date: "2026-11-17", status_when_deleted: "draft", salon: "NE Kearney", deleted_by: "Quill Harrow", deleted_by_role: "district_manager", how: "Form Monitoring" }),
+    ]);
+    expect(String(result.deletions[0]!.deleted_at)).toMatch(/Nov 20, 2026/);
+  });
+
+  it("a delete made outside the app says so, and nothing on record says when the record starts", async () => {
+    const { deps: outside } = deps({ loadFormDeletions: async () => [{ ...ROW, deletedBy: null, deletedByName: null, deletedByRole: null, deletedVia: "other" }] });
+    const result = (await readFormDeletions(ctx(ADMIN, "who deleted it", "owner"), {}, outside)) as { deletions: Record<string, unknown>[] };
+    expect(result.deletions[0]).toMatchObject({ deleted_by: "not recorded (deleted outside the app)", how: "outside the app (directly in the database)" });
+
+    const { deps: none } = deps();
+    const empty = (await readFormDeletions(ctx(ADMIN, "who deleted Test Testy's form", "admin"), { employee_name: "Test Testy" }, none)) as { note: string };
+    expect(empty.note).toMatch(/No deleted form is on record for Test Testy\. The record starts on Nov 20, 2026/);
+  });
+
+  it("a manager is refused and nothing is read", async () => {
+    const load = vi.fn(async () => [ROW]);
+    const { deps: d } = deps({ loadFormDeletions: load });
+    for (const role of ["salon_director", "district_manager", "regional_manager"] as const) {
+      const result = (await readFormDeletions(ctx(MANAGER, "who deleted Test Testy's form", role), { employee_name: "Test Testy" }, d)) as { refused?: string };
+      expect(result.refused).toMatch(/administrators only/);
+    }
+    expect(load).not.toHaveBeenCalled();
+  });
+
+  it("is one of the loop's tools", () => {
+    expect(Object.keys(dataToolHandlers(ctx(ADMIN, "", "admin")))).toContain("read_form_deletions");
   });
 });

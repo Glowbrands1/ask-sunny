@@ -60,6 +60,8 @@ const store: FakeStore = {
   // without them every write failed silently and the record's row counts were always 0).
   user_memory: [],
   chat_context_summaries: [],
+  // Board f066 (20 Nov 2026): the deletion record, written by the fake as the BEFORE DELETE trigger writes it.
+  form_instance_deletions: [],
 } as unknown as FakeStore;
 
 // As production builds the role table when the ASD may create forms (NEXT_PUBLIC_, read once at load).
