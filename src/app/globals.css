@@ -1780,12 +1780,12 @@
   .training-prose.training-tight > :last-child { margin-bottom: 0; }
 
   /* Lesson text on the navy Submit block. */
-  .training-prose.training-prose-dark { color: var(--approved-band-prompt-ink); }
+  .training-prose.training-prose-dark { color: var(--band-prompt-foreground); }
   .training-prose-dark strong,
   .training-prose-dark .training-h1,
   .training-prose-dark .training-h2,
   .training-prose-dark .training-h3,
-  .training-prose-dark a { color: var(--approved-card); }
-  .training-prose-dark code { background: var(--approved-band-tile); }
-  .training-prose-dark blockquote { color: var(--approved-band-chip-ink); border-left-color: var(--approved-border-band-pill); }
+  .training-prose-dark a { color: var(--primary-foreground); }
+  .training-prose-dark code { background: var(--band-tile); }
+  .training-prose-dark blockquote { color: var(--band-chip-foreground); border-left-color: var(--band-pill-border); }
 }

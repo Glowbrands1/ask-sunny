@@ -328,7 +328,7 @@ function SubmitBlock({ layout, mine, onSubmit }: { layout: LessonLayout | null; 
                   {submit.checklist.map((item) => (
                     <li key={item.id} className="flex items-start gap-3">
                       <span aria-hidden className="mt-1 size-4 shrink-0 rounded-[5px] border-2 border-accent" />
-                      <div className="min-w-0 text-[15px] leading-relaxed text-[var(--approved-band-prompt-ink)]">
+                      <div className="min-w-0 text-[15px] leading-relaxed text-[var(--band-prompt-foreground)]">
                         <TrainingRich runs={item.text ?? []} />
                         {item.children ? <TrainingBlocks blocks={item.children} className="training-prose-dark training-tight" /> : null}
                       </div>
@@ -339,14 +339,14 @@ function SubmitBlock({ layout, mine, onSubmit }: { layout: LessonLayout | null; 
               <TrainingBlocks blocks={submit.after} className="training-prose-dark training-tight mt-3" />
             </>
           ) : (
-            <p className="mt-2 text-[15px] text-[var(--approved-band-prompt-ink)]">Share what you tried and what came out of it.</p>
+            <p className="mt-2 text-[15px] text-[var(--band-prompt-foreground)]">Share what you tried and what came out of it.</p>
           )}
         </div>
         <div className="flex shrink-0 flex-col items-stretch gap-2 text-center md:w-56">
           <Button variant="accent" size="lg" onClick={onSubmit}>
             <Plus aria-hidden /> Submit your work
           </Button>
-          <p className="text-xs text-[var(--approved-band-muted)]">
+          <p className="text-xs text-[var(--band-muted-foreground)]">
             {latest ? `${mine.length} submitted · ${SUBMISSION_STATUS_LABEL[latest.status]}` : "Nothing submitted yet"}
           </p>
         </div>
