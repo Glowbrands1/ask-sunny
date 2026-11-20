@@ -41,6 +41,19 @@ export const PRIOR_ACTIONS_KEY = "prior_actions";
 export const PRIOR_ACTIONS_LABEL =
   "List previously received coaching and/or corrective action with date signed";
 
+/**
+ * REVISION 9 (HR via Pau, 19 Nov 2026): the one line became two required
+ * boxes, in HR's words exactly. The history keeps its key, so everything that
+ * reads or drafts `prior_actions` keeps working; only its label is new. The
+ * policy manual's signed date has a box of its own, which the form creator
+ * fills in (nothing drafts it). Forms filed on revision 5 to 8 keep the label
+ * above.
+ */
+export const PRIOR_ACTIONS_LABEL_REV9 =
+  "List previous coaching and corrective actions and include date signed by employee in past 90 days";
+export const POLICY_MANUAL_SIGNED_KEY = "policy_manual_signed";
+export const POLICY_MANUAL_SIGNED_LABEL = "List date of JBA policy manual signed by employee";
+
 /** The two revision-4 keys this field replaced. Still read on forms filed against them. */
 export const LEGACY_PREVIOUS_ACTION_KEY = "previous_action";
 export const LEGACY_PREVIOUS_ACTION_DATE_KEY = "previous_action_date";
