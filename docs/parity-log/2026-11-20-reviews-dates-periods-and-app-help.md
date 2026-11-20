@@ -1,8 +1,10 @@
 # Google reviews in chat: the page's dates, any named month or period, and app_help says what it reads (20 Nov 2026)
 
-**Sibling app: to check.** Ask Bubbles has its own Google reviews in chat (ported both ways on 18 Nov). Its read of the
-latest reviews and its months pattern should be checked for the same two gaps; the agent loop's app_help is Sunny-only
-(no loop there yet).
+**Sibling app: not needed** (checked on Ask Bubbles main 7c92054). Its latest reviews come from the Google Business
+Profile rows its own Reviews page lists, ordered by each review's own `createdAt` (`google-reviews-chat-read.ts`
+readRecentReviews), with no scrape-date fallback, so the dating gap does not exist there. It has no month-by-month (L3,
+L6, YTD) figures yet, so there is no months pattern to widen; a named month there is a feature gap, not this bug. It has
+no agent loop, so no app_help.
 
 QA's code audit on 9e1d1f67:
 - read_reviews ordered and dated the latest reviews by `googleAbsoluteDate ?? firstSeenAt`'s UTC day, so a review Google
