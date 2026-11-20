@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withRosterReadsOncePerReply } from "@/lib/forms/employee-roster";
 import { noteSpendUser } from "@/lib/ai/spend-meter";
 import { withSpendMeter } from "@/lib/ai/spend-meter-run";
 import { agentLoopFor, agentLoopSkipReason, loopCarriedOnly } from "@/lib/ai/agent-loop/switch";
@@ -135,6 +136,11 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** SPEND_GUARD_ALL_CALLS_ENABLED: this route's Claude calls are counted (`ai/spend-meter.ts`). Off, as before. */
 export async function POST(request: Request) {
+  /* QA's f056 (20 Nov 2026): the staff list is read once per reply, for this request only (`withRosterReadsOncePerReply`). */
+  return withRosterReadsOncePerReply(() => postWithMeter(request));
+}
+
+async function postWithMeter(request: Request) {
   // CHAT_RESPONSE_STREAM_ENABLED: a slow answer is streamed so nothing cuts it off at 30 s. See `api/streamed-response.ts`.
   if (chatResponseStreamEnabled()) {
     /* PR 6 item 5: progress lines only when the browser asks AND the loop answers this turn (enabled in its branch below). */
