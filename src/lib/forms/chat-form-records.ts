@@ -185,6 +185,17 @@ export interface FormDateRange {
 export interface FormKind {
   label: string;
   templateNameWords: string[];
+  /**
+   * QA's code audit (item 28): words a form's name must NOT have to be this kind. The read matches templateNameWords as
+   * part of the name (`ilike`), so "coaching" also reads the Follow-Up Coaching Form; `ofKind` drops it after the read.
+   */
+  excludeTemplateNameWords?: string[];
+}
+
+/** Item 28: only the rows of this kind (a Coaching kind never keeps a Follow-Up Coaching Form). No kind: every row. */
+export function ofKind<T extends { templateName: string }>(rows: readonly T[], kind: FormKind | null | undefined): T[] {
+  const excluded = kind?.excludeTemplateNameWords ?? [];
+  return excluded.length === 0 ? [...rows] : rows.filter((row) => !excluded.some((word) => row.templateName.toLowerCase().includes(word)));
 }
 
 const MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
@@ -313,7 +324,7 @@ export function formDateRangeFromInput(from: unknown, to: unknown, today: string
 const FORM_KINDS: ReadonlyArray<{ pattern: RegExp; kind: FormKind }> = [
   { pattern: /\b(?:cas?|cafs?|corrective(?: actions?)?|write[- ]?ups?|written up|wrote up|warnings?|disciplinary|discipline)\b/, kind: { label: "Corrective Action form", templateNameWords: ["corrective"] } },
   { pattern: /\b(?:follow[- ]?up coachings?)\b/, kind: { label: "Follow-Up Coaching form", templateNameWords: ["follow"] } },
-  { pattern: /\b(?:coach(?:ing|ings|ed)?)\b/, kind: { label: "Coaching form", templateNameWords: ["coaching"] } },
+  { pattern: /\b(?:coach(?:ing|ings|ed)?)\b/, kind: { label: "Coaching form", templateNameWords: ["coaching"], excludeTemplateNameWords: ["follow"] } },
   { pattern: /\b(?:exit(?: forms?| interviews?)?|resignations?|resigned|terminations?|terminated|quit)\b/, kind: { label: "Resignation/Exit form", templateNameWords: ["exit", "resignation"] } },
   { pattern: /\b(?:epps?|performance plans?)\b/, kind: { label: "EPP form", templateNameWords: ["epp"] } },
 ];
@@ -626,10 +637,11 @@ export async function loadFormRecords(input: {
 
     if (words.length > 0) {
       // PRIVATE_CREATOR_FORMS: over-read, then trim to the page; off, the page itself.
-      const rows = visibleInstances(
+      // Item 28: a Coaching kind never keeps a Follow-Up Coaching Form (`ofKind`).
+      const rows = ofKind(visibleInstances(
         formsActor,
         await listInstances("all", privateAwareLimit(MATCH_LIMIT), { ...filter, ...narrowFilter, employeeNameWords: words }),
-      ).slice(0, MATCH_LIMIT);
+      ), kind).slice(0, MATCH_LIMIT);
       const matches = matchRowsToQuestion(rows, words, nameSource);
       if (matches.named.length > 0 || matches.possible.length > 0) {
         return { block: renderFormRecordsBlock({ visibility, words, matches, recent: [], today, viewerId, narrowed }) };
@@ -638,10 +650,10 @@ export async function loadFormRecords(input: {
 
     if (narrowed && !(words.length > 0 && looksLikeItNamesSomebody(nameSource))) {
       // Archived forms count: "who got a CA this month" asks what was filed, not what is on the active shelf.
-      const rows = visibleInstances(
+      const rows = ofKind(visibleInstances(
         formsActor,
         await listInstances("all", privateAwareLimit(NARROWED_LIMIT), { ...filter, ...narrowFilter }),
-      ).slice(0, NARROWED_LIMIT);
+      ), kind).slice(0, NARROWED_LIMIT);
       return { block: renderFormRecordsBlock({ viewerId, visibility, words, matches: null, recent: rows, today, narrowed }) };
     }
 

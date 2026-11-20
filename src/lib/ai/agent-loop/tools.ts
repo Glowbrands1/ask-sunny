@@ -8,7 +8,7 @@ import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 import { businessToday, formatBusinessTime } from "@/lib/business-date";
 import { appConfig } from "./app-config";
 import { isoDate, monthDayToIso, readDates, sameDate, withoutDates } from "./dates";
-import { candidateNameWords, chatFormsActor, formDateRangeFromInput, formKindFromText } from "@/lib/forms/chat-form-records";
+import { candidateNameWords, chatFormsActor, formDateRangeFromInput, formKindFromText, ofKind } from "@/lib/forms/chat-form-records";
 import { CURRENT_MESSAGE_ID, holdsPhrase, identifiedTurns, verifyEvidence, withoutMessageIdTags, type IdentifiedTurn } from "./evidence";
 import { answeredNameQuestions, answerNamesSomeoneElse, everKeptOrUsedTyped, isConfirmedSpelling, latestTurnAnswersFor, latestTurnConfirms, latestTurnKeepsOrUsesTyped, latestTurnKeepsTyped, spellingKeysConfirmedFor, spellingKeysConfirmedForName, type NameQuestionView } from "./confirmed-spelling";
 import { AFFIRMATIVE, displayName, editDistance, matchEmployeeName, nameConfirmationQuestion, readNameConfirmation, type RosterEmployee } from "@/lib/forms/employee-match";
@@ -55,7 +55,7 @@ import { redactSensitiveDefaults } from "@/lib/ai/sensitive-defaults";
 import { expandPolicyQuery } from "@/lib/knowledge/policy-retrieval";
 import type { SourceCitation } from "@/types";
 import type { AccessScope, ChatFormProposal, ChatMessage, Role } from "@/types";
-import { accountKey, personKey, replyTurns, type CardRecord, type NameQuestionRecord, type PersonAskedRecord, type TurnRecord } from "@/lib/ai/agent-loop/card-record";
+import { accountKey, personKey, replyTurns, type CardRecord, type ExitOfferRecord, type NameQuestionRecord, type PersonAskedRecord, type TurnRecord } from "@/lib/ai/agent-loop/card-record";
 
 /**
  * ============================================================================
@@ -123,6 +123,8 @@ export interface ToolContext {
   /** QA (16 Nov 2026; c158, c208): every card this chat's loop made, and every "who is it for?" it asked, oldest first. */
   readonly cardRecords?: readonly CardRecord[];
   readonly personAskedRecords?: readonly PersonAskedRecord[];
+  /** QA (#1055's follow-up): the exit-form offer the last reply's tools made (its record), or null. Never read from the reply. */
+  readonly exitOffered?: ExitOfferRecord | null;
   /** QA's review of #1062: each earlier loop turn's record (saved fields, a card), oldest first. */
   readonly turnRecords?: readonly TurnRecord[];
   /** Rebuild plan PR 6: what this turn already read, read once per turn (`turnManual`). A tool called outside a turn reads fresh. */
@@ -253,6 +255,11 @@ export function levelOptionIsTheLevel(text: string, level: "verbal" | "written",
     const next = tokens[index + 1];
     if (next === undefined || /^[.,;:!?()\n]$/.test(next) || /^[\d$]/.test(next)) return true;
     const bare = next.replace(/[-']+$/g, "");
+    /*
+     * QA's code audit (20 Nov 2026, on d7960a5f): "she got written up again for no-call, I need a CA" passed as Written,
+     * because "up" is a short word. "Written up" is the phrasal verb for discipline already given, never this form's level.
+     */
+    if (bare === "up") return false;
     return own.has(bare) || bare.length <= 3;
   });
 }
@@ -327,6 +334,11 @@ function notTheOfferAnswer(check: AnswerEvidence, context: ToolContext, roster?:
   const current = check.turnId === (context.questionMessageId || CURRENT_MESSAGE_ID);
   if (current && roster && answeredNameQuestions(nameQuestionView(context, roster)).some((asked) => asked.latest)) return { ok: false, reason: "answer_to_name_question" };
   return check;
+}
+
+/** The card on screen is this person's card on this form (by roster id, else by name). */
+function sameCardOnScreen(onScreen: CardRecord | null | undefined, templateKey: string, employee: { readonly id?: string | null; readonly name: string }): boolean {
+  return Boolean(onScreen && onScreen.templateKey === templateKey && ((employee.id && onScreen.employeeKey === personKey(employee.id)) || onScreen.nameKey === personKey(employee.name)));
 }
 
 /** The card record's account key (QA, c163; PR 1c): the account as the model gave it and the incident date it gave, if any. */
@@ -706,6 +718,8 @@ export interface ToolEffects {
   nameLines?: Record<string, string>;
   /** Fix batch item 6: propose_form asked who this form is for (no person yet), for the record. */
   personAsked?: { templateKey: string };
+  /** QA (#1055's follow-up): this turn's tools offered the exit form for this person (the exit_offer record). */
+  exitOffered?: { employeeId: string | null; name: string };
   /** find_staff ran this turn: a person was named, so a card without one is not "nobody named" (item 6). */
   staffLookedUp?: boolean;
   /** Fix batch items 4 and 3: this turn's last "Did you mean" (the roster ids offered, the name typed), for the record. */
@@ -1312,12 +1326,18 @@ async function findFormsInPeriod(context: ToolContext, input: { form?: unknown; 
   if (actor === undefined) return { reason_code: "read_failed", error: "Form Monitoring could not be read just now. Say so; do not say there are no forms." };
   if (actor === null) return { reason_code: "scope", error: "This manager's role cannot view Form Monitoring, so past forms cannot be listed." };
   try {
-    const rows = visibleInstances(actor, await listInstances("all", PERIOD_LIST_LIMIT, {
+    const read = await listInstances("all", PERIOD_LIST_LIMIT, {
       ...instanceListFilterFor(actor),
       ...(range ? { formDateFrom: range.from, formDateTo: range.to } : {}),
       ...(kind ? { templateNameWords: kind.templateNameWords } : {}),
-    })).slice(0, PERIOD_LIST_LIMIT);
-    const complete = rows.length < PERIOD_LIST_LIMIT;
+    });
+    /* QA's code audit (item 28): a Coaching kind never keeps a Follow-Up Coaching Form (`ofKind`). */
+    const rows = ofKind(visibleInstances(actor, read), kind).slice(0, PERIOD_LIST_LIMIT);
+    /*
+     * QA's code audit (item 29): complete only when the DATABASE returned fewer rows than it was asked for. Counting the
+     * rows left after the visibility filter called a cut-off list complete (100 read, 60 visible, "every such form").
+     */
+    const complete = read.length < PERIOD_LIST_LIMIT;
     return {
       period: range ? { from: range.from, to: range.to } : null,
       form_kind: kind?.label ?? null,
@@ -1415,9 +1435,11 @@ export async function findPastForms(context: ToolContext, input: { employee_name
     const today = context.today || businessToday();
     const wantForm = typeof input.form === "string" ? input.form.toLowerCase() : "";
     if (wantForm) {
-      const coaching = /coach/.test(wantForm);
+      /* QA's code audit (item 28): a coaching ask never keeps a Follow-Up Coaching Form, and a follow-up ask keeps only those. */
+      const followUp = /follow/.test(wantForm);
+      const coaching = /coach/.test(wantForm) && !followUp;
       const ca = /\bca\b|corrective|write[- ]?up|warning|verbal|written/.test(wantForm);
-      const narrowed = rows.filter((row) => (coaching ? /coach/i.test(row.templateName) : true) && (ca ? /corrective/i.test(row.templateName) || row.templateKey === appConfig().formKeys.corrective : true));
+      const narrowed = rows.filter((row) => (followUp ? /follow/i.test(row.templateName) : true) && (coaching ? /coach/i.test(row.templateName) && !/follow/i.test(row.templateName) : true) && (ca ? /corrective/i.test(row.templateName) || row.templateKey === appConfig().formKeys.corrective : true));
       if (narrowed.length > 0) rows = narrowed;
     }
     const iso = typeof input.date === "string" ? isoDate(input.date, today) : null;
@@ -2954,12 +2976,21 @@ export async function proposeForm(
      */
     const kind = exitEvidenceKind(input.exit_evidence);
     const offer = `Want the ${template.name} for **${employee.name}**?`;
+    /* #1055's follow-up: each refusal below offers the exit form, recorded for the next turn's yes (exit_offer). */
+    const offered = { employeeId: employee.id ?? null, name: employee.name };
     if (kind === "resignation_told") {
+      if (effects) effects.exitOffered = offered;
       return { exit_not_asked: true, reason_code: "exit_not_asked", ask_exactly: offer, note: "The manager told a resignation but did not ask for the exit form. Make no card: say what you understood in a few words and end the reply with ask_exactly. Propose the exit card only when they say yes (exit_evidence kind yes_to_exit_offer)." };
     }
-    /* A yes to the offer is this message, answering the app reply right before it. */
-    const answersOffer = kind === "yes_to_exit_offer" && check.ok && check.turn.index === turns.length - 1 && turns[turns.length - 2]?.role === "assistant";
+    /*
+     * A yes to the offer is this message, answering the reply right before it, AND that reply's tools offered the exit
+     * form for this person (its exit_offer record; #1055's follow-up). Turn order alone never makes a yes an exit ask.
+     */
+    const offerRecord = context.exitOffered ?? null;
+    const offeredThisPerson = Boolean(offerRecord && ((employee.id && offerRecord.employeeKey === personKey(employee.id)) || offerRecord.nameKey === personKey(employee.name)));
+    const answersOffer = kind === "yes_to_exit_offer" && check.ok && check.turn.index === turns.length - 1 && turns[turns.length - 2]?.role === "assistant" && offeredThisPerson;
     if (kind !== "asks_for_exit_form" && !answersOffer) {
+      if (effects) effects.exitOffered = offered;
       return { exit_not_stated: true, reason_code: "exit_not_stated", evidence: kind === null ? "exit_kind_missing" : "exit_offer_not_answered", ask_exactly: offer, note: "exit_evidence needs its kind: asks_for_exit_form (the manager's words ask for the exit form or its paperwork), yes_to_exit_offer (this message says yes to your offer of it, right after you asked), or resignation_told (a resignation told, no ask: make no card and end the reply with ask_exactly)." };
     }
   }
@@ -3203,6 +3234,13 @@ export async function proposeForm(
    * another template, whatever the conversation said for the CA (code may refuse; the fact says what was dropped).
    */
   const caOnlyFields = template.key === appConfig().formKeys.corrective;
+  /*
+   * QA item 16 (20 Nov 2026; the production audit's exit form: "Payroll deduct isn't part of the exit form"): payroll is on
+   * every form whose own template asks it (the Corrective Action's payroll deduct, the exit form's "Is Payroll Deduction
+   * applicable?"), read from the template document's field keys, never from a list of forms. The level and the termination
+   * stay Corrective Action only.
+   */
+  const payrollFields = caOnlyFields || [...documentFieldKeys(template.currentVersion?.document)].some((fieldKey) => /^payroll_deduct/.test(fieldKey));
   const askedPayroll = (input.payroll_deduct === "yes" || input.payroll_deduct === "no") ? input.payroll_deduct : null;
   /*
    * QA (16 Nov 2026, the Runner's live set on 1a53042: "and payroll"): payroll stated in the message that asked for THIS
@@ -3210,7 +3248,7 @@ export async function proposeForm(
    * (c158), a corrected card's request under its earlier name included. A later answer still belongs only to the card it
    * answered (QA's PR 1c: an older "yes" never reaches "another ca for <name>").
    */
-  const payrollCheck = caOnlyFields && askedPayroll
+  const payrollCheck = payrollFields && askedPayroll
     ? (() => {
         const byCard = notTheOfferAnswer(answerEvidence(context, input.payroll_evidence, { card: employee.name, aliases }, evidencePerson), context, evidencePerson.roster);
         if (byCard.ok || !requestStart) return byCard;
@@ -3222,7 +3260,7 @@ export async function proposeForm(
   const typedAmount = typeof input.payroll_amount === "string" && /\d/.test(input.payroll_amount) ? input.payroll_amount.replace(/[^\d.]/g, "") : null;
   /* The amount the manager stated, read as today reads it (`payrollAmountFromConversation`) when the model left it out. */
   const statedAmount = payroll === "yes" ? payrollAmountFromConversation(conversationTurns(context), { payrollAnswer: "yes" })?.replace(/[^\d.]/g, "") ?? null : null;
-  let amount = caOnlyFields && typedAmount && managerWords.replace(/[^\d.]/g, " ").split(/\s+/).some((n) => n !== "" && Number(n) === Number(typedAmount)) ? typedAmount : null;
+  let amount = payrollFields && typedAmount && managerWords.replace(/[^\d.]/g, " ").split(/\s+/).some((n) => n !== "" && Number(n) === Number(typedAmount)) ? typedAmount : null;
   const today = context.today || businessToday();
   let date = typeof input.incident_date === "string" && DATE.test(input.incident_date.trim()) ? input.incident_date.trim() : null;
   /* Several incident dates and the latest message does not pick one: the date waits, and the card asks (today's rule). */
@@ -3322,7 +3360,16 @@ export async function proposeForm(
   const carriedRecord = samePersonOnScreen
     ? ([...(context.cardRecords ?? [])].reverse().find((record) => isThisCard(record) && inRequest(record) && record.level) ?? (isThisCard(context.cardOnScreen) ? context.cardOnScreen : null))
     : null;
-  const carriedLevel = caOnlyFields && !asksNewForm ? (carriedRecord?.level ?? null) : null;
+  /*
+   * QA (20 Nov 2026; Runner 2's c263): "Write me a CA form for <A> having a black crewneck on … on 11/13 and 11/6" after
+   * "Please create a CA written warning for <A> for being out of dresscode on 11/13" was the SAME CA asked again with more
+   * detail; the model's new_form_evidence started it fresh and Written was lost. A new request keeps the level only when
+   * it is that same card asked again: this person's card on this form is on screen and THIS message states its incident
+   * date again. Another date ("another ca …, late on 11/14"), or none, still starts fresh.
+   */
+  const screenDate = sameCardOnScreen(context.cardOnScreen, template.key, employee) ? context.cardOnScreen!.incidentDate ?? null : null;
+  const sameIncidentAskedAgain = asksNewForm && screenDate !== null && latestDates.some((given) => monthDayToIso(given, today) === screenDate);
+  const carriedLevel = caOnlyFields && (!asksNewForm || sameIncidentAskedAgain) ? (carriedRecord?.level ?? null) : null;
   const level = askedLevel && levelCheck?.ok ? askedLevel : carriedLevel;
   /*
    * Fix batch item 7 (QA's targeted re-run, c163: a bare "yes" after "Payroll deduct and warning level aren't set" set
@@ -3368,7 +3415,7 @@ export async function proposeForm(
   /* The key holds the incident date the model gave too: "another ca …, late on 11/14" after a card for 11/12 with the same words is another incident (PR 1c). */
   const sameCardKept = !context.openFormId && isThisCard(context.earlierCard) && Boolean(context.earlierCard.accountKey && modelAccount && context.earlierCard.accountKey === cardAccountKey(modelAccount, input.incident_date));
   const openCard = isThisCard(context.cardOnScreen) ? context.cardOnScreen : sameCardKept ? context.earlierCard : null;
-  const payrollRecord = caOnlyFields && !asksNewForm && openCard?.payroll ? openCard : null;
+  const payrollRecord = payrollFields && !asksNewForm && openCard?.payroll ? openCard : null;
   if (payroll === null && !answerUnclear && payrollRecord?.payroll) {
     payroll = payrollRecord.payroll;
     if (payroll === "yes" && !amount && payrollRecord.payrollAmount) amount = payrollRecord.payrollAmount;
@@ -3405,6 +3452,17 @@ export async function proposeForm(
    */
   const priorActionsRefused = askedPriorActions ? priorActionsProblem(askedPriorActions, requestWords, date) : null;
   const priorActions = priorActionsRefused ? null : askedPriorActions;
+  /*
+   * QA's production audit (20 Nov 2026): "I need a verbal CA wrote up for <A>. I need the JBA policy for dress code
+   * enclosed. can you also site the coaching that was done on 11/3" put 11/3, the prior coaching's date, on the card as
+   * its form date. A date the prior actions hold (as read from the manager's words, or as the model listed them) is never
+   * the form date, the model's or the fallback reading's, unless the manager also gives it as an incident date.
+   */
+  const priorDates = new Set([...statedSteps, askedPriorActions ?? ""].flatMap((line) => readDates(line)).map((read) => monthDayToIso(`${read.month}/${read.day}`, today)));
+  const incidentIsos = new Set(datesGiven.map((given) => monthDayToIso(given, today)));
+  const isPriorDate = (iso: string | null | undefined) => Boolean(iso && priorDates.has(iso) && !incidentIsos.has(iso));
+  const dateIsPriorAction = isPriorDate(date);
+  if (dateIsPriorAction) date = null;
   /*
    * THE COACHING TOPIC (QA, 17 Nov 2026; the tester's coaching form saved "Coaching for <name> on greeting guests at the
    * door" as Other's topic). A coaching card carries the topic the model names, kept only when its evidence is a manager
@@ -3535,14 +3593,14 @@ export async function proposeForm(
    * Act and state the assumption (Pau, 14 Nov 2026): no date in the manager's words, so the card is dated today, and
    * the reply says so in one line the manager can correct.
    */
-  const datedToday = ACCOUNT_FORMS.has(template.key) && !awaiting && !date && datesGiven.length === 0 && !ACCOUNT_WHEN.test(requestWords) && readDates(requestWords).length === 0;
+  const datedToday = ACCOUNT_FORMS.has(template.key) && !awaiting && !date && datesGiven.length === 0 && !ACCOUNT_WHEN.test(requestWords) && readDates(requestWords).every((read) => isPriorDate(monthDayToIso(`${read.month}/${read.day}`, today)));
   ACCOUNT_WHEN.lastIndex = 0;
   /* Batch E (E12): a date after today is never on the card, the model's or today's reading (the field is refused; the fact says so). */
   const futureDate = dateAfterToday ?? (incidentForm && !date && proposal.formDate && proposal.formDate > today ? proposal.formDate : null);
   const card: ChatFormProposal = {
     ...proposal,
     sourceMessageIds: requestIds,
-    formDate: exitTermination ? exitTermination.date : datesAsked.length > 0 || futureDate ? null : date ?? (fromAnotherRequest(proposal.formDate) ? null : proposal.formDate) ?? null,
+    formDate: exitTermination ? exitTermination.date : datesAsked.length > 0 || futureDate ? null : date ?? (fromAnotherRequest(proposal.formDate) || isPriorDate(proposal.formDate) ? null : proposal.formDate) ?? null,
     fromAgentLoop: true as const,
     ...(level ? { warningLevel: level } : loopTermination ? { loopTermination: true as const } : {}),
     ...(whatHappened ? { issue: whatHappened } : {}),
@@ -3669,7 +3727,13 @@ export async function proposeForm(
   const levelNotGiven = namedOptions.length === 1 ? namedOptions[0]! : null;
   const unset = corrective && !awaiting ? [...(payroll ? [] : ["payroll_deduct"]), ...(level || terminationStated ? [] : ["warning_level"])] : [];
   /* What this card's reply asks (the next turn's card record). After an unclear answer it still asks both (E r2). */
-  effects.proposalAsked = unset;
+  /*
+   * #1055's follow-up (QA, 20 Nov 2026): a card that asks which date (several dates, none chosen) records "form_date" in
+   * its asked fields, so a later turn knows the date was asked (dates_asked_before) from the record, never the reply.
+   */
+  effects.proposalAsked = [...unset, ...(datesAsked.length > 0 ? ["form_date"] : [])];
+  /* A termination card: the rules book offers the exit form after it; recorded for the next turn's yes (exit_offer). */
+  if (loopTermination) effects.exitOffered = { employeeId: employee.id ?? null, name: employee.name };
   effects.proposalLevel = level;
   effects.proposalPayroll = payroll;
   effects.proposalPayrollAmount = payroll === "yes" ? amount : null;
@@ -3721,8 +3785,11 @@ export async function proposeForm(
     /* AMOUNT_UNKNOWN_ACK (batch H1): "I don't know the amount" leaves it blank for the manager, said once, never asked again. */
     ...(corrective && payroll === "yes" && !amount ? (saysAmountUnknown(context.question, context.history, { amountOpen: true }) ? { payroll_amount_unknown: true } : { payroll_amount_unset: true }) : {}),
     ...(datesGiven.length > 1 ? { dates_given: datesGiven, ...(date ? { date_chosen: date } : {}) } : {}),
-    /* Batch G (G16): this chat already asked which date; a second ask is never made (the rules book: use the best reading). */
-    ...(datesGiven.length > 1 && context.history.some((message) => message.role === "assistant" && /more than one date|which date goes on the form/i.test(String(message.content))) ? { dates_asked_before: true } : {}),
+    /*
+     * Batch G (G16): this chat already asked which date; a second ask is never made (the rules book: use the best reading).
+     * #1055's follow-up (QA, 20 Nov 2026): known from the card records ("form_date" asked), never by reading the replies.
+     */
+    ...(datesGiven.length > 1 && (context.cardRecords ?? []).some((record) => record.asked.includes("form_date")) ? { dates_asked_before: true } : {}),
     ...(accountLost.length > 0 ? { account_words_missing: accountLost } : {}),
     /* PR 6: an exit card with no account at all. A fact: the model puts the manager's own account in what_happened, or leaves it. */
     ...(exitForm && !whatHappened ? { account_not_given: { note: "This exit card has no account. If the manager said how or when they left (\"resigned by text\", their last day), propose the card again with all of it in what_happened, in their own words." } } : {}),
@@ -3800,12 +3867,13 @@ export async function proposeForm(
     ...(policyNotForThisCard ? [{ field: "policy", reason_code: "policy_not_for_this_card" }] : []),
     ...((modelLevel && level !== modelLevel) ? [{ field: "warning_level", reason_code: caOnlyFields ? "level_not_stated" : "not_on_this_form" }] : []),
     ...((askedTermination && !loopTermination) ? [{ field: "warning_level", reason_code: "termination_not_stated" }] : []),
-    ...((askedPayroll && !payroll) ? [{ field: "payroll_deduct", reason_code: caOnlyFields ? "payroll_not_stated" : "not_on_this_form" }] : []),
-    ...((typedAmount && !amount) ? [{ field: "payroll_amount", reason_code: caOnlyFields ? "amount_not_stated" : "not_on_this_form" }] : []),
+    ...((askedPayroll && !payroll) ? [{ field: "payroll_deduct", reason_code: payrollFields ? "payroll_not_stated" : "not_on_this_form" }] : []),
+    ...((typedAmount && !amount) ? [{ field: "payroll_amount", reason_code: payrollFields ? "amount_not_stated" : "not_on_this_form" }] : []),
     ...((askedExitTermination && !exitTermination) ? [{ field: "exit_type", reason_code: "termination_not_stated" }] : []),
     ...(priorActionsRefused ? [{ field: "prior_actions", reason_code: "prior_actions_not_kept" }] : []),
     ...(futureDate ? [{ field: "form_date", reason_code: "date_after_today" }] : []),
     ...(datesAsked.length > 0 ? [{ field: "form_date", reason_code: "several_dates_not_chosen" }] : []),
+    ...(dateIsPriorAction ? [{ field: "form_date", reason_code: "date_is_prior_action" }] : []),
   ];
   return {
     ...(modelLevel && level !== modelLevel && levelCheck && !levelCheck.ok ? { reason_code: "level_not_stated", level_evidence: levelCheck.reason } : askedPayroll && !payroll && payrollCheck && !payrollCheck.ok ? { reason_code: "payroll_not_stated" } : {}),
