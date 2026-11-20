@@ -3453,6 +3453,17 @@ export async function proposeForm(
   const priorActionsRefused = askedPriorActions ? priorActionsProblem(askedPriorActions, requestWords, date) : null;
   const priorActions = priorActionsRefused ? null : askedPriorActions;
   /*
+   * QA's production audit (20 Nov 2026): "I need a verbal CA wrote up for <A>. I need the JBA policy for dress code
+   * enclosed. can you also site the coaching that was done on 11/3" put 11/3, the prior coaching's date, on the card as
+   * its form date. A date the prior actions hold (as read from the manager's words, or as the model listed them) is never
+   * the form date, the model's or the fallback reading's, unless the manager also gives it as an incident date.
+   */
+  const priorDates = new Set([...statedSteps, askedPriorActions ?? ""].flatMap((line) => readDates(line)).map((read) => monthDayToIso(`${read.month}/${read.day}`, today)));
+  const incidentIsos = new Set(datesGiven.map((given) => monthDayToIso(given, today)));
+  const isPriorDate = (iso: string | null | undefined) => Boolean(iso && priorDates.has(iso) && !incidentIsos.has(iso));
+  const dateIsPriorAction = isPriorDate(date);
+  if (dateIsPriorAction) date = null;
+  /*
    * THE COACHING TOPIC (QA, 17 Nov 2026; the tester's coaching form saved "Coaching for <name> on greeting guests at the
    * door" as Other's topic). A coaching card carries the topic the model names, kept only when its evidence is a manager
    * message of this request whose quote holds every word of it, and it does not hold the person's name. Create sends it,
@@ -3582,14 +3593,14 @@ export async function proposeForm(
    * Act and state the assumption (Pau, 14 Nov 2026): no date in the manager's words, so the card is dated today, and
    * the reply says so in one line the manager can correct.
    */
-  const datedToday = ACCOUNT_FORMS.has(template.key) && !awaiting && !date && datesGiven.length === 0 && !ACCOUNT_WHEN.test(requestWords) && readDates(requestWords).length === 0;
+  const datedToday = ACCOUNT_FORMS.has(template.key) && !awaiting && !date && datesGiven.length === 0 && !ACCOUNT_WHEN.test(requestWords) && readDates(requestWords).every((read) => isPriorDate(monthDayToIso(`${read.month}/${read.day}`, today)));
   ACCOUNT_WHEN.lastIndex = 0;
   /* Batch E (E12): a date after today is never on the card, the model's or today's reading (the field is refused; the fact says so). */
   const futureDate = dateAfterToday ?? (incidentForm && !date && proposal.formDate && proposal.formDate > today ? proposal.formDate : null);
   const card: ChatFormProposal = {
     ...proposal,
     sourceMessageIds: requestIds,
-    formDate: exitTermination ? exitTermination.date : datesAsked.length > 0 || futureDate ? null : date ?? (fromAnotherRequest(proposal.formDate) ? null : proposal.formDate) ?? null,
+    formDate: exitTermination ? exitTermination.date : datesAsked.length > 0 || futureDate ? null : date ?? (fromAnotherRequest(proposal.formDate) || isPriorDate(proposal.formDate) ? null : proposal.formDate) ?? null,
     fromAgentLoop: true as const,
     ...(level ? { warningLevel: level } : loopTermination ? { loopTermination: true as const } : {}),
     ...(whatHappened ? { issue: whatHappened } : {}),
@@ -3862,6 +3873,7 @@ export async function proposeForm(
     ...(priorActionsRefused ? [{ field: "prior_actions", reason_code: "prior_actions_not_kept" }] : []),
     ...(futureDate ? [{ field: "form_date", reason_code: "date_after_today" }] : []),
     ...(datesAsked.length > 0 ? [{ field: "form_date", reason_code: "several_dates_not_chosen" }] : []),
+    ...(dateIsPriorAction ? [{ field: "form_date", reason_code: "date_is_prior_action" }] : []),
   ];
   return {
     ...(modelLevel && level !== modelLevel && levelCheck && !levelCheck.ok ? { reason_code: "level_not_stated", level_evidence: levelCheck.reason } : askedPayroll && !payroll && payrollCheck && !payrollCheck.ok ? { reason_code: "payroll_not_stated" } : {}),
