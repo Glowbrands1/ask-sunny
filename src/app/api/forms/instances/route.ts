@@ -57,7 +57,9 @@ import type { SameChat } from "@/lib/forms/draft-same-chat";
 import { authorizeLocation } from "@/lib/forms/location-scope";
 import { TERMINATION_OPTION, statesTermination } from "@/lib/forms/termination-stated";
 import { saysTerminationWord } from "@/lib/forms/termination-word";
-import { EXIT_DETAIL_FIELDS, EXIT_OPTION, EXIT_TYPE_GROUP } from "@/lib/forms/exit-library";
+import { EXIT_DETAIL_FIELDS, EXIT_OPTION, EXIT_TEMPLATE_KEY, EXIT_TYPE_GROUP } from "@/lib/forms/exit-library";
+/** The exit form's Additional Details line (`exit-library.ts`). */
+const EXIT_ADDITIONAL_DETAILS_KEY = "details";
 /** QA item 17: the exit form's own payroll question (`exit-library.ts`, EXIT_YES_NO_QUESTIONS). */
 const EXIT_PAYROLL_KEY = "payroll_deduction_applicable";
 import { terminationStatedTicksEnabled } from "@/lib/config/chat-quality-flags";
@@ -415,13 +417,20 @@ export async function POST(request: Request) {
       if (fromAgentLoop && card.templateKey !== "dpoa") {
         const exitStated: { values: Record<string, string>; checked: Record<string, string[]> } = { values: {}, checked: {} };
         if (isPayrollDeductAnswer(card.payrollDeduct)) exitStated.checked[EXIT_PAYROLL_KEY] = [card.payrollDeduct];
+        const account = typeof card.loopAccount === "string" ? card.loopAccount.trim().slice(0, 2_000) : "";
         if (card.warningLevel === "termination" && saysTerminationWord(userTurns)) {
-          const account = typeof card.loopAccount === "string" ? card.loopAccount.trim().slice(0, 2_000) : "";
           exitStated.checked[EXIT_TYPE_GROUP] = [EXIT_OPTION.immediateInvoluntary];
           if (account) exitStated.values[EXIT_DETAIL_FIELDS.resignationReason] = account;
+        } else if (account && card.templateKey === EXIT_TEMPLATE_KEY) {
+          /*
+           * QA (20 Nov 2026, #1138's live test: "final paycheck should deduct the uniform cost"): the exit form has no line
+           * for a payroll amount or its reason, so the card's account (the manager's words, the uniform cost and any amount
+           * in it) is the form's Additional Details, as their statement (the draft never replaces it).
+           */
+          exitStated.values[EXIT_ADDITIONAL_DETAILS_KEY] = account;
         }
-        if (Object.keys(exitStated.checked).length > 0) {
-          await applyStatedFacts(instanceId, exitStated, actor.id, new Set([EXIT_PAYROLL_KEY, EXIT_TYPE_GROUP, EXIT_DETAIL_FIELDS.resignationReason]));
+        if (Object.keys(exitStated.checked).length > 0 || Object.keys(exitStated.values).length > 0) {
+          await applyStatedFacts(instanceId, exitStated, actor.id, new Set([EXIT_PAYROLL_KEY, EXIT_TYPE_GROUP, EXIT_DETAIL_FIELDS.resignationReason, EXIT_ADDITIONAL_DETAILS_KEY]));
         }
       }
     }

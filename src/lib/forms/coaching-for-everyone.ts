@@ -143,6 +143,8 @@ type TurnInput = {
   activeInstanceId?: string;
   /** The agent loop's record: its last reply asked this draft's "create all" confirmation. */
   confirmationAsked?: boolean;
+  /** Called once for each draft saved (QA's audit, item 14b: the agent loop's reply never says nothing was saved over one). */
+  onCreated?: () => void;
 };
 
 /**
@@ -258,6 +260,7 @@ async function everyoneTurn(input: TurnInput): Promise<AskResponse | null> {
     const target = await loadInstance(created.id);
     if (!target) throw new Error("its draft could not be read back");
     if (created.reused && hasContent(target)) return "already";
+    input.onCreated?.();
     const written = await copyFormContent({ source, target, actorId: actor.id });
     if (Object.keys(written.values).length === 0 && Object.keys(written.checked).length === 0) throw new Error("the Details could not be written on its draft");
     return "made";

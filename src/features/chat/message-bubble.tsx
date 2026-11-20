@@ -29,6 +29,8 @@ import { logTurnEvent } from "@/lib/analytics/telemetry";
 import { reusedDraftNotice } from "@/lib/forms/reused-draft-notice";
 
 import { DRAFT_FAILED_WARNING, createAnswerLimited, createFailureMessage, createInlineForm } from "./create-inline-form";
+import { sendClientFormEvent } from "./client-form-telemetry";
+import { createFailureKind } from "@/lib/analytics/client-form-events";
 import { InlineForm, type PrefillState } from "./inline-form";
 import { FormRevisionsMount } from "@/form-revisions/form-revisions-mount";
 
@@ -495,7 +497,16 @@ function FormProposalCard({
   }, []);
 
   async function create() {
-    if (inFlight.current || superseded) return;
+    /*
+     * f073: every press reaches the server log (`client-form-telemetry.ts`): the click, whether it started anything
+     * and why not, the create leaving, and how it ended. Ids and timings only.
+     */
+    const clickedAt = performance.now();
+    const proposalId = proposal.proposalId;
+    const elapsed = () => Math.round(performance.now() - clickedAt);
+    const ignored = inFlight.current ? "in_flight" : superseded ? "superseded" : null;
+    sendClientFormEvent({ event: "form.create.clicked", proposalId, ...(ignored ? { ignored } : {}) });
+    if (ignored) return;
     inFlight.current = true;
     setCreating(true);
     setProblem(null);
@@ -509,6 +520,8 @@ function FormProposalCard({
     let rowExists = false;
 
     try {
+      // The create POST starts synchronously inside `createInlineForm`.
+      sendClientFormEvent({ event: "form.create.sent", proposalId, elapsedMs: 0 });
       const result = await createInlineForm({
         proposal: salon ? { ...proposal, locationId: salon } : proposal,
         messages: conversation,
@@ -523,6 +536,7 @@ function FormProposalCard({
          */
         onCreated: (reference) => {
           rowExists = true;
+          sendClientFormEvent({ event: "form.create.answered", proposalId, elapsedMs: elapsed() });
           setCreated(reference);
           onCreated(reference);
           /*
@@ -556,6 +570,7 @@ function FormProposalCard({
           : { kind: "complete", ...(result.draftNotice ? { notice: result.draftNotice } : {}) },
       );
     } catch (error) {
+      if (!rowExists) sendClientFormEvent({ event: "form.create.failed", proposalId, elapsedMs: elapsed(), failure: createFailureKind(error) });
       const message = createFailureMessage(error);
       setProblem(message);
       /*

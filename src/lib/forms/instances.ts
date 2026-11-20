@@ -256,11 +256,18 @@ export async function listInstances(
   const dateFrom = isoDay(filter?.formDateFrom);
   const dateTo = isoDay(filter?.formDateTo);
 
+  /*
+   * QA's f072 (20 Nov 2026): "lucia ramirez" never found a form stored as "Lucía Ramírez": ilike compares the letters as
+   * stored. The overview's employee_name_folded (lower(unaccent(employee_name)), migration 20261120002000) is matched as
+   * well. Until that migration is applied, a read that names the missing column is read again as before.
+   */
+  let foldedColumn = true;
   /** The view and name filters, applied identically to every read below. */
   function scoped() {
     let query = supabase.from("form_instance_overview").select("*");
     if (nameWords.length > 0) {
-      query = query.or(nameWords.map((word) => `employee_name.ilike.*${word}*`).join(","));
+      const columns = foldedColumn ? ["employee_name", "employee_name_folded"] : ["employee_name"];
+      query = query.or(columns.flatMap((column) => nameWords.map((word) => `${column}.ilike.*${word}*`)).join(","));
     }
     if (templateWords.length > 0) {
       query = query.or(templateWords.map((word) => `template_name.ilike.*${word}*`).join(","));
@@ -274,76 +281,90 @@ export async function listInstances(
     return query;
   }
 
-  /* Unrestricted: global actors and preview. One ordered, bounded read. */
-  if (!filter || filter.locationIds === undefined) {
-    const { data, error } = await scoped()
-      .order("created_at", { ascending: false })
-      .limit(limit);
-    if (error) throw new Error(`Could not read form history: ${error.message}`);
-    return (data ?? []).map(mapInstance);
-  }
-
-  /*
-   * TWO BOUNDED READS, MERGED SERVER-SIDE.
-   *
-   * Each is ordered and limited independently, so at most `2 * limit` rows are
-   * ever read — the top `limit` of the union is always contained in the union
-   * of the two tops. Neither is a company-wide scan, and nothing extra reaches
-   * the browser: the merge is limited again before it is returned.
-   *
-   * The salon query is SKIPPED ENTIRELY on an empty id list rather than issued
-   * as `in.()`, which PostgREST does not accept — and which would be an odd way
-   * to express "nothing qualifies" even if it did.
-   */
-  const reads = [];
-
-  if (filter.locationIds.length > 0) {
-    reads.push(
-      scoped()
-        .in("location_id", filter.locationIds)
+  async function readAll(): Promise<InstanceRow[]> {
+    /* Unrestricted: global actors and preview. One ordered, bounded read. */
+    if (!filter || filter.locationIds === undefined) {
+      const { data, error } = await scoped()
         .order("created_at", { ascending: false })
-        .limit(limit),
-    );
-  }
-
-  if (filter.ownNullLocationCreatedBy) {
-    reads.push(
-      scoped()
-        .is("location_id", null)
-        .eq("created_by", filter.ownNullLocationCreatedBy)
-        .order("created_at", { ascending: false })
-        .limit(limit),
-    );
-  }
-
-  if (filter.ownCreatedBy) {
-    reads.push(
-      scoped()
-        .not("location_id", "is", null)
-        .eq("created_by", filter.ownCreatedBy)
-        .order("created_at", { ascending: false })
-        .limit(limit),
-    );
-  }
-
-  if (reads.length === 0) return [];
-
-  const results = await Promise.all(reads);
-
-  // Merge, de-duplicate (a row cannot match both predicates, but the union is
-  // written to be correct rather than to rely on that), sort, then bound.
-  const byId = new Map<string, InstanceRow>();
-  for (const result of results) {
-    if (result.error) throw new Error(`Could not read form history: ${result.error.message}`);
-    for (const row of result.data ?? []) {
-      const mapped = mapInstance(row as Record<string, unknown>);
-      byId.set(mapped.id, mapped);
+        .limit(limit);
+      if (error) throw new Error(`Could not read form history: ${error.message}`);
+      return (data ?? []).map(mapInstance);
     }
+
+    /*
+     * TWO BOUNDED READS, MERGED SERVER-SIDE.
+     *
+     * Each is ordered and limited independently, so at most `2 * limit` rows are
+     * ever read — the top `limit` of the union is always contained in the union
+     * of the two tops. Neither is a company-wide scan, and nothing extra reaches
+     * the browser: the merge is limited again before it is returned.
+     *
+     * The salon query is SKIPPED ENTIRELY on an empty id list rather than issued
+     * as `in.()`, which PostgREST does not accept — and which would be an odd way
+     * to express "nothing qualifies" even if it did.
+     */
+    const reads = [];
+
+    if (filter.locationIds.length > 0) {
+      reads.push(
+        scoped()
+          .in("location_id", filter.locationIds)
+          .order("created_at", { ascending: false })
+          .limit(limit),
+      );
+    }
+
+    if (filter.ownNullLocationCreatedBy) {
+      reads.push(
+        scoped()
+          .is("location_id", null)
+          .eq("created_by", filter.ownNullLocationCreatedBy)
+          .order("created_at", { ascending: false })
+          .limit(limit),
+      );
+    }
+
+    if (filter.ownCreatedBy) {
+      reads.push(
+        scoped()
+          .not("location_id", "is", null)
+          .eq("created_by", filter.ownCreatedBy)
+          .order("created_at", { ascending: false })
+          .limit(limit),
+      );
+    }
+
+    if (reads.length === 0) return [];
+
+    const results = await Promise.all(reads);
+
+    // Merge, de-duplicate (a row cannot match both predicates, but the union is
+    // written to be correct rather than to rely on that), sort, then bound.
+    const byId = new Map<string, InstanceRow>();
+    for (const result of results) {
+      if (result.error) throw new Error(`Could not read form history: ${result.error.message}`);
+      for (const row of result.data ?? []) {
+        const mapped = mapInstance(row as Record<string, unknown>);
+        byId.set(mapped.id, mapped);
+      }
+    }
+
+    return [...byId.values()]
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0))
+      .slice(0, limit);
+
   }
 
-  return [...byId.values()]
-    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0))
-    .slice(0, limit);
+  try {
+    return await readAll();
+  } catch (error) {
+    /* Before migration 20261120002000 is applied, the folded column is missing: read again by the stored name only. */
+    if (foldedColumn && nameWords.length > 0 && String(error).includes("employee_name_folded")) {
+      foldedColumn = false;
+      return readAll();
+    }
+    throw error;
+  }
 }
 
 export interface LoadedInstance {
