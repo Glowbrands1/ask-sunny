@@ -115,7 +115,7 @@ export async function createInlineForm({
    * docs/chat-phase-3.md. A validated id with no name is honest; a validated id
    * with a demo name beside it is not.
    */
-  const created = await call<{ instance: { id: string }; reused?: boolean; reusedFrom?: string }>("/api/forms/instances", {
+  const created = await call<{ instance: { id: string }; reused?: boolean; reusedFrom?: string; followUpNotice?: unknown }>("/api/forms/instances", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
@@ -161,6 +161,11 @@ export async function createInlineForm({
        */
       ...(proposal.warningLevel ? { warningLevel: proposal.warningLevel } : proposal.loopTermination ? { warningLevel: "termination" } : {}),
       ...(proposal.fromAgentLoop ? { fromAgentLoop: true } : {}),
+      /*
+       * QA item 17 (20 Nov 2026): a loop termination's account, so an exit form's reason line is the manager's account
+       * (the loop checked it against their words). Create writes it only on a form that has that line.
+       */
+      ...(proposal.fromAgentLoop && proposal.loopTermination && proposal.issue ? { loopAccount: proposal.issue } : {}),
       locationId: proposal.locationId,
       source: "ask_sunny",
       /* The card's own id: a second press of it returns the draft it already made. */
@@ -234,12 +239,17 @@ export async function createInlineForm({
       : draftNotesAreUsable(fromTurns) || !remapDraftSourcesClientEnabled()
         ? fromTurns
         : draftNotesFromCard(proposal);
+  /*
+   * Pau (20 Nov 2026): the follow-up date Create set on a loop's Corrective Action, said on the card ("Follow-up: Fri,
+   * Nov 27 (change it anytime)."). The drafting route says it for any other form whose Action Plan promised one.
+   */
+  const createdFollowUp = typeof created.followUpNotice === "string" && created.followUpNotice.trim() !== "" ? created.followUpNotice : null;
   if (!draftNotesAreUsable(notes)) {
-    return { reference, draftWarning: NO_NOTES_WARNING };
+    return { reference, draftWarning: NO_NOTES_WARNING, ...(createdFollowUp ? { draftNotice: createdFollowUp } : {}) };
   }
 
   try {
-    const drafted = await call<{ notice?: unknown }>(`/api/forms/instances/${reference.instanceId}/draft`, {
+    const drafted = await call<{ notice?: unknown; followUpNotice?: unknown }>(`/api/forms/instances/${reference.instanceId}/draft`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -264,9 +274,11 @@ export async function createInlineForm({
       }),
     });
     const notice = typeof drafted?.notice === "string" && drafted.notice.trim() !== "" ? drafted.notice : null;
-    return { reference, draftWarning: null, draftNotice: notice };
+    const draftedFollowUp = typeof drafted?.followUpNotice === "string" && drafted.followUpNotice.trim() !== "" ? drafted.followUpNotice : null;
+    const notices = [notice, createdFollowUp ?? draftedFollowUp].filter((line): line is string => Boolean(line));
+    return { reference, draftWarning: null, draftNotice: notices.length > 0 ? notices.join(" ") : null };
   } catch {
     // The form exists. Report it, warn about the prefill, change nothing else.
-    return { reference, draftWarning: DRAFT_FAILED_WARNING };
+    return { reference, draftWarning: DRAFT_FAILED_WARNING, ...(createdFollowUp ? { draftNotice: createdFollowUp } : {}) };
   }
 }
