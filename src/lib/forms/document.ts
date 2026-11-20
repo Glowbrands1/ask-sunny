@@ -161,6 +161,15 @@ export interface FormField {
    * empty field, as every version before it.
    */
   minLines?: number;
+  /**
+   * THE FORM CANNOT BE FINALIZED WITH THIS FIELD BLANK (HR via Pau, 19 Nov
+   * 2026: the two history boxes on the Corrective Action Form "are required to
+   * fill in by form creator"). Checked by `finalizeInstance` on the stored
+   * values, never by the model; a draft may stay blank while it is worked on.
+   * Versioned like `minLines`: a version published without it keeps filing
+   * with the field optional.
+   */
+  required?: true;
 }
 
 export interface CheckboxOption {
@@ -523,6 +532,7 @@ function readField(raw: unknown, where: string): FormField {
     raw.minLines <= 12
       ? { minLines: raw.minLines }
       : {}),
+    ...(raw.required === true ? { required: true as const } : {}),
   };
 }
 
