@@ -46,6 +46,15 @@ const SYNONYMS: readonly { readonly pattern: RegExp; readonly section: string }[
     pattern: /\b(?:cell phones?|cellphone)\b/i,
     section: "Cell Phone/Smart Watch Policy",
   },
+  /*
+   * Pau via QA (20 Nov 2026; production: "when does employee need to provide drs note" was answered from Immigration Law
+   * Compliance, and the manager needed 4 questions to reach the rule): managers' shorthand for a doctor's note ("dr note",
+   * "drs note", "dr's note", "doctors note") is the Attendance section (absent more than two days needs a doctor's note).
+   */
+  {
+    pattern: /\b(?:drs?\.?|dr['’]s|doctors?|doctor['’]s)\s+(?:notes?|excuses?|slips?)\b/i,
+    section: "Attendance",
+  },
 ];
 
 export function policySectionsFor(text: string): string[] {
