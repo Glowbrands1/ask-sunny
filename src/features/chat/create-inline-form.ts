@@ -79,6 +79,66 @@ export const NO_NOTES_WARNING =
 /** The JSON `fetch` wrapper the caller supplies — `formsFetch`, in the app. */
 export type FormsCall = <T>(url: string, init?: RequestInit) => Promise<T>;
 
+/*
+ * ============================================================================
+ * f073 (QA live test, 20 Nov 2026): A CREATE THAT NEVER ANSWERS IS GIVEN UP
+ * ============================================================================
+ *
+ * A "Create draft" press sent no create the server saw, showed nothing, and a second press 115 s later worked; the
+ * deploy had changed just before. A request on a connection that stalls (not one that fails) waits until the browser
+ * gives up on its own, minutes later. The create POST alone is a few database writes, no model call, so it gets
+ * CREATE_ANSWER_MS and is then aborted, and the card says to press Create again in words a manager reads.
+ *
+ * NEVER A SECOND FORM: a second press of the same card sends the same `proposalId`, and the create route returns the
+ * draft that card already made (`findRecentAssistantDraft`), so a first request that did reach the server is reused.
+ * The prefill after it is not limited here: it is a model call with its own limits, and the row exists by then.
+ */
+export const CREATE_ANSWER_MS = 30_000;
+
+export const CREATE_RETRY_MESSAGE = "Something went wrong — press Create again.";
+
+/** The create POST did not answer within CREATE_ANSWER_MS. */
+export class CreateNoAnswerError extends Error {
+  constructor() {
+    super(CREATE_RETRY_MESSAGE);
+    this.name = "CreateNoAnswerError";
+  }
+}
+
+/** `call`, with the create POST given up after `limitMs`; every other request is passed through unchanged. */
+export function createAnswerLimited(call: FormsCall, limitMs: number = CREATE_ANSWER_MS): FormsCall {
+  return async <T,>(url: string, init: RequestInit = {}): Promise<T> => {
+    if (url !== "/api/forms/instances" || String(init.method ?? "GET").toUpperCase() !== "POST") return call<T>(url, init);
+    const controller = new AbortController();
+    let gaveUp = false;
+    const timer = setTimeout(() => {
+      gaveUp = true;
+      controller.abort();
+    }, limitMs);
+    try {
+      return await call<T>(url, { ...init, signal: controller.signal });
+    } catch (error) {
+      if (gaveUp) throw new CreateNoAnswerError();
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+}
+
+/**
+ * The words a create failure is shown in. A refusal from the route keeps its own reason (it describes the template or
+ * the permission); a request the network lost or that never answered says to press Create again, never the browser's
+ * own "Failed to fetch" / "Load failed".
+ */
+export function createFailureMessage(error: unknown): string {
+  if (error instanceof CreateNoAnswerError) return CREATE_RETRY_MESSAGE;
+  const name = (error as { name?: unknown } | null)?.name;
+  if (error instanceof TypeError || name === "AbortError" || name === "TypeError") return CREATE_RETRY_MESSAGE;
+  const message = error instanceof Error ? error.message.trim() : "";
+  return message || CREATE_RETRY_MESSAGE;
+}
+
 export async function createInlineForm({
   proposal,
   messages,

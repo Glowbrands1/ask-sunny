@@ -8,7 +8,7 @@ import type { ChatMessage } from "@/types";
 import { reopenRequestedForm } from "./chat-reopen";
 import { incidentQuestionAsked, readDraftDelete, readIncidentAnswer } from "./draft-actions";
 import { authorizeInstance, InstanceNotVisibleError } from "./instance-scope";
-import { deleteInstance, InstanceProtectedError } from "./instances";
+import { deleteInstance, InstanceProtectedError, type DeletionActor } from "./instances";
 
 /**
  * ============================================================================
@@ -94,8 +94,10 @@ export async function deleteDraftFromChat(request: Request, instanceId: string):
   }
 
   const revision = Boolean(instance.revisesInstanceId);
+  let deleter: DeletionActor;
   try {
-    await authorizeInstance(request, instance.id, "manage");
+    const { actor } = await authorizeInstance(request, instance.id, "manage");
+    deleter = { id: actor.id, role: actor.role, via: "chat" };
   } catch (error) {
     if (error instanceof InstanceNotVisibleError || (error instanceof AuthError && error.code === "forbidden")) {
       return reply(
@@ -112,7 +114,7 @@ export async function deleteDraftFromChat(request: Request, instanceId: string):
   }
 
   try {
-    await deleteInstance(instance.id);
+    await deleteInstance(instance.id, deleter);
   } catch (error) {
     if (error instanceof InstanceProtectedError) {
       return reply(`I didn't delete the ${who}: ${error.message}`);
