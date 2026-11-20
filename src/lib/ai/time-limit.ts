@@ -139,6 +139,15 @@ export interface StreamWatch {
   firstToken(): void;
   /** Any stream event arrived. */
   chunk(): void;
+  /**
+   * QA's audit (items 14a/14b, 20 Nov 2026): work that is not a model call. A tool started (the form's reviser, a
+   * batch of drafts): no first-token or gap limit runs until every tool started has finished, and then the next model
+   * call waits for its own first token. Only the total limit holds over a tool.
+   */
+  toolStarted(): void;
+  toolFinished(): void;
+  /** Between model calls (the code's own checks): no first-token or gap limit; the next call starts with `attempt`. */
+  idle(): void;
 }
 
 /**
@@ -171,9 +180,18 @@ export async function withStreamTimeLimit<T>(
     reject(failed);
     controller.abort();
   };
-  const arm = (kind: TimeLimitKind, limitMs: number) => {
-    if (failed) return;
+  let toolsRunning = 0;
+  // Set when the call has settled: a tool that finishes later (the turn waits for it) arms nothing.
+  let closed = false;
+  const disarm = () => {
     if (phaseTimer !== undefined) clearTimeout(phaseTimer);
+    phaseTimer = undefined;
+  };
+  const arm = (kind: TimeLimitKind, limitMs: number) => {
+    if (failed || closed) return;
+    disarm();
+    // A tool is running: its time is not the model's (the stream may still send chunks while a tool runs).
+    if (toolsRunning > 0) return;
     phaseTimer = setTimeout(() => fail(kind, limitMs), limitMs);
   };
   const watch: StreamWatch = {
@@ -187,6 +205,18 @@ export async function withStreamTimeLimit<T>(
     },
     chunk: () => {
       if (streaming) arm("gap", limits.gapMs);
+    },
+    toolStarted: () => {
+      toolsRunning += 1;
+      disarm();
+    },
+    toolFinished: () => {
+      toolsRunning = Math.max(0, toolsRunning - 1);
+      if (toolsRunning === 0) watch.attempt();
+    },
+    idle: () => {
+      streaming = false;
+      disarm();
     },
   };
   watch.attempt();
@@ -207,6 +237,7 @@ export async function withStreamTimeLimit<T>(
     }
     throw error;
   } finally {
+    closed = true;
     if (phaseTimer !== undefined) clearTimeout(phaseTimer);
     clearTimeout(totalTimer);
   }
@@ -222,4 +253,14 @@ export function deadlineAwareTotalMs(totalMs: number, now: number = Date.now()):
   if (started === null) return totalMs;
   const left = started + routeMaxMs() - deadlineMarginMs() - now;
   return Math.max(1_000, Math.min(totalMs, left));
+}
+
+/**
+ * The time left before the route's maxDuration less the margin's last two seconds, for work the turn waits on after a
+ * time limit ran out (a tool still saving): never past what the platform allows. Outside a route, `fallbackMs`.
+ */
+export function msLeftForCleanup(fallbackMs: number, now: number = Date.now()): number {
+  const started = aiRequestStartedAt();
+  if (started === null) return fallbackMs;
+  return Math.max(0, Math.min(fallbackMs, started + routeMaxMs() - 2_000 - now));
 }
