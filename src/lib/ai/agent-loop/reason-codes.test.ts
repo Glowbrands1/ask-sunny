@@ -32,7 +32,7 @@ const KNOWN = new Set([
   "wrong_heading",
   // Added on purpose (PR 3, tools return exactly what was saved): propose_form's not_on_card codes, a field left off the card.
   "level_not_stated", "termination_not_stated", "payroll_not_stated", "amount_not_stated", "prior_actions_not_kept",
-  "several_dates_not_chosen", "date_from_another_request", "not_on_this_form",
+  "several_dates_not_chosen", "date_from_another_request", "not_on_this_form", "date_is_prior_action",
   // Fix batch item 1 (16 Nov 2026): a resignation told with no ask makes no exit card; the app offers the form.
   "exit_not_asked",
   // The retry guard (QA, 16 Nov 2026): a third call of a tool refused twice this turn for one reason_code is not run.
@@ -48,6 +48,8 @@ const KNOWN = new Set([
   "policy_not_for_this_card",
   // QA (16 Nov 2026, live group E): an edit asked for a form type with forms on file and another card on screen.
   "edit_asked_forms_on_file",
+  // QA item 8 (20 Nov 2026): a roster person nobody named, picked or confirmed in this chat.
+  "person_not_named",
   // QA (16 Nov 2026, the 266 audit on train 4): c261/c263 dress code cited as another heading; c207 Must See Behaviors with no MSB said.
   "dress_code_heading", "msb_not_said",
 ]);

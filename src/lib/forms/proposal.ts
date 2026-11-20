@@ -1,3 +1,4 @@
+import { foldName } from "./fold-name";
 import "server-only";
 
 import { businessToday } from "@/lib/business-date";
@@ -1301,9 +1302,9 @@ function settle(strong: string[], weak: string[], text: string, subjects: readon
  */
 export function samePerson(a: string, b: string): boolean {
   const words = (name: string) =>
-    name
+    foldName(name)
       .toLowerCase()
-      .replace(/['’]s\b/g, "")
+      .replace(/'s\b/g, "")
       .replace(/\./g, "")
       .split(/\s+/)
       .filter(Boolean);

@@ -98,6 +98,7 @@ import {
 } from "@/lib/forms/responsibility";
 import { stripPlaceholdersFromDraft } from "@/lib/forms/drafted-text";
 import { splitAppCitationLine } from "@/lib/forms/app-citation-line";
+import { withCardTimes } from "@/lib/forms/card-times";
 import { withoutUnstatedDates } from "@/lib/forms/form-date-grounding";
 import {
   FOLLOW_UP_TIMEFRAME_RULES,
@@ -213,6 +214,7 @@ import { twoSentenceActionPlan } from "@/lib/forms/action-plan-sentences";
 import { attendanceActionPlan, isAttendancePlan, missedMeetingNotLateness } from "@/lib/forms/attendance-action-plan";
 import { withPayrollSentence } from "@/lib/forms/plan-payroll-sentence";
 import { managerTypedActionPlan } from "@/lib/forms/manager-action-plan";
+import { cardNotesPayrollAmount } from "@/lib/forms/card-payroll-amount";
 import {
   citeAttendanceForTardiness,
   policyFieldsWithCitation,
@@ -334,6 +336,8 @@ interface DraftBody {
   cardFromLoop?: boolean;
   /** The prior actions the loop's card recorded ("" for none), sent with `cardFromLoop` (Pau via QA, 20 Nov 2026). */
   cardPriorActions?: string;
+  /** QA (20 Nov 2026; c198): the agent loop card's own account, so the saved account keeps its times (`withCardTimes`). */
+  cardAccount?: string;
   /**
    * SAME_FORM_COPY_NEW_PERSON_ENABLED: the form the card was asked to copy
    * ("the same draft that we did with <name>"). Re-checked: this account's
@@ -466,9 +470,13 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         (loaded.values ?? [])
           .find((row) => row.fieldKey === PAYROLL_DEDUCT_KEY)
           ?.checked.find(isPayrollDeductAnswer) ?? null;
-      const amount = payrollAmountFromConversation([{ role: "user", content: notes }], {
-        payrollAnswer,
-      });
+      // QA's code audit (20 Nov 2026, item 20): a loop card's amount is the card's own line in the notes.
+      const amount =
+        body.cardFromLoop === true
+          ? payrollAnswer === "yes" ? cardNotesPayrollAmount(notes) : null
+          : payrollAmountFromConversation([{ role: "user", content: notes }], {
+              payrollAnswer,
+            });
       // FORM_EDIT_SINGLE_WRITER_ENABLED: each stated-facts write through the one writer (`lib/forms/form-write.ts`).
       if (amount && formEditSingleWriterEnabled()) {
         await (await import("@/lib/forms/form-write")).statedWrite(
@@ -653,18 +661,28 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      * `exit-details.ts`, written before the model runs and only into empty
      * lines. Anything the manager did not say stays blank.
      */
-    const exitStatedFacts = isExitForm
+    /*
+     * ONLY THE MANAGER'S OWN ADDRESS (Pau via QA, item 19): the Permanent Address is kept only when it is in the manager's
+     * own lines of the notes. A loop card's lines ("What happened: …") are the agent loop's words, never the manager's.
+     */
+    const exitDetails = isExitForm ? readExitDetails(notes, businessToday()) : null;
+    if (exitDetails?.permanentAddress) {
+      const { addressTypedIn } = await import("@/lib/forms/exit-details");
+      const managerLines = body.cardFromLoop === true ? (await import("@/lib/forms/draft-notes")).notesWithoutCardLines(notes) : notes;
+      if (!addressTypedIn(exitDetails.permanentAddress, managerLines)) delete exitDetails.permanentAddress;
+    }
+    const exitStatedFacts = isExitForm && exitDetails
       ? formEditSingleWriterEnabled()
         ? await (await import("@/lib/forms/form-write")).statedWrite(
             id,
-            exitDetailValues(readExitDetails(notes, businessToday())),
+            exitDetailValues(exitDetails),
             actor.id,
             exitStatedKeys(),
             { notes },
           )
         : await applyStatedFacts(
             id,
-            exitDetailValues(readExitDetails(notes, businessToday())),
+            exitDetailValues(exitDetails),
             actor.id,
             // EXIT_INTAKE_FIX_ENABLED adds the Permanent Address the manager typed.
             exitStatedKeys(),
@@ -2773,6 +2791,20 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         draftedPayload.values = { ...draftedPayload.values, [detailsKey]: `${account}\n\nPolicy reference: ${coachingPolicyLine}` };
       }
     }
+    /*
+     * QA (20 Nov 2026; Runner 2's c198): the loop card's account held 9:15PM, 9:01 and 8:11 PM, and the saved observation
+     * kept only 8:11 PM. A clock time of the card's own account that the drafted account lost brings back the card's
+     * sentence that holds it (`withCardTimes`), before the app's citation line. A field the manager typed is never touched.
+     */
+    const accountKey = narrativeTargets[0];
+    if (body.cardFromLoop === true && typeof body.cardAccount === "string" && accountKey && !keeps(accountKey)) {
+      const drafted = draftedPayload.values[accountKey] ?? "";
+      if (drafted.trim() !== "") {
+        const { body: account, line: citation } = splitAppCitationLine(drafted);
+        const timed = withCardTimes(account, body.cardAccount.slice(0, 2_000));
+        if (timed !== account) draftedPayload.values = { ...draftedPayload.values, [accountKey]: citation ? `${timed}\n\n${citation}` : timed };
+      }
+    }
     const kept = draftMergeEnabled()
       ? retainFilledFields({
           question: notes,
@@ -2870,9 +2902,12 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
     if (payrollAmountFieldEnabled() && payrollAnswer === "yes") {
       const held =
         (loaded.values ?? []).find((row) => row.fieldKey === PAYROLL_AMOUNT_KEY)?.value?.trim() || null;
-      const statedNow = payrollAmountFromConversation([{ role: "user", content: notes }], {
-        payrollAnswer: "yes",
-      });
+      const statedNow =
+        body.cardFromLoop === true
+          ? cardNotesPayrollAmount(notes)
+          : payrollAmountFromConversation([{ role: "user", content: notes }], {
+              payrollAnswer: "yes",
+            });
       const keep = statedNow ?? held;
       if (keep && formEditSingleWriterEnabled()) {
         await (await import("@/lib/forms/form-write")).statedWrite(
