@@ -313,6 +313,15 @@ export function payrollAmountFieldEnabled(): boolean {
 }
 
 /**
+ * REQUIRED_FIELDS_AT_FINALIZE_ENABLED (HR via Pau, 19 Nov 2026; default off). A field a published version marks
+ * `required` (revision 9 of the Corrective Action Form: the policy manual's signed date and the past 90 days' history)
+ * must hold a value before Finalize; a draft may stay blank. Off, a blank required field files as before.
+ */
+export function requiredFieldsAtFinalizeEnabled(): boolean {
+  return envFlag("REQUIRED_FIELDS_AT_FINALIZE_ENABLED");
+}
+
+/**
  * PAYROLL_AMOUNT_SAME_MESSAGE_ENABLED (the sibling app's live chat, 5 Nov 2026; same flag in both apps; default
  * off). "…the register was off $20. which will be payroll deducted from <name>'s check. … payroll deduct applies"
  * still asked "**Payroll deduction amount**?". On: an amount followed by "which / that / this / it … (payroll)
