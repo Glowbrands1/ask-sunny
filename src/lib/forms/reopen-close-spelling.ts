@@ -1,4 +1,5 @@
 import { candidateNameWords } from "./chat-form-records";
+import { foldName } from "./fold-name";
 import { editDistance } from "./typo-match";
 
 /**
@@ -15,7 +16,8 @@ import { editDistance } from "./typo-match";
  */
 
 function wordsOf(name: string): string[] {
-  return name.toLowerCase().split(/[^a-z]+/).filter((word) => word.length >= 2);
+  /* QA's f072 (20 Nov 2026): accents fold first, as `foldName` does wherever names are compared. */
+  return foldName(name).toLowerCase().split(/[^a-z]+/).filter((word) => word.length >= 2);
 }
 
 function close(typed: string, word: string): boolean {

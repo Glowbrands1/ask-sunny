@@ -49,6 +49,8 @@ export function progressStatus(tool: string, args: unknown): string {
       return "Reading your reviews…";
     case "read_stats":
       return "Checking the numbers…";
+    case "read_form_deletions":
+      return "Checking the deletion record…";
     case "app_help":
       return `Checking ${appConfig().appName}'s help…`;
     default:
