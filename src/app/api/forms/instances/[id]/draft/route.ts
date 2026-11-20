@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { keptPlanSteps, withPlanSteps } from "@/lib/forms/stated-plan-steps";
 import { statedPlanStepsEnabled } from "@/lib/config/chat-quality-flags";
+import { withAccountFactsKept } from "@/lib/forms/account-facts-kept";
 import { TERMINATION_OPTION, withTerminationPlan } from "@/lib/forms/termination-stated";
 import { salesResultsOffenseLine, withCaChosenRule } from "@/lib/ai/ca-sales-prompt-lines";
 import { noteSpendUser } from "@/lib/ai/spend-meter";
@@ -346,7 +347,10 @@ interface DraftBody {
   cardFromLoop?: boolean;
   /** The prior actions the loop's card recorded ("" for none), sent with `cardFromLoop` (Pau via QA, 20 Nov 2026). */
   cardPriorActions?: string;
-  /** QA (20 Nov 2026; c198): the agent loop card's own account, so the saved account keeps its times (`withCardTimes`). */
+  /**
+   * The loop card's own account (`issue`), the record of what the manager said: the saved account keeps its times
+   * (QA, 20 Nov 2026; c198, `withCardTimes`) and every fact on it (QA's live test of #1121, f061, `account-facts-kept.ts`).
+   */
   cardAccount?: string;
   /**
    * SAME_FORM_COPY_NEW_PERSON_ENABLED: the form the card was asked to copy
@@ -2825,6 +2829,14 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
     if (body.cardFromLoop === true && typeof body.cardPriorActions === "string" && body.cardPriorActions.trim() === "" && !keeps("prior_actions") && (draftedPayload.values.prior_actions ?? "").trim() !== "") {
       draftedPayload.values = { ...draftedPayload.values, prior_actions: "" };
     }
+    /*
+     * QA's live test of #1121 (20 Nov 2026, f061): the card showed "Prior actions: Verbal (2), dates not given" and the form
+     * saved "Verbal coaching \u2014 date not given", one of the two talks lost. When the loop card recorded prior actions,
+     * the saved line is the card's own, count and all.
+     */
+    if (body.cardFromLoop === true && typeof body.cardPriorActions === "string" && body.cardPriorActions.trim() !== "" && !keeps("prior_actions") && fields.some((field) => field.key === "prior_actions")) {
+      draftedPayload.values = { ...draftedPayload.values, prior_actions: body.cardPriorActions.trim().slice(0, 600) };
+    }
     // The citation line above is rebuilt from the cited sections; the card's Other goes back on it.
     if (cardOtherOnViolated && typeof draftedPayload.values.policy_violated === "string") {
       draftedPayload.values = { ...draftedPayload.values, policy_violated: cardOtherViolated(draftedPayload.values.policy_violated) };
@@ -2867,6 +2879,10 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      * QA (20 Nov 2026; Runner 2's c198): the loop card's account held 9:15PM, 9:01 and 8:11 PM, and the saved observation
      * kept only 8:11 PM. A clock time of the card's own account that the drafted account lost brings back the card's
      * sentence that holds it (`withCardTimes`), before the app's citation line. A field the manager typed is never touched.
+     *
+     * QA's live test of #1121 (20 Nov 2026, f061): a 351-word account saved without "this is the third time in two months"
+     * and "a customer said she would not come back". Then every other fact on the card's account stays: one the drafter
+     * dropped is added to the Observed part in the card's own words (`account-facts-kept.ts`), also before the citation line.
      */
     const accountKey = narrativeTargets[0];
     if (body.cardFromLoop === true && typeof body.cardAccount === "string" && accountKey && !keeps(accountKey)) {
@@ -2874,7 +2890,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       if (drafted.trim() !== "") {
         const { body: account, line: citation } = splitAppCitationLine(drafted);
         const timed = withCardTimes(account, body.cardAccount.slice(0, 2_000));
-        if (timed !== account) draftedPayload.values = { ...draftedPayload.values, [accountKey]: citation ? `${timed}\n\n${citation}` : timed };
+        const facts = withAccountFactsKept(timed, body.cardAccount.trim().slice(0, 6_000), loaded.instance.employeeName);
+        if (facts.text !== account) draftedPayload.values = { ...draftedPayload.values, [accountKey]: citation ? `${facts.text}\n\n${citation}` : facts.text };
       }
     }
     /*

@@ -121,3 +121,27 @@ export function followUpDateForNewForm(input: {
   if (input.followUpDate) return null;
   return statedFollowUpDate(input.managerWords, input.today) ?? defaultFollowUpDate(input.formDate, input.today);
 }
+
+/**
+ * The follow-up date Create will set on a card, and how the card's reply says it (f048b, QA's live 23a, 20 Nov 2026:
+ * "ca for Test Testy, late on 11/19, we will meet again in a week to follow up" got "the follow-up meeting in a week
+ * isn't part of this Corrective Action", while Create saved follow-up 11/26). Null when Create sets none: a form other
+ * than a Corrective Action whose manager said nothing about a follow-up.
+ */
+export function followUpForCard(input: {
+  corrective: boolean;
+  formDate: string;
+  managerWords: string;
+  today: string;
+}): { date: string; line: string } | null {
+  if (!input.corrective && !planPromisesFollowUp(input.managerWords)) return null;
+  const stated = statedFollowUpDate(input.managerWords, input.today);
+  const date = stated ?? defaultFollowUpDate(input.formDate, input.today);
+  const why = stated
+    ? "as you said"
+    : date === shiftDays(input.formDate, FOLLOW_UP_DEFAULT_DAYS)
+      ? "a week after the form date"
+      : "a week from today";
+  const day = new Date(`${date}T12:00:00Z`).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
+  return { date, line: `Follow-up: ${day} (${why}; change it on the form)` };
+}
