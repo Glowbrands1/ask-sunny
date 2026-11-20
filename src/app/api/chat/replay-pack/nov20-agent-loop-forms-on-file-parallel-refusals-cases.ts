@@ -25,19 +25,21 @@ const REPORT = "Pau's live chat (20 Nov 2026, 14:23–14:24Z, main 94e2c956): fi
 const offline = process.env.AGENT_LOOP_LIVE !== "1";
 
 const LIESEL: DirectoryRow = { id: "e-liesel-cobb", firstName: "Liesel", lastName: "Cobb", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" };
+const LIESEL_COLE: DirectoryRow = { ...LIESEL, id: "e-liesel-cole", lastName: "Cole" };
 
 type Out = Record<string, unknown>;
 const pastFormsResults = (view: LoopView) => view.results.filter((result) => result.tool === "find_past_forms").map((result) => result.output);
 
-/** A finalized CA and a finalized Coaching Form on file for Liesel Cobb, this month. */
-async function onFile(t: ReplayContext) {
+/** A finalized CA and a finalized Coaching Form on file for Liesel Cobb (or `who`), this month. */
+async function onFile(t: ReplayContext, who: DirectoryRow = LIESEL) {
   vi.setSystemTime(new Date("2026-11-10T22:40:00Z"));
+  const full = `${who.firstName} ${who.lastName}`;
   for (const form of ["dpoa", "coaching"] as const) {
     t.loopModel!(loopStandIn((view): LoopDecision => (view.results.some((result) => result.tool === "propose_form")
       ? { text: "Here's the card." }
-      : { tool: "propose_form", input: { template_key: form, employee_id: LIESEL.id, what_happened: "Liesel Cobb was late to open on 11/10.", incident_date: "2026-11-10", ...(form === "coaching" ? { policy: "Late Opening" } : {}) } })));
+      : { tool: "propose_form", input: { template_key: form, employee_id: who.id, what_happened: `${full} was late to open on 11/10.`, incident_date: "2026-11-10", ...(form === "coaching" ? { policy: "Late Opening" } : {}) } })));
     const setup = t.thread();
-    await setup.say(`${form === "dpoa" ? "ca" : "coaching form"} for liesel cobb, late to open on 11/10`);
+    await setup.say(`${form === "dpoa" ? "ca" : "coaching form"} for ${full.toLowerCase()}, late to open on 11/10`);
     const id = await setup.create();
     Object.assign(t.forms().find((row) => row.id === id)!, { status: "finalized", form_date: "2026-11-10" });
   }
@@ -66,7 +68,7 @@ const fixed = (id: string, title: string, run: (t: ReplayContext) => Promise<voi
   fixFlags: [FLAG],
   async run(t) {
     if (!t.loopOn?.() || !offline) return;
-    t.directory([...STAFF, LIESEL]);
+    t.directory([...STAFF, LIESEL, LIESEL_COLE]);
     t.as("salon_director", KEARNEY);
     await onFile(t);
     await run(t);
@@ -111,5 +113,15 @@ export const NOV20_AGENT_LOOP_FORMS_ON_FILE_PARALLEL_REFUSALS_CASES: ReplayCase[
     required = (agentLoopTools().find((tool) => tool.name === "find_past_forms")?.input_schema as { required?: unknown } | undefined)?.required;
     expect(system).toMatch(/never tell the manager it was a lookup problem/i);
     expect(required).toEqual(["forms_on_file_evidence"]);
+  }),
+  fixed("nov20-forms-on-file-start-of-name-two-people-asks-which", "QA's condition (a): \"list ca or coaching forms for liesel co\" when Liesel Cobb and Liesel Cole both have forms on file: no form is listed (never one picked), and the result names both so the reply asks which person, by full name", async (t) => {
+    await onFile(t, LIESEL_COLE);
+    vi.setSystemTime(new Date("2026-11-20T14:23:00Z"));
+    const seen: Out[][] = [];
+    t.loopModel!(liveModel([{ employee_name: "liesel co", form: "CA" }], "list ca or coaching forms for liesel co", seen));
+    await t.thread().say("list ca or coaching forms for liesel co");
+    const listed = (seen[0] ?? [])[1];
+    expect(listed?.forms ?? null, JSON.stringify(listed)).toEqual([]);
+    expect([...((listed?.names_on_file as string[] | undefined) ?? [])].sort(), JSON.stringify(listed)).toEqual(["Liesel Cobb", "Liesel Cole"]);
   }),
 ];
