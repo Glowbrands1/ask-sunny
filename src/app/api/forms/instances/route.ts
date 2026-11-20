@@ -405,17 +405,15 @@ export async function POST(request: Request) {
        * `applyStatedFacts` validates every key against the pinned version, so a form without these lines gets nothing.
        */
       if (fromAgentLoop && card.templateKey !== "dpoa") {
-        if (isPayrollDeductAnswer(card.payrollDeduct)) {
-          await applyStatedFacts(instanceId, { values: {}, checked: { [EXIT_PAYROLL_KEY]: [card.payrollDeduct] } }, actor.id, new Set([EXIT_PAYROLL_KEY]));
-        }
+        const exitStated: { values: Record<string, string>; checked: Record<string, string[]> } = { values: {}, checked: {} };
+        if (isPayrollDeductAnswer(card.payrollDeduct)) exitStated.checked[EXIT_PAYROLL_KEY] = [card.payrollDeduct];
         if (card.warningLevel === "termination" && saysTerminationWord(userTurns)) {
           const account = typeof card.loopAccount === "string" ? card.loopAccount.trim().slice(0, 2_000) : "";
-          await applyStatedFacts(
-            instanceId,
-            { values: account ? { [EXIT_DETAIL_FIELDS.resignationReason]: account } : {}, checked: { [EXIT_TYPE_GROUP]: [EXIT_OPTION.immediateInvoluntary] } },
-            actor.id,
-            new Set([EXIT_TYPE_GROUP, EXIT_DETAIL_FIELDS.resignationReason]),
-          );
+          exitStated.checked[EXIT_TYPE_GROUP] = [EXIT_OPTION.immediateInvoluntary];
+          if (account) exitStated.values[EXIT_DETAIL_FIELDS.resignationReason] = account;
+        }
+        if (Object.keys(exitStated.checked).length > 0) {
+          await applyStatedFacts(instanceId, exitStated, actor.id, new Set([EXIT_PAYROLL_KEY, EXIT_TYPE_GROUP, EXIT_DETAIL_FIELDS.resignationReason]));
         }
       }
     }
