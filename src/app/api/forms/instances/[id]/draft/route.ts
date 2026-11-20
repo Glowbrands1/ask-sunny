@@ -653,26 +653,36 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      * lines. Anything the manager did not say stays blank.
      */
     /*
+     * ONLY THE MANAGER'S OWN ADDRESS (Pau via QA, item 19): the Permanent Address is kept only when it is in the manager's
+     * own lines of the notes. A loop card's lines ("What happened: …") are the agent loop's words, never the manager's.
+     */
+    const exitDetails = isExitForm ? readExitDetails(notes, businessToday()) : null;
+    if (exitDetails?.permanentAddress) {
+      const { addressTypedIn } = await import("@/lib/forms/exit-details");
+      const managerLines = body.cardFromLoop === true ? (await import("@/lib/forms/draft-notes")).notesWithoutCardLines(notes) : notes;
+      if (!addressTypedIn(exitDetails.permanentAddress, managerLines)) delete exitDetails.permanentAddress;
+    }
+    /*
      * Pau via QA (20 Nov 2026, item 15; Runner 2's c151): on a loop card's Create the Details lines name the employee by
      * first name, never "she"/"her" ("Reason for resignation: she said her new job pays more").
      */
-    const exitDetailsRead = () => {
-      const read = exitDetailValues(readExitDetails(notes, businessToday()));
+    const exitDetailsRead = (details: NonNullable<typeof exitDetails>) => {
+      const read = exitDetailValues(details);
       if (body.cardFromLoop !== true) return read;
       return { ...read, values: firstNameNotPronouns(read.values, loaded.instance.employeeName, new Set(Object.keys(read.values))).values };
     };
-    const exitStatedFacts = isExitForm
+    const exitStatedFacts = isExitForm && exitDetails
       ? formEditSingleWriterEnabled()
         ? await (await import("@/lib/forms/form-write")).statedWrite(
             id,
-            exitDetailsRead(),
+            exitDetailsRead(exitDetails),
             actor.id,
             exitStatedKeys(),
             { notes },
           )
         : await applyStatedFacts(
             id,
-            exitDetailsRead(),
+            exitDetailsRead(exitDetails),
             actor.id,
             // EXIT_INTAKE_FIX_ENABLED adds the Permanent Address the manager typed.
             exitStatedKeys(),

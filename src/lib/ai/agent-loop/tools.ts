@@ -5,10 +5,10 @@ import { saysAmountUnknown } from "@/lib/ai/amount-unknown-ack";
 import { randomUUID } from "node:crypto";
 
 import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
-import { businessToday } from "@/lib/business-date";
+import { businessToday, formatBusinessTime } from "@/lib/business-date";
 import { appConfig } from "./app-config";
 import { isoDate, monthDayToIso, readDates, sameDate, withoutDates } from "./dates";
-import { candidateNameWords, chatFormsActor, formDateRangeFromInput, formKindFromText } from "@/lib/forms/chat-form-records";
+import { candidateNameWords, chatFormsActor, formDateRangeFromInput, formKindFromText, ofKind } from "@/lib/forms/chat-form-records";
 import { CURRENT_MESSAGE_ID, holdsPhrase, identifiedTurns, verifyEvidence, withoutMessageIdTags, type IdentifiedTurn } from "./evidence";
 import { answeredNameQuestions, answerNamesSomeoneElse, everKeptOrUsedTyped, isConfirmedSpelling, latestTurnAnswersFor, latestTurnConfirms, latestTurnKeepsOrUsesTyped, latestTurnKeepsTyped, spellingKeysConfirmedFor, spellingKeysConfirmedForName, type NameQuestionView } from "./confirmed-spelling";
 import { AFFIRMATIVE, displayName, editDistance, matchEmployeeName, nameConfirmationQuestion, readNameConfirmation, type RosterEmployee } from "@/lib/forms/employee-match";
@@ -55,7 +55,7 @@ import { redactSensitiveDefaults } from "@/lib/ai/sensitive-defaults";
 import { expandPolicyQuery } from "@/lib/knowledge/policy-retrieval";
 import type { SourceCitation } from "@/types";
 import type { AccessScope, ChatFormProposal, ChatMessage, Role } from "@/types";
-import { accountKey, personKey, replyTurns, type CardRecord, type NameQuestionRecord, type PersonAskedRecord, type TurnRecord } from "@/lib/ai/agent-loop/card-record";
+import { accountKey, personKey, replyTurns, type CardRecord, type ExitOfferRecord, type NameQuestionRecord, type PersonAskedRecord, type TurnRecord } from "@/lib/ai/agent-loop/card-record";
 
 /**
  * ============================================================================
@@ -123,6 +123,8 @@ export interface ToolContext {
   /** QA (16 Nov 2026; c158, c208): every card this chat's loop made, and every "who is it for?" it asked, oldest first. */
   readonly cardRecords?: readonly CardRecord[];
   readonly personAskedRecords?: readonly PersonAskedRecord[];
+  /** QA (#1055's follow-up): the exit-form offer the last reply's tools made (its record), or null. Never read from the reply. */
+  readonly exitOffered?: ExitOfferRecord | null;
   /** QA's review of #1062: each earlier loop turn's record (saved fields, a card), oldest first. */
   readonly turnRecords?: readonly TurnRecord[];
   /** Rebuild plan PR 6: what this turn already read, read once per turn (`turnManual`). A tool called outside a turn reads fresh. */
@@ -253,6 +255,11 @@ export function levelOptionIsTheLevel(text: string, level: "verbal" | "written",
     const next = tokens[index + 1];
     if (next === undefined || /^[.,;:!?()\n]$/.test(next) || /^[\d$]/.test(next)) return true;
     const bare = next.replace(/[-']+$/g, "");
+    /*
+     * QA's code audit (20 Nov 2026, on d7960a5f): "she got written up again for no-call, I need a CA" passed as Written,
+     * because "up" is a short word. "Written up" is the phrasal verb for discipline already given, never this form's level.
+     */
+    if (bare === "up") return false;
     return own.has(bare) || bare.length <= 3;
   });
 }
@@ -327,6 +334,11 @@ function notTheOfferAnswer(check: AnswerEvidence, context: ToolContext, roster?:
   const current = check.turnId === (context.questionMessageId || CURRENT_MESSAGE_ID);
   if (current && roster && answeredNameQuestions(nameQuestionView(context, roster)).some((asked) => asked.latest)) return { ok: false, reason: "answer_to_name_question" };
   return check;
+}
+
+/** The card on screen is this person's card on this form (by roster id, else by name). */
+function sameCardOnScreen(onScreen: CardRecord | null | undefined, templateKey: string, employee: { readonly id?: string | null; readonly name: string }): boolean {
+  return Boolean(onScreen && onScreen.templateKey === templateKey && ((employee.id && onScreen.employeeKey === personKey(employee.id)) || onScreen.nameKey === personKey(employee.name)));
 }
 
 /** The card record's account key (QA, c163; PR 1c): the account as the model gave it and the incident date it gave, if any. */
@@ -706,6 +718,8 @@ export interface ToolEffects {
   nameLines?: Record<string, string>;
   /** Fix batch item 6: propose_form asked who this form is for (no person yet), for the record. */
   personAsked?: { templateKey: string };
+  /** QA (#1055's follow-up): this turn's tools offered the exit form for this person (the exit_offer record). */
+  exitOffered?: { employeeId: string | null; name: string };
   /** find_staff ran this turn: a person was named, so a card without one is not "nobody named" (item 6). */
   staffLookedUp?: boolean;
   /** Fix batch items 4 and 3: this turn's last "Did you mean" (the roster ids offered, the name typed), for the record. */
@@ -791,6 +805,12 @@ export async function inactiveMatch(scope: AccessScope, typed: string): Promise<
 
 const ROSTER_FAILED = "The staff roster could not be loaded just now, so nobody could be looked up. Say so to the manager; do not guess a name.";
 const ROSTER_UNCHECKED = "This login covers a district or region, so the roster cannot be searched here. Use the name exactly as the manager typed it.";
+
+/** Item 27: `typed` is whole words of `name`, in order ("ann" in "Ann Lee", "lee" in "Ann Lee"; never "ann" in "Joann"). */
+export function wholeNameWords(name: string, typed: string): boolean {
+  const want = words(typed).join(" ");
+  return want !== "" && ` ${words(name).join(" ")} `.includes(` ${want} `);
+}
 
 function words(text: string): string[] {
   return text
@@ -1306,12 +1326,18 @@ async function findFormsInPeriod(context: ToolContext, input: { form?: unknown; 
   if (actor === undefined) return { reason_code: "read_failed", error: "Form Monitoring could not be read just now. Say so; do not say there are no forms." };
   if (actor === null) return { reason_code: "scope", error: "This manager's role cannot view Form Monitoring, so past forms cannot be listed." };
   try {
-    const rows = visibleInstances(actor, await listInstances("all", PERIOD_LIST_LIMIT, {
+    const read = await listInstances("all", PERIOD_LIST_LIMIT, {
       ...instanceListFilterFor(actor),
       ...(range ? { formDateFrom: range.from, formDateTo: range.to } : {}),
       ...(kind ? { templateNameWords: kind.templateNameWords } : {}),
-    })).slice(0, PERIOD_LIST_LIMIT);
-    const complete = rows.length < PERIOD_LIST_LIMIT;
+    });
+    /* QA's code audit (item 28): a Coaching kind never keeps a Follow-Up Coaching Form (`ofKind`). */
+    const rows = ofKind(visibleInstances(actor, read), kind).slice(0, PERIOD_LIST_LIMIT);
+    /*
+     * QA's code audit (item 29): complete only when the DATABASE returned fewer rows than it was asked for. Counting the
+     * rows left after the visibility filter called a cut-off list complete (100 read, 60 visible, "every such form").
+     */
+    const complete = read.length < PERIOD_LIST_LIMIT;
     return {
       period: range ? { from: range.from, to: range.to } : null,
       form_kind: kind?.label ?? null,
@@ -1371,8 +1397,25 @@ export async function findPastForms(context: ToolContext, input: { employee_name
   if (nameWords.length === 0) return { forms: [] };
   try {
     /* 200, not 50 (F7): any name word matches, so other people's forms could push this person's older ones off the read. */
+    /*
+     * ONLY THE NAMED PERSON'S FORMS (QA's code audit, item 27; privacy): the read above matches any name word as a part of a
+     * word (`ilike`), and this filter used to keep a form whenever the typed name was a SUBSTRING of its employee's name:
+     * "Ann" listed Hannah's and Joann's forms, "Ann Lee" listed Joann Lee's. Now a form is kept only when the typed name is
+     * whole words of its employee's name (`wholeNameWords`: the full name, the first name or the last name), the same
+     * person by `samePerson`, or one roster holder's other name (aliases).
+     */
     let rows = visibleInstances(actor, await listInstances("all", 200, { ...instanceListFilterFor(actor), employeeNameWords: nameWords }))
-      .filter((row) => samePerson(row.employeeName, typed) || words(row.employeeName).join(" ").includes(words(typed).join(" ")) || (aliases.length > 0 && sameRosterPerson(row.employeeName, typed, people)));
+      .filter((row) => samePerson(row.employeeName, typed) || wholeNameWords(row.employeeName, typed) || (aliases.length > 0 && sameRosterPerson(row.employeeName, typed, people)));
+    /*
+     * Item 27: the typed name fits forms of more than one person ("Lee": Ann Lee and Joann Lee) and is nobody's full name
+     * on file: list none of them; the reply asks which person, by full name. One roster holder's names count as one.
+     */
+    const exact = rows.filter((row) => words(row.employeeName).join(" ") === words(typed).join(" ") || (aliases.length > 0 && aliases.some((alias) => words(alias).join(" ") === words(row.employeeName).join(" "))));
+    if (exact.length > 0) rows = exact;
+    const peopleOnFile = [...new Map(rows.map((row) => [words(row.employeeName).join(" "), row.employeeName])).values()];
+    if (exact.length === 0 && peopleOnFile.length > 1) {
+      return { forms: [], names_on_file: peopleOnFile.slice(0, 5), note: "Forms on file are under more than one person with that name. List no forms: ask which person, by full name." };
+    }
     /*
      * Batch G (G4, REOPEN_CLOSE_SPELLING, parity gap #43): no form under the typed name, so the forms this manager may
      * open are read for an employee whose name it closely spells. One person: theirs. Two or more: ask which.
@@ -1392,9 +1435,11 @@ export async function findPastForms(context: ToolContext, input: { employee_name
     const today = context.today || businessToday();
     const wantForm = typeof input.form === "string" ? input.form.toLowerCase() : "";
     if (wantForm) {
-      const coaching = /coach/.test(wantForm);
+      /* QA's code audit (item 28): a coaching ask never keeps a Follow-Up Coaching Form, and a follow-up ask keeps only those. */
+      const followUp = /follow/.test(wantForm);
+      const coaching = /coach/.test(wantForm) && !followUp;
       const ca = /\bca\b|corrective|write[- ]?up|warning|verbal|written/.test(wantForm);
-      const narrowed = rows.filter((row) => (coaching ? /coach/i.test(row.templateName) : true) && (ca ? /corrective/i.test(row.templateName) || row.templateKey === appConfig().formKeys.corrective : true));
+      const narrowed = rows.filter((row) => (followUp ? /follow/i.test(row.templateName) : true) && (coaching ? /coach/i.test(row.templateName) && !/follow/i.test(row.templateName) : true) && (ca ? /corrective/i.test(row.templateName) || row.templateKey === appConfig().formKeys.corrective : true));
       if (narrowed.length > 0) rows = narrowed;
     }
     const iso = typeof input.date === "string" ? isoDate(input.date, today) : null;
@@ -1423,8 +1468,10 @@ export async function findPastForms(context: ToolContext, input: { employee_name
       if (top.length > 0) rows = top.map((entry) => entry.row);
     }
     const described = Boolean(wantForm || wantDate || about.length > 0);
-    const forms = rows
-      .slice(0, 20)
+    /* Item 18 (Pau via QA): each form's `choice` line says what tells it apart (`formChoices`); the reply lists them as given. */
+    const listed = rows.slice(0, 20);
+    const choices = formChoices(listed);
+    const forms = listed
       .map((row) => ({
         instance_id: row.id,
         form: row.templateName,
@@ -1434,6 +1481,7 @@ export async function findPastForms(context: ToolContext, input: { employee_name
         form_date: row.formDate,
         /* G4 follow-up (QA, 15 Nov 2026): "no salon" in words, so the manager's "the one with no salon" can single it out. */
         salon: salonLabel(row.locationId, row.locationName) ?? `no ${locationWord()}`,
+        choice: choices.get(row)!,
       }));
     /* "Draw me up a coaching document … she already has one" (the live re-run's sun-late-date): none on file is no reason to stop. */
     if (forms.length === 0) {
@@ -1483,7 +1531,8 @@ export async function findPastForms(context: ToolContext, input: { employee_name
     const onScreenChoice = ownCard
       ? (() => {
           const cardForm = ownCard.templateName ?? "card";
-          const dated = forms.map((form) => `${form.form}${form.form_date ? ` from ${form.form_date}` : ""}`);
+          /* Each form on file by its choice line (form, status, date, salon, created when they match). */
+          const dated = forms.map((form) => form.choice);
           const onFile = dated.length === 1 ? `the ${dated[0]} on file` : `one of the ${dated.length} forms on file (${dated.join("; ")})`;
           return {
             card_on_screen: { form: cardForm, created: false },
@@ -1525,6 +1574,25 @@ export async function findPastForms(context: ToolContext, input: { employee_name
 
 const VALUES_LIMIT = 6_000;
 
+/**
+ * Texts fitted into `limit` characters together (item 26): short ones whole, the longest cut first, each cut text ending
+ * "… (N more characters on the form)". Every text keeps at least 200 characters, so none is ever dropped.
+ */
+export function fitToLimit(texts: readonly string[], limit: number): string[] {
+  const total = texts.reduce((sum, text) => sum + text.length, 0);
+  if (total <= limit) return [...texts];
+  const out = [...texts];
+  let remaining = limit;
+  const byLength = texts.map((text, index) => ({ index, length: text.length })).sort((a, b) => a.length - b.length);
+  byLength.forEach(({ index, length }, rank) => {
+    const share = Math.max(200, Math.floor(remaining / (byLength.length - rank)));
+    const keep = Math.min(length, share);
+    if (keep < length) out[index] = `${texts[index]!.slice(0, keep).trimEnd()}… (${length - keep} more characters on the form)`;
+    remaining = Math.max(0, remaining - keep);
+  });
+  return out;
+}
+
 export async function readForm(context: ToolContext, input: { instance_id?: unknown; forms_on_file_evidence?: unknown }, effects?: ToolEffects): Promise<ToolResult> {
   const id = typeof input.instance_id === "string" ? input.instance_id.trim() : "";
   if (id === "") return { reason_code: "missing_input", error: "Give the form's instance_id (from find_past_forms or the open form)." };
@@ -1536,19 +1604,27 @@ export async function readForm(context: ToolContext, input: { instance_id?: unkn
     const { loaded } = await authorizeInstance(context.request, id, "view");
     const closeSpelled = loaded.instance.employeeName ? await closeSpellingRefusal(context, effects, loaded.instance.employeeName) : null;
     if (closeSpelled) return closeSpelled;
-    const values: Record<string, { untrusted_text: string }> = {};
-    let size = 0;
-    for (const row of loaded.values) {
-      const text = row.value?.trim() ?? "";
-      const ticked = row.checked.length > 0 ? row.checked.join(", ") : "";
-      const shown = text || ticked;
-      if (!shown) continue;
-      size += shown.length;
-      if (size > VALUES_LIMIT) break;
-      values[row.fieldKey] = untrusted(shown);
-    }
+    /*
+     * EVERY FIELD'S FILLED / EMPTY STATUS SURVIVES A LONG WRITE-UP (QA's code audit on d7960a5f, item 26): this loop used
+     * to stop at VALUES_LIMIT with `break` and build empty_fields from what it had kept, so a long Observation made the
+     * fields after it (the level, payroll) read as empty. Now every filled field is listed, in the template's order; only
+     * the longest texts are cut to fit (`fitToLimit`), and truncated_fields names them.
+     */
     const fieldKeys = documentFieldKeys(loaded.version.document);
-    const filled = new Set(Object.keys(values));
+    const order = [...fieldKeys];
+    const position = (key: string) => (order.indexOf(key) === -1 ? order.length : order.indexOf(key));
+    const shownRows = loaded.values
+      .map((row) => ({ key: row.fieldKey, shown: (row.value?.trim() ?? "") || (row.checked.length > 0 ? row.checked.join(", ") : "") }))
+      .filter((row) => row.shown !== "")
+      .sort((a, b) => position(a.key) - position(b.key));
+    const fitted = fitToLimit(shownRows.map((row) => row.shown), VALUES_LIMIT);
+    const values: Record<string, { untrusted_text: string }> = {};
+    const truncatedFields: string[] = [];
+    shownRows.forEach((row, index) => {
+      values[row.key] = untrusted(fitted[index]!);
+      if (fitted[index] !== row.shown) truncatedFields.push(row.key);
+    });
+    const filled = new Set(shownRows.map((row) => row.key));
     return {
       instance_id: loaded.instance.id,
       form: loaded.instance.templateName,
@@ -1561,6 +1637,7 @@ export async function readForm(context: ToolContext, input: { instance_id?: unkn
       /* The field the manager's account goes in (Observation on a CA, Details of Coaching on a coaching form). */
       account_field: ["observation", "coaching_details"].find((key) => fieldKeys.has(key)) ?? null,
       empty_fields: [...fieldKeys].filter((key) => !filled.has(key)).slice(0, 40),
+      ...(truncatedFields.length > 0 ? { truncated_fields: truncatedFields, note: "Each field in truncated_fields is longer on the form than shown here; it is filled. Never call it empty or missing." } : {}),
     };
   } catch (error) {
     if (error instanceof InstanceNotVisibleError) return { reason_code: "form_not_visible", error: "That form does not exist or this manager cannot open it." };
@@ -2060,6 +2137,32 @@ async function closeSpellingOfRoster(context: ToolContext, effects: ToolEffects 
 }
 
 /**
+ * THE CHOICES TELL THEMSELVES APART (Pau via QA, item 18, 17 and 20 Nov 2026): several forms of one person could read
+ * alike in a which-one list ("Corrective Action Form from 2026-11-10" twice). Each listed form's line, built by code from
+ * its record: form, status (draft / finalized), date and salon, and, when another listed form has the same form and
+ * date, the moment it was created (business time). Every which-one list (find_past_forms, the card-on-screen question)
+ * uses these lines.
+ */
+function formChoices<Row extends { templateName: string; status: string; formDate?: string | null; locationId?: string | null; locationName?: string | null; createdAt: string }>(listed: readonly Row[]): Map<Row, string> {
+  const usDay = (iso: string | null | undefined) => {
+    const found = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso ?? "");
+    return found ? `${found[2]}/${found[3]}/${found[1]}` : null;
+  };
+  return new Map(listed.map((row) => {
+    const twin = listed.some((other) => other !== row && other.templateName === row.templateName && (other.formDate ?? null) === (row.formDate ?? null));
+    const created = twin ? formatBusinessTime(row.createdAt, { year: true }) : null;
+    const line = [
+      row.templateName,
+      row.status,
+      usDay(row.formDate) ? `dated ${usDay(row.formDate)}` : "no date",
+      salonLabel(row.locationId ?? null, row.locationName ?? null) ?? `no ${locationWord()}`,
+      ...(created ? [`created ${created}`] : []),
+    ].join(" · ");
+    return [row, line] as const;
+  }));
+}
+
+/**
  * QA (16 Nov 2026, live group E on main 63ba4c48): an EDIT asked for a form type (a Corrective Action) while this person's
  * card on screen is another type (a Coaching Form, not created) and forms of the asked type are on file: never a new card
  * of that type. The which-one question, the card on screen first, as find_past_forms asks it. Read only when the
@@ -2083,15 +2186,43 @@ async function editAskedFormsOnFile(context: ToolContext, effects: ToolEffects, 
     .filter((row) => row.templateKey === template.key && (names.some((full) => samePerson(full, row.employeeName)) || sameRosterPerson(row.employeeName, displayName(person), roster)));
   if (onFile.length === 0) return null;
   const cardForm = shown.templateName ?? "card";
-  const dated = onFile.slice(0, 6).map((row) => `${row.templateName}${row.formDate ? ` from ${row.formDate}` : ""}`);
+  /* Each form on file by its choice line (`formChoices`): form, status, date, salon, created when they match. */
+  const choices = formChoices(onFile.slice(0, 6));
+  const dated = onFile.slice(0, 6).map((row) => choices.get(row)!);
   const files = dated.length === 1 ? `the ${dated[0]} on file` : `one of the ${onFile.length} ${template.name}s on file (${dated.join("; ")})`;
   effects.openRequested ??= displayName(person);
   return {
     reason_code: "edit_asked_forms_on_file", error: `The manager asked to edit a ${template.name}, and this person's ${cardForm} card is on screen (not created) while ${template.name}s are on file. No new card was made. End your reply with ask_exactly, exactly: the card on screen picked is changed (propose_form again); a dated form picked is opened with open_form.`,
     card_on_screen: { form: cardForm, created: false },
-    forms: onFile.slice(0, 6).map((row) => ({ instance_id: row.id, form: row.templateName, status: row.status, form_date: row.formDate })),
+    forms: onFile.slice(0, 6).map((row) => ({ instance_id: row.id, form: row.templateName, status: row.status, form_date: row.formDate, choice: choices.get(row)! })),
     ask_exactly: `Which one: the ${cardForm} on screen, or ${files}?`,
   };
+}
+
+/**
+ * QA item 8 (20 Nov 2026): the manager named or picked this roster person in this chat. Named: a manager message holds
+ * their full name (legal or preferred) or their whole first or preferred name (case and spacing ignored). Picked or
+ * confirmed, from the server's records: a spelling confirmed as them, an answered name question that offered them (a
+ * which-one pick, a yes), this message answering such a question, an earlier card for them, or the draft open for them.
+ */
+async function personNamedOrPicked(context: ToolContext, row: RosterEmployee, roster: readonly RosterEmployee[]): Promise<boolean> {
+  const said = [...(context.history as ChatMessage[]).filter((turn) => turn.role === "user").map((turn) => withoutMessageIdTags(String(turn.content ?? ""))), context.question];
+  const names = [...fullNamesOf(row), row.firstName, row.preferredFirstName ?? ""].map((name) => name.trim()).filter(Boolean);
+  if (said.some((text) => names.some((name) => holdsPhrase(text, name)))) return true;
+  const view = nameQuestionView(context, roster);
+  if (spellingKeysConfirmedFor(view, row.id).length > 0) return true;
+  if (answeredNameQuestions(view).some((asked) => asked.offered.some((person) => person.id === row.id) && (asked.latest || !asked.open))) return true;
+  const key = personKey(row.id);
+  if ([...(context.cardRecords ?? []), context.cardOnScreen, context.earlierCard].some((card) => card?.employeeKey === key)) return true;
+  if (!context.openFormId) return false;
+  const open = await authorizeInstance(context.request, context.openFormId, "view").then(({ loaded }) => loaded.instance).catch(() => null);
+  return Boolean(open && fullNamesOf(row).some((full) => samePerson(full, open.employeeName)));
+}
+
+/** QA item 8: no card for a person nobody named; the app's who-is-it-for question. */
+async function personNotNamed(context: ToolContext, template: { key: string; name: string }, effects: ToolEffects, person: RosterEmployee): Promise<ToolResult> {
+  const who = await askWhoFor(context, template, effects);
+  return { ask_exactly: who.ask_exactly, reason_code: "person_not_named", error: `No words of the manager's in this chat name ${displayName(person)}, and nobody picked or confirmed them. The card was not made. End your reply with ask_exactly, exactly, once.` };
 }
 
 /** A roster person's full names: the Woven preferred name with the surname, and the legal one (batch G, QA). */
@@ -2336,6 +2467,27 @@ export function accountMissing(managerWords: string, account: string, priorActio
 }
 
 
+/**
+ * `account` without a whole "at / in <salon>" phrase naming `salonId` (QA item 20): every word of the phrase is a word of
+ * that salon's name (or "the", "salon", "location", "store", "our"), it reads as that salon, and it ends at a comma, a
+ * sentence's end or the end of the account. "At Kearney, coaching about bed cleaning." → "Coaching about bed cleaning.";
+ * "at lincoln high during her shift" and "at the front desk" are never touched.
+ */
+export function withoutNamedSalon(account: string, salonId: string): string {
+  const nameWords = new Set((rosterSalonName(salonId) ?? "").toLowerCase().split(/[^a-z0-9]+/).filter(Boolean));
+  const filler = new Set(["the", "salon", "location", "store", "our", locationWord().toLowerCase()]);
+  const isThatSalon = (phrase: string) => {
+    const words = phrase.toLowerCase().split(/[^a-z0-9']+/).filter(Boolean);
+    return words.length > 0 && words.some((word) => nameWords.has(word)) && words.every((word) => nameWords.has(word) || filler.has(word)) &&
+      readSalonMentions(`at ${phrase}`).some((mention) => mention.salonIds.includes(salonId));
+  };
+  const out = account.replace(/(^|[\s,;])(?:at|in)\s+((?:[A-Za-z0-9'’-]+\s+){0,4}[A-Za-z0-9'’-]+)(?=\s*(?:[,.;!?]|$))(,?)/gi, (whole, before: string, phrase: string, comma: string) =>
+    isThatSalon(phrase) ? (before.trim() === "" ? "" : before.replace(/\s+$/, "")) + (comma && before.trim() !== "" ? comma : "") : whole);
+  if (out === account) return account;
+  const tidy = out.replace(/\s+([,.;!?])/g, "$1").replace(/[ \t]{2,}/g, " ").replace(/^[\s,;]+/, "").trim();
+  return tidy.charAt(0).toUpperCase() + tidy.slice(1);
+}
+
 /** Every message the manager typed in this chat, the latest included. */
 function managerTurns(context: Pick<ToolContext, "question" | "history">): string {
   return [...context.history.filter((message) => message.role === "user").map((message) => message.content), context.question].join("\n");
@@ -2571,6 +2723,12 @@ export async function proposeForm(
         ask_exactly: nameConfirmationQuestion(spelled, [displayName(person)]),
       };
     }
+    /*
+     * QA item 8 (20 Nov 2026; Pau's name/form lock): `closeSpellingNotSettled` lets through a person no words name at all.
+     * A roster person is seated only when the manager named them, as a close spelling (asked just above), or by a recorded
+     * pick or confirmation (`personNamedOrPicked`); otherwise no card, and the who-is-it-for question.
+     */
+    if (person && !(await personNamedOrPicked(context, person, read.roster))) return personNotNamed(context, template, effects, person);
     /* fix-name, live s10 (Pau's ruling, 16 Nov 2026): a typed name that corrects the card's person goes through the roster check. */
     const corrected = person
       ? cardNameCorrection(context, effects, key, displayName(person), read.roster, { byId: person, newFormEvidence: input.new_form_evidence })
@@ -2618,6 +2776,7 @@ export async function proposeForm(
      */
     else if (typed && !id && (lookedUp = await lookUpForCard(context, effects, typed, input.person_evidence, read.roster)).kind !== "none") {
       if (lookedUp.kind === "ask") return lookedUp.result;
+      if (!(await personNamedOrPicked(context, lookedUp.person, read.roster))) return personNotNamed(context, template, effects, lookedUp.person);
       employee = { name: nameAsSaid(lookedUp.person, managerTurns(context)), salonIds: lookedUp.person.salonIds, id: lookedUp.person.id };
     }
     else {
@@ -2704,7 +2863,13 @@ export async function proposeForm(
   const priorRead = withoutTextToManager(typeof input.prior_actions === "string" ? input.prior_actions : "", managerText);
   if (typeof input.prior_actions === "string") input = { ...input, prior_actions: priorRead.text };
   const toManagerRemoved = [...accountRead.removed, ...priorRead.removed];
-  let whatHappened = accountRead.text.trim().slice(0, 2_000);
+  /*
+   * ONLY THE MANAGER'S OWN ADDRESS (Pau via QA, item 19): a labelled address ("home address 412 …") in the model's account
+   * that the manager never typed in this chat is left out, so neither the card nor Create (which drafts from the card's
+   * lines) can put it on a form. An address the manager typed stays.
+   */
+  const addressRead = (await import("@/lib/forms/exit-details")).withoutUntypedAddresses(accountRead.text, managerText);
+  let whatHappened = addressRead.text.trim().slice(0, 2_000);
   /* The incident's own words (this person's turns, read below) are checked against the account once they are known. */
   const asked = managerContext(context.history as ChatMessage[], { id: context.questionMessageId, content: context.question });
   /* THIS request's turns (QA, 14 Nov 2026; THIS_PERSONS_TURNS behaviour): an earlier incident in the chat never feeds this card. */
@@ -2795,7 +2960,14 @@ export async function proposeForm(
     const check = verifyEvidence(input.exit_evidence, turns);
     const inRequest = check.ok && (check.turn.index === turns.length - 1 || sourceIds.includes(check.turn.id) || citedRequestIds.includes(check.turn.id));
     if (!inRequest) {
-      return { exit_not_stated: true, reason_code: "exit_not_stated", evidence: check.ok ? "evidence_not_this_turn" : check.reason, note: "No exit_evidence from this person's request: the manager's words asking for the Employee Exit Form, or their yes to your offer of it. An offense told with a termination is the Corrective Action Form with warning_level termination, citing the offense and its date; then offer the exit form in one line (the rules book's Which form lines)." };
+      /*
+       * QA item 10 (20 Nov 2026): this refusal never steers toward a Corrective Action. It asks, neutrally, whether the person
+       * resigned or was terminated, and offers both forms; the manager's answer decides. (A termination told with an offense
+       * is the Corrective Action Form by the rules book's own line, not by this refusal.)
+       */
+      const caName = templates.find((row) => row.key === appConfig().formKeys.corrective)?.name ?? "Corrective Action Form";
+      const neutral = `Did **${employee.name}** resign, or was ${employee.name} terminated? I can start the ${template.name} or a ${caName} with Termination.`;
+      return { exit_not_stated: true, reason_code: "exit_not_stated", evidence: check.ok ? "evidence_not_this_turn" : check.reason, ask_exactly: neutral, note: "No exit_evidence from this person's request: the manager's words asking for the exit form, or their yes to your offer of it. Make no card: say what you understood in a few words and end the reply with ask_exactly, exactly. The manager's answer decides the form." };
     }
     /*
      * Fix batch item 1 (QA's live re-test, 16 Nov 2026: "ugh <D> quit yesterday, short staffed again" built an exit card
@@ -2804,12 +2976,21 @@ export async function proposeForm(
      */
     const kind = exitEvidenceKind(input.exit_evidence);
     const offer = `Want the ${template.name} for **${employee.name}**?`;
+    /* #1055's follow-up: each refusal below offers the exit form, recorded for the next turn's yes (exit_offer). */
+    const offered = { employeeId: employee.id ?? null, name: employee.name };
     if (kind === "resignation_told") {
+      if (effects) effects.exitOffered = offered;
       return { exit_not_asked: true, reason_code: "exit_not_asked", ask_exactly: offer, note: "The manager told a resignation but did not ask for the exit form. Make no card: say what you understood in a few words and end the reply with ask_exactly. Propose the exit card only when they say yes (exit_evidence kind yes_to_exit_offer)." };
     }
-    /* A yes to the offer is this message, answering the app reply right before it. */
-    const answersOffer = kind === "yes_to_exit_offer" && check.ok && check.turn.index === turns.length - 1 && turns[turns.length - 2]?.role === "assistant";
+    /*
+     * A yes to the offer is this message, answering the reply right before it, AND that reply's tools offered the exit
+     * form for this person (its exit_offer record; #1055's follow-up). Turn order alone never makes a yes an exit ask.
+     */
+    const offerRecord = context.exitOffered ?? null;
+    const offeredThisPerson = Boolean(offerRecord && ((employee.id && offerRecord.employeeKey === personKey(employee.id)) || offerRecord.nameKey === personKey(employee.name)));
+    const answersOffer = kind === "yes_to_exit_offer" && check.ok && check.turn.index === turns.length - 1 && turns[turns.length - 2]?.role === "assistant" && offeredThisPerson;
     if (kind !== "asks_for_exit_form" && !answersOffer) {
+      if (effects) effects.exitOffered = offered;
       return { exit_not_stated: true, reason_code: "exit_not_stated", evidence: kind === null ? "exit_kind_missing" : "exit_offer_not_answered", ask_exactly: offer, note: "exit_evidence needs its kind: asks_for_exit_form (the manager's words ask for the exit form or its paperwork), yes_to_exit_offer (this message says yes to your offer of it, right after you asked), or resignation_told (a resignation told, no ask: make no card and end the reply with ask_exactly)." };
     }
   }
@@ -3172,7 +3353,16 @@ export async function proposeForm(
   const carriedRecord = samePersonOnScreen
     ? ([...(context.cardRecords ?? [])].reverse().find((record) => isThisCard(record) && inRequest(record) && record.level) ?? (isThisCard(context.cardOnScreen) ? context.cardOnScreen : null))
     : null;
-  const carriedLevel = caOnlyFields && !asksNewForm ? (carriedRecord?.level ?? null) : null;
+  /*
+   * QA (20 Nov 2026; Runner 2's c263): "Write me a CA form for <A> having a black crewneck on … on 11/13 and 11/6" after
+   * "Please create a CA written warning for <A> for being out of dresscode on 11/13" was the SAME CA asked again with more
+   * detail; the model's new_form_evidence started it fresh and Written was lost. A new request keeps the level only when
+   * it is that same card asked again: this person's card on this form is on screen and THIS message states its incident
+   * date again. Another date ("another ca …, late on 11/14"), or none, still starts fresh.
+   */
+  const screenDate = sameCardOnScreen(context.cardOnScreen, template.key, employee) ? context.cardOnScreen!.incidentDate ?? null : null;
+  const sameIncidentAskedAgain = asksNewForm && screenDate !== null && latestDates.some((given) => monthDayToIso(given, today) === screenDate);
+  const carriedLevel = caOnlyFields && (!asksNewForm || sameIncidentAskedAgain) ? (carriedRecord?.level ?? null) : null;
   const level = askedLevel && levelCheck?.ok ? askedLevel : carriedLevel;
   /*
    * Fix batch item 7 (QA's targeted re-run, c163: a bare "yes" after "Payroll deduct and warning level aren't set" set
@@ -3425,6 +3615,18 @@ export async function proposeForm(
       whichSalon = !askedBefore;
     }
   }
+  /*
+   * THE SALON THE MANAGER NAMED IS THE CARD'S SALON, NOT PART OF THE ACCOUNT (QA item 20; Runner 2's c075: "At Kearney,
+   * coaching about bed cleaning."). When the card's salon is one the manager named in this request, a whole "at / in
+   * <that salon>" phrase leaves the account (`withoutNamedSalon`). Any other place stays word for word.
+   */
+  if (card.locationId && card.issue && readSalonMentions(requestWords).some((mention) => mention.salonIds.includes(card.locationId!))) {
+    const unplaced = withoutNamedSalon(card.issue, card.locationId);
+    if (unplaced !== card.issue && unplaced !== "") {
+      card.issue = unplaced;
+      whatHappened = unplaced;
+    }
+  }
   card.employeeRole = employee.id ? await rosterTitle(context.actor.scope, employee.id) : null;
   /*
    * A TITLE THE MANAGER TYPED (batch H4/H6: JOB_TITLE_FROM_WORDS, JOB_TITLE_APPOSITION, TITLE_SPELLED_OUT, JOB_TITLE_CASE):
@@ -3507,7 +3709,13 @@ export async function proposeForm(
   const levelNotGiven = namedOptions.length === 1 ? namedOptions[0]! : null;
   const unset = corrective && !awaiting ? [...(payroll ? [] : ["payroll_deduct"]), ...(level || terminationStated ? [] : ["warning_level"])] : [];
   /* What this card's reply asks (the next turn's card record). After an unclear answer it still asks both (E r2). */
-  effects.proposalAsked = unset;
+  /*
+   * #1055's follow-up (QA, 20 Nov 2026): a card that asks which date (several dates, none chosen) records "form_date" in
+   * its asked fields, so a later turn knows the date was asked (dates_asked_before) from the record, never the reply.
+   */
+  effects.proposalAsked = [...unset, ...(datesAsked.length > 0 ? ["form_date"] : [])];
+  /* A termination card: the rules book offers the exit form after it; recorded for the next turn's yes (exit_offer). */
+  if (loopTermination) effects.exitOffered = { employeeId: employee.id ?? null, name: employee.name };
   effects.proposalLevel = level;
   effects.proposalPayroll = payroll;
   effects.proposalPayrollAmount = payroll === "yes" ? amount : null;
@@ -3559,8 +3767,11 @@ export async function proposeForm(
     /* AMOUNT_UNKNOWN_ACK (batch H1): "I don't know the amount" leaves it blank for the manager, said once, never asked again. */
     ...(corrective && payroll === "yes" && !amount ? (saysAmountUnknown(context.question, context.history, { amountOpen: true }) ? { payroll_amount_unknown: true } : { payroll_amount_unset: true }) : {}),
     ...(datesGiven.length > 1 ? { dates_given: datesGiven, ...(date ? { date_chosen: date } : {}) } : {}),
-    /* Batch G (G16): this chat already asked which date; a second ask is never made (the rules book: use the best reading). */
-    ...(datesGiven.length > 1 && context.history.some((message) => message.role === "assistant" && /more than one date|which date goes on the form/i.test(String(message.content))) ? { dates_asked_before: true } : {}),
+    /*
+     * Batch G (G16): this chat already asked which date; a second ask is never made (the rules book: use the best reading).
+     * #1055's follow-up (QA, 20 Nov 2026): known from the card records ("form_date" asked), never by reading the replies.
+     */
+    ...(datesGiven.length > 1 && (context.cardRecords ?? []).some((record) => record.asked.includes("form_date")) ? { dates_asked_before: true } : {}),
     ...(accountLost.length > 0 ? { account_words_missing: accountLost } : {}),
     /* PR 6: an exit card with no account at all. A fact: the model puts the manager's own account in what_happened, or leaves it. */
     ...(exitForm && !whatHappened ? { account_not_given: { note: "This exit card has no account. If the manager said how or when they left (\"resigned by text\", their last day), propose the card again with all of it in what_happened, in their own words." } } : {}),
