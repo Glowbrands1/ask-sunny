@@ -60,6 +60,19 @@ import { saysTerminationWord } from "@/lib/forms/termination-word";
 import { EXIT_DETAIL_FIELDS, EXIT_OPTION, EXIT_TYPE_GROUP } from "@/lib/forms/exit-library";
 /** QA item 17: the exit form's own payroll question (`exit-library.ts`, EXIT_YES_NO_QUESTIONS). */
 const EXIT_PAYROLL_KEY = "payroll_deduction_applicable";
+/*
+ * QA's f077 (20 Nov 2026; #1139 live): the reason line saved "job abandonment; last day 11/18, notice given 11/17". The
+ * dates have their own fields, so a part of the account that only names one of them (the form's own date labels and a
+ * date) is not the reason.
+ */
+const EXIT_DATE_PART = /^(?:(?:her|his|their|the)\s+)?(?:last\s+day(?:\s+worked)?|notice(?:\s+(?:given|date|fulfilled))?|date\s+(?:of\s+)?notice(?:\s+was\s+given)?|effective(?:\s+date)?|termination\s+date)\s*(?:was|is|on|of|:)?\s*\d{1,2}\/\d{1,2}(?:\/\d{2,4})?$/i;
+function reasonOnly(account: string): string {
+  const parts = account.split(/[;,.]\s*/).map((part) => part.trim()).filter(Boolean);
+  const kept = parts.filter((part) => !EXIT_DATE_PART.test(part));
+  if (kept.length === 0 || kept.length === parts.length) return account;
+  const reason = kept.join("; ");
+  return /[.!?]$/.test(reason) ? reason : `${reason}.`;
+}
 import { terminationStatedTicksEnabled } from "@/lib/config/chat-quality-flags";
 import { checkProposalIsCurrent } from "@/lib/forms/proposal-currency";
 import { preferredNamesOf } from "@/lib/forms/preferred-name-current";
@@ -418,7 +431,7 @@ export async function POST(request: Request) {
         if (card.warningLevel === "termination" && saysTerminationWord(userTurns)) {
           const account = typeof card.loopAccount === "string" ? card.loopAccount.trim().slice(0, 2_000) : "";
           exitStated.checked[EXIT_TYPE_GROUP] = [EXIT_OPTION.immediateInvoluntary];
-          if (account) exitStated.values[EXIT_DETAIL_FIELDS.resignationReason] = account;
+          if (account) exitStated.values[EXIT_DETAIL_FIELDS.resignationReason] = reasonOnly(account);
         }
         if (Object.keys(exitStated.checked).length > 0) {
           await applyStatedFacts(instanceId, exitStated, actor.id, new Set([EXIT_PAYROLL_KEY, EXIT_TYPE_GROUP, EXIT_DETAIL_FIELDS.resignationReason]));
