@@ -441,6 +441,7 @@ function buildAgentLoopTools(config: AppConfig) {
           description: "Earlier messages of this request the name lookup missed (the manager typed the name differently there, and this message gives it).",
         },
         new_form_evidence: evidence("Only when this message asks for another or a new form (a second form for the person on the open draft, or a new request after an earlier card): its words."),
+        form_change_evidence: evidence("Only when this message asks for the card on screen to be a different form for the same incident (\"make it a CA instead\", or the manager's yes to your offer of the other form): its words."),
         policy: { type: "string", description: "Always on a Corrective Action, Coaching or Follow-Up Coaching card (Pau, 17 Nov 2026), the heading that fits THIS card's own account, never one copied from another form's card. The one JBA Policy Manual heading that fits what happened, exactly. \"Other — <short topic>\" only for Must See Behaviors, a cleaning or sanitation duty left undone, or an incident no section covers; or both, \"<heading>; Other — <topic>\" (a cleaning duty beside another offense), as the rules book says." },
         what_happened: {
           type: "string",
@@ -467,7 +468,7 @@ function buildAgentLoopTools(config: AppConfig) {
   {
     name: "edit_form",
     description:
-      "Change a form. The form's date is a direct field edit, never the reviser: values form_date (MM/DD/YYYY), the date the manager typed for this request. Leave values out to have the form's own reviser apply the manager's latest message (details, the policy line); give values (field key to exact text) only for text the manager dictated word for word. A warning level or payroll answer (\"make it a written\", \"yes payroll, $<amount>\") is a targeted edit: values warning_type (verbal/written), payroll_deduct (yes/no), payroll_deduct_amount only. A finalized form is never changed: this opens a new draft revising it and applies the change there.",
+      "Change a form. The form's date is a direct field edit, never the reviser: values form_date (MM/DD/YYYY), the date the manager typed for this request. The follow-up date (\"change the follow up to 12/3\", \"move the follow up to next Friday\") is values follow_up_date: it is set from the manager's words, and a follow-up date after today is never refused. Leave values out to have the form's own reviser apply the manager's latest message (details, the policy line); give values (field key to exact text) only for text the manager dictated word for word. A warning level or payroll answer (\"make it a written\", \"yes payroll, $<amount>\") is a targeted edit: values warning_type (verbal/written), payroll_deduct (yes/no), payroll_deduct_amount only. A finalized form is never changed: this opens a new draft revising it and applies the change there.",
     input_schema: object(
       {
         instance_id: { type: "string" },
@@ -793,13 +794,45 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   const { jsonSchema, streamText, tool } = await import("ai");
   const model = modelForTests ?? (await import("@ai-sdk/anthropic")).createAnthropic({ apiKey: requireEnv("ANTHROPIC_API_KEY") })(CLAUDE_MODEL);
   let stepNumber = 1;
+  /*
+   * NO REPEATED IDENTICAL TOOL CALL IN ONE TURN (QA's f047, 20 Nov 2026: a 27 s reply made the same call with the same
+   * input more than once). Within one turn, a call to a tool that only reads, with the same input as an earlier call,
+   * returns that call's result instead of running again. A tool that writes (propose_form, edit_form, open_form,
+   * coach_team) always runs, and clears what was kept, so a read after a write reads again. A refused call is not kept:
+   * it runs again, so the retry guard above still counts it. Outside `runTool`, so a reused call neither starts nor
+   * finishes a tool. The trace counts the reuses (repeat_calls_reused).
+   */
+  const READS_ONLY = new Set(["find_staff", "find_past_forms", "read_form", "read_policy", "search_knowledge", "list_staff", "app_help", "read_reviews", "read_stats"]);
+  const keptCalls = new Map<string, Promise<ToolResult>>();
+  let repeatsReused = 0;
+  const sameInput = (value: unknown): string =>
+    JSON.stringify(value ?? {}, (_key, entry: unknown) =>
+      entry && typeof entry === "object" && !Array.isArray(entry) ? Object.fromEntries(Object.entries(entry as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b))) : entry,
+    );
+  const callTool = async (name: string, args: Record<string, unknown>): Promise<ToolResult> => {
+    if (!READS_ONLY.has(name)) {
+      keptCalls.clear();
+      return runTool(stepNumber, name, args);
+    }
+    const key = `${name}\u0000${sameInput(args)}`;
+    const earlier = keptCalls.get(key);
+    if (earlier) {
+      repeatsReused += 1;
+      return earlier;
+    }
+    const pending = runTool(stepNumber, name, args);
+    keptCalls.set(key, pending);
+    const result = await pending;
+    if (typeof (result as { reason_code?: unknown }).reason_code === "string" && keptCalls.get(key) === pending) keptCalls.delete(key);
+    return result;
+  };
   const tools = Object.fromEntries(
     agentLoopTools().map((definition) => [
       definition.name,
       tool({
         description: definition.description,
         inputSchema: jsonSchema<Record<string, unknown>>(definition.input_schema as never),
-        execute: (args: Record<string, unknown>) => runTool(stepNumber, definition.name, args),
+        execute: (args: Record<string, unknown>) => callTool(definition.name, args),
       }),
     ]),
   );
@@ -1166,7 +1199,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     trace.firstTokenMs = firstTokenMs;
     trace.slots = {
       ...(trace.slots ?? {}),
-      agent_loop: { question_key: personKey(input.question), ...(cardSlot ? { card: cardSlot } : {}), ...(nameQuestionSlot ? { name_question: nameQuestionSlot } : {}), ...(personAskedSlot ? { person_asked: personAskedSlot } : {}), ...(exitOfferSlot ? { exit_offer: exitOfferSlot } : {}), ...(teamConfirmSlot ? { team_confirm: teamConfirmSlot } : {}), steps, model_steps: modelSteps, model_calls: modelCalls, ...(turn.manualRead ? { manual_read: turn.manualRead } : {}), step_limit: limit, steps_used: stepNumber - 1 + hiddenCalls, ...(hiddenCalls > 0 ? { tool_model_calls: hiddenCalls } : {}), stopped: stoppedAt, ms: latencyMs, first_token_ms: firstTokenMs, ...(selfReview ? { self_review: selfReview } : {}), ...(draftReview ? { draft_review: draftReview } : {}), ...(levelReview ? { level_review: levelReview } : {}), ...(replyUnwrapped ? { reply_unwrapped: true } : {}), ...(retriesBlocked > 0 ? { stop_retrying: retriesBlocked } : {}), ...(pronounsReplaced > 0 ? { pronouns_replaced: pronounsReplaced } : {}) },
+      agent_loop: { question_key: personKey(input.question), ...(cardSlot ? { card: cardSlot } : {}), ...(nameQuestionSlot ? { name_question: nameQuestionSlot } : {}), ...(personAskedSlot ? { person_asked: personAskedSlot } : {}), ...(exitOfferSlot ? { exit_offer: exitOfferSlot } : {}), ...(teamConfirmSlot ? { team_confirm: teamConfirmSlot } : {}), steps, model_steps: modelSteps, model_calls: modelCalls, ...(turn.manualRead ? { manual_read: turn.manualRead } : {}), step_limit: limit, steps_used: stepNumber - 1 + hiddenCalls, ...(hiddenCalls > 0 ? { tool_model_calls: hiddenCalls } : {}), stopped: stoppedAt, ms: latencyMs, first_token_ms: firstTokenMs, ...(selfReview ? { self_review: selfReview } : {}), ...(draftReview ? { draft_review: draftReview } : {}), ...(levelReview ? { level_review: levelReview } : {}), ...(replyUnwrapped ? { reply_unwrapped: true } : {}), ...(retriesBlocked > 0 ? { stop_retrying: retriesBlocked } : {}), ...(repeatsReused > 0 ? { repeat_calls_reused: repeatsReused } : {}), ...(pronounsReplaced > 0 ? { pronouns_replaced: pronounsReplaced } : {}) },
     };
   }
 
@@ -1231,6 +1264,16 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   /* Never twice: the reply already asks for a change in its own words (QA: "change" and a question mark in one sentence). */
   const asksForChange = /\bchange\b[^.!?\n]*\?/i.test(content);
   if (effects.replyMustAsk && !content.includes(effects.replyMustAsk) && !asksForChange) content = `${content.trim()}\n\n${effects.replyMustAsk}`.trim();
+  /*
+   * STARTER_FOLLOW_UP_EXAMPLE_ENABLED (QA's live re-test of #1127, 20 Nov 2026): the same step as the regular chat's. When
+   * one of the app's own home starters is the chat's first message and the reply asks who or which, it ends with one
+   * example answer. Keyed to the app's starter texts (never the manager's own words), like replyMustAsk above.
+   */
+  content = (await import("@/lib/ai/starter-follow-up")).starterExampleText(content, input.question, {
+    firstMessage: !input.history.some((turn) => turn.role === "user"),
+    namesPerson: Boolean(effects.proposal?.employeeName),
+    showedSomething: cited.length > 0,
+  });
   const answer: AskResponse = {
     /* The evidence tags are the app's protocol, like the source markers: never shown to the manager. */
     content: withoutMessageIdTags(withoutSourceMarkers(withoutSourceNotes(content))),

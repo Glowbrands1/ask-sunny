@@ -57,8 +57,16 @@ const GOOGLE_REVIEW_PATTERNS: readonly RegExp[] = [
  * A question for the longer periods the Google Reviews page now offers: L3 (last 3 full months), L6 (last 6 full
  * months), YTD (Jan 1 through today) and month by month. Only these turns pay for the month-by-month read.
  */
-const MONTHS_PERIOD =
-  /\b(?:l3|l6|ytd|year[- ]to[- ]date|this year|per month|by month|month by month|(?:last|past|previous)\s+(?:3|three|6|six)\s+(?:full\s+)?(?:months?|mos?)|(?:3|three|6|six)[- ]months?)\b/i;
+/*
+ * QA's code audit (20 Nov 2026, on 9e1d1f67): "how many reviews did Kearney get last month?", "in October" and "last 2
+ * months" matched nothing here, so only this month to date was given. Any month or period the manager names reads the
+ * month-by-month figures: last/previous month, a month by name, and the last/past N months for any N.
+ */
+const MONTH_NAME = "(?:january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sept?|oct|nov|dec)";
+const MONTHS_PERIOD = new RegExp(
+  String.raw`\b(?:l3|l6|ytd|year[- ]to[- ]date|this year|per month|by month|month by month|(?:last|past|previous)\s+(?:\d{1,2}|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+(?:full\s+)?(?:months?|mos?)|(?:\d{1,2}|three|six)[- ]months?|(?:last|previous|past)\s+month|${MONTH_NAME})\b`,
+  "i",
+);
 
 export function asksForMonthlyPeriods(question: string): boolean {
   return MONTHS_PERIOD.test(question);

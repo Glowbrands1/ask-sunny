@@ -59,6 +59,10 @@ import { rulesBookText } from "./rules-book";
  * first name (it said **<employee>**, which contradicted the rule), and the lines that say which person it is keep the full
  * name. Then (QA and Pau): both lines say <reply_name>, which code decides (propose_form / edit_form's reply_name).
  *
+ * Re-taken on purpose on 20 Nov 2026 (QA item 22, Pau's call: prior discipline on file): the prior actions line now lets
+ * propose_form's prior_on_file fill prior actions when the manager states none, and says it never sets the level. It
+ * reads the same under every config; nothing else changed.
+ *
  * Re-taken on purpose on 20 Nov 2026 (QA item 23, a drafted team message reversed "isnt realostic"): one Replies line was
  * added: a drafted message keeps the manager's own statements, negations included. It reads the same under every config;
  * nothing else changed.
@@ -80,6 +84,10 @@ import { rulesBookText } from "./rules-book";
  * edit_form's form_state ("It's saved on the draft", never "press Create"); the payroll line adds edit_form's
  * payroll_amount_missing (ask the amount in one question), and the stated line adds ", as you said" only for
  * stated_this_turn. No app, place, staff system or form key.
+ *
+ * Updated on purpose on 20 Nov 2026 (Pau's ruling via QA, c091): a Corrective Action may cite two headings when the
+ * manager describes two offenses ("<heading>; <heading>", never more than two); the clock-out line no longer says "a card
+ * cites one heading" (closing early is part of the same Attendance offense). No app, place, staff system or form key.
  *
  * Re-taken on purpose on 20 Nov 2026 (QA's code audit of coach_team, item C: "yes please", "go ahead and make them"
  * went to wrong_tool): the coach_team line now sends any answer to its confirmation to coach_team, with four example
