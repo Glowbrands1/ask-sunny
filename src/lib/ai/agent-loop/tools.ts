@@ -1529,6 +1529,25 @@ export async function findPastForms(context: ToolContext, input: { employee_name
 
 const VALUES_LIMIT = 6_000;
 
+/**
+ * Texts fitted into `limit` characters together (item 26): short ones whole, the longest cut first, each cut text ending
+ * "… (N more characters on the form)". Every text keeps at least 200 characters, so none is ever dropped.
+ */
+export function fitToLimit(texts: readonly string[], limit: number): string[] {
+  const total = texts.reduce((sum, text) => sum + text.length, 0);
+  if (total <= limit) return [...texts];
+  const out = [...texts];
+  let remaining = limit;
+  const byLength = texts.map((text, index) => ({ index, length: text.length })).sort((a, b) => a.length - b.length);
+  byLength.forEach(({ index, length }, rank) => {
+    const share = Math.max(200, Math.floor(remaining / (byLength.length - rank)));
+    const keep = Math.min(length, share);
+    if (keep < length) out[index] = `${texts[index]!.slice(0, keep).trimEnd()}… (${length - keep} more characters on the form)`;
+    remaining = Math.max(0, remaining - keep);
+  });
+  return out;
+}
+
 export async function readForm(context: ToolContext, input: { instance_id?: unknown; forms_on_file_evidence?: unknown }, effects?: ToolEffects): Promise<ToolResult> {
   const id = typeof input.instance_id === "string" ? input.instance_id.trim() : "";
   if (id === "") return { reason_code: "missing_input", error: "Give the form's instance_id (from find_past_forms or the open form)." };
@@ -1540,19 +1559,27 @@ export async function readForm(context: ToolContext, input: { instance_id?: unkn
     const { loaded } = await authorizeInstance(context.request, id, "view");
     const closeSpelled = loaded.instance.employeeName ? await closeSpellingRefusal(context, effects, loaded.instance.employeeName) : null;
     if (closeSpelled) return closeSpelled;
-    const values: Record<string, { untrusted_text: string }> = {};
-    let size = 0;
-    for (const row of loaded.values) {
-      const text = row.value?.trim() ?? "";
-      const ticked = row.checked.length > 0 ? row.checked.join(", ") : "";
-      const shown = text || ticked;
-      if (!shown) continue;
-      size += shown.length;
-      if (size > VALUES_LIMIT) break;
-      values[row.fieldKey] = untrusted(shown);
-    }
+    /*
+     * EVERY FIELD'S FILLED / EMPTY STATUS SURVIVES A LONG WRITE-UP (QA's code audit on d7960a5f, item 26): this loop used
+     * to stop at VALUES_LIMIT with `break` and build empty_fields from what it had kept, so a long Observation made the
+     * fields after it (the level, payroll) read as empty. Now every filled field is listed, in the template's order; only
+     * the longest texts are cut to fit (`fitToLimit`), and truncated_fields names them.
+     */
     const fieldKeys = documentFieldKeys(loaded.version.document);
-    const filled = new Set(Object.keys(values));
+    const order = [...fieldKeys];
+    const position = (key: string) => (order.indexOf(key) === -1 ? order.length : order.indexOf(key));
+    const shownRows = loaded.values
+      .map((row) => ({ key: row.fieldKey, shown: (row.value?.trim() ?? "") || (row.checked.length > 0 ? row.checked.join(", ") : "") }))
+      .filter((row) => row.shown !== "")
+      .sort((a, b) => position(a.key) - position(b.key));
+    const fitted = fitToLimit(shownRows.map((row) => row.shown), VALUES_LIMIT);
+    const values: Record<string, { untrusted_text: string }> = {};
+    const truncatedFields: string[] = [];
+    shownRows.forEach((row, index) => {
+      values[row.key] = untrusted(fitted[index]!);
+      if (fitted[index] !== row.shown) truncatedFields.push(row.key);
+    });
+    const filled = new Set(shownRows.map((row) => row.key));
     return {
       instance_id: loaded.instance.id,
       form: loaded.instance.templateName,
@@ -1565,6 +1592,7 @@ export async function readForm(context: ToolContext, input: { instance_id?: unkn
       /* The field the manager's account goes in (Observation on a CA, Details of Coaching on a coaching form). */
       account_field: ["observation", "coaching_details"].find((key) => fieldKeys.has(key)) ?? null,
       empty_fields: [...fieldKeys].filter((key) => !filled.has(key)).slice(0, 40),
+      ...(truncatedFields.length > 0 ? { truncated_fields: truncatedFields, note: "Each field in truncated_fields is longer on the form than shown here; it is filled. Never call it empty or missing." } : {}),
     };
   } catch (error) {
     if (error instanceof InstanceNotVisibleError) return { reason_code: "form_not_visible", error: "That form does not exist or this manager cannot open it." };
@@ -2126,6 +2154,32 @@ async function editAskedFormsOnFile(context: ToolContext, effects: ToolEffects, 
   };
 }
 
+/**
+ * QA item 8 (20 Nov 2026): the manager named or picked this roster person in this chat. Named: a manager message holds
+ * their full name (legal or preferred) or their whole first or preferred name (case and spacing ignored). Picked or
+ * confirmed, from the server's records: a spelling confirmed as them, an answered name question that offered them (a
+ * which-one pick, a yes), this message answering such a question, an earlier card for them, or the draft open for them.
+ */
+async function personNamedOrPicked(context: ToolContext, row: RosterEmployee, roster: readonly RosterEmployee[]): Promise<boolean> {
+  const said = [...(context.history as ChatMessage[]).filter((turn) => turn.role === "user").map((turn) => withoutMessageIdTags(String(turn.content ?? ""))), context.question];
+  const names = [...fullNamesOf(row), row.firstName, row.preferredFirstName ?? ""].map((name) => name.trim()).filter(Boolean);
+  if (said.some((text) => names.some((name) => holdsPhrase(text, name)))) return true;
+  const view = nameQuestionView(context, roster);
+  if (spellingKeysConfirmedFor(view, row.id).length > 0) return true;
+  if (answeredNameQuestions(view).some((asked) => asked.offered.some((person) => person.id === row.id) && (asked.latest || !asked.open))) return true;
+  const key = personKey(row.id);
+  if ([...(context.cardRecords ?? []), context.cardOnScreen, context.earlierCard].some((card) => card?.employeeKey === key)) return true;
+  if (!context.openFormId) return false;
+  const open = await authorizeInstance(context.request, context.openFormId, "view").then(({ loaded }) => loaded.instance).catch(() => null);
+  return Boolean(open && fullNamesOf(row).some((full) => samePerson(full, open.employeeName)));
+}
+
+/** QA item 8: no card for a person nobody named; the app's who-is-it-for question. */
+async function personNotNamed(context: ToolContext, template: { key: string; name: string }, effects: ToolEffects, person: RosterEmployee): Promise<ToolResult> {
+  const who = await askWhoFor(context, template, effects);
+  return { ask_exactly: who.ask_exactly, reason_code: "person_not_named", error: `No words of the manager's in this chat name ${displayName(person)}, and nobody picked or confirmed them. The card was not made. End your reply with ask_exactly, exactly, once.` };
+}
+
 /** A roster person's full names: the Woven preferred name with the surname, and the legal one (batch G, QA). */
 export function fullNamesOf(person: Pick<RosterEmployee, "firstName" | "lastName" | "preferredFirstName">): string[] {
   const last = person.lastName?.trim() ?? "";
@@ -2624,6 +2678,12 @@ export async function proposeForm(
         ask_exactly: nameConfirmationQuestion(spelled, [displayName(person)]),
       };
     }
+    /*
+     * QA item 8 (20 Nov 2026; Pau's name/form lock): `closeSpellingNotSettled` lets through a person no words name at all.
+     * A roster person is seated only when the manager named them, as a close spelling (asked just above), or by a recorded
+     * pick or confirmation (`personNamedOrPicked`); otherwise no card, and the who-is-it-for question.
+     */
+    if (person && !(await personNamedOrPicked(context, person, read.roster))) return personNotNamed(context, template, effects, person);
     /* fix-name, live s10 (Pau's ruling, 16 Nov 2026): a typed name that corrects the card's person goes through the roster check. */
     const corrected = person
       ? cardNameCorrection(context, effects, key, displayName(person), read.roster, { byId: person, newFormEvidence: input.new_form_evidence })
@@ -2671,6 +2731,7 @@ export async function proposeForm(
      */
     else if (typed && !id && (lookedUp = await lookUpForCard(context, effects, typed, input.person_evidence, read.roster)).kind !== "none") {
       if (lookedUp.kind === "ask") return lookedUp.result;
+      if (!(await personNamedOrPicked(context, lookedUp.person, read.roster))) return personNotNamed(context, template, effects, lookedUp.person);
       employee = { name: nameAsSaid(lookedUp.person, managerTurns(context)), salonIds: lookedUp.person.salonIds, id: lookedUp.person.id };
     }
     else {
