@@ -4734,6 +4734,6 @@ export async function appHelp(input: { topic?: unknown }): Promise<ToolResult> {
   if (input.topic === "password" || input.topic === "sign_in") return { answer: appPasswordAnswer(), note: "Give the manager these steps in your own short words." };
   return {
     answer:
-      appConfig().appName + " answers questions from the JBA Policy Manual, looks up the manager's staff and the forms on file, and prepares HR forms (coaching, corrective action and the others the manager may create) as cards they review and Create. It does not hold sales, review or scheduling data.",
+      appConfig().appName + " answers questions from the JBA Policy Manual, looks up the manager's staff and the forms on file, and prepares HR forms (coaching, corrective action and the others the manager may create) as cards they review and Create. For the salons the manager may see, it also reads the Google Reviews figures (month to date against the goal, the reporting weeks, month by month, L3, L6, YTD and the latest reviews) and the report figures (Daily Stats, Sales Totals, Comp), as the app's own pages show them, when the manager's role includes those pages. It holds no scheduling data.",
   };
 }
