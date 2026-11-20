@@ -3023,8 +3023,21 @@ export async function proposeForm(
   const askedPolicyWhole = typeof input.policy === "string" ? input.policy.trim() : "";
   /* A heading beside Other ("Late Opening; Other — beds not cleaned"): the heading is checked, Other is the model's topic. */
   const askedOther = /(?:^|;\s*)(other\b.*)$/i.exec(askedPolicyWhole)?.[1]?.trim() ?? "";
-  const askedPolicy = askedOther && askedPolicyWhole.includes(";") ? askedPolicyWhole.split(";")[0]!.trim() : askedPolicyWhole;
+  /*
+   * Pau's ruling (20 Nov 2026, via QA; c091): a Corrective Action may cite two manual headings when the manager describes
+   * two offenses, "<heading>; <heading>", with an optional "; Other — <topic>" after them. One is the norm; never more than
+   * two, and both must be headings of the manual. Every other form cites one, as before.
+   */
+  const twoHeadingsAllowed = template.key === appConfig().formKeys.corrective;
+  const beforeOther = askedOther ? askedPolicyWhole.slice(0, askedPolicyWhole.lastIndexOf(askedOther)).replace(/;\s*$/, "") : askedPolicyWhole;
+  const headingParts = twoHeadingsAllowed ? beforeOther.split(";").map((part) => part.trim()).filter(Boolean) : [];
+  if (headingParts.length > 2) {
+    return { reason_code: "too_many_headings", error: `A Corrective Action cites one heading, or two when the manager describes two offenses that two headings cover, never ${headingParts.length}. Propose the card again with the one or two headings that fit what happened.` };
+  }
+  const askedPolicy = headingParts.length > 0 ? headingParts[0]! : askedOther && askedPolicyWhole.includes(";") ? askedPolicyWhole.split(";")[0]!.trim() : askedPolicyWhole;
+  const askedSecond = headingParts.length === 2 ? headingParts[1]! : null;
   let policyHeading: string | null = null;
+  let secondHeading: string | null = null;
   if (askedPolicy && !/^other\b/i.test(askedPolicy)) {
     if (!manual) return { reason_code: "read_failed", error: "The JBA Policy Manual could not be read just now, so no policy can be cited. Propose without a policy or say so." };
     policyHeading = headingOf(manual.headings, askedPolicy);
@@ -3040,7 +3053,15 @@ export async function proposeForm(
     if (lateOpening && saysLateOpening && headingKey(policyHeading) === headingKey("Attendance") && !lateOpen.describesAttendanceToo(requestWords)) {
       return { reason_code: "wrong_heading", error: `The manager's words ("late to open", a failure to open) are the manual's ${lateOpening} section, not Attendance. Propose the card again with policy "${lateOpening}".` };
     }
+    if (askedSecond) {
+      secondHeading = headingOf(manual.headings, askedSecond);
+      if (!secondHeading) return { reason_code: "not_a_heading", error: `"${askedSecond}" is not a heading of the JBA Policy Manual. Pick the one or two headings that fit what happened.`, headings: manual.headings };
+      /* The same heading twice is one heading. */
+      if (headingKey(secondHeading) === headingKey(policyHeading)) secondHeading = null;
+    }
   }
+  /* The card's headings: one, or two on a Corrective Action (Pau, 20 Nov 2026). */
+  const cardHeadings = [policyHeading, secondHeading].filter((heading): heading is string => heading !== null);
   /*
    * THE POLICY FITS WHAT HAPPENED (QA, the 266 audit by Runner 2, train 4 on main 6d0b4ab1; `policy-fit.ts`).
    * c261/c263: a coat or the wrong top worn during a shift ("out of dresscode") was cited as the Standards of Conduct.
@@ -3054,7 +3075,7 @@ export async function proposeForm(
     const namedAnother = (reading.source === "stated" && reading.stated !== null && reading.stated !== "dress_code") ||
       namedPolicies(requestWords).some((named) => !dressFits?.some((heading) => namesHeading(named.phrase, heading)));
     const otherOnly = !policyHeading && /^other\b/i.test(askedPolicyWhole) && !saysMustSee(requestWords) && !cleaningUndonePhrase(requestWords);
-    if (dressFits && !namedAnother && ((policyHeading && !dressFits.includes(policyHeading)) || otherOnly)) {
+    if (dressFits && !namedAnother && ((policyHeading && !cardHeadings.some((heading) => dressFits.includes(heading))) || otherOnly)) {
       return { reason_code: "dress_code_heading", error: `The manager's words describe a dress-code offense (dress code, or clothing worn on shift), which the manual's Dress Code section covers, not "${askedPolicyWhole}". Propose the card again with policy "${dressFits[0]}"${dressFits.length > 1 ? ` (or ${dressFits.slice(1).map((heading) => `"${heading}"`).join(", ")})` : ""}.`, fits_headings: dressFits };
     }
     if (citesMustSee(askedPolicyWhole) && !saysMustSee(requestWords)) {
@@ -3127,13 +3148,14 @@ export async function proposeForm(
    */
   const otherAlone = !policyHeading && /^other\b/i.test(askedPolicyWhole);
   const otherIsTheRule = /\bmsb\b|must see behaviou?rs?/i.test(requestWords) || Boolean(cleaning && !careAndCleaning);
-  const fitsHeadings = topicFits && !managerNamed && ((policyHeading && !topicFits.some((heading) => headingKey(heading) === headingKey(policyHeading!))) || (otherAlone && !otherIsTheRule)) ? topicFits : null;
+  const fitsHeadings = topicFits && !managerNamed && ((policyHeading && !cardHeadings.some((cited) => topicFits.some((heading) => headingKey(heading) === headingKey(cited)))) || (otherAlone && !otherIsTheRule)) ? topicFits : null;
   /* As today's card prints it (`formatManualCitation`): "Standards of Conduct Policy, JBA Policy Manual p.12". */
   /*
    * The card cites the policy the model chose (batch B, code-check #22: the cleaning rule is a fact and a rules-book
    * line, no longer an override). "Other" carries the model's short topic.
    */
   let policyLine: string | null = policyHeading ? formatManualCitation(policyHeading, page) : null;
+  if (policyLine && secondHeading && manual) policyLine = `${policyLine}; ${formatManualCitation(secondHeading, findManualSection(manual.chunks, [secondHeading])?.page ?? null)}`;
   /* Batch G (G7a, the tester's exit sweep): an exit cites no policy; it is not an incident. */
   if (template.key === appConfig().formKeys.exit) policyLine = null;
   /*
