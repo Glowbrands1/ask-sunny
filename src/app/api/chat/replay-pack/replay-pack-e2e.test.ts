@@ -669,6 +669,7 @@ vi.setConfig({ hookTimeout: 30_000, testTimeout: process.env.AGENT_LOOP_LIVE ===
 const { ensureTemplateLibrary } = await import("@/lib/forms/repository");
 const { stillAsks } = await import("@/lib/forms/reply-guards");
 const { createInlineForm } = await import("@/features/chat/create-inline-form");
+const { foldName } = await import("@/lib/forms/fold-name");
 const chatRoute = await import("../route");
 const instancesRoute = await import("../../forms/instances/route");
 const draftRoute = await import("../../forms/instances/[id]/draft/route");
@@ -896,6 +897,10 @@ function joinOverview() {
     // A row a case puts on file directly (no template in the store) keeps the form it names.
     if (!template && row.template_name) continue;
     Object.assign(row, { template_key: template?.key, template_name: template?.name, layout_family: template?.layout_family, template_version: version?.version });
+  }
+  /* The overview's employee_name_folded, as migration 20261120001000 defines it (lower(unaccent(employee_name))): QA's f072. */
+  for (const row of store.form_instances ?? []) {
+    if (typeof row.employee_name === "string") Object.assign(row, { employee_name_folded: foldName(row.employee_name).toLowerCase() });
   }
 }
 class JoiningRows extends Array<Record<string, unknown>> {
