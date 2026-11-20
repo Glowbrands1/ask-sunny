@@ -32,7 +32,8 @@ export const NOV20_DEAD_END_SAYS_WHERE_CASES: ReplayCase[] = [
     id: "nov20-dead-end-daily-stats-asd-sent-home",
     title: "Item 25: an Assistant Salon Director's \"Show me the most recent Daily Stats and what I need to focus on today.\": the prompt sends them to the Home page's Performance section and never says they have no access",
     report: REPORT,
-    status: { open: "DEAD_END_SAYS_WHERE_ENABLED is off in production" },
+    // On in production with this PR (QA flips it at merge; production-flags.json "on").
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const system = await systemOf(t, "assistant_salon_director", KEARNEY, "Show me the most recent Daily Stats and what I need to focus on today.");
@@ -44,7 +45,8 @@ export const NOV20_DEAD_END_SAYS_WHERE_CASES: ReplayCase[] = [
     id: "nov20-dead-end-dml10-regional-manager-ask-dm",
     title: "Item 25: a Regional Manager's \"i need to add something to the DML10\" (no view_l10_meetings): the prompt says the DM L10 is on the L10 page and to ask their District Manager or an admin, never a form",
     report: REPORT,
-    status: { open: "DEAD_END_SAYS_WHERE_ENABLED is off in production" },
+    // On in production with this PR (QA flips it at merge; production-flags.json "on").
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const system = await systemOf(t, "regional_manager", REGION, "i need to add something to the DML10");
@@ -57,7 +59,8 @@ export const NOV20_DEAD_END_SAYS_WHERE_CASES: ReplayCase[] = [
     id: "nov20-dead-end-dml10-admin-sent-to-l10-page",
     title: "Item 25: an admin (view_l10_meetings) asking the same is sent to the L10 page: Resources, then L10",
     report: REPORT,
-    status: { open: "DEAD_END_SAYS_WHERE_ENABLED is off in production" },
+    // On in production with this PR (QA flips it at merge; production-flags.json "on").
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       const system = await systemOf(t, "admin", { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] }, "i need to add something to the DML10");
