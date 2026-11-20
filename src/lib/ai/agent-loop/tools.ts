@@ -2756,7 +2756,14 @@ export async function proposeForm(
     const check = verifyEvidence(input.exit_evidence, turns);
     const inRequest = check.ok && (check.turn.index === turns.length - 1 || sourceIds.includes(check.turn.id) || citedRequestIds.includes(check.turn.id));
     if (!inRequest) {
-      return { exit_not_stated: true, reason_code: "exit_not_stated", evidence: check.ok ? "evidence_not_this_turn" : check.reason, note: "No exit_evidence from this person's request: the manager's words asking for the Employee Exit Form, or their yes to your offer of it. An offense told with a termination is the Corrective Action Form with warning_level termination, citing the offense and its date; then offer the exit form in one line (the rules book's Which form lines)." };
+      /*
+       * QA item 10 (20 Nov 2026): this refusal never steers toward a Corrective Action. It asks, neutrally, whether the person
+       * resigned or was terminated, and offers both forms; the manager's answer decides. (A termination told with an offense
+       * is the Corrective Action Form by the rules book's own line, not by this refusal.)
+       */
+      const caName = templates.find((row) => row.key === appConfig().formKeys.corrective)?.name ?? "Corrective Action Form";
+      const neutral = `Did **${employee.name}** resign, or was ${employee.name} terminated? I can start the ${template.name} or a ${caName} with Termination.`;
+      return { exit_not_stated: true, reason_code: "exit_not_stated", evidence: check.ok ? "evidence_not_this_turn" : check.reason, ask_exactly: neutral, note: "No exit_evidence from this person's request: the manager's words asking for the exit form, or their yes to your offer of it. Make no card: say what you understood in a few words and end the reply with ask_exactly, exactly. The manager's answer decides the form." };
     }
     /*
      * Fix batch item 1 (QA's live re-test, 16 Nov 2026: "ugh <D> quit yesterday, short staffed again" built an exit card
