@@ -255,6 +255,8 @@ export async function createInlineForm({
         ...(cardPolicyToDraftEnabled() && cardOtherTopic(proposal, messages) ? { cardOther: cardOtherTopic(proposal, messages) } : {}),
         // HOTFIX (QA, 17 Nov 2026): a loop card's policy is the saved form's (the draft route reads it as named).
         ...(proposal.fromAgentLoop ? { cardFromLoop: true } : {}),
+        // QA (20 Nov 2026; c198): the loop card's own account, so the saved account keeps the times it holds.
+        ...(proposal.fromAgentLoop && typeof proposal.issue === "string" && proposal.issue.trim() ? { cardAccount: proposal.issue.trim().slice(0, 2_000) } : {}),
         // Pau (17 Nov 2026): a Coaching Form always carries the policy and page; the card's whole line goes with it.
         ...(cardPolicyToDraftEnabled() && cardPolicyLineFor(proposal, messages) ? { cardPolicyLine: cardPolicyLineFor(proposal, messages) } : {}),
         // The coaching card's topic (QA, 17 Nov 2026): the saved form's Other topic.

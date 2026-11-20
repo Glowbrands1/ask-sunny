@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { cardPayrollAmount } from "@/lib/forms/card-payroll-amount";
 import { teamTopicReadConversation } from "@/lib/forms/team-card-not-product";
 import { sameRequestReadConversation } from "@/lib/forms/same-request-other-person";
 import { switchReadConversation } from "@/lib/ai/form-type-switch";
@@ -334,10 +335,16 @@ export async function POST(request: Request) {
        * not the source. A policy quotation is not a figure. No figure means the
        * line stays blank, and the form is still created.
        */
-      if (payrollAmountFieldEnabled() && card.payrollDeduct === "yes" && Array.isArray(card.conversation)) {
-        // TYPO_READING_ROUTES_ENABLED: the reader sees "amont" as amount; the stored conversation stays as typed.
-        const turns = await readingTurns(parseHistory(card.conversation));
-        const amount = payrollAmountFromConversation(turns, { payrollAnswer: "yes" });
+      if (payrollAmountFieldEnabled() && card.payrollDeduct === "yes" && (card.fromAgentLoop === true || Array.isArray(card.conversation))) {
+        /*
+         * QA's code audit (20 Nov 2026, item 20): a loop card's amount is the card's own (`card-payroll-amount.ts`),
+         * never the chat's latest figure. Every other card reads the conversation, as before.
+         */
+        const amount =
+          card.fromAgentLoop === true
+            ? cardPayrollAmount(card.payrollDeductAmount)
+            : // TYPO_READING_ROUTES_ENABLED: the reader sees "amont" as amount; the stored conversation stays as typed.
+              payrollAmountFromConversation(await readingTurns(parseHistory(card.conversation as unknown[])), { payrollAnswer: "yes" });
         if (amount) {
           await applyStatedFacts(
             instanceId,
