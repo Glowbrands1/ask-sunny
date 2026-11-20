@@ -28,7 +28,7 @@ import { CardChangePanel } from "./card-change-panel";
 import { logTurnEvent } from "@/lib/analytics/telemetry";
 import { reusedDraftNotice } from "@/lib/forms/reused-draft-notice";
 
-import { DRAFT_FAILED_WARNING, createInlineForm } from "./create-inline-form";
+import { DRAFT_FAILED_WARNING, createAnswerLimited, createFailureMessage, createInlineForm } from "./create-inline-form";
 import { InlineForm, type PrefillState } from "./inline-form";
 import { FormRevisionsMount } from "@/form-revisions/form-revisions-mount";
 
@@ -505,7 +505,8 @@ function FormProposalCard({
       const result = await createInlineForm({
         proposal: salon ? { ...proposal, locationId: salon } : proposal,
         messages: conversation,
-        call: (url, init) => formsFetch(url, role, user.name, init),
+        /* f073: the create POST is given up after CREATE_ANSWER_MS, never left waiting on a stalled connection. */
+        call: createAnswerLimited((url, init) => formsFetch(url, role, user.name, init)),
         /*
          * SYNCHRONOUS, THE MOMENT THE ROW EXISTS — not after this promise
          * settles. Drafting can run for up to two minutes, and for every
@@ -548,7 +549,7 @@ function FormProposalCard({
           : { kind: "complete", ...(result.draftNotice ? { notice: result.draftNotice } : {}) },
       );
     } catch (error) {
-      const message = (error as Error).message;
+      const message = createFailureMessage(error);
       setProblem(message);
       /*
        * WHY THIS IS LOGGED AND NOT JUST SHOWN. The rollout reported "create a
@@ -561,7 +562,8 @@ function FormProposalCard({
       logTurnEvent("form.create.failed", {
         templateKey: proposal.templateKey,
         where: rowExists ? "FormProposalCard/draft" : "FormProposalCard/create",
-        reason: message,
+        // The error's own name and words (f073: "CreateNoAnswerError", "TypeError: Load failed"), not the card's.
+        reason: `${(error as Error)?.name ?? "Error"}: ${(error as Error)?.message ?? String(error)}`,
       });
       /*
        * Only a FAILED CREATE releases the guard — the form does not exist, so
