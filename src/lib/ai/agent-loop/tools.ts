@@ -2055,6 +2055,20 @@ async function editAskedFormsOnFile(context: ToolContext, effects: ToolEffects, 
   };
 }
 
+/**
+ * QA item 7 (20 Nov 2026): the form this person's open card is locked to: the card shown in the last reply for them (the
+ * server's card record, by roster id or, off the roster, by the name's key), else the draft open on screen for them.
+ */
+async function lockedForm(context: ToolContext, employee: { name: string; id?: string }): Promise<{ templateKey: string; templateName: string } | null> {
+  const shown = context.cardOnScreen;
+  if (shown && (employee.id ? shown.employeeKey === personKey(employee.id) : !shown.employeeKey && shown.nameKey === personKey(employee.name))) {
+    return { templateKey: shown.templateKey, templateName: shown.templateName ?? "card" };
+  }
+  if (!context.openFormId) return null;
+  const open = await authorizeInstance(context.request, context.openFormId, "view").then(({ loaded }) => loaded.instance).catch(() => null);
+  return open && open.status === "draft" && samePerson(open.employeeName, employee.name) ? { templateKey: open.templateKey, templateName: open.templateName } : null;
+}
+
 /** A roster person's full names: the Woven preferred name with the surname, and the legal one (batch G, QA). */
 export function fullNamesOf(person: Pick<RosterEmployee, "firstName" | "lastName" | "preferredFirstName">): string[] {
   const last = person.lastName?.trim() ?? "";
@@ -2440,6 +2454,7 @@ export async function proposeForm(
     person_evidence?: unknown;
     exit_evidence?: unknown;
     new_form_evidence?: unknown;
+    form_change_evidence?: unknown;
     request_evidence?: unknown;
     policy?: unknown;
     what_happened?: unknown;
@@ -2648,6 +2663,27 @@ export async function proposeForm(
     const onScreenPerson = employee.id && read.kind === "read" ? read.roster.find((row) => row.id === employee.id) : undefined;
     const editAsked = onScreenPerson && read.kind === "read" ? await editAskedFormsOnFile(context, effects, template, onScreenPerson, read.roster, input.new_form_evidence) : null;
     if (editAsked) return editAsked;
+  }
+  /*
+   * THE FORM IS LOCKED TO THE OPEN CARD (QA item 7, 20 Nov 2026; Pau's name/form lock). Once a card for form X is on screen
+   * for this person (the last reply's card, or the draft open on screen), a later turn never proposes another template for
+   * them unless this turn's own words ask for it: new_form_evidence (another form, a new request), form_change_evidence
+   * (this card made a different form, the same request: "make it a CA"), or exit_evidence asking for the exit form. The
+   * rules book's continuity line said so; only name_answer_keeps_form enforced it. Read from the server's card record.
+   */
+  {
+    const thisTurn = identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId);
+    const changeAsked = verifyEvidence(input.form_change_evidence, thisTurn, { thisTurnOnly: true }).ok;
+    const exitAsked = template.key === appConfig().formKeys.exit && verifyEvidence(input.exit_evidence, thisTurn, { thisTurnOnly: true }).ok;
+    if (!asksNewForm && !changeAsked && !exitAsked) {
+      const locked = await lockedForm(context, employee);
+      if (locked && locked.templateKey !== template.key) {
+        return {
+          template_key: locked.templateKey,
+          reason_code: "form_locked", error: `The ${locked.templateName} for ${employee.name} is open on screen, and this message does not ask for another form. Put this on that card: propose the ${locked.templateName} again (template_key "${locked.templateKey}") with everything it already has, or edit the draft with edit_form. Pass new_form_evidence (another form) or form_change_evidence (make this card a different form) only with the manager's own words that ask.`,
+        };
+      }
+    }
   }
   /* The manager's own name is never the employee (as MANAGER_NAME_NOT_EMPLOYEE does on the old path). */
   if (context.actor.displayName && samePerson(context.actor.displayName, employee.name)) {
