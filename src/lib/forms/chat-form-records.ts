@@ -1,7 +1,8 @@
 import "server-only";
 
 import { foldName } from "./fold-name";
-import { formRecordsNoJudgementEnabled, formsOnFileOrderMatchPossibleEnabled } from "@/lib/config/chat-quality-flags";
+import { formRecordsNoJudgementEnabled, formsOnFileCountsEnabled, formsOnFileOrderMatchPossibleEnabled } from "@/lib/config/chat-quality-flags";
+import { countFormsOnFile, type FormCounts } from "./forms-on-file-counts";
 import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 import { businessToday } from "@/lib/business-date";
 import type { AccessScope, Role } from "@/types";
@@ -465,6 +466,11 @@ export function renderFormRecordsBlock(input: {
   viewerId?: string | null;
   /** The form dates and kind the list was read for; `recent` is then every such form, up to `limit`. */
   narrowed?: { range: FormDateRange | null; kind: FormKind | null; limit: number } | null;
+  /**
+   * FORMS_ON_FILE_COUNTS_ENABLED: the counts of every form the read found (not only the ones listed), and how many were
+   * listed of how many, with whether the read was complete. Absent: as before.
+   */
+  counted?: { counts: FormCounts; listed: number; of: number; complete: boolean } | null;
 }): string {
   const viewerId = input.viewerId ?? null;
   const { words, matches, recent, today } = input;
@@ -525,7 +531,21 @@ export function renderFormRecordsBlock(input: {
     sections.push("No forms are on file at the salons this user can see.");
   }
 
+  if (input.counted && input.counted.counts.total > 0) sections.push(countsSection(input.counted));
   return sections.join("\n\n");
+}
+
+/** FORMS_ON_FILE_COUNTS_ENABLED: the code's counts, for the model to copy (QA's f081). */
+function countsSection(counted: { counts: FormCounts; listed: number; of: number; complete: boolean }): string {
+  const statuses = (entry: Readonly<Record<string, number>>) => Object.entries(entry).map(([status, count]) => `${status} ${count}`).join(", ");
+  const lines = counted.counts.by_person.map((person) =>
+    `- ${person.employee}: ${person.total} — ${person.by_form.map((form) => `${form.form} ${form.total} (${form.by_date.map((day) => `${day.date ?? "no date"}: ${day.count}, ${statuses(day.statuses)}`).join("; ")})`).join("; ")}`,
+  );
+  return [
+    `COUNTS (code counted every form the read found: ${counted.counts.total}${counted.complete ? "" : ", the first rows of a read that stopped at its limit"}). Copy these numbers exactly. Never count or add up the rows yourself, and never put one person's forms under another person's name. Mark an archived form "(archived)". Archived drafts are left out unless the question asked for archived forms.`,
+    ...lines,
+    ...(counted.of > counted.listed ? [`${counted.listed} of these ${counted.of} forms are listed above; say how many are not shown.`] : []),
+  ].join("\n");
 }
 
 function scopeWordPlural(): string {
@@ -578,6 +598,8 @@ const MATCH_LIMIT = 50;
 const RECENT_LIMIT = 20;
 /** A list read by form date or kind: every such form up to this many, then the list says it stopped. */
 export const NARROWED_LIMIT = 100;
+/** FORMS_ON_FILE_COUNTS_ENABLED (QA's f081): a counted read covers up to this many rows (PostgREST's page). */
+export const COUNTED_READ_LIMIT = 1000;
 
 /**
  * The FORMS ON FILE block for this turn, or null when this caller may not read
@@ -622,7 +644,10 @@ export async function loadFormRecords(input: {
     const narrowing = input.narrowFromQuestion === true || input.range != null || input.kind != null;
     const range = input.range ?? (input.narrowFromQuestion ? formDateRangeFromQuestion(input.question, today) : null);
     const kind = input.kind ?? (input.narrowFromQuestion ? formKindFromText(input.question) : null);
-    const narrowed = range || kind ? { range, kind, limit: NARROWED_LIMIT } : null;
+    const counting = formsOnFileCountsEnabled();
+    const narrowed = range || kind ? { range, kind, limit: counting ? COUNTED_READ_LIMIT : NARROWED_LIMIT } : null;
+    /* FORMS_ON_FILE_COUNTS_ENABLED (QA's f081): an archived draft is left out unless the question asks for archived forms. */
+    const keep = (row: InstanceRow) => !counting || /\barchiv/i.test(input.question) || !(row.archivedAt && row.status === "draft");
     const narrowFilter = {
       ...(range ? { formDateFrom: range.from, formDateTo: range.to } : {}),
       ...(kind ? { templateNameWords: kind.templateNameWords } : {}),
@@ -640,23 +665,32 @@ export async function loadFormRecords(input: {
     if (words.length > 0) {
       // PRIVATE_CREATOR_FORMS: over-read, then trim to the page; off, the page itself.
       // Item 28: a Coaching kind never keeps a Follow-Up Coaching Form (`ofKind`).
-      const rows = ofKind(visibleInstances(
+      const found = ofKind(visibleInstances(
         formsActor,
-        await listInstances("all", privateAwareLimit(MATCH_LIMIT), { ...filter, ...narrowFilter, employeeNameWords: words }),
-      ), kind).slice(0, MATCH_LIMIT);
+        await listInstances("all", privateAwareLimit(counting ? COUNTED_READ_LIMIT : MATCH_LIMIT), { ...filter, ...narrowFilter, employeeNameWords: words }),
+      ), kind).filter(keep);
+      const rows = found.slice(0, MATCH_LIMIT);
       const matches = matchRowsToQuestion(rows, words, nameSource);
       if (matches.named.length > 0 || matches.possible.length > 0) {
-        return { block: renderFormRecordsBlock({ visibility, words, matches, recent: [], today, viewerId, narrowed }) };
+        /* FORMS_ON_FILE_COUNTS_ENABLED: the named person's forms counted over every one found, never only the listed ones. */
+        const allMatches = counting ? matchRowsToQuestion(found, words, nameSource) : null;
+        const counted = allMatches
+          ? { counts: countFormsOnFile([...allMatches.named, ...allMatches.possible]), listed: matches.named.length + matches.possible.length, of: allMatches.named.length + allMatches.possible.length, complete: found.length < COUNTED_READ_LIMIT }
+          : null;
+        return { block: renderFormRecordsBlock({ visibility, words, matches, recent: [], today, viewerId, narrowed: counting && narrowed ? { ...narrowed, limit: NARROWED_LIMIT } : narrowed, counted }) };
       }
     }
 
     if (narrowed && !(words.length > 0 && looksLikeItNamesSomebody(nameSource))) {
       // Archived forms count: "who got a CA this month" asks what was filed, not what is on the active shelf.
-      const rows = ofKind(visibleInstances(
-        formsActor,
-        await listInstances("all", privateAwareLimit(NARROWED_LIMIT), { ...filter, ...narrowFilter }),
-      ), kind).slice(0, NARROWED_LIMIT);
-      return { block: renderFormRecordsBlock({ viewerId, visibility, words, matches: null, recent: rows, today, narrowed }) };
+      // FORMS_ON_FILE_COUNTS_ENABLED (QA's f081): archived FINALIZED forms still count; archived drafts are left out.
+      const read = await listInstances("all", privateAwareLimit(narrowed.limit), { ...filter, ...narrowFilter });
+      const found = ofKind(visibleInstances(formsActor, read), kind).filter(keep);
+      const rows = counting
+        ? [...found].sort((a, b) => (b.formDate ?? "").localeCompare(a.formDate ?? "") || a.employeeName.localeCompare(b.employeeName)).slice(0, NARROWED_LIMIT)
+        : found.slice(0, NARROWED_LIMIT);
+      const counted = counting ? { counts: countFormsOnFile(found), listed: rows.length, of: found.length, complete: read.length < COUNTED_READ_LIMIT } : null;
+      return { block: renderFormRecordsBlock({ viewerId, visibility, words, matches: null, recent: rows, today, narrowed: counting ? { ...narrowed, limit: counted!.complete ? Number.POSITIVE_INFINITY : NARROWED_LIMIT } : narrowed, counted }) };
     }
 
     const recent = visibleInstances(formsActor, await listInstances("active", privateAwareLimit(RECENT_LIMIT), filter)).slice(0, RECENT_LIMIT);
