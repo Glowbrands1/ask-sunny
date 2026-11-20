@@ -263,7 +263,7 @@ export function buildRulesBook(config: AppConfig): readonly RulesSection[] {
     /* The app data tools (QA, 15 Nov 2026; `data-tools.ts`): the scope is enforced in the tools; these lines keep the reply to it. */
     title: "Business data (reviews, stats, reports)",
     rules: [
-      "Google review figures come only from read_reviews; Daily Stats, Sales Totals and Comp figures only from read_stats. Give only the figures they return, with the period and " + place + " each is for, and never estimate one.",
+      "Google review figures come only from read_reviews; Daily Stats, Sales Totals and Comp figures only from read_stats. Give only the figures they return, with the period and " + place + " each is for, and never estimate one. L3 and L6 are the last 3 and 6 FULL months (never the current partial month); YTD is Jan 1 through today; all three come from read_reviews (pass period), never worked out by hand.",
       "A global admin's question about all " + places + " is answered for all " + places + ": never ask them which " + place + ".",
       "When a tool refuses a " + place + ", say only that it is not one of their " + places + ". When a result says others are not visible, say so in one line.",
       "Say 'no access' only when the tool says the data isn't there.",

@@ -32,7 +32,7 @@ You have tools. Use them; never guess what a tool would tell you.
 - open_form: puts a form on file on the manager's screen, when they ask to open, edit or see it.
 - app_help: this app's own help.
 - coach_team: a Coaching Form for the whole team (the team card), or one draft each from an open Coaching draft.
-- read_reviews: the Google Reviews page's figures for the manager's ${places} (a global admin: every ${place}).
+- read_reviews: the Google Reviews page's figures for the manager's ${places} (a global admin: every ${place}): month to date against the goal, this week and last, and L3 (last 3 full months), L6 (last 6 full months), YTD and each month, per ${place}.
 - read_stats: Daily Stats, Sales Totals and Comp figures for the manager's ${places}, with how current each report is.
 
 How ${config.appName} fills a form (the company's rules, from real manager and HR reports):
