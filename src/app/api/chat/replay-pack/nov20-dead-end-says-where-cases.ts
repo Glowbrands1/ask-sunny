@@ -24,7 +24,7 @@ const systemOf = async (t: ReplayContext, role: string, scope: unknown, said: st
   t.directory([...STAFF]);
   t.as(role as never, scope as never);
   await t.thread().say(said);
-  return t.answerSystems().at(-1) ?? "";
+  return (t.answerSystems?.() ?? []).at(-1) ?? "";
 };
 
 export const NOV20_DEAD_END_SAYS_WHERE_CASES: ReplayCase[] = [
