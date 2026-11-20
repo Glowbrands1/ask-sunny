@@ -679,6 +679,11 @@ export interface ChatFormProposal {
   /** The agent loop's coaching card: the topic, in the manager's words, checked against their message (QA, 17 Nov 2026). */
   coachingTopic?: string;
   /**
+   * The agent loop's Corrective Action card: what the manager described for an attendance offense, kept on their quoted
+   * words (QA's production audit, 20 Nov 2026, item 21). "absence" is a missed shift, never written up as lateness.
+   */
+  attendanceKind?: "absence" | "lateness" | "both";
+  /**
    * The agent loop's card (PR 2, the card record): the latest earlier card in this chat was another person's, and it
    * stays creatable (`isProposalSuperseded`). Set from the server's card record, by roster id, never from reply text.
    */

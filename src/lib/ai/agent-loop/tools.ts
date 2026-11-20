@@ -2491,6 +2491,8 @@ export async function proposeForm(
     prior_actions?: unknown;
     topic?: unknown;
     topic_evidence?: unknown;
+    attendance?: unknown;
+    attendance_evidence?: unknown;
     incident_time?: unknown;
     salon?: unknown;
   },
@@ -3274,6 +3276,15 @@ export async function proposeForm(
     !topicWords.some((word) => nameWords.has(word)) &&
     answerEvidence(context, input.topic_evidence, "request", evidencePerson, { requestTurnIds }).ok;
   const coachingTopic = topicKept ? askedTopic.charAt(0).toUpperCase() + askedTopic.slice(1) : null;
+  /*
+   * QA's production audit (20 Nov 2026, item 21; a real finalized form): "did not come into her scheduled shift today at
+   * 9:30" was written up as lateness ("expected to arrive on time", "Continued lateness will result …"). A Corrective
+   * Action card carries what the manager described (absence, lateness or both) as the model reads it, kept only on
+   * attendance_evidence from a manager message of this request. A record, never a word list over the manager's messages:
+   * Create sends it, and the draft route writes an absence as an absence (`lib/forms/absence-write-up.ts`).
+   */
+  const askedAttendance = template.key === appConfig().formKeys.corrective && (input.attendance === "absence" || input.attendance === "lateness" || input.attendance === "both") ? input.attendance : null;
+  const attendanceKind = askedAttendance && answerEvidence(context, input.attendance_evidence, "request", evidencePerson, { requestTurnIds }).ok ? askedAttendance : null;
   const incidentTime = typeof input.incident_time === "string" && input.incident_time.trim() ? input.incident_time.trim().slice(0, 40) : null;
 
   const typedSalon = typeof input.salon === "string" ? input.salon.trim() : "";
@@ -3400,6 +3411,7 @@ export async function proposeForm(
     ...(payroll === "yes" && amount ? { payrollDeductAmount: amount } : {}),
     ...(priorActions ? { priorActions } : {}),
     ...(coachingTopic ? { coachingTopic } : {}),
+    ...(attendanceKind ? { attendanceKind } : {}),
     ...(incidentTime ? { incidentTime } : {}),
     ...(awaiting ? { awaitingIncident: true as const, supportsInlineDraft: false } : {}),
   };

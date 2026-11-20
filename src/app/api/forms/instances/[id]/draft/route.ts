@@ -211,6 +211,7 @@ import {
 } from "@/lib/forms/ca-action-plan";
 import { twoSentenceActionPlan } from "@/lib/forms/action-plan-sentences";
 import { attendanceActionPlan, isAttendancePlan, missedMeetingNotLateness } from "@/lib/forms/attendance-action-plan";
+import { absenceWriteUp } from "@/lib/forms/absence-write-up";
 import { withPayrollSentence } from "@/lib/forms/plan-payroll-sentence";
 import { managerTypedActionPlan } from "@/lib/forms/manager-action-plan";
 import {
@@ -324,6 +325,8 @@ interface DraftBody {
   cardPolicyLine?: string;
   /** The coaching topic the agent loop's card carried (`coachingTopic`), for the form's Other topic (QA, 17 Nov 2026). */
   cardTopic?: string;
+  /** The agent loop card's attendance record ("absence" / "lateness" / "both"; QA's production audit, 20 Nov 2026, item 21). */
+  cardAttendance?: string;
   /**
    * HOTFIX (QA, 17 Nov 2026; the tester's form 7545d162): the "Other — <topic>" the card cited ("10-minute
    * sanitization"). With NEXT_PUBLIC_CARD_POLICY_TO_DRAFT_ENABLED, a Corrective Action whose Type of Offense offers Other
@@ -2555,12 +2558,14 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         await applyStatedFacts(id, { values: { [fixedPlan.key]: typed }, checked: {} }, actor.id, new Set([fixedPlan.key]));
       }
     }
+    const loopCardAbsence = body.cardFromLoop === true && body.cardAttendance === "absence";
     const planText = (input: ActionPlanInput) =>
       // PLAN_PAYROLL_SENTENCE_ENABLED: the deduction the manager stated is said in the plan.
       // TERMINATION_STATED_TICKS_ENABLED: on a termination, the plan ends with the termination sentence.
       withTerminationPlan(withPayrollSentence(
         // MEETING_NOT_LATENESS_PLAN_ENABLED: a missed meeting keeps the general plan.
-        attendanceActionPlanEnabled() && isAttendancePlan(input) && !missedMeetingNotLateness(notes)
+        // QA's production audit (20 Nov 2026, item 21): a loop card recording an absence keeps the general plan, as a missed shift does.
+        attendanceActionPlanEnabled() && isAttendancePlan(input) && !missedMeetingNotLateness(notes) && !loopCardAbsence
           ? attendanceActionPlan(input)
           : actionPlanSentencesEnabled()
             ? twoSentenceActionPlan(input)
@@ -2762,6 +2767,16 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         const { body: account } = splitAppCitationLine(details);
         draftedPayload.values = { ...draftedPayload.values, [detailsKey]: `${account}\n\nPolicy reference: ${coachingPolicyLine}` };
       }
+    }
+    /*
+     * QA's production audit (20 Nov 2026, item 21): the loop card recorded an absence ("did not come into her scheduled
+     * shift"), so no sentence of the drafted write-up calls it lateness (`absence-write-up.ts`). Read from the card's
+     * record, never the manager's words.
+     */
+    if (loopCardAbsence) {
+      const cardAccount = /^What happened:\s*(.+)$/im.exec(notes)?.[1]?.trim() ?? null;
+      const absence = absenceWriteUp(draftedPayload.values, narrativeTargets.filter((key) => !keeps(key)), { employeeName: loaded.instance.employeeName, cardAccount });
+      if (absence.changed) draftedPayload.values = absence.values;
     }
     const kept = draftMergeEnabled()
       ? retainFilledFields({
