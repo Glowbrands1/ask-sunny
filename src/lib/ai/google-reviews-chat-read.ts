@@ -4,12 +4,15 @@ import { supabaseReadiness } from "@/lib/config/server-env";
 import { hasPermission, DEFAULT_PERMISSION_MATRIX } from "@/lib/permissions";
 import { reportingScopeOf } from "@/lib/reporting/scope/authorized-salons";
 import { EMPTY_REVIEW_FILTERS } from "@/lib/reviews/filters";
-import { loadReviewFeed, loadReviewsSnapshot } from "@/lib/reviews/queries";
+import { monthlyProgress } from "@/lib/reviews/monthly-progress";
+import { loadMonthlyProgressRows, loadReviewFeed, loadReviewsSnapshot } from "@/lib/reviews/queries";
 import type { AccessScope, Role } from "@/types";
 
 import { storeCodesForSalonNumbers } from "./chat-data-plan";
 import {
+  asksForMonthlyPeriods,
   formatGoogleReviewsBlock,
+  formatReviewMonthsSection,
   formatReviewWeeksSection,
   isGoogleReviewQuestion,
   RECENT_REVIEWS_SHOWN,
@@ -48,6 +51,31 @@ async function readRecentReviews(storeCodes: readonly string[], weeks: readonly 
       }));
   } catch {
     return null;
+  }
+}
+
+/**
+ * L3, L6, YTD and each month (manager request, 19 Nov 2026), from the page's own month-by-month read. Only for a turn
+ * that asks for those periods; null when the read failed, so the figures above still stand.
+ */
+async function readMonthsSection(
+  question: string,
+  locations: Parameters<typeof formatReviewMonthsSection>[0]["locations"],
+  own: ReadonlySet<string>,
+  today: string,
+): Promise<string | null> {
+  if (!asksForMonthlyPeriods(question) || locations.length === 0) return null;
+  try {
+    const rows = await loadMonthlyProgressRows(today);
+    const progress = monthlyProgress(
+      rows.counted,
+      locations.map((location) => location.storeCode),
+      today,
+      { posted: rows.posted, countingFrom: rows.countingFrom },
+    );
+    return formatReviewMonthsSection({ progress, locations, ownStoreCodes: own });
+  } catch {
+    return "GOOGLE REVIEWS — L3, L6, YTD AND MONTH BY MONTH\n\nThe month-by-month figures could not be read just now. Give no L3, L6, YTD or monthly figure; point the manager to Google Reviews in the sidebar, Overview, Month by month.";
   }
 }
 
@@ -114,8 +142,9 @@ export async function loadGoogleReviewsChatBlock(input: {
             ),
           })
         : null;
+    const months = await readMonthsSection(input.question, locations, own, snapshot.goal.today);
     return {
-      text: weeks ? `${month}\n\n${weeks}` : month,
+      text: [month, weeks, months].filter(Boolean).join("\n\n"),
       figures: locations.length > 0,
     };
   } catch {

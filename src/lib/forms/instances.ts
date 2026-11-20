@@ -40,10 +40,11 @@ import {
 } from "./prior-actions";
 import { applyRequiredClosings } from "./required-closing";
 import { offeredOffenseKeys } from "./offense-keys";
-import { caSalesPolicyEnabled } from "@/lib/config/chat-quality-flags";
+import { caSalesPolicyEnabled, requiredFieldsAtFinalizeEnabled } from "@/lib/config/chat-quality-flags";
 import { collapseToTwoSentences } from "./action-plan-sentences";
 import { isIsoCalendarDate } from "./form-date-answer";
 import { refreshedActionPlan } from "./ca-action-plan";
+import { blankRequiredFields, requiredFieldsMessage } from "./required-fields";
 import { getCurrentVersion, getVersion, type TemplateVersionRow } from "./repository";
 
 /** The form's own Date line — the same day as `form_instances.form_date`. */
@@ -1006,6 +1007,17 @@ export class UnverifiedPolicyError extends Error {
 }
 
 
+/** Thrown when a field the version marks `required` is blank at Finalize. See `required-fields.ts`. */
+export class RequiredFieldsBlankError extends Error {
+  readonly fields: { key: string; label: string }[];
+
+  constructor(fields: { key: string; label: string }[]) {
+    super(requiredFieldsMessage(fields));
+    this.name = "RequiredFieldsBlankError";
+    this.fields = fields;
+  }
+}
+
 export interface FinalizeOptions {
   /**
    * The manager has been shown the unverified-policy warning and chosen to
@@ -1036,6 +1048,10 @@ export async function finalizeInstance(
    */
   const before = await loadInstance(instanceId);
   if (!before) throw new Error("That form no longer exists.");
+
+  // A required field left blank is refused while the record is still a draft the manager can fix.
+  const blankRequired = !requiredFieldsAtFinalizeEnabled() ? [] : blankRequiredFields(parseFormDocument(before.version.document), before.instance.variantKey, before.values);
+  if (blankRequired.length > 0) throw new RequiredFieldsBlankError(blankRequired);
 
   const unverifiedFields = unverifiedPolicyFields(
     parseFormDocument(before.version.document),
