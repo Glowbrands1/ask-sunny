@@ -1221,6 +1221,16 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   /* Never twice: the reply already asks for a change in its own words (QA: "change" and a question mark in one sentence). */
   const asksForChange = /\bchange\b[^.!?\n]*\?/i.test(content);
   if (effects.replyMustAsk && !content.includes(effects.replyMustAsk) && !asksForChange) content = `${content.trim()}\n\n${effects.replyMustAsk}`.trim();
+  /*
+   * STARTER_FOLLOW_UP_EXAMPLE_ENABLED (QA's live re-test of #1127, 20 Nov 2026): the same step as the regular chat's. When
+   * one of the app's own home starters is the chat's first message and the reply asks who or which, it ends with one
+   * example answer. Keyed to the app's starter texts (never the manager's own words), like replyMustAsk above.
+   */
+  content = (await import("@/lib/ai/starter-follow-up")).starterExampleText(content, input.question, {
+    firstMessage: !input.history.some((turn) => turn.role === "user"),
+    namesPerson: Boolean(effects.proposal?.employeeName),
+    showedSomething: cited.length > 0,
+  });
   const answer: AskResponse = {
     /* The evidence tags are the app's protocol, like the source markers: never shown to the manager. */
     content: withoutMessageIdTags(withoutSourceMarkers(withoutSourceNotes(content))),
