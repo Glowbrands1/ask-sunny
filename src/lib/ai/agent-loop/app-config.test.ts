@@ -26,6 +26,10 @@ import { rulesBookText } from "./rules-book";
  * asks for exit_evidence's kind, and one line was added for a resignation told with no ask. Both read the same under
  * every config; nothing else changed.
  *
+ * Re-taken on purpose on 19 Nov 2026 (the Google Reviews page's L3, L6 and YTD): read_reviews's line in the prompt now
+ * names L3, L6, YTD and each month, and the Business data rule says L3 / L6 are full months and come from read_reviews.
+ * Both use the config's place word; nothing else changed.
+ *
  * Re-taken on purpose on 16 Nov 2026 (fix batch item 7, a bare "yes" set payroll): one Card replies line was added for
  * payroll_answer_unclear. It reads the same under every config; nothing else changed.
  *
@@ -58,6 +62,10 @@ import { rulesBookText } from "./rules-book";
  * Re-taken on purpose on 20 Nov 2026 (QA item 23, a drafted team message reversed "isnt realostic"): one Replies line was
  * added: a drafted message keeps the manager's own statements, negations included. It reads the same under every config;
  * nothing else changed.
+ *
+ * Re-taken on purpose on 20 Nov 2026 (item 18, Pau via QA: which-one choices that read alike): the which_form_question
+ * line lists each form's choice line as given (status, date, salon, created time when two match) instead of "by date".
+ * It reads the same under every config; nothing else changed.
  *
  * Re-taken on purpose on 16 Nov 2026 (QA, c019 in #1056): one line in "Which form" teaches that "Create a <form> from this
  * conversation" / "make it a <form> instead" for the same person and incident is the same request, not

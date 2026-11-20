@@ -19,7 +19,11 @@ const FLAG = "AGENT_LOOP_ENABLED";
 const NEAR_MISS = "NEAR_MISS_NEVER_SEATED_ENABLED";
 const REPORT = "QA (16 Nov 2026): live group E on main 63ba4c48 — \"edit <B>x ca\" with a Coaching card on screen and CAs on file made a new CA card (2 of 2)";
 const TAMSIN: DirectoryRow = { id: "e-tamsin-orwell", firstName: "Tamsin", lastName: "Orwell", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" };
-const WHICH = /^Which one: the Coaching Form on screen, or one of the 2 Corrective Action Forms on file \(Corrective Action Form from 2026-11-0\d; Corrective Action Form from 2026-11-0\d\)\?$/m;
+/*
+ * Changed on purpose (item 18, Pau via QA, 20 Nov 2026): each form on file is named by its choice line (form · status ·
+ * date · salon, and the created time when two match), so choices that share a form name and date never read alike.
+ */
+const WHICH = /^Which one: the Coaching Form on screen, or one of the 2 Corrective Action Forms on file \(Corrective Action Form · finalized · dated 11\/0\d\/2026 · NE Kearney; Corrective Action Form · finalized · dated 11\/0\d\/2026 · NE Kearney\)\?$/m;
 
 function start(t: ReplayContext) {
   vi.setSystemTime(new Date("2026-11-15T22:40:00Z"));
