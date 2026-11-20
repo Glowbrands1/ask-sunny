@@ -165,6 +165,7 @@ import {
   withoutDerivedKeys,
 } from "@/lib/forms/exit-draft";
 import { EXIT_DERIVED_KEYS } from "@/lib/forms/exit-facts";
+import { EXIT_DETAIL_FIELDS, EXIT_OPTION, EXIT_TYPE_GROUP } from "@/lib/forms/exit-library";
 import { ABSENCE_CLAIM_REMOVED_NOTICE, guardAbsenceClaims } from "@/lib/forms/absence-claims";
 import { describesIncident, describesMoreThanTheRequest } from "@/lib/forms/corrective-action-intake";
 import {
@@ -660,6 +661,21 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      * lines. Anything the manager did not say stays blank.
      */
     /*
+     * QA item 17 (20 Nov 2026; the production audit's exit form): the lines the manager STATED on this exit form (written
+     * as their statement at Create: the agent loop's termination, reason and payroll answer) are never replaced by the
+     * reader, the derived ticks or the model. A stated involuntary separation is not a resignation: the reader's
+     * "resignation method" and its own type tick are not written for it (the termination story landed in the method).
+     */
+    const exitStatedRows = isExitForm
+      ? (loaded.values ?? []).filter((row) => row.provenance?.source === "manager_statement" && ((row.value ?? "").trim() !== "" || row.checked.length > 0))
+      : [];
+    const exitStatedKeysNow = new Set(exitStatedRows.map((row) => row.fieldKey));
+    const statedInvoluntary = exitStatedRows.some((row) => row.fieldKey === EXIT_TYPE_GROUP && row.checked.includes(EXIT_OPTION.immediateInvoluntary));
+    const withoutStatedExit = (read: { values: Record<string, string>; checked: Record<string, string[]> }) => ({
+      values: Object.fromEntries(Object.entries(read.values).filter(([key]) => !exitStatedKeysNow.has(key) && !(statedInvoluntary && key === EXIT_DETAIL_FIELDS.resignationMethod))),
+      checked: Object.fromEntries(Object.entries(read.checked).filter(([key]) => !exitStatedKeysNow.has(key) && !(statedInvoluntary && key === EXIT_TYPE_GROUP))),
+    });
+    /*
      * ONLY THE MANAGER'S OWN ADDRESS (Pau via QA, item 19): the Permanent Address is kept only when it is in the manager's
      * own lines of the notes. A loop card's lines ("What happened: …") are the agent loop's words, never the manager's.
      */
@@ -673,14 +689,14 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       ? formEditSingleWriterEnabled()
         ? await (await import("@/lib/forms/form-write")).statedWrite(
             id,
-            exitDetailValues(exitDetails),
+            withoutStatedExit(exitDetailValues(exitDetails)),
             actor.id,
             exitStatedKeys(),
             { notes },
           )
         : await applyStatedFacts(
             id,
-            exitDetailValues(exitDetails),
+            withoutStatedExit(exitDetailValues(exitDetails)),
             actor.id,
             // EXIT_INTAKE_FIX_ENABLED adds the Permanent Address the manager typed.
             exitStatedKeys(),
@@ -1921,7 +1937,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       checked: isExitForm ? withoutDerivedKeys(modelChecked) : modelChecked,
     });
 
-    const exit = isExitForm
+    const exitDrafted = isExitForm
       ? applyExitDraft({
           values: attributions.values,
           checked: sensitive.checked,
@@ -1933,6 +1949,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
           },
         })
       : null;
+    /* QA item 17: the manager's stated exit lines stay as stated (see `withoutStatedExit` above). */
+    const exit = exitDrafted ? { ...exitDrafted, ...withoutStatedExit(exitDrafted) } : null;
 
     /*
      * ========================================================================

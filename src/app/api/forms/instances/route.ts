@@ -57,6 +57,9 @@ import type { SameChat } from "@/lib/forms/draft-same-chat";
 import { authorizeLocation } from "@/lib/forms/location-scope";
 import { TERMINATION_OPTION, statesTermination } from "@/lib/forms/termination-stated";
 import { saysTerminationWord } from "@/lib/forms/termination-word";
+import { EXIT_DETAIL_FIELDS, EXIT_OPTION, EXIT_TYPE_GROUP } from "@/lib/forms/exit-library";
+/** QA item 17: the exit form's own payroll question (`exit-library.ts`, EXIT_YES_NO_QUESTIONS). */
+const EXIT_PAYROLL_KEY = "payroll_deduction_applicable";
 import { terminationStatedTicksEnabled } from "@/lib/config/chat-quality-flags";
 import { checkProposalIsCurrent } from "@/lib/forms/proposal-currency";
 import { preferredNamesOf } from "@/lib/forms/preferred-name-current";
@@ -173,6 +176,8 @@ export async function POST(request: Request) {
       warningLevel?: unknown;
       /** The agent loop's card: its termination is the model's, locked; today's reader never decides it. */
       fromAgentLoop?: unknown;
+      /** QA item 17: the loop termination's account (the exit form's reason line). */
+      loopAccount?: unknown;
       /** The chat the proposal came from, for `checkProposalIsCurrent`. Ask Sunny only. */
       conversation?: unknown;
       /** Optional stable id for this chat. The first message id is used when this is absent. */
@@ -397,6 +402,26 @@ export async function POST(request: Request) {
           actor.id,
           WARNING_LEVEL_STATED_KEYS,
         );
+      }
+
+      /*
+       * QA item 17 (20 Nov 2026; the production audit's exit form, which arrived nearly empty): the agent loop's EXIT card
+       * puts what the manager stated in the exit form's own fields, as their statements (the draft never replaces them):
+       * its payroll answer in "Is Payroll Deduction applicable?", and a termination the model decided (locked on the
+       * termination word, checked again here) as "Immediate involuntary separation" with the account as the reason.
+       * `applyStatedFacts` validates every key against the pinned version, so a form without these lines gets nothing.
+       */
+      if (fromAgentLoop && card.templateKey !== "dpoa") {
+        const exitStated: { values: Record<string, string>; checked: Record<string, string[]> } = { values: {}, checked: {} };
+        if (isPayrollDeductAnswer(card.payrollDeduct)) exitStated.checked[EXIT_PAYROLL_KEY] = [card.payrollDeduct];
+        if (card.warningLevel === "termination" && saysTerminationWord(userTurns)) {
+          const account = typeof card.loopAccount === "string" ? card.loopAccount.trim().slice(0, 2_000) : "";
+          exitStated.checked[EXIT_TYPE_GROUP] = [EXIT_OPTION.immediateInvoluntary];
+          if (account) exitStated.values[EXIT_DETAIL_FIELDS.resignationReason] = account;
+        }
+        if (Object.keys(exitStated.checked).length > 0) {
+          await applyStatedFacts(instanceId, exitStated, actor.id, new Set([EXIT_PAYROLL_KEY, EXIT_TYPE_GROUP, EXIT_DETAIL_FIELDS.resignationReason]));
+        }
       }
     }
 

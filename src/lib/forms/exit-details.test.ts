@@ -57,6 +57,9 @@ describe("payroll deduction, minimum wage and the bonus", () => {
     ["payroll should deduct her uniform", { payroll_deduction_applicable: "yes" }],
     ["No payroll deduction.", { payroll_deduction_applicable: "no" }],
     ["Payroll deduction is not applicable", { payroll_deduction_applicable: "no" }],
+    // QA item 17 (20 Nov 2026, the production audit's exit form): "no apply" and "payroll deduct: no" answer No.
+    ["create exit for Rowan Kestrel. payroll deduct no apply", { payroll_deduction_applicable: "no" }],
+    ["payroll deduct: no", { payroll_deduction_applicable: "no" }],
     ["Drop her to minimum wage and she forfeits her bonus.", { dropped_to_minimum_wage: "yes", forfeit_bonus: "yes" }],
     ["She will be dropped to minimum wage and forfeit her bonus", { dropped_to_minimum_wage: "yes", forfeit_bonus: "yes" }],
     ["She won't be dropped to minimum wage or forfeit her bonus.", { dropped_to_minimum_wage: "no", forfeit_bonus: "no" }],
