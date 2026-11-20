@@ -8,7 +8,7 @@ import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 import { businessToday, formatBusinessTime } from "@/lib/business-date";
 import { appConfig } from "./app-config";
 import { isoDate, monthDayToIso, readDates, sameDate, withoutDates } from "./dates";
-import { candidateNameWords, chatFormsActor, formDateRangeFromInput, formKindFromText } from "@/lib/forms/chat-form-records";
+import { candidateNameWords, chatFormsActor, formDateRangeFromInput, formKindFromText, ofKind } from "@/lib/forms/chat-form-records";
 import { CURRENT_MESSAGE_ID, holdsPhrase, identifiedTurns, verifyEvidence, withoutMessageIdTags, type IdentifiedTurn } from "./evidence";
 import { answeredNameQuestions, answerNamesSomeoneElse, everKeptOrUsedTyped, isConfirmedSpelling, latestTurnAnswersFor, latestTurnConfirms, latestTurnKeepsOrUsesTyped, latestTurnKeepsTyped, spellingKeysConfirmedFor, spellingKeysConfirmedForName, type NameQuestionView } from "./confirmed-spelling";
 import { AFFIRMATIVE, displayName, editDistance, matchEmployeeName, nameConfirmationQuestion, readNameConfirmation, type RosterEmployee } from "@/lib/forms/employee-match";
@@ -1306,12 +1306,18 @@ async function findFormsInPeriod(context: ToolContext, input: { form?: unknown; 
   if (actor === undefined) return { reason_code: "read_failed", error: "Form Monitoring could not be read just now. Say so; do not say there are no forms." };
   if (actor === null) return { reason_code: "scope", error: "This manager's role cannot view Form Monitoring, so past forms cannot be listed." };
   try {
-    const rows = visibleInstances(actor, await listInstances("all", PERIOD_LIST_LIMIT, {
+    const read = await listInstances("all", PERIOD_LIST_LIMIT, {
       ...instanceListFilterFor(actor),
       ...(range ? { formDateFrom: range.from, formDateTo: range.to } : {}),
       ...(kind ? { templateNameWords: kind.templateNameWords } : {}),
-    })).slice(0, PERIOD_LIST_LIMIT);
-    const complete = rows.length < PERIOD_LIST_LIMIT;
+    });
+    /* QA's code audit (item 28): a Coaching kind never keeps a Follow-Up Coaching Form (`ofKind`). */
+    const rows = ofKind(visibleInstances(actor, read), kind).slice(0, PERIOD_LIST_LIMIT);
+    /*
+     * QA's code audit (item 29): complete only when the DATABASE returned fewer rows than it was asked for. Counting the
+     * rows left after the visibility filter called a cut-off list complete (100 read, 60 visible, "every such form").
+     */
+    const complete = read.length < PERIOD_LIST_LIMIT;
     return {
       period: range ? { from: range.from, to: range.to } : null,
       form_kind: kind?.label ?? null,
@@ -1392,9 +1398,11 @@ export async function findPastForms(context: ToolContext, input: { employee_name
     const today = context.today || businessToday();
     const wantForm = typeof input.form === "string" ? input.form.toLowerCase() : "";
     if (wantForm) {
-      const coaching = /coach/.test(wantForm);
+      /* QA's code audit (item 28): a coaching ask never keeps a Follow-Up Coaching Form, and a follow-up ask keeps only those. */
+      const followUp = /follow/.test(wantForm);
+      const coaching = /coach/.test(wantForm) && !followUp;
       const ca = /\bca\b|corrective|write[- ]?up|warning|verbal|written/.test(wantForm);
-      const narrowed = rows.filter((row) => (coaching ? /coach/i.test(row.templateName) : true) && (ca ? /corrective/i.test(row.templateName) || row.templateKey === appConfig().formKeys.corrective : true));
+      const narrowed = rows.filter((row) => (followUp ? /follow/i.test(row.templateName) : true) && (coaching ? /coach/i.test(row.templateName) && !/follow/i.test(row.templateName) : true) && (ca ? /corrective/i.test(row.templateName) || row.templateKey === appConfig().formKeys.corrective : true));
       if (narrowed.length > 0) rows = narrowed;
     }
     const iso = typeof input.date === "string" ? isoDate(input.date, today) : null;
