@@ -15,7 +15,7 @@ import { parseFormDocument } from "./document";
 import { fieldsToRestore, retainFilledFields } from "./draft-merge";
 import {
   DPOA_DATABASE_REVISION,
-  DPOA_OFFENSE_REVISION,
+  DPOA_REQUIRED_BOXES_REVISION,
   DPOA_UNPUBLISHED_REVISION,
   PAYROLL_AMOUNT_KEY,
   PAYROLL_AMOUNT_LABEL,
@@ -281,7 +281,8 @@ describe("the amount field is wired, and revision 7 is not published", () => {
      * 2026, "Publish Sunny revision 8 WITH the 'Payroll deduction amount'
      * line from unreleased revision 7."
      */
-    expect(seed.revision).toBe(DPOA_OFFENSE_REVISION);
+    // CHANGED ON PURPOSE, revision 9 (HR via Pau, 19 Nov 2026) follows revision 8.
+    expect(seed.revision).toBe(DPOA_REQUIRED_BOXES_REVISION);
     const keys = seed.document.blocks.map(blockKey);
     expect(keys[keys.indexOf(PAYROLL_DEDUCT_KEY) + 1]).toBe(PAYROLL_AMOUNT_KEY);
     const written7 = withholdUnpublishedDpoa({ ...seed, revision: DPOA_UNPUBLISHED_REVISION });
@@ -289,7 +290,7 @@ describe("the amount field is wired, and revision 7 is not published", () => {
     expect(written7.document.blocks.map(blockKey)).not.toContain(PAYROLL_AMOUNT_KEY);
     const written = withholdUnpublishedDpoa(seed);
     expect(written).toBe(seed);
-    expect(written.revision).toBe(DPOA_OFFENSE_REVISION);
+    expect(written.revision).toBe(DPOA_REQUIRED_BOXES_REVISION);
     expect(written.document.blocks.map(blockKey).filter((key) => key === PAYROLL_AMOUNT_KEY)).toHaveLength(1);
   });
 

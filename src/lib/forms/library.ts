@@ -17,7 +17,7 @@ import {
   PAYROLL_DEDUCT_LABEL,
   PAYROLL_DEDUCT_OPTIONS,
 } from "./payroll-deduct";
-import { PRIOR_ACTIONS_KEY, PRIOR_ACTIONS_LABEL } from "./prior-actions";
+import { POLICY_MANUAL_SIGNED_KEY, POLICY_MANUAL_SIGNED_LABEL, PRIOR_ACTIONS_KEY, PRIOR_ACTIONS_LABEL_REV9 } from "./prior-actions";
 import { CA_ACTION_PLAN_CLOSING } from "./required-closing";
 
 /**
@@ -494,11 +494,24 @@ export function correctiveActionDocument(): FormDocument {
          *
          * "None — first occurrence" is still a real answer, for the reason it
          * always was: a blank line here reads as a history nobody checked.
+         *
+         * REVISION 9 (HR via Pau, 19 Nov 2026) splits it in two required
+         * boxes: the policy manual's signed date (the creator's, never
+         * drafted) and the past 90 days' history (this key, relabelled).
          */
         kind: "field",
-        field: field(PRIOR_ACTIONS_KEY, PRIOR_ACTIONS_LABEL, "ai", "long_text", {
-          help: 'One per line: each coaching or corrective action previously received, with the date it was signed. Write "None — first occurrence" when there has been none.',
+        field: field(POLICY_MANUAL_SIGNED_KEY, POLICY_MANUAL_SIGNED_LABEL, "manager", "long_text", {
+          help: "The date the employee signed the JBA Policy Manual. Typed by the person creating the form; required.",
+          minLines: 2,
+          required: true,
+        }),
+      },
+      {
+        kind: "field",
+        field: field(PRIOR_ACTIONS_KEY, PRIOR_ACTIONS_LABEL_REV9, "ai", "long_text", {
+          help: 'One per line: each coaching or corrective action received in the past 90 days, with the date the employee signed it. Write "None — first occurrence" when there has been none. Required.',
           minLines: 4,
+          required: true,
         }),
       },
 
@@ -1728,9 +1741,9 @@ export const HR_TEMPLATE_SEEDS: TemplateSeed[] = [
     displayOrder: 2,
     document: correctiveActionDocument(),
     variants: [],
-    revision: 8,
+    revision: 9,
     revisionNote:
-      "Renamed to Corrective Action Form, and Observation of Offense drafts as Observed/Expectation/Going Forward with the Action Plan as the plan-of-action paragraph. Revision 3 sets the two policy fields to the business's own reading of them: Policy Violated is the offense category ticked on the form, and Direct policy names the approved manual with its section and page. Revision 4 adds \"Is payroll deduct applicable?\" as a Yes / No the manager answers (one answer, unanswered until they give it). Revision 5 (HR feedback, 3 Oct 2026) replaces \"Previous corrective action for this policy or issue\" and \"Date of previous corrective action\" with one multi-line field, \"List previously received coaching and/or corrective action with date signed\", and ends every Action Plan with \"Future policy violations may be subject to additional corrective action up to and including termination of employment.\" Revision 6 (District Manager feedback, 21 Oct 2026) makes the Action Plan two sentences — \"Management will review the <policy> policy with <employee>.\" and \"Future policy violations may result in additional corrective action up to and including termination of employment.\" — with the payroll deduction between them when payroll deduct is Yes. Revision 7 matches the live library and adds \"Payroll deduction amount\" immediately after the Yes / No. The figure is the manager's and is never taken from the policy. ensureTemplateLibrary does not publish revision 7; the database stays on revision 6 until Pau approves a publish. Revision 8 (client request, 4 Nov 2026; template approved) makes Type of Offense four boxes — Attendance Policy, Standards of Conduct, Dress Code Violation, Other — removing Tardiness/Leaving Early and Absenteeism (now Attendance Policy), Under Performance and Violation of Company Policies (now Standards of Conduct), and the Other write-in line (Other is a box). ensureTemplateLibrary publishes revision 8 with the Payroll deduction amount line from revision 7 (Pau approved both, 4 Nov 2026). Forms filed against earlier versions keep the document they were signed on; the template key and every stored value are unchanged.",
+      "Renamed to Corrective Action Form, and Observation of Offense drafts as Observed/Expectation/Going Forward with the Action Plan as the plan-of-action paragraph. Revision 3 sets the two policy fields to the business's own reading of them: Policy Violated is the offense category ticked on the form, and Direct policy names the approved manual with its section and page. Revision 4 adds \"Is payroll deduct applicable?\" as a Yes / No the manager answers (one answer, unanswered until they give it). Revision 5 (HR feedback, 3 Oct 2026) replaces \"Previous corrective action for this policy or issue\" and \"Date of previous corrective action\" with one multi-line field, \"List previously received coaching and/or corrective action with date signed\", and ends every Action Plan with \"Future policy violations may be subject to additional corrective action up to and including termination of employment.\" Revision 6 (District Manager feedback, 21 Oct 2026) makes the Action Plan two sentences — \"Management will review the <policy> policy with <employee>.\" and \"Future policy violations may result in additional corrective action up to and including termination of employment.\" — with the payroll deduction between them when payroll deduct is Yes. Revision 7 matches the live library and adds \"Payroll deduction amount\" immediately after the Yes / No. The figure is the manager's and is never taken from the policy. ensureTemplateLibrary does not publish revision 7; the database stays on revision 6 until Pau approves a publish. Revision 8 (client request, 4 Nov 2026; template approved) makes Type of Offense four boxes — Attendance Policy, Standards of Conduct, Dress Code Violation, Other — removing Tardiness/Leaving Early and Absenteeism (now Attendance Policy), Under Performance and Violation of Company Policies (now Standards of Conduct), and the Other write-in line (Other is a box). ensureTemplateLibrary publishes revision 8 with the Payroll deduction amount line from revision 7 (Pau approved both, 4 Nov 2026). Forms filed against earlier versions keep the document they were signed on; Revision 9 (HR via Pau, 19 Nov 2026) replaces the one history line with two required boxes, in HR's words: \"List date of JBA policy manual signed by employee\" (typed by the person creating the form) and \"List previous coaching and corrective actions and include date signed by employee in past 90 days\" (the same key as before). Neither can be left blank at Finalize. The template key and every stored value are unchanged.",
     bundledPdfName: "Corrective Action Form.pdf",
   },
   {

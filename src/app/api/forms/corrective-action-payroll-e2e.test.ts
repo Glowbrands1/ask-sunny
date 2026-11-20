@@ -412,7 +412,9 @@ describe("\"create ca for Rosalyn Test she was late today, got verbal warning on
     expect(byKey.payroll_deduct?.checked).toEqual(["no"]);
 
     const { bytes, text } = await download(result.reference.instanceId, "ca-prior-warning-date");
-    expect(text).toContain("List previously received coaching and/or corrective action with date signed");
+    // CHANGED ON PURPOSE, revision 9 (HR via Pau, 19 Nov 2026): the history box has a new label, and the manual box is beside it.
+    expect(text).toContain("List previous coaching and corrective actions and include date signed by employee in past 90 days");
+    expect(text).toContain("List date of JBA policy manual signed by employee");
     expect(text).not.toContain("Date of previous corrective action");
     expect(text).toMatch(/Verbal warning . signed 09\/21\/2026/);
     expect(ticked(bytes)).toEqual(["No"]);
