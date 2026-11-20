@@ -61,6 +61,15 @@ vi.mock("@/lib/store/app-store", () => ({
   useAppStore: () => ({ permissionMatrix: store.matrix, resetDemoData: async () => {} }),
 }));
 
+/** Stands in for Supabase's browser client: records how sign out was asked for. */
+const supabase = vi.hoisted(() => ({
+  signOut: vi.fn(async (_options?: { scope?: "global" | "local" | "others" }) => ({ error: null })),
+}));
+
+vi.mock("@/lib/supabase/browser-client", () => ({
+  getSupabaseBrowserClient: () => ({ auth: { signOut: supabase.signOut } }),
+}));
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: () => {}, refresh: () => {}, push: () => {} }),
 }));
@@ -122,6 +131,9 @@ function Probe() {
         onClick={attempt("signInAsDemo", () => session.signInAsDemo("owner"))}
       >
         demo sign in
+      </button>
+      <button type="button" onClick={() => session.signOut()}>
+        sign out
       </button>
     </div>
   );
@@ -248,5 +260,23 @@ describe("demo mode is untouched", () => {
 
     fireEvent.click(screen.getByText("demo sign in"));
     expect(value("outcome")).toBe("signInAsDemo: no error");
+  });
+});
+
+describe("signing out", () => {
+  /*
+   * Reported 20 Nov 2026: "when switching between them in the same browser,
+   * people get logged off and not save their credentials." Signing out asked
+   * Supabase for the default "global" sign-out, which ends EVERY session the
+   * person has, so their other browser or device was logged off too.
+   */
+  it("ends this browser's session only, never the person's other ones", async () => {
+    supabase.signOut.mockClear();
+    renderReal(OWEN);
+
+    fireEvent.click(screen.getByText("sign out"));
+
+    await vi.waitFor(() => expect(supabase.signOut).toHaveBeenCalledTimes(1));
+    expect(supabase.signOut).toHaveBeenCalledWith({ scope: "local" });
   });
 });

@@ -256,11 +256,18 @@ export async function listInstances(
   const dateFrom = isoDay(filter?.formDateFrom);
   const dateTo = isoDay(filter?.formDateTo);
 
+  /*
+   * QA's f072 (20 Nov 2026): "lucia ramirez" never found a form stored as "Lucía Ramírez": ilike compares the letters as
+   * stored. The overview's employee_name_folded (lower(unaccent(employee_name)), migration 20261120002000) is matched as
+   * well. Until that migration is applied, a read that names the missing column is read again as before.
+   */
+  let foldedColumn = true;
   /** The view and name filters, applied identically to every read below. */
   function scoped() {
     let query = supabase.from("form_instance_overview").select("*");
     if (nameWords.length > 0) {
-      query = query.or(nameWords.map((word) => `employee_name.ilike.*${word}*`).join(","));
+      const columns = foldedColumn ? ["employee_name", "employee_name_folded"] : ["employee_name"];
+      query = query.or(columns.flatMap((column) => nameWords.map((word) => `${column}.ilike.*${word}*`)).join(","));
     }
     if (templateWords.length > 0) {
       query = query.or(templateWords.map((word) => `template_name.ilike.*${word}*`).join(","));
@@ -274,76 +281,90 @@ export async function listInstances(
     return query;
   }
 
-  /* Unrestricted: global actors and preview. One ordered, bounded read. */
-  if (!filter || filter.locationIds === undefined) {
-    const { data, error } = await scoped()
-      .order("created_at", { ascending: false })
-      .limit(limit);
-    if (error) throw new Error(`Could not read form history: ${error.message}`);
-    return (data ?? []).map(mapInstance);
-  }
-
-  /*
-   * TWO BOUNDED READS, MERGED SERVER-SIDE.
-   *
-   * Each is ordered and limited independently, so at most `2 * limit` rows are
-   * ever read — the top `limit` of the union is always contained in the union
-   * of the two tops. Neither is a company-wide scan, and nothing extra reaches
-   * the browser: the merge is limited again before it is returned.
-   *
-   * The salon query is SKIPPED ENTIRELY on an empty id list rather than issued
-   * as `in.()`, which PostgREST does not accept — and which would be an odd way
-   * to express "nothing qualifies" even if it did.
-   */
-  const reads = [];
-
-  if (filter.locationIds.length > 0) {
-    reads.push(
-      scoped()
-        .in("location_id", filter.locationIds)
+  async function readAll(): Promise<InstanceRow[]> {
+    /* Unrestricted: global actors and preview. One ordered, bounded read. */
+    if (!filter || filter.locationIds === undefined) {
+      const { data, error } = await scoped()
         .order("created_at", { ascending: false })
-        .limit(limit),
-    );
-  }
-
-  if (filter.ownNullLocationCreatedBy) {
-    reads.push(
-      scoped()
-        .is("location_id", null)
-        .eq("created_by", filter.ownNullLocationCreatedBy)
-        .order("created_at", { ascending: false })
-        .limit(limit),
-    );
-  }
-
-  if (filter.ownCreatedBy) {
-    reads.push(
-      scoped()
-        .not("location_id", "is", null)
-        .eq("created_by", filter.ownCreatedBy)
-        .order("created_at", { ascending: false })
-        .limit(limit),
-    );
-  }
-
-  if (reads.length === 0) return [];
-
-  const results = await Promise.all(reads);
-
-  // Merge, de-duplicate (a row cannot match both predicates, but the union is
-  // written to be correct rather than to rely on that), sort, then bound.
-  const byId = new Map<string, InstanceRow>();
-  for (const result of results) {
-    if (result.error) throw new Error(`Could not read form history: ${result.error.message}`);
-    for (const row of result.data ?? []) {
-      const mapped = mapInstance(row as Record<string, unknown>);
-      byId.set(mapped.id, mapped);
+        .limit(limit);
+      if (error) throw new Error(`Could not read form history: ${error.message}`);
+      return (data ?? []).map(mapInstance);
     }
+
+    /*
+     * TWO BOUNDED READS, MERGED SERVER-SIDE.
+     *
+     * Each is ordered and limited independently, so at most `2 * limit` rows are
+     * ever read — the top `limit` of the union is always contained in the union
+     * of the two tops. Neither is a company-wide scan, and nothing extra reaches
+     * the browser: the merge is limited again before it is returned.
+     *
+     * The salon query is SKIPPED ENTIRELY on an empty id list rather than issued
+     * as `in.()`, which PostgREST does not accept — and which would be an odd way
+     * to express "nothing qualifies" even if it did.
+     */
+    const reads = [];
+
+    if (filter.locationIds.length > 0) {
+      reads.push(
+        scoped()
+          .in("location_id", filter.locationIds)
+          .order("created_at", { ascending: false })
+          .limit(limit),
+      );
+    }
+
+    if (filter.ownNullLocationCreatedBy) {
+      reads.push(
+        scoped()
+          .is("location_id", null)
+          .eq("created_by", filter.ownNullLocationCreatedBy)
+          .order("created_at", { ascending: false })
+          .limit(limit),
+      );
+    }
+
+    if (filter.ownCreatedBy) {
+      reads.push(
+        scoped()
+          .not("location_id", "is", null)
+          .eq("created_by", filter.ownCreatedBy)
+          .order("created_at", { ascending: false })
+          .limit(limit),
+      );
+    }
+
+    if (reads.length === 0) return [];
+
+    const results = await Promise.all(reads);
+
+    // Merge, de-duplicate (a row cannot match both predicates, but the union is
+    // written to be correct rather than to rely on that), sort, then bound.
+    const byId = new Map<string, InstanceRow>();
+    for (const result of results) {
+      if (result.error) throw new Error(`Could not read form history: ${result.error.message}`);
+      for (const row of result.data ?? []) {
+        const mapped = mapInstance(row as Record<string, unknown>);
+        byId.set(mapped.id, mapped);
+      }
+    }
+
+    return [...byId.values()]
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0))
+      .slice(0, limit);
+
   }
 
-  return [...byId.values()]
-    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0))
-    .slice(0, limit);
+  try {
+    return await readAll();
+  } catch (error) {
+    /* Before migration 20261120002000 is applied, the folded column is missing: read again by the stored name only. */
+    if (foldedColumn && nameWords.length > 0 && String(error).includes("employee_name_folded")) {
+      foldedColumn = false;
+      return readAll();
+    }
+    throw error;
+  }
 }
 
 export interface LoadedInstance {
@@ -1455,7 +1476,7 @@ export class InstanceProtectedError extends Error {}
  * in which values outlive their form. A revision pointing at this row has its
  * `revises_instance_id` set to null by the same declaration.
  */
-export async function deleteInstance(id: string): Promise<InstanceRow> {
+export async function deleteInstance(id: string, by?: DeletionActor): Promise<InstanceRow> {
   const supabase = getSupabaseAdmin();
 
   const { data: row, error: readError } = await supabase
@@ -1473,9 +1494,45 @@ export async function deleteInstance(id: string): Promise<InstanceRow> {
     );
   }
 
+  await stampDeletion([id], by);
   const { error } = await supabase.from("form_instances").delete().eq("id", id);
   if (error) throw new Error(`Could not delete that form: ${error.message}`);
   return instance;
+}
+
+/**
+ * WHO DELETED A FORM, AND HOW (board f066, Pau approved 20 Nov 2026).
+ *
+ * Every delete of a `form_instances` row is recorded by a BEFORE DELETE trigger in `form_instance_deletions`, an
+ * append-only table (`20261120001000_form_instance_deletions.sql`), whatever path made it. The app's own deletes
+ * say who and how by stamping the row just before (`deletion_requested_*`): Postgres is reached one HTTP request at a
+ * time, so the stamp is how the acting user reaches the trigger. A delete without a stamp is still recorded, as
+ * `other`.
+ */
+export interface DeletionActor {
+  /** The app user (`FormsActor.id`, or the loop's `actor.subject`). */
+  id: string;
+  role: string | null;
+  via: "route" | "chat" | "agent_loop" | "demo_sweep";
+}
+
+/**
+ * Stamps the rows about to be deleted. Best-effort and said: a failed stamp (the migration not yet applied, a
+ * network fault) never stops a delete the manager asked for. The trigger then records it without the user, and
+ * the log says why.
+ */
+async function stampDeletion(ids: readonly string[], by: DeletionActor | undefined): Promise<void> {
+  if (!by || ids.length === 0) return;
+  const { error } = await getSupabaseAdmin()
+    .from("form_instances")
+    .update({
+      deletion_requested_by: by.id,
+      deletion_requested_role: by.role,
+      deletion_requested_via: by.via,
+      deletion_requested_at: new Date().toISOString(),
+    })
+    .in("id", [...ids]);
+  if (error) console.error("forms: the deletion stamp was not written; the delete is recorded without its user", { reason: error.message, via: by.via });
 }
 
 /**
@@ -1549,7 +1606,7 @@ export async function findDemoInstances(): Promise<DemoSweep> {
  *   If a form was finalized between the confirmation dialog and the click, the
  *   sweep refuses rather than deleting a different set than was agreed to.
  */
-export async function deleteDemoInstances(expected: number): Promise<{ deleted: number }> {
+export async function deleteDemoInstances(expected: number, by?: DeletionActor): Promise<{ deleted: number }> {
   const sweep = await findDemoInstances();
   if (sweep.deletable.length !== expected) {
     throw new InstanceProtectedError(
@@ -1558,6 +1615,7 @@ export async function deleteDemoInstances(expected: number): Promise<{ deleted: 
   }
   if (sweep.deletable.length === 0) return { deleted: 0 };
 
+  await stampDeletion(sweep.deletable.map((row) => row.id), by);
   const supabase = getSupabaseAdmin();
   const { error } = await supabase
     .from("form_instances")

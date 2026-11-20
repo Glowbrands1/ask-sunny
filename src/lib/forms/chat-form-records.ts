@@ -1,5 +1,6 @@
 import "server-only";
 
+import { foldName } from "./fold-name";
 import { formRecordsNoJudgementEnabled, formsOnFileOrderMatchPossibleEnabled } from "@/lib/config/chat-quality-flags";
 import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 import { businessToday } from "@/lib/business-date";
@@ -108,7 +109,8 @@ const STOP_WORDS = new Set(
 
 /** The words of a question that could be part of somebody's name. */
 export function candidateNameWords(text: string): string[] {
-  const words = text
+  /* QA's f072 (20 Nov 2026): accents fold first ("Ramírez" is "ramirez", never "ram rez"), as `foldName` does everywhere. */
+  const words = foldName(text)
     .toLowerCase()
     .replace(/['’]s\b/g, "")
     .split(/[^a-z]+/)
@@ -117,7 +119,7 @@ export function candidateNameWords(text: string): string[] {
 }
 
 function nameWords(name: string): string[] {
-  return name.toLowerCase().split(/[^a-z]+/).filter((word) => word.length >= 2);
+  return foldName(name).toLowerCase().split(/[^a-z]+/).filter((word) => word.length >= 2);
 }
 
 export interface NameMatches {
@@ -687,7 +689,7 @@ export async function loadFormRecords(input: {
  * model gets the recent list instead of a false "nothing on file".
  */
 function looksLikeItNamesSomebody(question: string): boolean {
-  const tokens = question.toLowerCase().replace(/['’]s\b/g, "").split(/[^a-z]+/).filter(Boolean);
+  const tokens = foldName(question).toLowerCase().replace(/['’]s\b/g, "").split(/[^a-z]+/).filter(Boolean);
   const candidate = (word: string | undefined) =>
     word !== undefined && word.length >= 2 && !STOP_WORDS.has(word);
   for (let i = 0; i < tokens.length; i += 1) {

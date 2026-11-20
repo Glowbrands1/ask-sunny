@@ -55,7 +55,7 @@ import { formatManualCitation } from "@/lib/ai/policy-citation-fields";
 import { redactSensitiveDefaults } from "@/lib/ai/sensitive-defaults";
 import { expandPolicyQuery } from "@/lib/knowledge/policy-retrieval";
 import type { SourceCitation } from "@/types";
-import { followUpChangeAsked, followUpLine, statedFollowUpDate } from "@/lib/forms/follow-up-default";
+import { followUpChangeAsked, followUpForCard, followUpLine, statedFollowUpDate } from "@/lib/forms/follow-up-default";
 import type { AccessScope, ChatFormProposal, ChatMessage, Role } from "@/types";
 import { accountKey, personKey, replyTurns, type CardRecord, type ExitOfferRecord, type NameQuestionRecord, type PersonAskedRecord, type TurnRecord } from "@/lib/ai/agent-loop/card-record";
 
@@ -447,9 +447,9 @@ async function formOnFileRefusal(context: ToolContext, id: string, evidence: unk
   const person = await authorizeInstance(context.request, id, "view").then(({ loaded }) => loaded.instance.employeeName).catch(() => null);
   if (!person) return null;
   const basic = formsOnFileAsked(context, evidence);
-  if (!basic.ok) return privacyRefusal(basic.reason);
+  if (!basic.ok) return privacyRefusal(basic.reason, undefined, context);
   const asked = await formsOnFileAskedFor(context, evidence, person);
-  return asked.ok ? null : privacyRefusal(asked.reason, asked.reasonCode);
+  return asked.ok ? null : privacyRefusal(asked.reason, asked.reasonCode, context);
 }
 
 /**
@@ -615,10 +615,16 @@ function answerEvidence(
 }
 
 /** The refusal when the manager has not asked about forms on file: privacy_not_asked, with the evidence check's reason. */
-function privacyRefusal(reason: string, reasonCode = "privacy_not_asked"): ToolResult {
+function privacyRefusal(reason: string, reasonCode = "privacy_not_asked", context?: Pick<ToolContext, "questionMessageId">): ToolResult {
+  /*
+   * Pau's live chat (20 Nov 2026, 14:23Z): calls with no forms_on_file_evidence were refused, and the model's next call
+   * cited the wrong id. The refusal names the id of the message being answered now, which the model cites when that
+   * message is the one asking.
+   */
+  const now = context ? { this_message_id: context.questionMessageId || CURRENT_MESSAGE_ID } : {};
   return reasonCode === "privacy_not_this_person"
-    ? { error: "The manager's words asking about forms on file are about someone else, not this person, so this person's forms stay closed (company privacy rule). Ask whether they want this person's forms on file.", reason_code: reasonCode, evidence: reason }
-    : { error: NOT_ASKED, reason_code: reasonCode, evidence: reason };
+    ? { error: "The manager's words asking about forms on file are about someone else, not this person, so this person's forms stay closed (company privacy rule). Ask whether they want this person's forms on file.", reason_code: reasonCode, evidence: reason, ...now }
+    : { error: NOT_ASKED, reason_code: reasonCode, evidence: reason, ...now };
 }
 
 const COUNT_WORDS: Readonly<Record<string, number>> = { two: 2, three: 3, four: 4, five: 5, six: 6 };
@@ -714,6 +720,10 @@ export interface ToolEffects {
    * manager's answer in a later turn (run.ts records it; propose_form refuses it where the card is set).
    */
   nameNotConfirmed?: { offeredIds: readonly string[]; ask: string };
+  /** QA's audit (item 14b): drafts coach_team's "create all" saved this turn, so a later failure never says nothing was saved. */
+  draftsCreated?: number;
+  /** QA's audit (item 14b): a tool was still running when the turn stopped and did not finish in the time left (run.ts). */
+  workUnfinished?: boolean;
   /** `saved`: each field that really changed on the form written, read back from the database (PR 3; `saved-diff.ts`). */
   formUpdate: { instanceId: string; updated: string[]; saved?: SavedChange[]; putBack?: string[] } | null;
   /** Roster ids find_staff chose from a close spelling or a lone first name this turn (the card's name_from_staff_list fact). */
@@ -812,6 +822,18 @@ const ROSTER_UNCHECKED = "This login covers a district or region, so the roster 
 export function wholeNameWords(name: string, typed: string): boolean {
   const want = words(typed).join(" ");
   return want !== "" && ` ${words(name).join(" ")} `.includes(` ${want} `);
+}
+
+/**
+ * Pau's live chat (20 Nov 2026, 14:23Z: "list ca or coaching forms for <P> co"): a whole name word, then the START of the
+ * next one ("liesel co" for Liesel Cobb). The first word is matched whole (never "ann lee" for Joann Lee, item 27), and
+ * each later typed word begins the name word after it.
+ */
+export function nameThenStartOfNext(name: string, typed: string): boolean {
+  const want = words(typed);
+  const own = words(name);
+  if (want.length < 2) return false;
+  return own.some((word, at) => word === want[0] && want.slice(1).every((part, k) => part.length >= 2 && (own[at + 1 + k] ?? "").startsWith(part)));
 }
 
 function words(text: string): string[] {
@@ -1320,7 +1342,7 @@ const PERIOD_LIST_LIMIT = 100;
  */
 async function findFormsInPeriod(context: ToolContext, input: { form?: unknown; date_from?: unknown; date_to?: unknown; forms_on_file_evidence?: unknown }): Promise<ToolResult> {
   const asked = formsOnFileAsked(context, input.forms_on_file_evidence);
-  if (!asked.ok) return privacyRefusal(asked.reason);
+  if (!asked.ok) return privacyRefusal(asked.reason, undefined, context);
   const today = context.today || businessToday();
   const range = formDateRangeFromInput(input.date_from, input.date_to, today);
   const kind = typeof input.form === "string" ? formKindFromText(input.form) : null;
@@ -1367,7 +1389,7 @@ export async function findPastForms(context: ToolContext, input: { employee_name
   if (typed === "" && input.open !== true && (input.date_from || input.date_to || input.form)) return findFormsInPeriod(context, input);
   if (typed === "") return { reason_code: "missing_input", error: "Give the employee's name." };
   const asked = await formsOnFileAskedFor(context, input.forms_on_file_evidence, typed);
-  if (!asked.ok) return privacyRefusal(asked.reason, asked.reasonCode);
+  if (!asked.ok) return privacyRefusal(asked.reason, asked.reasonCode, context);
   const closeSpelled = await closeSpellingRefusal(context, effects, typed);
   if (closeSpelled) return closeSpelled;
   /*
@@ -1408,7 +1430,7 @@ export async function findPastForms(context: ToolContext, input: { employee_name
      * person by `samePerson`, or one roster holder's other name (aliases).
      */
     let rows = visibleInstances(actor, await listInstances("all", 200, { ...instanceListFilterFor(actor), employeeNameWords: nameWords }))
-      .filter((row) => samePerson(row.employeeName, typed) || wholeNameWords(row.employeeName, typed) || (aliases.length > 0 && sameRosterPerson(row.employeeName, typed, people)));
+      .filter((row) => samePerson(row.employeeName, typed) || wholeNameWords(row.employeeName, typed) || nameThenStartOfNext(row.employeeName, typed) || (aliases.length > 0 && sameRosterPerson(row.employeeName, typed, people)));
     /*
      * Item 27: the typed name fits forms of more than one person ("Lee": Ann Lee and Joann Lee) and is nobody's full name
      * on file: list none of them; the reply asks which person, by full name. One roster holder's names count as one.
@@ -2708,6 +2730,8 @@ export async function proposeForm(
     prior_actions?: unknown;
     topic?: unknown;
     topic_evidence?: unknown;
+    attendance?: unknown;
+    attendance_evidence?: unknown;
     incident_time?: unknown;
     salon?: unknown;
   },
@@ -3221,7 +3245,7 @@ export async function proposeForm(
     const reading = readCaPolicy(requestWords);
     const namedAnother = (reading.source === "stated" && reading.stated !== null && reading.stated !== "dress_code") ||
       namedPolicies(requestWords).some((named) => !dressFits?.some((heading) => namesHeading(named.phrase, heading)));
-    const otherOnly = !policyHeading && /^other\b/i.test(askedPolicyWhole) && !saysMustSee(requestWords) && !cleaningUndonePhrase(requestWords);
+    const otherOnly = !policyHeading && /^other\b/i.test(askedPolicyWhole) && !saysMustSee(requestWords) && !cleaningUndonePhrase(requestWords, { rulesAreNotDuties: true });
     if (dressFits && !namedAnother && ((policyHeading && !cardHeadings.some((heading) => dressFits.includes(heading))) || otherOnly)) {
       /*
        * Pau's ruling (20 Nov 2026; c091): the heading the model chose may be a second offense the manager also describes
@@ -3280,7 +3304,8 @@ export async function proposeForm(
     }
   }
   // The Other topic is read from the account as the model cleaned it (SPELLING_CLEANUP: "th e10 minute sanitaion" → "the 10-minute sanitation"), else the manager's words.
-  const cleaning = (whatHappened ? cleaningUndonePhrase(whatHappened) : null) ?? cleaningUndonePhrase(requestWords);
+  /* QA (20 Nov 2026; c259): "we do not do extra cleaning after hours" is a rule stated, never a cleaning duty left undone. */
+  const cleaning = (whatHappened ? cleaningUndonePhrase(whatHappened, { rulesAreNotDuties: true }) : null) ?? cleaningUndonePhrase(requestWords, { rulesAreNotDuties: true });
   const careAndCleaning = namesCareAndCleaning(requestWords);
   /* As today's card cites it: the heading, then the page the manual prints. */
   const page = policyHeading && manual ? findManualSection(manual.chunks, [policyHeading])?.page ?? null : null;
@@ -3353,7 +3378,15 @@ export async function proposeForm(
    * applicable?"), read from the template document's field keys, never from a list of forms. The level and the termination
    * stay Corrective Action only.
    */
-  const payrollFields = caOnlyFields || [...documentFieldKeys(template.currentVersion?.document)].some((fieldKey) => /^payroll_deduct/.test(fieldKey));
+  const templateFieldKeys = documentFieldKeys(template.currentVersion?.document);
+  const payrollFields = caOnlyFields || [...templateFieldKeys].some((fieldKey) => /^payroll_deduct/.test(fieldKey));
+  /*
+   * QA (20 Nov 2026, #1138's live test: "The exit form doesn't have a field for the uniform-cost payroll deduction"): the
+   * exit form asks only "Is Payroll Deduction applicable? (Yes / No)", with no amount or reason line. On such a form the
+   * amount is never put on the card (not_on_this_form) and the card says so (payroll_question_only): the amount and the
+   * reason stay in the account, which goes in Additional Details. Read from the template's own field keys.
+   */
+  const amountOnForm = caOnlyFields || templateFieldKeys.has(PAYROLL_AMOUNT_KEY);
   const askedPayroll = (input.payroll_deduct === "yes" || input.payroll_deduct === "no") ? input.payroll_deduct : null;
   /*
    * QA (16 Nov 2026, the Runner's live set on 1a53042: "and payroll"): payroll stated in the message that asked for THIS
@@ -3373,7 +3406,7 @@ export async function proposeForm(
   const typedAmount = typeof input.payroll_amount === "string" && /\d/.test(input.payroll_amount) ? input.payroll_amount.replace(/[^\d.]/g, "") : null;
   /* The amount the manager stated, read as today reads it (`payrollAmountFromConversation`) when the model left it out. */
   const statedAmount = payroll === "yes" ? payrollAmountFromConversation(conversationTurns(context), { payrollAnswer: "yes" })?.replace(/[^\d.]/g, "") ?? null : null;
-  let amount = payrollFields && typedAmount && managerWords.replace(/[^\d.]/g, " ").split(/\s+/).some((n) => n !== "" && Number(n) === Number(typedAmount)) ? typedAmount : null;
+  let amount = payrollFields && amountOnForm && typedAmount && managerWords.replace(/[^\d.]/g, " ").split(/\s+/).some((n) => n !== "" && Number(n) === Number(typedAmount)) ? typedAmount : null;
   const today = context.today || businessToday();
   let date = typeof input.incident_date === "string" && DATE.test(input.incident_date.trim()) ? input.incident_date.trim() : null;
   /* Several incident dates and the latest message does not pick one: the date waits, and the card asks (today's rule). */
@@ -3603,6 +3636,29 @@ export async function proposeForm(
     !topicWords.some((word) => nameWords.has(word)) &&
     answerEvidence(context, input.topic_evidence, "request", evidencePerson, { requestTurnIds }).ok;
   const coachingTopic = topicKept ? askedTopic.charAt(0).toUpperCase() + askedTopic.slice(1) : null;
+  /*
+   * QA's production audit (20 Nov 2026, item 21; a real finalized form): "did not come into her scheduled shift today at
+   * 9:30" was written up as lateness ("expected to arrive on time", "Continued lateness will result …"). A Corrective
+   * Action card carries what the manager described (absence, lateness or both) as the model reads it, kept only on
+   * attendance_evidence from a manager message of this request. A record, never a word list over the manager's messages:
+   * Create sends it, and the draft route writes an absence as an absence (`lib/forms/absence-write-up.ts`).
+   */
+  const askedAttendance = template.key === appConfig().formKeys.corrective && (input.attendance === "absence" || input.attendance === "lateness" || input.attendance === "both") ? input.attendance : null;
+  const attendanceCheck = askedAttendance ? answerEvidence(context, input.attendance_evidence, "request", evidencePerson, { requestTurnIds }) : null;
+  const attendanceKind = askedAttendance && attendanceCheck?.ok ? askedAttendance : null;
+  /*
+   * QA's review of #1137 (20 Nov 2026): never optional-and-ignored. A Corrective Action card whose policy is the manual's
+   * Attendance heading (a record: the heading the card cites, never the manager's words) with an account must carry
+   * attendance on evidence; a missing value, or evidence that is not this request's manager words, is refused, asking
+   * for it. Late Opening is its own heading and is not asked.
+   */
+  const attendanceCard = template.key === appConfig().formKeys.corrective && policyHeading !== null && /\battendance\b/i.test(policyHeading) && whatHappened !== "";
+  if (attendanceCard && !attendanceKind) {
+    const attendanceCode = askedAttendance ? "attendance_evidence_not_found" : "attendance_not_given";
+    return {
+      reason_code: attendanceCode, error: `This Corrective Action cites ${policyHeading}. Propose the card again with attendance (absence: a shift missed, as "did not come in", a no-show, a call-out; lateness: late, or left early; both: each) and attendance_evidence quoting the manager's own words from this request that describe it${askedAttendance && attendanceCheck && !attendanceCheck.ok ? ` (that quote was not found in this request's manager messages: ${attendanceCheck.reason})` : ""}.`,
+    };
+  }
   const incidentTime = typeof input.incident_time === "string" && input.incident_time.trim() ? input.incident_time.trim().slice(0, 40) : null;
 
   const typedSalon = typeof input.salon === "string" ? input.salon.trim() : "";
@@ -3730,6 +3786,7 @@ export async function proposeForm(
     ...(payroll === "yes" && amount ? { payrollDeductAmount: amount } : {}),
     ...(priorActions ? { priorActions } : {}),
     ...(coachingTopic ? { coachingTopic } : {}),
+    ...(attendanceKind ? { attendanceKind } : {}),
     ...(incidentTime ? { incidentTime } : {}),
     ...(awaiting ? { awaitingIncident: true as const, supportsInlineDraft: false } : {}),
   };
@@ -3847,7 +3904,10 @@ export async function proposeForm(
     ? (["verbal", "written"] as const).filter((option) => levelNamedInEvidence({ quote: context.question }, option) && levelOptionIsTheLevel(withoutMessageIdTags(context.question), option, levelFormWords(template.name)))
     : [];
   const levelNotGiven = namedOptions.length === 1 ? namedOptions[0]! : null;
-  const unset = corrective && !awaiting ? [...(payroll ? [] : ["payroll_deduct"]), ...(level || terminationStated ? [] : ["warning_level"])] : [];
+  /* QA (20 Nov 2026, #1138's live test): every form whose template asks the payroll question says it is unset, as the CA does. */
+  const unset = corrective && !awaiting
+    ? [...(payroll ? [] : ["payroll_deduct"]), ...(level || terminationStated ? [] : ["warning_level"])]
+    : payrollFields && !awaiting && !payroll ? ["payroll_deduct"] : [];
   /* What this card's reply asks (the next turn's card record). After an unclear answer it still asks both (E r2). */
   /*
    * #1055's follow-up (QA, 20 Nov 2026): a card that asks which date (several dates, none chosen) records "form_date" in
@@ -3884,6 +3944,7 @@ export async function proposeForm(
     ...(earlierKept ? { earlier_card: { kept: true, ...(earlierRow ? { employee: displayName(earlierRow) } : {}), form: earlier!.templateName ?? earlier!.templateKey } } : {}),
     ...(otherNamed.length > 0 ? { account_names_other_person: { named: otherNamed, card_person: employee.name } } : {}),
     ...(unset.length > 0 && !answerUnclear ? { unset } : {}),
+    ...(payrollFields && !amountOnForm && (payroll || typedAmount) ? { payroll_question_only: `The ${template.name} asks only whether payroll deduction applies (Yes / No); it has no amount or reason line. Keep the amount and the reason the manager gave in the account (what_happened): it goes in Additional Details.` } : {}),
     ...(answerUnclear ? { payroll_answer_unclear: { ask_exactly: payrollQuestion } } : {}),
     ...(levelUnnamed && !levelAnswerUnclear ? { level_not_named: { ask_exactly: LEVEL_QUESTION } } : {}),
     /*
@@ -3947,6 +4008,14 @@ export async function proposeForm(
     ...(cleaning && !careAndCleaning ? { cleaning_duty: cleaning } : {}),
     ...(awaiting ? { policy_named_by_manager: policyNamedByManager } : {}),
     ...(datedToday && (card.formDate ?? today) === today ? { dated_today: true } : {}),
+    /*
+     * f048b (QA's live 23a, 20 Nov 2026): the follow-up date Create sets (#1134: stated, else a week after the form date),
+     * said on the card so the reply never denies a follow-up the saved form will have.
+     */
+    ...((() => {
+      const followUp = followUpForCard({ corrective, formDate: card.formDate ?? today, managerWords, today });
+      return followUp ? { follow_up_on_create: { date: followUp.date, say_exactly: followUp.line } } : {};
+    })()),
     ...(offRosterName ? { off_roster_name: employee.name, staff_list: context.actor.scope.level === "salon" ? `your ${locationWord()}'s` : "the", ...((await inactiveMatch(context.actor.scope, employee.name)) ? { inactive_in_woven: true } : {}) } : {}),
     ...(personId && effects.nameLines?.[personId] ? { name_from_staff_list: employee.name } : {}),
     /* Pau's name ruling (15 Nov 2026): the card uses the preferred name; the reply says the Woven legal name once. */
@@ -3997,7 +4066,7 @@ export async function proposeForm(
     ...((modelLevel && level !== modelLevel) ? [{ field: "warning_level", reason_code: caOnlyFields ? "level_not_stated" : "not_on_this_form" }] : []),
     ...((askedTermination && !loopTermination) ? [{ field: "warning_level", reason_code: "termination_not_stated" }] : []),
     ...((askedPayroll && !payroll) ? [{ field: "payroll_deduct", reason_code: payrollFields ? "payroll_not_stated" : "not_on_this_form" }] : []),
-    ...((typedAmount && !amount) ? [{ field: "payroll_amount", reason_code: payrollFields ? "amount_not_stated" : "not_on_this_form" }] : []),
+    ...((typedAmount && !amount) ? [{ field: "payroll_amount", reason_code: payrollFields && amountOnForm ? "amount_not_stated" : "not_on_this_form" }] : []),
     ...((askedExitTermination && !exitTermination) ? [{ field: "exit_type", reason_code: "termination_not_stated" }] : []),
     ...(priorActionsRefused ? [{ field: "prior_actions", reason_code: "prior_actions_not_kept" }] : []),
     ...(futureDate ? [{ field: "form_date", reason_code: "date_after_today" }] : []),
@@ -4123,7 +4192,9 @@ function isShownCardId(context: ToolContext, effects: ToolEffects, id: string): 
 export async function coachTeam(context: ToolContext, effects: ToolEffects): Promise<ToolResult> {
   if (context.openFormId) {
     const { coachingForEveryoneTurn } = await import("@/lib/forms/coaching-for-everyone");
-    const turn = await coachingForEveryoneTurn({ request: context.request, question: context.question, history: context.history as ChatMessage[], activeInstanceId: context.openFormId });
+    const turn = await coachingForEveryoneTurn({ request: context.request, question: context.question, history: context.history as ChatMessage[], activeInstanceId: context.openFormId, onCreated: () => {
+      effects.draftsCreated = (effects.draftsCreated ?? 0) + 1;
+    } });
     if (turn) return { app_reply: untrusted(turn.content), note: "Say app_reply to the manager as given, every line: it holds the people, the counts and the exact words the next step reads." };
   }
   const { wholeTeamRequest } = await import("@/lib/forms/whole-team-coaching");
@@ -4484,7 +4555,7 @@ export async function editForm(
       if ("error" in revisedEdit && draft.opened) {
         let cleanup: "deleted" | "failed" = "deleted";
         try {
-          await deleteInstance(draft.instanceId);
+          await deleteInstance(draft.instanceId, { id: context.actor.subject, role: context.actor.role ?? null, via: "agent_loop" });
         } catch (deleteError) {
           // Left as a draft; the error below still says nothing was written. A failed delete is logged (PR 4), never silent.
           cleanup = "failed";

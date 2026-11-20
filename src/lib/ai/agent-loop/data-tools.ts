@@ -18,7 +18,7 @@ import type { AccessScope, Role } from "@/types";
 
 import { rowToCitation } from "@/lib/knowledge/mappers";
 
-import type { AppConfig } from "./app-config";
+import { appConfig, type AppConfig } from "./app-config";
 import { addSource, untrusted as envelope, type ToolActor, type ToolEffects, type ToolResult } from "./tools";
 
 /*
@@ -149,6 +149,23 @@ export interface DataToolDeps {
   readonly loadReportBriefing: (input: LoadReportBriefingInput) => Promise<ReportBriefing | null>;
   readonly readBreakdown: (question: string, role: Role | null, scope: AccessScope | null) => Promise<string | null>;
   readonly fetchDailyStatsGuide: (scopeId: string) => Promise<RoleGroundingResult>;
+  /** The form deletion record (f066), newest first; `employeeName` narrows it (case-insensitive, part of the name). */
+  readonly loadFormDeletions: (input: { employeeName: string | null; limit: number }) => Promise<FormDeletionRow[]>;
+}
+
+/** One row of `form_instance_deletions`, as read_form_deletions reads it (never the snapshot). */
+export interface FormDeletionRow {
+  readonly templateName: string | null;
+  readonly employeeName: string | null;
+  readonly formDate: string | null;
+  readonly status: string | null;
+  readonly locationName: string | null;
+  /** The deleter's name from the user directory, when the account is found; else null. */
+  readonly deletedByName: string | null;
+  readonly deletedBy: string | null;
+  readonly deletedByRole: string | null;
+  readonly deletedVia: string;
+  readonly deletedAt: string;
 }
 
 /** The real reads, loaded on first use (they are server-only). */
@@ -173,6 +190,36 @@ export const DEFAULT_DATA_TOOL_DEPS: DataToolDeps = {
   },
   fetchDailyStatsGuide: async (scopeId) =>
     new (await import("@/lib/knowledge/providers/supabase")).SupabaseKnowledgeProvider().fetchRoleGrounding(DAILY_STATS_INTERPRETATION_FRAMEWORK, scopeId),
+  loadFormDeletions: async ({ employeeName, limit }) => {
+    const { getSupabaseAdmin } = await import("@/lib/supabase/server");
+    let query = getSupabaseAdmin()
+      .from("form_instance_deletions")
+      .select("template_name, employee_name, form_date, status, location_name, deleted_by, deleted_by_role, deleted_via, deleted_at");
+    // The forms' own employee-name search shape (part of the name, any case); characters the filter syntax reads are dropped.
+    const said = (employeeName ?? "").replace(/[^\p{L}\p{N}' -]/gu, " ").replace(/\s+/g, " ").trim();
+    if (said) query = query.or(`employee_name.ilike.*${said}*`);
+    const { data, error } = await query.order("deleted_at", { ascending: false }).limit(limit);
+    if (error) throw new Error(`Could not read the form deletion record: ${error.message}`);
+    const rows = (data ?? []) as Record<string, unknown>[];
+    // The deleter's name, from the user directory; an account it cannot find keeps its id.
+    const { readUser } = await import("@/lib/admin/user-directory");
+    const names = new Map<string, string | null>();
+    for (const id of new Set(rows.map((row) => row.deleted_by).filter((id): id is string => typeof id === "string" && id !== ""))) {
+      names.set(id, await readUser(id).then((user) => user.displayName).catch(() => null));
+    }
+    return rows.map((row) => ({
+      templateName: (row.template_name as string | null) ?? null,
+      employeeName: (row.employee_name as string | null) ?? null,
+      formDate: (row.form_date as string | null) ?? null,
+      status: (row.status as string | null) ?? null,
+      locationName: (row.location_name as string | null) ?? null,
+      deletedBy: (row.deleted_by as string | null) ?? null,
+      deletedByName: typeof row.deleted_by === "string" ? names.get(row.deleted_by) ?? null : null,
+      deletedByRole: (row.deleted_by_role as string | null) ?? null,
+      deletedVia: String(row.deleted_via ?? "other"),
+      deletedAt: String(row.deleted_at ?? ""),
+    }));
+  },
 };
 
 export interface DataToolContext {
@@ -400,6 +447,54 @@ export async function readStats(
   };
 }
 
+/* ---------------------------------------------------------------- read_form_deletions --- */
+
+export const FORM_DELETIONS_SOURCE = "Form deletion record";
+/** The day the record began (migration 20261120001000): a form deleted before it was never recorded. */
+export const FORM_DELETIONS_SINCE = "Nov 20, 2026";
+const DELETIONS_MAX = 20;
+
+const DELETED_VIA: Record<string, string> = {
+  route: "Form Monitoring",
+  chat: "in chat",
+  agent_loop: "by the assistant, removing an empty revision draft after an edit it refused",
+  demo_sweep: "the demo records clean-up",
+  other: "outside the app (directly in the database)",
+};
+
+/**
+ * read_form_deletions({employee_name?}) (board f066, Pau approved 20 Nov 2026): who deleted a form, when and how, from
+ * the append-only `form_instance_deletions` record. ADMINISTRATORS ONLY (the roles with Manage users), as the record
+ * itself is: a manager is refused and nothing is read.
+ */
+export async function readFormDeletions(context: DataToolContext, input: { employee_name?: unknown }, deps: DataToolDeps = DEFAULT_DATA_TOOL_DEPS): Promise<ToolResult> {
+  if (!hasPermission(DEFAULT_PERMISSION_MATRIX, context.actor.role, "manage_users")) {
+    return { source: FORM_DELETIONS_SOURCE, refused: "Who deleted a form is for administrators only. Nothing was read; say so plainly, in one line, and give nothing from the record." };
+  }
+  const employeeName = text(input.employee_name);
+  const rows = await deps.loadFormDeletions({ employeeName, limit: DELETIONS_MAX });
+  const recordedSince = `The record starts on ${FORM_DELETIONS_SINCE}: a form deleted before then was not recorded.`;
+  if (rows.length === 0) {
+    return { source: FORM_DELETIONS_SOURCE, deletions: [], note: `No deleted form is on record${employeeName ? ` for ${employeeName}` : ""}. ${recordedSince}` };
+  }
+  return {
+    source: FORM_DELETIONS_SOURCE,
+    deletions: rows.map((row) => ({
+      form: row.templateName,
+      employee: row.employeeName,
+      form_date: row.formDate,
+      status_when_deleted: row.status,
+      [appConfig().locationWord]: row.locationName,
+      deleted_by: row.deletedByName ?? (row.deletedBy ? `account ${row.deletedBy}` : "not recorded (deleted outside the app)"),
+      deleted_by_role: row.deletedByRole,
+      how: DELETED_VIA[row.deletedVia] ?? row.deletedVia,
+      deleted_at: formatBusinessTime(row.deletedAt, { year: true }) ?? row.deletedAt,
+    })),
+    ...(rows.length === DELETIONS_MAX ? { more: `Only the latest ${DELETIONS_MAX} are listed; ask for one employee to narrow it.` } : {}),
+    note: `Give who deleted each form, when and how, as listed. ${recordedSince}`,
+  };
+}
+
 /* ---------------------------------------------------------------- registration --- */
 
 /** The two tools' specs, in the loop's tool-list shape (`run.ts`), with the app config's place word. */
@@ -435,6 +530,18 @@ export function dataToolSpecs(config: AppConfig) {
       required: [],
     },
   },
+  {
+    name: "read_form_deletions",
+    description:
+      "Administrators only: who deleted a form, when and how (Form Monitoring, chat, or outside the app), from the permanent deletion record, newest first. Pass employee_name for one employee's forms (\"who deleted <name>'s form?\"). A manager is refused.",
+    input_schema: {
+      type: "object",
+      properties: {
+        employee_name: { type: "string", description: "The employee whose deleted forms the admin asked about, as typed, if any." },
+      },
+      required: [],
+    },
+  },
 ] as const;
 }
 
@@ -444,7 +551,7 @@ export function __setDataToolDepsForTests(deps: Partial<DataToolDeps> | null): v
   depsForTests = deps;
 }
 
-/** The two tools' handlers, keyed as the loop dispatches them (`run.ts`). */
+/** The data tools' handlers, keyed as the loop dispatches them (`run.ts`). */
 export function dataToolHandlers(
   context: DataToolContext,
   effects?: Pick<ToolEffects, "sources">,
@@ -453,5 +560,6 @@ export function dataToolHandlers(
   return {
     read_reviews: (args) => readReviews(context, args, deps),
     read_stats: (args) => readStats(context, args, deps, effects),
+    read_form_deletions: (args) => readFormDeletions(context, args, deps),
   };
 }

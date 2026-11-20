@@ -60,6 +60,8 @@ const store: FakeStore = {
   // without them every write failed silently and the record's row counts were always 0).
   user_memory: [],
   chat_context_summaries: [],
+  // Board f066 (20 Nov 2026): the deletion record, written by the fake as the BEFORE DELETE trigger writes it.
+  form_instance_deletions: [],
 } as unknown as FakeStore;
 
 // As production builds the role table when the ASD may create forms (NEXT_PUBLIC_, read once at load).
@@ -133,6 +135,8 @@ const patchScript = vi.hoisted(() => ({
   // CARD_CHECKED_AGAINST_WORDS_ENABLED: the card check's model outputs (`t.cardChecks`).
   cards: [] as unknown[],
   cardCalls: 0,
+  // QA's audit (item 14b): how long each form-patch call takes this case (`t.patchTakes`), in real time.
+  delayMs: 0,
 }));
 vi.mock("@/lib/forms/form-patch-call", () => ({
   FORM_PATCH_DEFAULT_TIMEOUT_MS: 5_000,
@@ -140,6 +144,7 @@ vi.mock("@/lib/forms/form-patch-call", () => ({
   callFormPatchModel: async (input?: { prompt?: string }) => {
     /* PR 6: a model call made inside a loop tool counts toward the step limit, as the real call notes itself. */
     (await import("@/lib/ai/model-call-scope")).noteModelCall();
+    if (patchScript.delayMs > 0) await new Promise<void>((resolve) => setTimeout(resolve, patchScript.delayMs));
     /*
      * EDIT_SEES_SAVED_FORM_ENABLED (coding 6, 13 Nov 2026): a check round (the prompt holds "SAVED AFTER YOUR LAST
      * PATCH") never takes a reading from the script above. It answers `t.patchChecks([...])` in order; past the end,
@@ -669,6 +674,7 @@ vi.setConfig({ hookTimeout: 30_000, testTimeout: process.env.AGENT_LOOP_LIVE ===
 const { ensureTemplateLibrary } = await import("@/lib/forms/repository");
 const { stillAsks } = await import("@/lib/forms/reply-guards");
 const { createInlineForm } = await import("@/features/chat/create-inline-form");
+const { foldName } = await import("@/lib/forms/fold-name");
 const chatRoute = await import("../route");
 const instancesRoute = await import("../../forms/instances/route");
 const draftRoute = await import("../../forms/instances/[id]/draft/route");
@@ -897,6 +903,10 @@ function joinOverview() {
     if (!template && row.template_name) continue;
     Object.assign(row, { template_key: template?.key, template_name: template?.name, layout_family: template?.layout_family, template_version: version?.version });
   }
+  /* The overview's employee_name_folded, as migration 20261120002000 defines it (lower(unaccent(employee_name))): QA's f072. */
+  for (const row of store.form_instances ?? []) {
+    if (typeof row.employee_name === "string") Object.assign(row, { employee_name_folded: foldName(row.employee_name).toLowerCase() });
+  }
 }
 class JoiningRows extends Array<Record<string, unknown>> {
   override push(...rows: Record<string, unknown>[]) {
@@ -937,6 +947,7 @@ beforeEach(async () => {
   patchScript.checkCalls = 0;
   patchScript.cards = [];
   patchScript.cardCalls = 0;
+  patchScript.delayMs = 0;
   faults.field = null;
   faults.deleteTable = null;
   summaries.reply = null;
@@ -1156,6 +1167,9 @@ function context(): ReplayContext {
       patchScript.checkCalls = 0;
     },
     patchCheckCalls: () => patchScript.checkCalls,
+    patchTakes: (ms) => {
+      patchScript.delayMs = ms;
+    },
     cardChecks: (outputs) => {
       patchScript.cards = [...outputs];
       patchScript.cardCalls = 0;
