@@ -89,6 +89,10 @@ import { rulesBookText } from "./rules-book";
  * payroll_amount_missing (ask the amount in one question), and the stated line adds ", as you said" only for
  * stated_this_turn. No app, place, staff system or form key.
  *
+ * Re-taken on purpose on 20 Nov 2026 (Pau's live chat: a refused find_past_forms told as "a lookup issue on my end"): one
+ * Replies line was added: a tool's refusal is never told to the manager as a lookup problem or "try again". It reads the
+ * same under every config; nothing else changed.
+ *
  * Updated on purpose on 20 Nov 2026 (Pau's ruling via QA, c091): a Corrective Action may cite two headings when the
  * manager describes two offenses ("<heading>; <heading>", never more than two); the clock-out line no longer says "a card
  * cites one heading" (closing early is part of the same Attendance offense). No app, place, staff system or form key.
