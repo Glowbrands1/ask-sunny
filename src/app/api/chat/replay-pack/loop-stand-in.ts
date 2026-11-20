@@ -95,6 +95,29 @@ function streamOf(parts: readonly Record<string, unknown>[]): ReadableStream<Rec
 }
 
 /** A language model (AI SDK v3, streamed) that answers each step with `decide`'s choice. */
+type ToolCall = { readonly tool: string; readonly input: Record<string, unknown> };
+
+/*
+ * Changed on purpose (QA's review of #1137, 20 Nov 2026; QA agreed to updating the older Attendance cases): the rules book
+ * now requires `attendance` on a Corrective Action card citing Attendance, and propose_form refuses one without it
+ * (`attendance_not_given`). A scripted model written before the rule follows it here, in one place rather than in each
+ * of the 46 older cases: a "dpoa" propose_form whose policy names Attendance (never Late Opening) and that has no
+ * `attendance` key gets "lateness", quoting the manager message it answers (`evidenceFrom`). "lateness" changes nothing
+ * those cards saved before (only "absence" does). A case that omits the field ON PURPOSE sets `attendance: undefined`
+ * (nov20-write-up-attendance-omitted-tool-asks), and is left as written.
+ */
+function followsAttendanceRule(view: LoopView, decision: LoopDecision): LoopDecision {
+  const fill = (call: ToolCall): ToolCall => {
+    if (call.tool !== "propose_form" || call.input.template_key !== "dpoa" || "attendance" in call.input) return call;
+    const policy = typeof call.input.policy === "string" ? call.input.policy : "";
+    if (!/\battendance\b/i.test(policy) || /\blate\s+open/i.test(policy)) return call;
+    return { ...call, input: { ...call.input, attendance: "lateness", attendance_evidence: evidenceFrom(view) } };
+  };
+  if ("tools" in decision) return { tools: decision.tools.map(fill) };
+  if ("tool" in decision) return fill(decision);
+  return decision;
+}
+
 /** `decide` may return a promise (PR 6 item 5: a case that takes real time per step, so the route's stream starts). */
 export function loopStandIn(decide: (view: LoopView) => LoopDecision | Promise<LoopDecision>): LoopStandIn {
   const standIn: LoopStandIn = {
@@ -116,7 +139,7 @@ export function loopStandIn(decide: (view: LoopView) => LoopDecision | Promise<L
         standIn.providerOptions.push(options.providerOptions ?? null);
         const view = viewOf(options.prompt);
         standIn.views.push(view);
-        const decision = await decide(view);
+        const decision = followsAttendanceRule(view, await decide(view));
         if ("fail" in decision) throw new Error("the stand-in model failed");
         if ("stall" in decision) {
           return {

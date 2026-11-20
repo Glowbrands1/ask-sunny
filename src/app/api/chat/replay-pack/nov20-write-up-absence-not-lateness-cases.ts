@@ -60,7 +60,7 @@ const cardFor = (view: LoopView, whatHappened: string, attendance: Attendance): 
     warning_level: "verbal",
     level_evidence: evidenceFrom(view, "verbal CA"),
     ...(attendance === null
-      ? {}
+      ? { attendance: undefined } // omitted on purpose: the stand-in leaves an explicit undefined as written
       : { attendance: attendance.kind, attendance_evidence: "words" in attendance ? evidenceFrom(view, attendance.words) : { ...evidenceFrom(view, "Remy Calder"), quote: attendance.quote } }),
   },
 });
