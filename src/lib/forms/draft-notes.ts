@@ -112,6 +112,17 @@ export function draftNotesAreUsable(notes: DraftNotes): boolean {
  * when the card shows what happened: a card with no incident still drafts
  * nothing. Each line is a field the card displayed, labelled as such.
  */
+/**
+ * The notes without the card's own lines (`draftNotesFromCard`'s "Employee: …", "What happened: …"): the manager's turns
+ * only (item 19: a card's lines are the agent loop's words, never the manager's, so no address is read from them).
+ */
+export function notesWithoutCardLines(notes: string): string {
+  return notes
+    .split("\n")
+    .filter((line) => !/^(?:Employee|Job title|Location|Date|What happened|Type of warning|Payroll deduct applicable|Payroll deduct amount|Prior actions): /.test(line))
+    .join("\n");
+}
+
 export function draftNotesFromCard(
   proposal: Pick<
     ChatFormProposal,
