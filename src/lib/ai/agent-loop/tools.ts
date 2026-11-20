@@ -3355,7 +3355,15 @@ export async function proposeForm(
    * applicable?"), read from the template document's field keys, never from a list of forms. The level and the termination
    * stay Corrective Action only.
    */
-  const payrollFields = caOnlyFields || [...documentFieldKeys(template.currentVersion?.document)].some((fieldKey) => /^payroll_deduct/.test(fieldKey));
+  const templateFieldKeys = documentFieldKeys(template.currentVersion?.document);
+  const payrollFields = caOnlyFields || [...templateFieldKeys].some((fieldKey) => /^payroll_deduct/.test(fieldKey));
+  /*
+   * QA (20 Nov 2026, #1138's live test: "The exit form doesn't have a field for the uniform-cost payroll deduction"): the
+   * exit form asks only "Is Payroll Deduction applicable? (Yes / No)", with no amount or reason line. On such a form the
+   * amount is never put on the card (not_on_this_form) and the card says so (payroll_question_only): the amount and the
+   * reason stay in the account, which goes in Additional Details. Read from the template's own field keys.
+   */
+  const amountOnForm = caOnlyFields || templateFieldKeys.has(PAYROLL_AMOUNT_KEY);
   const askedPayroll = (input.payroll_deduct === "yes" || input.payroll_deduct === "no") ? input.payroll_deduct : null;
   /*
    * QA (16 Nov 2026, the Runner's live set on 1a53042: "and payroll"): payroll stated in the message that asked for THIS
@@ -3375,7 +3383,7 @@ export async function proposeForm(
   const typedAmount = typeof input.payroll_amount === "string" && /\d/.test(input.payroll_amount) ? input.payroll_amount.replace(/[^\d.]/g, "") : null;
   /* The amount the manager stated, read as today reads it (`payrollAmountFromConversation`) when the model left it out. */
   const statedAmount = payroll === "yes" ? payrollAmountFromConversation(conversationTurns(context), { payrollAnswer: "yes" })?.replace(/[^\d.]/g, "") ?? null : null;
-  let amount = payrollFields && typedAmount && managerWords.replace(/[^\d.]/g, " ").split(/\s+/).some((n) => n !== "" && Number(n) === Number(typedAmount)) ? typedAmount : null;
+  let amount = payrollFields && amountOnForm && typedAmount && managerWords.replace(/[^\d.]/g, " ").split(/\s+/).some((n) => n !== "" && Number(n) === Number(typedAmount)) ? typedAmount : null;
   const today = context.today || businessToday();
   let date = typeof input.incident_date === "string" && DATE.test(input.incident_date.trim()) ? input.incident_date.trim() : null;
   /* Several incident dates and the latest message does not pick one: the date waits, and the card asks (today's rule). */
@@ -3873,7 +3881,10 @@ export async function proposeForm(
     ? (["verbal", "written"] as const).filter((option) => levelNamedInEvidence({ quote: context.question }, option) && levelOptionIsTheLevel(withoutMessageIdTags(context.question), option, levelFormWords(template.name)))
     : [];
   const levelNotGiven = namedOptions.length === 1 ? namedOptions[0]! : null;
-  const unset = corrective && !awaiting ? [...(payroll ? [] : ["payroll_deduct"]), ...(level || terminationStated ? [] : ["warning_level"])] : [];
+  /* QA (20 Nov 2026, #1138's live test): every form whose template asks the payroll question says it is unset, as the CA does. */
+  const unset = corrective && !awaiting
+    ? [...(payroll ? [] : ["payroll_deduct"]), ...(level || terminationStated ? [] : ["warning_level"])]
+    : payrollFields && !awaiting && !payroll ? ["payroll_deduct"] : [];
   /* What this card's reply asks (the next turn's card record). After an unclear answer it still asks both (E r2). */
   /*
    * #1055's follow-up (QA, 20 Nov 2026): a card that asks which date (several dates, none chosen) records "form_date" in
@@ -3910,6 +3921,7 @@ export async function proposeForm(
     ...(earlierKept ? { earlier_card: { kept: true, ...(earlierRow ? { employee: displayName(earlierRow) } : {}), form: earlier!.templateName ?? earlier!.templateKey } } : {}),
     ...(otherNamed.length > 0 ? { account_names_other_person: { named: otherNamed, card_person: employee.name } } : {}),
     ...(unset.length > 0 && !answerUnclear ? { unset } : {}),
+    ...(payrollFields && !amountOnForm && (payroll || typedAmount) ? { payroll_question_only: `The ${template.name} asks only whether payroll deduction applies (Yes / No); it has no amount or reason line. Keep the amount and the reason the manager gave in the account (what_happened): it goes in Additional Details.` } : {}),
     ...(answerUnclear ? { payroll_answer_unclear: { ask_exactly: payrollQuestion } } : {}),
     ...(levelUnnamed && !levelAnswerUnclear ? { level_not_named: { ask_exactly: LEVEL_QUESTION } } : {}),
     /*
@@ -4023,7 +4035,7 @@ export async function proposeForm(
     ...((modelLevel && level !== modelLevel) ? [{ field: "warning_level", reason_code: caOnlyFields ? "level_not_stated" : "not_on_this_form" }] : []),
     ...((askedTermination && !loopTermination) ? [{ field: "warning_level", reason_code: "termination_not_stated" }] : []),
     ...((askedPayroll && !payroll) ? [{ field: "payroll_deduct", reason_code: payrollFields ? "payroll_not_stated" : "not_on_this_form" }] : []),
-    ...((typedAmount && !amount) ? [{ field: "payroll_amount", reason_code: payrollFields ? "amount_not_stated" : "not_on_this_form" }] : []),
+    ...((typedAmount && !amount) ? [{ field: "payroll_amount", reason_code: payrollFields && amountOnForm ? "amount_not_stated" : "not_on_this_form" }] : []),
     ...((askedExitTermination && !exitTermination) ? [{ field: "exit_type", reason_code: "termination_not_stated" }] : []),
     ...(priorActionsRefused ? [{ field: "prior_actions", reason_code: "prior_actions_not_kept" }] : []),
     ...(futureDate ? [{ field: "form_date", reason_code: "date_after_today" }] : []),
