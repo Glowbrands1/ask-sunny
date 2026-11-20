@@ -445,8 +445,7 @@ function FormProposalCard({
    * drawn before React attached its click handler (server HTML, or a page still loading a new deploy's code) reads
    * "Loading…" and is disabled, never a button that does nothing.
    */
-  const [mounted, setMounted] = React.useState(false);
-  React.useEffect(() => setMounted(true), []);
+  const mounted = React.useSyncExternalStore(noSubscription, inBrowser, onServer);
 
   /*
    * ==========================================================================
@@ -765,6 +764,11 @@ function FormProposalCard({
     </>
   );
 }
+
+/* f073: false in the server's HTML and while it hydrates, true once the browser's code runs the card. */
+const noSubscription = () => () => {};
+const inBrowser = () => true;
+const onServer = () => false;
 
 function ProposalRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
