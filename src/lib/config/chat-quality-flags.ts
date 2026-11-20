@@ -3804,6 +3804,17 @@ export function unknownNameAskEnabled(): boolean {
 }
 
 /**
+ * DEAD_END_SAYS_WHERE_ENABLED (QA item 25, the production audit, 20 Nov 2026; default off). An Assistant Salon Director
+ * (view_daily_stats, no view_reports) asking for the latest Daily Stats was told "I don't have access to view reports";
+ * a Regional Manager asking to add to the DM L10 was told it is not one of the forms Sunny prepares. On: the prompt says
+ * where in the app to go, by this person's real permissions (`WhereToGo` in `ai/prompts.ts`): Daily Stats on the Home
+ * page's Performance section, the L10 page under Resources, or who to ask. Prompt only. Off, as before.
+ */
+export function deadEndSaysWhereEnabled(): boolean {
+  return envFlag("DEAD_END_SAYS_WHERE_ENABLED");
+}
+
+/**
  * STARTER_FOLLOW_UP_EXAMPLE_ENABLED (QA item 24, the production audit, 20 Nov 2026; default off). The home starters
  * "Create a coaching form." and "Show me training related to this issue.", sent as a chat's first message, got "who?"
  * or "which issue?" and three managers left. On: that follow-up carries one short example answer
