@@ -111,6 +111,8 @@ export interface ReplayContext {
    * order. Past the end it confirms (no set, no clear); `null` is a fallback. Every scripted round is in the case file.
    */
   patchChecks?(outputs: readonly unknown[]): void;
+  /** QA's audit (item 14b, 20 Nov 2026): every form-patch call this case takes this long first (real time), as a slow reviser does. */
+  patchTakes?(ms: number): void;
   /** EDIT_SEES_SAVED_FORM_ENABLED: how many check rounds the patch model was asked this case. */
   patchCheckCalls?(): number;
   /** CARD_CHECKED_AGAINST_WORDS_ENABLED: the card check's model outputs, in order; past the end it falls back. */

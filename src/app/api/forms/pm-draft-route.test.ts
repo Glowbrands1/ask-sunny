@@ -1942,8 +1942,13 @@ describe("FORM_EDIT_SINGLE_WRITER_ENABLED: the post-draft consistency check", ()
     expect(state.modelCalls).toBe(1);
     // Saved, and said: never silently.
     expect(state.persisted.at(-1)!.values.observation).toBe("Jane was late.");
-    expect(payload.notice).toContain("The draft left out Doe and 10-20-26 in Observation of Offense; tell me if you want it added.");
-    expect(check).toEqual({ checked: true, missing_keys: ["name", "date"] });
+    /*
+     * Changed on purpose (QA's f078, 20 Nov 2026): in this app the account names the person by their first name (Pau's
+     * rule), so "Doe" is never a fact the draft left out; the date still is. Was: "left out Doe and 10-20-26", ["name", "date"].
+     */
+    expect(payload.notice).toContain("The draft left out 10-20-26 in Observation of Offense; tell me if you want it added.");
+    expect(String(payload.notice)).not.toContain("Doe");
+    expect(check).toEqual({ checked: true, missing_keys: ["date"] });
   });
 
   it("a clean draft: no note is added, and no extra call", async () => {

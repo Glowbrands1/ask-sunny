@@ -720,6 +720,10 @@ export interface ToolEffects {
    * manager's answer in a later turn (run.ts records it; propose_form refuses it where the card is set).
    */
   nameNotConfirmed?: { offeredIds: readonly string[]; ask: string };
+  /** QA's audit (item 14b): drafts coach_team's "create all" saved this turn, so a later failure never says nothing was saved. */
+  draftsCreated?: number;
+  /** QA's audit (item 14b): a tool was still running when the turn stopped and did not finish in the time left (run.ts). */
+  workUnfinished?: boolean;
   /** `saved`: each field that really changed on the form written, read back from the database (PR 3; `saved-diff.ts`). */
   formUpdate: { instanceId: string; updated: string[]; saved?: SavedChange[]; putBack?: string[] } | null;
   /** Roster ids find_staff chose from a close spelling or a lone first name this turn (the card's name_from_staff_list fact). */
@@ -4204,7 +4208,9 @@ function isShownCardId(context: ToolContext, effects: ToolEffects, id: string): 
 export async function coachTeam(context: ToolContext, effects: ToolEffects): Promise<ToolResult> {
   if (context.openFormId) {
     const { coachingForEveryoneTurn } = await import("@/lib/forms/coaching-for-everyone");
-    const turn = await coachingForEveryoneTurn({ request: context.request, question: context.question, history: context.history as ChatMessage[], activeInstanceId: context.openFormId });
+    const turn = await coachingForEveryoneTurn({ request: context.request, question: context.question, history: context.history as ChatMessage[], activeInstanceId: context.openFormId, onCreated: () => {
+      effects.draftsCreated = (effects.draftsCreated ?? 0) + 1;
+    } });
     if (turn) return { app_reply: untrusted(turn.content), note: "Say app_reply to the manager as given, every line: it holds the people, the counts and the exact words the next step reads." };
   }
   const { wholeTeamRequest } = await import("@/lib/forms/whole-team-coaching");
