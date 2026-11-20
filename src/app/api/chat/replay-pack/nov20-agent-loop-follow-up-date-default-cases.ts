@@ -140,4 +140,26 @@ export const NOV20_AGENT_LOOP_FOLLOW_UP_DATE_DEFAULT_CASES: ReplayCase[] = [
       expect(followUpOf(t, id), "a Coaching Form with no follow-up got a date").toBeNull();
     },
   },
+  {
+    id: "nov20-agent-loop-f048b-card-says-the-follow-up-create-sets",
+    title: "f048b (QA's live 23a): \"ca for Test Testy, late on 11/19, we will meet again in a week to follow up\": the card's facts carry the follow-up Create sets (Thu, Nov 26), and Create saves that date",
+    report: "QA's live 23a (20 Nov 2026): the reply said the follow-up meeting in a week isn't part of this Corrective Action, while the saved form had follow-up 11/26",
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      const thread = start(t);
+      const model = loopStandIn((view) =>
+        lastResult(view, "propose_form")
+          ? { text: "Here's the Corrective Action Form for **Test Testy**." }
+          : { tool: "propose_form", input: { template_key: "dpoa", employee_id: TESTY.id, policy: "Attendance", incident_date: "2026-11-19", what_happened: "Test Testy was late on 11/19." } },
+      );
+      t.loopModel!(model);
+      await thread.say("ca for Test Testy, late on 11/19, we will meet again in a week to follow up");
+      const facts = (model.views.flatMap((view) => view.results).filter((result) => result.tool === "propose_form").at(-1)?.output as { facts?: Record<string, unknown> } | undefined)?.facts ?? {};
+      expect(facts.follow_up_on_create, "the card did not say the follow-up Create sets").toEqual({ date: "2026-11-26", say_exactly: "Follow-up: Thu, Nov 26 (a week after the form date; change it on the form)" });
+      const id = await thread.create();
+      expect(followUpOf(t, id), "Create saved a different follow-up than the card said").toBe("2026-11-26");
+    },
+  },
 ];

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { withoutTopicPrefix } from "@/lib/forms/coaching-topic-prefix";
+import { withAccountFactsKept } from "@/lib/forms/account-facts-kept";
 import { TERMINATION_OPTION, withTerminationPlan } from "@/lib/forms/termination-stated";
 import { salesResultsOffenseLine, withCaChosenRule } from "@/lib/ai/ca-sales-prompt-lines";
 import { noteSpendUser } from "@/lib/ai/spend-meter";
@@ -214,6 +215,7 @@ import {
 } from "@/lib/forms/ca-action-plan";
 import { twoSentenceActionPlan } from "@/lib/forms/action-plan-sentences";
 import { attendanceActionPlan, isAttendancePlan, missedMeetingNotLateness } from "@/lib/forms/attendance-action-plan";
+import { absenceWriteUp } from "@/lib/forms/absence-write-up";
 import { withPayrollSentence } from "@/lib/forms/plan-payroll-sentence";
 import { managerTypedActionPlan } from "@/lib/forms/manager-action-plan";
 import { firstNameNotPronouns } from "@/lib/forms/first-name-write-up";
@@ -331,6 +333,8 @@ interface DraftBody {
   cardPolicyLine?: string;
   /** The coaching topic the agent loop's card carried (`coachingTopic`), for the form's Other topic (QA, 17 Nov 2026). */
   cardTopic?: string;
+  /** The agent loop card's attendance record ("absence" / "lateness" / "both"; QA's production audit, 20 Nov 2026, item 21). */
+  cardAttendance?: string;
   /**
    * HOTFIX (QA, 17 Nov 2026; the tester's form 7545d162): the "Other — <topic>" the card cited ("10-minute
    * sanitization"). With NEXT_PUBLIC_CARD_POLICY_TO_DRAFT_ENABLED, a Corrective Action whose Type of Offense offers Other
@@ -341,7 +345,10 @@ interface DraftBody {
   cardFromLoop?: boolean;
   /** The prior actions the loop's card recorded ("" for none), sent with `cardFromLoop` (Pau via QA, 20 Nov 2026). */
   cardPriorActions?: string;
-  /** QA (20 Nov 2026; c198): the agent loop card's own account, so the saved account keeps its times (`withCardTimes`). */
+  /**
+   * The loop card's own account (`issue`), the record of what the manager said: the saved account keeps its times
+   * (QA, 20 Nov 2026; c198, `withCardTimes`) and every fact on it (QA's live test of #1121, f061, `account-facts-kept.ts`).
+   */
   cardAccount?: string;
   /**
    * SAME_FORM_COPY_NEW_PERSON_ENABLED: the form the card was asked to copy
@@ -2633,12 +2640,14 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         await applyStatedFacts(id, { values: { [fixedPlan.key]: typed }, checked: {} }, actor.id, new Set([fixedPlan.key]));
       }
     }
+    const loopCardAbsence = body.cardFromLoop === true && body.cardAttendance === "absence";
     const planText = (input: ActionPlanInput) =>
       // PLAN_PAYROLL_SENTENCE_ENABLED: the deduction the manager stated is said in the plan.
       // TERMINATION_STATED_TICKS_ENABLED: on a termination, the plan ends with the termination sentence.
       withTerminationPlan(withPayrollSentence(
         // MEETING_NOT_LATENESS_PLAN_ENABLED: a missed meeting keeps the general plan.
-        attendanceActionPlanEnabled() && isAttendancePlan(input) && !missedMeetingNotLateness(notes)
+        // QA's production audit (20 Nov 2026, item 21): a loop card recording an absence keeps the general plan, as a missed shift does.
+        attendanceActionPlanEnabled() && isAttendancePlan(input) && !missedMeetingNotLateness(notes) && !loopCardAbsence
           ? attendanceActionPlan(input)
           : actionPlanSentencesEnabled()
             ? twoSentenceActionPlan(input)
@@ -2818,6 +2827,14 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
     if (body.cardFromLoop === true && typeof body.cardPriorActions === "string" && body.cardPriorActions.trim() === "" && !keeps("prior_actions") && (draftedPayload.values.prior_actions ?? "").trim() !== "") {
       draftedPayload.values = { ...draftedPayload.values, prior_actions: "" };
     }
+    /*
+     * QA's live test of #1121 (20 Nov 2026, f061): the card showed "Prior actions: Verbal (2), dates not given" and the form
+     * saved "Verbal coaching \u2014 date not given", one of the two talks lost. When the loop card recorded prior actions,
+     * the saved line is the card's own, count and all.
+     */
+    if (body.cardFromLoop === true && typeof body.cardPriorActions === "string" && body.cardPriorActions.trim() !== "" && !keeps("prior_actions") && fields.some((field) => field.key === "prior_actions")) {
+      draftedPayload.values = { ...draftedPayload.values, prior_actions: body.cardPriorActions.trim().slice(0, 600) };
+    }
     // The citation line above is rebuilt from the cited sections; the card's Other goes back on it.
     if (cardOtherOnViolated && typeof draftedPayload.values.policy_violated === "string") {
       draftedPayload.values = { ...draftedPayload.values, policy_violated: cardOtherViolated(draftedPayload.values.policy_violated) };
@@ -2860,6 +2877,10 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      * QA (20 Nov 2026; Runner 2's c198): the loop card's account held 9:15PM, 9:01 and 8:11 PM, and the saved observation
      * kept only 8:11 PM. A clock time of the card's own account that the drafted account lost brings back the card's
      * sentence that holds it (`withCardTimes`), before the app's citation line. A field the manager typed is never touched.
+     *
+     * QA's live test of #1121 (20 Nov 2026, f061): a 351-word account saved without "this is the third time in two months"
+     * and "a customer said she would not come back". Then every other fact on the card's account stays: one the drafter
+     * dropped is added to the Observed part in the card's own words (`account-facts-kept.ts`), also before the citation line.
      */
     const accountKey = narrativeTargets[0];
     if (body.cardFromLoop === true && typeof body.cardAccount === "string" && accountKey && !keeps(accountKey)) {
@@ -2867,8 +2888,19 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       if (drafted.trim() !== "") {
         const { body: account, line: citation } = splitAppCitationLine(drafted);
         const timed = withCardTimes(account, body.cardAccount.slice(0, 2_000));
-        if (timed !== account) draftedPayload.values = { ...draftedPayload.values, [accountKey]: citation ? `${timed}\n\n${citation}` : timed };
+        const facts = withAccountFactsKept(timed, body.cardAccount.trim().slice(0, 6_000), loaded.instance.employeeName);
+        if (facts.text !== account) draftedPayload.values = { ...draftedPayload.values, [accountKey]: citation ? `${facts.text}\n\n${citation}` : facts.text };
       }
+    }
+    /*
+     * QA's production audit (20 Nov 2026, item 21): the loop card recorded an absence ("did not come into her scheduled
+     * shift"), so no sentence of the drafted write-up calls it lateness (`absence-write-up.ts`). Read from the card's
+     * record, never the manager's words.
+     */
+    if (loopCardAbsence) {
+      const cardAccount = /^What happened:\s*(.+)$/im.exec(notes)?.[1]?.trim() ?? null;
+      const absence = absenceWriteUp(draftedPayload.values, narrativeTargets.filter((key) => !keeps(key)), { employeeName: loaded.instance.employeeName, cardAccount });
+      if (absence.changed) draftedPayload.values = absence.values;
     }
     /*
      * Pau via QA (20 Nov 2026, item 15): a loop card's saved write-up calls the employee by first name, never a pronoun.

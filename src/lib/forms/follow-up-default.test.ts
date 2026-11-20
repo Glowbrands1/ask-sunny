@@ -4,6 +4,7 @@ import {
   defaultFollowUpDate,
   followUpChangeAsked,
   followUpDateForNewForm,
+  followUpForCard,
   followUpLine,
   planPromisesFollowUp,
   statedFollowUpDate,
@@ -77,5 +78,32 @@ describe("a chat change to the follow-up date", () => {
 
   it("is said with the day", () => {
     expect(followUpLine("2026-11-27")).toBe("Follow-up: Fri, Nov 27 (change it anytime).");
+  });
+});
+
+/*
+ * f048b (QA's live 23a, 20 Nov 2026): "ca for Test Testy, late on 11/19, we will meet again in a week to follow up" got
+ * "the follow-up meeting in a week isn't part of this Corrective Action", while Create saved follow-up 11/26.
+ */
+describe("the follow-up the card says Create will set", () => {
+  const QA_23A = "ca for Test Testy, late on 11/19, we will meet again in a week to follow up";
+
+  it("is the date Create saves, said with why", () => {
+    expect(followUpForCard({ corrective: true, formDate: "2026-11-19", managerWords: QA_23A, today: TODAY })).toEqual({
+      date: "2026-11-26",
+      line: "Follow-up: Thu, Nov 26 (a week after the form date; change it on the form)",
+    });
+    const created = followUpDateForNewForm({ formDate: "2026-11-19", followUpDate: null, managerWords: QA_23A, today: TODAY });
+    expect(created).toBe("2026-11-26");
+  });
+
+  it("a stated date, and a backdated form, say so", () => {
+    expect(followUpForCard({ corrective: true, formDate: TODAY, managerWords: "ca for Test Testy, follow up 12/1", today: TODAY })?.line).toBe("Follow-up: Tue, Dec 1 (as you said; change it on the form)");
+    expect(followUpForCard({ corrective: true, formDate: "2026-11-05", managerWords: "", today: TODAY })?.line).toBe("Follow-up: Fri, Nov 27 (a week from today; change it on the form)");
+  });
+
+  it("a coaching card gets one only when a follow-up was said", () => {
+    expect(followUpForCard({ corrective: false, formDate: TODAY, managerWords: "coaching for Test Testy, late to her shift", today: TODAY })).toBeNull();
+    expect(followUpForCard({ corrective: false, formDate: TODAY, managerWords: "coaching for Test Testy, I'll follow up with her next week", today: TODAY })?.date).toBe("2026-11-27");
   });
 });

@@ -393,7 +393,7 @@ function buildAgentLoopTools(config: AppConfig) {
       about: { type: "string", description: "Words the manager used about the form (\"getting rooms ready between guests\"), if any." },
       forms_on_file_evidence: FORMS_ON_FILE_EVIDENCE,
       open: { type: "boolean", description: "true when the manager asks to open, edit or see one form on file (not a list of what is on file)." },
-    }, []),
+    }, ["forms_on_file_evidence"]),
   },
   {
     name: "read_form",
@@ -460,6 +460,12 @@ function buildAgentLoopTools(config: AppConfig) {
         prior_actions: { type: "string", description: "Earlier steps only as the manager stated them (\"verbal on 10/2\", \"coached last month\"); never from records on file." },
         topic: { type: "string", description: "Coaching card only: the coaching topic in a few of the manager's words (\"greeting guests at the door\"), never the request sentence or the person's name. With topic_evidence." },
         topic_evidence: evidence("With topic: the manager message of this request and its words that name the topic."),
+        attendance: {
+          type: "string",
+          enum: ["absence", "lateness", "both"],
+          description: "Corrective Action card whose offense is attendance: what the manager described. absence: a shift missed (did not come in, no-show, no call no show, called out). lateness: late, or left early. both: each. With attendance_evidence.",
+        },
+        attendance_evidence: evidence("With attendance: the manager message of this request and its words that describe the absence or the lateness."),
         incident_time: { type: "string", description: "The time of the incident if the manager gave one, as they said it." },
         salon: { type: "string", description: "The " + place + " the form is for, as the manager named it (\"kearney\", \"IA Altoona\"), when the card asks which " + place + " or the manager says one. Only the manager's own " + places + " are accepted." },
       },
@@ -696,6 +702,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
    * without running it (the count goes in the trace). Code never writes the reply.
    */
   const refusalCounts = new Map<string, number>();
+  const refusalSteps = new Map<string, Set<number>>();
   const stoppedTools = new Map<string, { reason_code: string; ask_exactly?: string }>();
   /* A refusal about a person (not_on_roster for one typed name) counts across tools: c134 alternated find_staff and propose_form. */
   const stoppedPeople = new Map<string, { reason_code: string; ask_exactly?: string }>();
@@ -714,7 +721,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     const stopped = stoppedTools.get(name) ?? (asked ? stoppedPeople.get(asked) : undefined);
     if (stopped) {
       retriesBlocked += 1;
-      result = { reason_code: "stop_retrying", error: `${name} was refused twice this turn for ${stopped.reason_code}; it was not run again. Reply to the manager now${stopped.ask_exactly ? ", ending with ask_exactly" : ""}.`, stop_retrying: stopped, ...(stopped.ask_exactly ? { ask_exactly: stopped.ask_exactly } : {}) };
+      result = { reason_code: "stop_retrying", error: `${name} was refused twice this turn for ${stopped.reason_code}; it was not run again. Reply to the manager now${stopped.ask_exactly ? ", ending with ask_exactly" : ""}, saying what the tool needs; never call it a lookup problem or ask them to try again.`, stop_retrying: stopped, ...(stopped.ask_exactly ? { ask_exactly: stopped.ask_exactly } : {}) };
     } else {
       /* PR 6 item 5: the screen's status as the tool starts (a call the retry guard stops never runs, so it shows none). */
       try {
@@ -740,7 +747,15 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
       if (typeof refusal.reason_code === "string" && (typeof refusal.error === "string" || typeof refusal.ask_exactly === "string")) {
         const person = typeof refusal.not_on_roster === "string" && refusal.not_on_roster.trim() ? personKey(refusal.not_on_roster.trim().replace(/^use\s+/i, "")) : null;
         const key = person ? `person\u0000${refusal.reason_code}\u0000${person}` : `${name}\u0000${refusal.reason_code}`;
-        const count = (refusalCounts.get(key) ?? 0) + 1;
+        /*
+         * Pau's live chat (20 Nov 2026, 14:23Z): two find_past_forms calls in ONE model step (CA and coaching), both with no
+         * evidence, were counted as two refusals before the model had seen either, so the call it then made with evidence was
+         * never run. Refusals in the same step count once: a retry is a later step, after the model read the refusal.
+         */
+        const steps = refusalSteps.get(key) ?? new Set<number>();
+        steps.add(step);
+        refusalSteps.set(key, steps);
+        const count = steps.size;
         refusalCounts.set(key, count);
         if (count >= 2) {
           const stop = { reason_code: refusal.reason_code, ...(typeof refusal.ask_exactly === "string" ? { ask_exactly: refusal.ask_exactly } : {}) };
