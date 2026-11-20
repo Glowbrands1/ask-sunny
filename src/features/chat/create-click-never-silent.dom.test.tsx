@@ -3,6 +3,8 @@ import * as React from "react";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { renderToString } from "react-dom/server";
+
 import { MessageBubble } from "./message-bubble";
 import type { ChatFormInstanceRef, ChatFormProposal, ChatMessage } from "@/types";
 
@@ -149,5 +151,24 @@ describe("f073: a Create press either starts the create or says what to do", () 
     fireEvent.click(button);
     expect(creates).toHaveLength(1);
     expect((screen.getByRole("button", { name: /creating/i }) as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+describe("f073: a Create button drawn before the browser's code attached is never pressable", () => {
+  it("the server's HTML shows a disabled \"Loading…\", never a live-looking \"Create draft\"", () => {
+    fakeFetch("hang");
+    const html = renderToString(
+      <MessageBubble message={TURN} conversation={[ACCOUNT, TURN]} onSuggestion={() => {}} onFormCreated={onFormCreated} />,
+    );
+    expect(html).toContain("Loading…");
+    expect(html).not.toContain("Create draft");
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>[^]*?Loading…/);
+  });
+
+  it("once mounted, the button reads \"Create draft\" and is pressable", () => {
+    fakeFetch("hang");
+    const button = card() as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+    expect(button.textContent).toContain("Create draft");
   });
 });

@@ -441,6 +441,14 @@ function FormProposalCard({
   const inFlight = React.useRef(false);
 
   /*
+   * f073 (QA, 20 Nov 2026): "Create draft" is pressable only once this card has mounted in the browser, so a button
+   * drawn before React attached its click handler (server HTML, or a page still loading a new deploy's code) reads
+   * "Loading…" and is disabled, never a button that does nothing.
+   */
+  const [mounted, setMounted] = React.useState(false);
+  React.useEffect(() => setMounted(true), []);
+
+  /*
    * ==========================================================================
    * A NEWER PROPOSAL MAKES THIS ONE READ-ONLY
    * ==========================================================================
@@ -743,9 +751,9 @@ function FormProposalCard({
 
       {!superseded && (proposal.supportsInlineDraft || (salon && proposal.status === "needs_location")) ? (
         <div className="mt-4 flex flex-wrap items-center gap-3">
-          <Button size="sm" onClick={() => void create()} disabled={creating}>
-            {creating ? <Loader2 className="animate-spin" /> : null}
-            {creating ? "Creating…" : "Create draft"}
+          <Button size="sm" onClick={() => void create()} disabled={creating || !mounted}>
+            {creating || !mounted ? <Loader2 className="animate-spin" /> : null}
+            {creating ? "Creating…" : mounted ? "Create draft" : "Loading…"}
           </Button>
           {problem ? (
             <span className="text-xs text-status-attention">{problem}</span>
