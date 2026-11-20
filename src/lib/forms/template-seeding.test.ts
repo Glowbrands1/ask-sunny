@@ -38,7 +38,7 @@ vi.mock("@/lib/supabase/server", () => ({
 
 const { ensureTemplateLibrary } = await import("./repository");
 const { TEMPLATE_SEEDS } = await import("./library");
-const { DPOA_OFFENSE_REVISION, PAYROLL_AMOUNT_LABEL } = await import(
+const { DPOA_REQUIRED_BOXES_REVISION, PAYROLL_AMOUNT_LABEL } = await import(
   "./payroll-amount-field"
 );
 const { default: REVISION_6 } = await import("@/test/fixtures/forms/corrective-action-revision-6.json");
@@ -479,11 +479,12 @@ describe("the Corrective Action Form's revision 6 (District Manager feedback, 21
     // CHANGED ON PURPOSE, Corrective Action revision 8 (client request,
     // template approved 4 Nov 2026): the seed is revision 8 and is published
     // as revision 8 — WITH Payroll deduction amount (Pau, 4 Nov 2026).
-    expect(caSeed.revision).toBe(8);
+    // CHANGED ON PURPOSE, revision 9 (HR via Pau, 19 Nov 2026) follows revision 8: the two required history boxes.
+    expect(caSeed.revision).toBe(9);
     expect(currentVersionOf("dpoa")).toMatchObject({
       version: 2,
       status: "published",
-      seed_revision: DPOA_OFFENSE_REVISION,
+      seed_revision: DPOA_REQUIRED_BOXES_REVISION,
     });
     expect(currentVersionOf("dpoa")?.document).toEqual(caSeed.document);
     expect(JSON.stringify(currentVersionOf("dpoa")?.document).split(PAYROLL_AMOUNT_LABEL)).toHaveLength(2);
@@ -518,7 +519,7 @@ describe("the Corrective Action Form's revision 6 (District Manager feedback, 21
     const originalId = currentVersionOf("dpoa")!.id;
 
     expect((await ensureTemplateLibrary("system")).revised).toEqual(["dpoa"]);
-    expect(currentVersionOf("dpoa")).toMatchObject({ status: "published", seed_revision: DPOA_OFFENSE_REVISION });
+    expect(currentVersionOf("dpoa")).toMatchObject({ status: "published", seed_revision: DPOA_REQUIRED_BOXES_REVISION });
     const published = currentVersionOf("dpoa")!.document as { blocks: { kind: string; key?: string; field?: { key: string } }[] };
     expect(published).toEqual(caSeed.document);
     const keys = published.blocks.map((block) => block.field?.key ?? block.key ?? block.kind);

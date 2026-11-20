@@ -62,7 +62,9 @@ describe("1. what a manager reads", () => {
     );
 
     // Revision 5: one list in place of the two previous-action lines.
-    expect(labels).toContain("List previously received coaching and/or corrective action with date signed");
+    // CHANGED ON PURPOSE, revision 9 (HR via Pau, 19 Nov 2026): the list is two required boxes, in HR's words.
+    expect(labels).toContain("List previous coaching and corrective actions and include date signed by employee in past 90 days");
+    expect(labels).toContain("List date of JBA policy manual signed by employee");
     expect(labels).not.toContain("Previous corrective action for this policy or issue");
     expect(labels).not.toContain("Date of previous corrective action");
     for (const label of labels) {
@@ -174,6 +176,8 @@ describe("2. what the data addresses, unchanged", () => {
         "warning_type",
         // Revision 5: a NEW key for the list, so revision-4 values keep their meaning.
         "prior_actions",
+        // Revision 9 (HR via Pau, 19 Nov 2026): the policy manual's signed date, typed by the person creating the form.
+        "policy_manual_signed",
         "offense_type",
         // Revision 8 (4 Nov 2026, template approved): the "Other" write-in line is gone; Other is a box in offense_type.
         // Forms filed on revision 6 or 7 keep their version, where other_offense still addresses their value.

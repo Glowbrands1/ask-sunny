@@ -24,7 +24,7 @@ vi.mock("@/lib/supabase/server", () => ({
 
 const { ensureTemplateLibrary } = await import("./repository");
 const { TEMPLATE_SEEDS } = await import("./library");
-const { DPOA_OFFENSE_REVISION } = await import("./payroll-amount-field");
+const { DPOA_REQUIRED_BOXES_REVISION } = await import("./payroll-amount-field");
 const { seedOverrideAllows } = await import("./template-seed-override");
 const { default: REVISION_7 } = await import("@/test/fixtures/forms/corrective-action-revision-7.json");
 
@@ -92,13 +92,13 @@ describe("TEMPLATE_SEED_OVERRIDE", () => {
   });
 
   it("dpoa:8: revision 8 is published as the seed's document, version 7 archived as it was, and the log says so", async () => {
-    process.env.TEMPLATE_SEED_OVERRIDE = `dpoa:${DPOA_OFFENSE_REVISION}`;
+    process.env.TEMPLATE_SEED_OVERRIDE = `dpoa:${DPOA_REQUIRED_BOXES_REVISION}`;
     const result = await ensureTemplateLibrary("system");
 
     expect(result.revised).toEqual(["dpoa"]);
     expect(result.heldBack).toEqual([]);
     const current = currentVersionOf("dpoa")!;
-    expect(current).toMatchObject({ status: "published", seed_revision: DPOA_OFFENSE_REVISION, version: 8 });
+    expect(current).toMatchObject({ status: "published", seed_revision: DPOA_REQUIRED_BOXES_REVISION, version: 8 });
     expect(current.document).toEqual(caSeed.document);
     const old = versionsOf("dpoa").find((row) => row.id === "authored-dpoa");
     expect(old).toMatchObject({ status: "archived", seed_revision: 0 });
@@ -110,7 +110,7 @@ describe("TEMPLATE_SEED_OVERRIDE", () => {
   });
 
   it("idempotent: a second visit with the override still set publishes nothing", async () => {
-    process.env.TEMPLATE_SEED_OVERRIDE = `dpoa:${DPOA_OFFENSE_REVISION}`;
+    process.env.TEMPLATE_SEED_OVERRIDE = `dpoa:${DPOA_REQUIRED_BOXES_REVISION}`;
     await ensureTemplateLibrary("system");
     const versions = versionsOf("dpoa").length;
 
@@ -124,11 +124,11 @@ describe("TEMPLATE_SEED_OVERRIDE", () => {
   it("only the named key at the named revision: another revision or another key stays held back", async () => {
     asProduction("coaching", { paper: "letter", blocks: [] });
 
-    process.env.TEMPLATE_SEED_OVERRIDE = `dpoa:${DPOA_OFFENSE_REVISION - 1}`;
+    process.env.TEMPLATE_SEED_OVERRIDE = `dpoa:${DPOA_REQUIRED_BOXES_REVISION - 1}`;
     let result = await ensureTemplateLibrary("system");
     expect(result.heldBack.map((entry) => entry.key).sort()).toEqual(["coaching", "dpoa"]);
 
-    process.env.TEMPLATE_SEED_OVERRIDE = `dpoa:${DPOA_OFFENSE_REVISION}`;
+    process.env.TEMPLATE_SEED_OVERRIDE = `dpoa:${DPOA_REQUIRED_BOXES_REVISION}`;
     result = await ensureTemplateLibrary("system");
     expect(result.revised).toEqual(["dpoa"]);
     expect(result.heldBack.map((entry) => entry.key)).toEqual(["coaching"]);
@@ -147,7 +147,7 @@ describe("TEMPLATE_SEED_OVERRIDE", () => {
       notes: "A draft.",
       created_by: "admin",
     });
-    process.env.TEMPLATE_SEED_OVERRIDE = `dpoa:${DPOA_OFFENSE_REVISION}`;
+    process.env.TEMPLATE_SEED_OVERRIDE = `dpoa:${DPOA_REQUIRED_BOXES_REVISION}`;
     const result = await ensureTemplateLibrary("system");
     expect(result.revised).toEqual([]);
     expect(result.heldBack[0]?.reason).toContain("draft");

@@ -191,8 +191,9 @@ describe("ensureTemplateLibrary on Production", () => {
     // template approved 4 Nov 2026): it now receives revision 8, WITH
     // Payroll deduction amount (Pau, 4 Nov 2026: "Publish Sunny revision 8
     // WITH the 'Payroll deduction amount' line").
-    expect(caSeed.revision).toBe(8);
-    expect(current?.seedRevision).toBe(8);
+    // CHANGED ON PURPOSE, revision 9 (HR via Pau, 19 Nov 2026) follows revision 8.
+    expect(caSeed.revision).toBe(9);
+    expect(current?.seedRevision).toBe(9);
     expect(JSON.stringify(current?.document).split("Payroll deduction amount")).toHaveLength(2);
     expect(current?.id).not.toBe(versionId);
     // The old version is archived, not replaced.
@@ -300,7 +301,7 @@ describe("opening Forms → Form Templates", () => {
 
     const page = await FormTemplatesPage();
 
-    expect((await getCurrentVersion(templateId))?.seedRevision).toBe(8); // CHANGED ON PURPOSE, Corrective Action revision 8 (template approved 4 Nov 2026): published; it was 6 while revision 7 was the seed.
+    expect((await getCurrentVersion(templateId))?.seedRevision).toBe(9); // CHANGED ON PURPOSE, Corrective Action revision 9 (HR via Pau, 19 Nov 2026) follows revision 8: published; it was 6 while revision 7 was the seed.
     expect(textOf(page)).not.toMatch(/Template sync is off/);
   });
 });
