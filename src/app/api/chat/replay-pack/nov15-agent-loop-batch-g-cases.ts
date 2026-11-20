@@ -483,7 +483,8 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       const reply = await thread.say("ca for remy calder, Remy Calder failed to have Juno Paxton complete required policy acknowledgements in Woven during her onboarding");
       expect(thread.proposal?.employeeName).toBe("Remy Calder");
       expect(thread.proposal?.issue ?? "", `the account blames someone else:\n${reply.content}`).not.toMatch(/^Juno Paxton did not/);
-      expect(thread.proposal?.issue ?? "", "the employee is not the one responsible").toMatch(/Remy Calder failed to have Juno Paxton/);
+      /* Changed on purpose (QA, 20 Nov 2026; #1184): the card's account and the reply call the person by the reply name (the first name, Pau's rule), not the full name the stand-in model wrote. */
+      expect(thread.proposal?.issue ?? "", "the employee is not the one responsible").toMatch(/^Remy failed to have Juno Paxton/);
       if (offline) expect(toolResults(model.views, "propose_form")[0], "the changed subject is not a fact").toMatch(/"account_subject_changed":\{"employee":"Remy Calder","account_says_it_was":"Juno Paxton"\}/);
     },
   },
