@@ -69,8 +69,9 @@ const ALLOW_LIST: readonly Allowed[] = [
     file: "src/app/api/forms/instances/route.ts",
     fn: "applyCardFacts",
     writer: "applyStatedFacts",
-    count: 3,
-    reason: "Create: the card's answers stated at creation, written once onto a new, empty form (design: create is step 6).",
+    // Changed on purpose (QA item 17, 20 Nov 2026): one more, the agent loop's exit card's stated lines (Sunny-only for now).
+    count: 4,
+    reason: "Create: the card's answers stated at creation, written once onto a new, empty form (design: create is step 6); and the agent loop's exit card's stated lines (payroll, an involuntary separation and its reason), written the same way.",
   },
   {
     file: "src/lib/forms/chat-revision.ts",
