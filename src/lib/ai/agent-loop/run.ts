@@ -5,7 +5,7 @@ import { cardTurns, personKey, readLoopRecords, replyTurns, type CardRecord, typ
 import { CLAUDE_EFFORT, CLAUDE_MAX_TOKENS, CLAUDE_MODEL } from "@/lib/config/models";
 import { MissingConfigurationError, requireEnv } from "@/lib/config/server-env";
 import { mainAnswerTimeoutMs, streamGapTimeoutMs } from "@/lib/config/ai-timeouts";
-import { chatTraceEnabled, editSeesSavedFormEnabled } from "@/lib/config/chat-quality-flags";
+import { chatTraceEnabled, editSeesSavedFormEnabled, statedPlanStepsEnabled } from "@/lib/config/chat-quality-flags";
 import { countModelCalls } from "../model-call-scope";
 import { authorizedSalonIds } from "@/lib/forms/location-scope";
 import { rosterSalonName } from "@/lib/forms/salon-mention";
@@ -362,17 +362,24 @@ const evidence = (description: string) => ({
 const FORMS_ON_FILE_EVIDENCE = evidence("Where the manager asks about a form on file (what is on file, an earlier form, open / edit / see one). Needed for any form that is not the one open on screen.");
 
 /** The loop's tool definitions with one app's words (the app config's place word); cached per config. */
-const toolsBuilt = new WeakMap<AppConfig, ReturnType<typeof buildAgentLoopTools>>();
+/* Built once per config and STATED_PLAN_STEPS_ENABLED setting (its two propose_form fields exist only with the flag on). */
+const toolsBuilt = new WeakMap<AppConfig, Map<boolean, ReturnType<typeof buildAgentLoopTools>>>();
 export function agentLoopTools(config: AppConfig = appConfig()) {
-  let tools = toolsBuilt.get(config);
+  const planSteps = statedPlanStepsEnabled();
+  let byFlag = toolsBuilt.get(config);
+  if (!byFlag) {
+    byFlag = new Map();
+    toolsBuilt.set(config, byFlag);
+  }
+  let tools = byFlag.get(planSteps);
   if (!tools) {
-    tools = buildAgentLoopTools(config);
-    toolsBuilt.set(config, tools);
+    tools = buildAgentLoopTools(config, planSteps);
+    byFlag.set(planSteps, tools);
   }
   return tools;
 }
 
-function buildAgentLoopTools(config: AppConfig) {
+function buildAgentLoopTools(config: AppConfig, planSteps = false) {
   const place = config.locationWord;
   const places = config.locationWordPlural;
   return [
@@ -460,6 +467,17 @@ function buildAgentLoopTools(config: AppConfig) {
         prior_actions: { type: "string", description: "Earlier steps only as the manager stated them (\"verbal on 10/2\", \"coached last month\"); never from records on file." },
         topic: { type: "string", description: "Coaching card only: the coaching topic in a few of the manager's words (\"greeting guests at the door\"), never the request sentence or the person's name. With topic_evidence." },
         topic_evidence: evidence("With topic: the manager message of this request and its words that name the topic."),
+        /* STATED_PLAN_STEPS_ENABLED (Pau via QA, 20 Nov 2026, f062): only with the flag on, so the tools are unchanged off. */
+        ...(planSteps
+          ? {
+              plan_steps: {
+                type: "array",
+                items: { type: "string" },
+                description: "Corrective Action only: each next step the manager asked for in the Action Plan (\"review the opening procedures with <P> this week\"), in their own words lightly tidied, one per item. Never a step they did not ask for, and never the account, the level or payroll. With plan_evidence.",
+              },
+              plan_evidence: evidence("With plan_steps: the manager message of this request and its words that ask for those steps."),
+            }
+          : {}),
         attendance: {
           type: "string",
           enum: ["absence", "lateness", "both"],

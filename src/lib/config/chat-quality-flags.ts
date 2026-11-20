@@ -5000,3 +5000,14 @@ export function nearMissNeverSeatedEnabled(): boolean {
 export function formsOnFileDateRangeEnabled(): boolean {
   return envFlag("FORMS_ON_FILE_DATE_RANGE_ENABLED");
 }
+
+/**
+ * STATED_PLAN_STEPS_ENABLED (Pau via QA, 20 Nov 2026, f062; default off; QA flips it after a live test). A Corrective
+ * Action's Action Plan keeps old Sunny's standard plan exactly and adds each step the manager stated ("the opening
+ * procedures reviewed with <P> this week"), in their words, before the closing. The steps come from a record: the loop
+ * card's plan_steps (with evidence) or the intent reader's planSteps slot, each kept only when its words are the
+ * manager's. Off, the tool schemas, the card and the plan are exactly as before. See `forms/stated-plan-steps.ts`.
+ */
+export function statedPlanStepsEnabled(): boolean {
+  return envFlag("STATED_PLAN_STEPS_ENABLED");
+}

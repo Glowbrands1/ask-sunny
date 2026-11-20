@@ -12,6 +12,7 @@ import { modelSpendGuard } from "@/lib/ai/spend-guard";
 import { isQuestionNotForm } from "@/lib/ai/question-not-form";
 import { wantsSeparateDocument } from "@/lib/ai/second-form";
 import {
+  statedPlanStepsEnabled,
   chatLongMessageEnabled,
   closeSpellingMatchEnabled,
   draftActionsEnabled,
@@ -1049,6 +1050,10 @@ async function postChat(request: Request, progress?: ProgressChannel) {
           ...parsed.history.filter((turn) => turn.role === "user").map((turn) => turn.content),
           asked.question,
         ].join("\n\n"));
+      }
+      // STATED_PLAN_STEPS_ENABLED (f062): the card's plan line adds the steps the manager stated, as Create will save it.
+      if (statedPlanStepsEnabled() && answer.formProposal?.planSteps?.length) {
+        answer = (await import("@/lib/forms/stated-plan-steps")).withCardPlanSteps(answer);
       }
       // TWO_FORMS_CARD_NOT_ASKED_ENABLED: a card that names its employee is never asked "Which of them … — <that employee> or …?" (`lib/forms/card-not-asked.ts`).
       if (twoFormsCardNotAskedEnabled()) answer = (await import("@/lib/forms/card-not-asked")).withoutWhichAskOnSeatedCard(answer);

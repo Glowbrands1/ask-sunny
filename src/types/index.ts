@@ -679,6 +679,11 @@ export interface ChatFormProposal {
   /** The agent loop's coaching card: the topic, in the manager's words, checked against their message (QA, 17 Nov 2026). */
   coachingTopic?: string;
   /**
+   * STATED_PLAN_STEPS_ENABLED (Pau via QA, 20 Nov 2026, f062): the Action Plan steps the manager stated, in their words, each
+   * checked against them (the loop's plan_steps or the intent reader's planSteps). Create adds them before the closing.
+   */
+  planSteps?: string[];
+  /**
    * The agent loop's Corrective Action card: what the manager described for an attendance offense, kept on their quoted
    * words (QA's production audit, 20 Nov 2026, item 21). "absence" is a missed shift, never written up as lateness.
    */

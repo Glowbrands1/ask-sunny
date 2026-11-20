@@ -1,7 +1,9 @@
 import "server-only";
 
+import { withPlanStepsTurn, turnPlanSteps } from "./plan-steps-turn";
 import { besideManualGrounding, besideManualRows, fullManualKeepsRetrieval, startBesideSearch } from "./full-manual-keeps-retrieval";
 import {
+  statedPlanStepsEnabled,
   chatDataToolsEnabled,
   chatParallelLoadsEnabled,
   chatParallelRewriteEnabled,
@@ -431,7 +433,18 @@ async function answerQuestionChecked(
     const names = typoReadingCopyEnabled() ? await protectedNameWords() : new Set<string>();
     // FORM_TYPE_SWITCH_ENABLED: "change to coaching" with the card open switches it to the other form.
     // FIRST_NAME_SUGGEST_ENABLED: "yes" to "Is this for **Quinn Marlowe**?" is read as that name.
-    const response = await answerQuestionUntraced(withFormTypeSwitch(withTerseSlots(withNameBeforeTitle(withTypoReadingCopy(await withFirstNameAnswerFor(request, actor), names)))), actor, memory);
+    const turnRequest = withFormTypeSwitch(withTerseSlots(withNameBeforeTitle(withTypoReadingCopy(await withFirstNameAnswerFor(request, actor), names))));
+    /*
+     * STATED_PLAN_STEPS_ENABLED (Pau via QA, 20 Nov 2026, f062): the turn keeps the plan steps its intent reader kept, and a
+     * Corrective Action card built this turn carries them (`planSteps`); Create adds them to the plan. Off, as before.
+     */
+    const response = statedPlanStepsEnabled()
+      ? await withPlanStepsTurn(async () => {
+          const answered = await answerQuestionUntraced(turnRequest, actor, memory);
+          const steps = turnPlanSteps();
+          return answered.formProposal?.templateKey === "dpoa" && steps.length > 0 ? { ...answered, formProposal: { ...answered.formProposal, planSteps: steps } } : answered;
+        })
+      : await answerQuestionUntraced(turnRequest, actor, memory);
     noteTraceOutcome(response);
     // Last on every path, after the reply check too: the Action Plan is the manager's or none.
     // CA_ASKS_WHAT_HAPPENED_ENABLED: a Corrective Action card with no account asks what happened.
