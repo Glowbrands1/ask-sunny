@@ -1704,6 +1704,10 @@
   --training-callout-purple: #f6f3f9;
   --training-callout-pink: #faf1f5;
   --training-callout-red: #fdebec;
+  /* The lesson page's blocks (lesson-screen.tsx): Objective yellow, Learn peach,
+     Submit on the top bar's navy. One colour per block, on every lesson. */
+  --training-objective-bg: #fff0b8;
+  --training-learn-bg: #fbe2d3;
 }
 
 @layer components {
@@ -1765,4 +1769,23 @@
   .training-callout-purple { background: var(--training-callout-purple); }
   .training-callout-pink { background: var(--training-callout-pink); }
   .training-callout-red { background: var(--training-callout-red); }
+
+  /* The objective sentence, set large at the top of the lesson. */
+  .training-prose.training-objective { font-size: 1.2rem; line-height: 1.4; font-weight: 700; color: var(--foreground); }
+  .training-prose.training-objective p { margin: 0.25rem 0; }
+  .training-prose.training-objective .training-callout { font-size: 15px; font-weight: 400; line-height: 1.7; }
+
+  /* Lesson text inside a card: no stray space above the first line or below the last. */
+  .training-prose.training-tight > :first-child { margin-top: 0; }
+  .training-prose.training-tight > :last-child { margin-bottom: 0; }
+
+  /* Lesson text on the navy Submit block. */
+  .training-prose.training-prose-dark { color: var(--approved-band-prompt-ink); }
+  .training-prose-dark strong,
+  .training-prose-dark .training-h1,
+  .training-prose-dark .training-h2,
+  .training-prose-dark .training-h3,
+  .training-prose-dark a { color: var(--approved-card); }
+  .training-prose-dark code { background: var(--approved-band-tile); }
+  .training-prose-dark blockquote { color: var(--approved-band-chip-ink); border-left-color: var(--approved-border-band-pill); }
 }

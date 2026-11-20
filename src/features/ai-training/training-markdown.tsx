@@ -29,6 +29,35 @@ export function TrainingMarkdown({ md, promptCopies = false }: { md: string; pro
   );
 }
 
+/**
+ * Already-parsed blocks, for the lesson page, which sorts one parse of the
+ * lesson into its Objective / Learn / Practice / Submit blocks. `practice` is
+ * the ids whose quoted prompts get a Copy button.
+ */
+export function TrainingBlocks({
+  blocks,
+  practice,
+  className,
+}: {
+  blocks: MdBlock[];
+  practice?: Set<string>;
+  className?: string;
+}) {
+  if (!blocks.length) return null;
+  return (
+    <div className={className ? `training-prose ${className}` : "training-prose"}>
+      <Blocks blocks={blocks} promptCopies practice={practice ?? EMPTY} />
+    </div>
+  );
+}
+
+/** One run of lesson text (a step's title), with its bold, italics and links. */
+export function TrainingRich({ runs }: { runs: RichText[] }) {
+  return <Pieces runs={runs} />;
+}
+
+const EMPTY = new Set<string>();
+
 type Grouped = MdBlock | { type: "_list"; kind: "ul" | "ol"; id: string; items: MdBlock[] };
 
 function groupLists(blocks: MdBlock[]): Grouped[] {
