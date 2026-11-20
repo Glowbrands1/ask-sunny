@@ -640,6 +640,56 @@ export function readPermanentAddress(rawText: string): string | null {
   return address;
 }
 
+/*
+ * ============================================================================
+ * ONLY THE MANAGER'S OWN ADDRESS (Pau via QA, item 19, 17 and 20 Nov 2026)
+ * ============================================================================
+ *
+ * An exit form came back with a home address the manager never typed. The staff record carries no address, so it can
+ * only come from text someone else wrote (the agent loop's card account, which Create drafts from). An address is the
+ * manager's when its letters and digits appear, in order, in a message they typed in this chat. Never gated by a flag:
+ * it only ever leaves something out.
+ */
+const addressKey = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, "");
+
+/** Whether `address` is in `managerText` (every message the manager typed in this chat), letters and digits alike. */
+export function addressTypedIn(address: string, managerText: string): boolean {
+  const want = addressKey(address);
+  return want !== "" && addressKey(managerText).includes(want);
+}
+
+/**
+ * `text` (an account someone other than the manager wrote) without any labelled address ("home address 412 …") the
+ * manager did not type in `managerText`; the label goes with it. `removed` lists what was left out.
+ */
+export function withoutUntypedAddresses(text: string, managerText: string): { text: string; removed: string[] } {
+  const spans: [number, number, string][] = [];
+  for (const match of text.matchAll(ADDRESS_LABEL)) {
+    const start = match.index ?? 0;
+    const rest = text.slice(start + match[0].length);
+    const found = ADDRESS_THROUGH_ZIP.exec(rest) ?? ADDRESS_TO_END.exec(rest);
+    if (!found) continue;
+    const address = found[0].replace(/[\s,]+$/g, "");
+    if (!addressTypedIn(address, managerText)) spans.push([start, start + match[0].length + found[0].length, address.replace(/\s+/g, " ")]);
+  }
+  if (spans.length === 0) return { text, removed: [] };
+  let kept = "";
+  let at = 0;
+  for (const [start, end] of spans) {
+    kept += text.slice(at, start);
+    at = end;
+  }
+  kept += text.slice(at);
+  const tidy = kept
+    .replace(/\b(?:her|his|their|the|and|with)\s*([.,;])/gi, "$1")
+    .replace(/\s+([.,;!?])/g, "$1")
+    .replace(/([.,;])\s*[.,;]+/g, "$1")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/^[\s.,;]+/, "")
+    .trim();
+  return { text: tidy, removed: spans.map(([, , address]) => address) };
+}
+
 /**
  * Whether `candidate` sits inside the Permanent Address the manager typed in
  * `text` ("Main St" in "permanent address 123 Main St, …"): a street, not a
