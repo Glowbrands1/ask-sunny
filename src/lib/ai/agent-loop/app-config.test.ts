@@ -26,6 +26,10 @@ import { rulesBookText } from "./rules-book";
  * asks for exit_evidence's kind, and one line was added for a resignation told with no ask. Both read the same under
  * every config; nothing else changed.
  *
+ * Re-taken on purpose on 20 Nov 2026 (f082, QA's live test): the Attendance line now names left_early (left before the
+ * shift ended: "left early", "left before close", "walked out mid-shift") apart from lateness. It reads the same under
+ * every config; nothing else changed.
+ *
  * Re-taken on purpose on 20 Nov 2026 (board f066, the form deletion record): the tool list gained read_form_deletions
  * and the Business data rules one line for it (administrators only). Neither names the app, place, staff system or form
  * key; nothing else changed.
