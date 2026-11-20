@@ -81,4 +81,24 @@ export const NOV20_AGENT_LOOP_DOCTORS_NOTE_CASES: ReplayCase[] = [
     expect(reply.content).not.toMatch(/Did you mean|drs note/i);
     expect(card(reply), "a policy question made a card").toBeNull();
   }),
+  ...[
+    "when does employee need to provide drs note",
+    "what does policy say about drs note",
+    "when does employee need to provide doctors note",
+  ].map((question, index): ReplayCase => ({
+    id: `nov20-drs-note-question-path-searches-attendance-${index + 1}`,
+    title: `QA's production audit: "${question}" on the question-answering path (not the loop): the search asks for the Attendance section, where the manual's doctor's-note rule is`,
+    report: `${REPORT}; QA's production audit (20 Nov 2026): "when does employee need to provide drs note" was answered from Immigration Law Compliance`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      /* No loop model: the pack lists nobody in AGENT_LOOP_USERS, so this manager is answered by the question path. */
+      start(t);
+      t.normalizerReads?.("policy_question");
+      await t.thread().say(question);
+      const searched = t.searches?.() ?? [];
+      expect(searched.length, "nothing was searched").toBeGreaterThan(0);
+      expect(searched.some((query) => /\bAttendance\b/.test(query)), `the search never asked for Attendance: ${JSON.stringify(searched)}`).toBe(true);
+    },
+  })),
 ];

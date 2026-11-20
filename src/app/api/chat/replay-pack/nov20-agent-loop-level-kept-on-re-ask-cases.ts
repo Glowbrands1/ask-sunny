@@ -95,4 +95,22 @@ export const NOV20_AGENT_LOOP_LEVEL_KEPT_ON_RE_ASK_CASES: ReplayCase[] = [
       expect(card(second)?.warningLevel ?? null, "another incident's card took the earlier card's level").toBeNull();
     },
   },
+  {
+    id: "nov20-written-up-is-not-the-level",
+    title: "QA's code audit: \"she got written up again for no-call, I need a CA for Remy Calder\" (the model passes Written, quoting \"she got written up again\"): the card has no level; \"written up\" is discipline already given",
+    report: "QA's code audit on d7960a5f (20 Nov 2026): levelOptionIsTheLevel accepted \"written up\" because \"up\" is a short word",
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      start(t);
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        if (view.results.some((entry) => entry.tool === "propose_form")) return { text: "Here's the Corrective Action Form for **Remy Calder**." };
+        return { tool: "propose_form", input: { template_key: "dpoa", employee_name: "Remy Calder", person_evidence: quoted(view, "Remy Calder"), what_happened: "No-call for her shift.", policy: "Attendance", warning_level: "written", level_evidence: quoted(view, "she got written up again") } };
+      }));
+      const reply = await t.thread().say("she got written up again for no-call, I need a CA for Remy Calder");
+      expect(card(reply)?.employeeName).toBe("Remy Calder");
+      expect(card(reply)?.warningLevel ?? null, "\"written up\" (discipline already given) was taken as this form's level").toBeNull();
+    },
+  },
 ];

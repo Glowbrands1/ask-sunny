@@ -9,4 +9,7 @@ screen only when it is that same card asked again: this person's card on this fo
 its incident date again. Another date, or none, still starts fresh. The card record holds the card's incident date (a
 date of the form, never a name).
 
+QA's code audit on d7960a5f: `levelOptionIsTheLevel` accepted "written up" ("she got written up again for no-call, I need a
+CA") because "up" is a short word; "written up" is discipline already given, never this form's level.
+
 Port with the rest of the loop when Ask Bubbles gets it.

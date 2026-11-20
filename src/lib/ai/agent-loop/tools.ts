@@ -253,6 +253,11 @@ export function levelOptionIsTheLevel(text: string, level: "verbal" | "written",
     const next = tokens[index + 1];
     if (next === undefined || /^[.,;:!?()\n]$/.test(next) || /^[\d$]/.test(next)) return true;
     const bare = next.replace(/[-']+$/g, "");
+    /*
+     * QA's code audit (20 Nov 2026, on d7960a5f): "she got written up again for no-call, I need a CA" passed as Written,
+     * because "up" is a short word. "Written up" is the phrasal verb for discipline already given, never this form's level.
+     */
+    if (bare === "up") return false;
     return own.has(bare) || bare.length <= 3;
   });
 }
