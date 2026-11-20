@@ -22,7 +22,8 @@ export const NOV20_STARTER_FOLLOW_UP_EXAMPLE_CASES: ReplayCase[] = [
     id: "nov20-starter-coaching-form-who-has-example",
     title: "Item 24: the home starter \"Create a coaching form.\" as the first message: the who-question carries one example answer",
     report: REPORT,
-    status: { open: "STARTER_FOLLOW_UP_EXAMPLE_ENABLED is off in production" },
+    // On in production with this PR (QA flips it at merge; production-flags.json "on").
+    status: "fixed",
     fixFlags: FIX,
     async run(t) {
       vi.setSystemTime(new Date("2026-11-20T15:00:00Z"));
