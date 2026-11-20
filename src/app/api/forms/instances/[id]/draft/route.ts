@@ -213,6 +213,7 @@ import { twoSentenceActionPlan } from "@/lib/forms/action-plan-sentences";
 import { attendanceActionPlan, isAttendancePlan, missedMeetingNotLateness } from "@/lib/forms/attendance-action-plan";
 import { withPayrollSentence } from "@/lib/forms/plan-payroll-sentence";
 import { managerTypedActionPlan } from "@/lib/forms/manager-action-plan";
+import { cardNotesPayrollAmount } from "@/lib/forms/card-payroll-amount";
 import {
   citeAttendanceForTardiness,
   policyFieldsWithCitation,
@@ -464,9 +465,13 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         (loaded.values ?? [])
           .find((row) => row.fieldKey === PAYROLL_DEDUCT_KEY)
           ?.checked.find(isPayrollDeductAnswer) ?? null;
-      const amount = payrollAmountFromConversation([{ role: "user", content: notes }], {
-        payrollAnswer,
-      });
+      // QA's code audit (20 Nov 2026, item 20): a loop card's amount is the card's own line in the notes.
+      const amount =
+        body.cardFromLoop === true
+          ? payrollAnswer === "yes" ? cardNotesPayrollAmount(notes) : null
+          : payrollAmountFromConversation([{ role: "user", content: notes }], {
+              payrollAnswer,
+            });
       // FORM_EDIT_SINGLE_WRITER_ENABLED: each stated-facts write through the one writer (`lib/forms/form-write.ts`).
       if (amount && formEditSingleWriterEnabled()) {
         await (await import("@/lib/forms/form-write")).statedWrite(
@@ -2870,9 +2875,12 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
     if (payrollAmountFieldEnabled() && payrollAnswer === "yes") {
       const held =
         (loaded.values ?? []).find((row) => row.fieldKey === PAYROLL_AMOUNT_KEY)?.value?.trim() || null;
-      const statedNow = payrollAmountFromConversation([{ role: "user", content: notes }], {
-        payrollAnswer: "yes",
-      });
+      const statedNow =
+        body.cardFromLoop === true
+          ? cardNotesPayrollAmount(notes)
+          : payrollAmountFromConversation([{ role: "user", content: notes }], {
+              payrollAnswer: "yes",
+            });
       const keep = statedNow ?? held;
       if (keep && formEditSingleWriterEnabled()) {
         await (await import("@/lib/forms/form-write")).statedWrite(
