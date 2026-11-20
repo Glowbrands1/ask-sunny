@@ -32,7 +32,7 @@ const KNOWN = new Set([
   "wrong_heading",
   // Added on purpose (PR 3, tools return exactly what was saved): propose_form's not_on_card codes, a field left off the card.
   "level_not_stated", "termination_not_stated", "payroll_not_stated", "amount_not_stated", "prior_actions_not_kept",
-  "several_dates_not_chosen", "date_from_another_request", "not_on_this_form",
+  "several_dates_not_chosen", "date_from_another_request", "not_on_this_form", "date_is_prior_action",
   // Fix batch item 1 (16 Nov 2026): a resignation told with no ask makes no exit card; the app offers the form.
   "exit_not_asked",
   // The retry guard (QA, 16 Nov 2026): a third call of a tool refused twice this turn for one reason_code is not run.
