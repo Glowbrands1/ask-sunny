@@ -2712,6 +2712,8 @@ export async function proposeForm(
     prior_actions?: unknown;
     topic?: unknown;
     topic_evidence?: unknown;
+    attendance?: unknown;
+    attendance_evidence?: unknown;
     incident_time?: unknown;
     salon?: unknown;
   },
@@ -3607,6 +3609,29 @@ export async function proposeForm(
     !topicWords.some((word) => nameWords.has(word)) &&
     answerEvidence(context, input.topic_evidence, "request", evidencePerson, { requestTurnIds }).ok;
   const coachingTopic = topicKept ? askedTopic.charAt(0).toUpperCase() + askedTopic.slice(1) : null;
+  /*
+   * QA's production audit (20 Nov 2026, item 21; a real finalized form): "did not come into her scheduled shift today at
+   * 9:30" was written up as lateness ("expected to arrive on time", "Continued lateness will result …"). A Corrective
+   * Action card carries what the manager described (absence, lateness or both) as the model reads it, kept only on
+   * attendance_evidence from a manager message of this request. A record, never a word list over the manager's messages:
+   * Create sends it, and the draft route writes an absence as an absence (`lib/forms/absence-write-up.ts`).
+   */
+  const askedAttendance = template.key === appConfig().formKeys.corrective && (input.attendance === "absence" || input.attendance === "lateness" || input.attendance === "both") ? input.attendance : null;
+  const attendanceCheck = askedAttendance ? answerEvidence(context, input.attendance_evidence, "request", evidencePerson, { requestTurnIds }) : null;
+  const attendanceKind = askedAttendance && attendanceCheck?.ok ? askedAttendance : null;
+  /*
+   * QA's review of #1137 (20 Nov 2026): never optional-and-ignored. A Corrective Action card whose policy is the manual's
+   * Attendance heading (a record: the heading the card cites, never the manager's words) with an account must carry
+   * attendance on evidence; a missing value, or evidence that is not this request's manager words, is refused, asking
+   * for it. Late Opening is its own heading and is not asked.
+   */
+  const attendanceCard = template.key === appConfig().formKeys.corrective && policyHeading !== null && /\battendance\b/i.test(policyHeading) && whatHappened !== "";
+  if (attendanceCard && !attendanceKind) {
+    const attendanceCode = askedAttendance ? "attendance_evidence_not_found" : "attendance_not_given";
+    return {
+      reason_code: attendanceCode, error: `This Corrective Action cites ${policyHeading}. Propose the card again with attendance (absence: a shift missed, as "did not come in", a no-show, a call-out; lateness: late, or left early; both: each) and attendance_evidence quoting the manager's own words from this request that describe it${askedAttendance && attendanceCheck && !attendanceCheck.ok ? ` (that quote was not found in this request's manager messages: ${attendanceCheck.reason})` : ""}.`,
+    };
+  }
   const incidentTime = typeof input.incident_time === "string" && input.incident_time.trim() ? input.incident_time.trim().slice(0, 40) : null;
 
   const typedSalon = typeof input.salon === "string" ? input.salon.trim() : "";
@@ -3734,6 +3759,7 @@ export async function proposeForm(
     ...(payroll === "yes" && amount ? { payrollDeductAmount: amount } : {}),
     ...(priorActions ? { priorActions } : {}),
     ...(coachingTopic ? { coachingTopic } : {}),
+    ...(attendanceKind ? { attendanceKind } : {}),
     ...(incidentTime ? { incidentTime } : {}),
     ...(awaiting ? { awaitingIncident: true as const, supportsInlineDraft: false } : {}),
   };
@@ -4491,7 +4517,7 @@ export async function editForm(
       if ("error" in revisedEdit && draft.opened) {
         let cleanup: "deleted" | "failed" = "deleted";
         try {
-          await deleteInstance(draft.instanceId);
+          await deleteInstance(draft.instanceId, { id: context.actor.subject, role: context.actor.role ?? null, via: "agent_loop" });
         } catch (deleteError) {
           // Left as a draft; the error below still says nothing was written. A failed delete is logged (PR 4), never silent.
           cleanup = "failed";
