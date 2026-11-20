@@ -332,6 +332,8 @@ interface DraftBody {
   cardOther?: string;
   /** HOTFIX (QA, 17 Nov 2026): the card came from the agent loop, so its policy is the form's (`loopCardHeading`). */
   cardFromLoop?: boolean;
+  /** The prior actions the loop's card recorded ("" for none), sent with `cardFromLoop` (Pau via QA, 20 Nov 2026). */
+  cardPriorActions?: string;
   /**
    * SAME_FORM_COPY_NEW_PERSON_ENABLED: the form the card was asked to copy
    * ("the same draft that we did with <name>"). Re-checked: this account's
@@ -2724,6 +2726,14 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
           draftedPayload.values = { ...draftedPayload.values, policy_violated: cardLine };
         }
       }
+    }
+    /*
+     * Pau via QA (20 Nov 2026, item 13): Prior actions read "None \u2014 first occurrence" though the manager said nothing
+     * about earlier steps. A loop card's Create saves the drafter's prior actions only when the card recorded some (the
+     * loop's record of what the manager said, checked against their words); with none recorded the line stays blank.
+     */
+    if (body.cardFromLoop === true && typeof body.cardPriorActions === "string" && body.cardPriorActions.trim() === "" && !keeps("prior_actions") && (draftedPayload.values.prior_actions ?? "").trim() !== "") {
+      draftedPayload.values = { ...draftedPayload.values, prior_actions: "" };
     }
     // The citation line above is rebuilt from the cited sections; the card's Other goes back on it.
     if (cardOtherOnViolated && typeof draftedPayload.values.policy_violated === "string") {
