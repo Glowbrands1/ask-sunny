@@ -27,3 +27,12 @@ The older chat path (not the loop) is unchanged.
 - Not covered by code: a repeated subject after "when/because" ("<P> was out of dress code when <P> came into work").
   The rules book now asks the model to write that naturally. Code keeps the name there, because rewriting the verb is
   not safe.
+
+## The coaching Observed line (QA's live test of #1144, 20 Nov 2026)
+
+- The manager typed "coaching for <P> on greeting guests, she didn't greet 3 guests today". The saved coaching_details
+  Observed read "Greeting guests, she didn't greet 3 guests."
+- The "she" is covered by this PR's first-name pass, which also runs on coaching_details. QA's draft was saved on main,
+  without this PR.
+- The topic prefix: Observed starts with what was seen. The coaching card's own topic (`cardTopic`) is dropped from the
+  front (`coaching-topic-prefix.ts`). This reads the card's record; no word list was added.

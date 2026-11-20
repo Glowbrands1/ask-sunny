@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withoutTopicPrefix } from "@/lib/forms/coaching-topic-prefix";
 import { TERMINATION_OPTION, withTerminationPlan } from "@/lib/forms/termination-stated";
 import { salesResultsOffenseLine, withCaChosenRule } from "@/lib/ai/ca-sales-prompt-lines";
 import { noteSpendUser } from "@/lib/ai/spend-meter";
@@ -2877,6 +2878,16 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       const proseKeys = new Set(fields.filter((field) => !field.policyGrounded && !DERIVED_POLICY_FIELD_KEYS.has(field.key)).map((field) => field.key));
       const named = firstNameNotPronouns(draftedPayload.values, loaded.instance.employeeName, proseKeys);
       if (named.changed.length > 0) draftedPayload.values = named.values;
+      /*
+       * QA's live test of #1144 (20 Nov 2026): a coaching card's Observed opened with its topic ("Greeting guests, she
+       * didn't greet 3 guests"). It starts with what was seen: the card's own topic prefix is dropped (`coaching-topic-prefix.ts`).
+       */
+      const topicKey = narrativeTargets[0];
+      const cardTopicWords = typeof body.cardTopic === "string" ? body.cardTopic.trim().slice(0, 120) : "";
+      if (isCoachingFamily && cardTopicWords && topicKey && !keeps(topicKey) && typeof draftedPayload.values[topicKey] === "string") {
+        const unprefixed = withoutTopicPrefix(draftedPayload.values[topicKey]!, cardTopicWords);
+        if (unprefixed !== draftedPayload.values[topicKey]) draftedPayload.values = { ...draftedPayload.values, [topicKey]: unprefixed };
+      }
     }
     const kept = draftMergeEnabled()
       ? retainFilledFields({
