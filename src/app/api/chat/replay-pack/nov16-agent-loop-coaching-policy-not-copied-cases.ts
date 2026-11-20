@@ -47,7 +47,8 @@ export const NOV16_AGENT_LOOP_COACHING_POLICY_NOT_COPIED_CASES: ReplayCase[] = [
       t.loopModel!(loopStandIn((view): LoopDecision => {
         const done = view.results.filter((result) => result.tool === "propose_form").map((result) => result.output);
         const coaching = /coaching form from this conversation/i.test(said(view));
-        const base = { template_key: coaching ? "coaching" : "dpoa", employee_name: "Remy Calder", person_evidence: quoted(view, "Remy Calder"), what_happened: ACCOUNT, ...(coaching ? {} : { warning_level: "verbal", level_evidence: quoted(view, "This would be a verbal") }) };
+        // Changed on purpose (QA item 7, 20 Nov 2026, the form lock): a different form for the card's person needs this turn's words asking for it (form_change_evidence).
+        const base = { template_key: coaching ? "coaching" : "dpoa", employee_name: "Remy Calder", person_evidence: quoted(view, "Remy Calder"), what_happened: ACCOUNT, ...(coaching ? { form_change_evidence: quoted(view, "Create a Coaching Form from this conversation") } : { warning_level: "verbal", level_evidence: quoted(view, "This would be a verbal") }) };
         // Pau, 17 Nov: coaching always has policy and page. Told the copied heading is not this card's, the model picks its own.
         if (done.length === 1 && (done[0]!.facts as { policy_copied?: unknown } | undefined)?.policy_copied) return { tool: "propose_form", input: { ...base, policy: "Other — Woven courses not completed" } };
         if (done.length > 0) { results.push(...done); return { text: "Here's the card for **Remy Calder**." }; }

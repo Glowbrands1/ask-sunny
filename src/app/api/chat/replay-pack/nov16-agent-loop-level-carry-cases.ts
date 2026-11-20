@@ -228,8 +228,9 @@ export const NOV16_LEVEL_CARRY_CASES: ReplayCase[] = [
           return lastResult(view, "propose_form") ? { text: "Here's the card. Warning level isn't set; tell me if it applies." } : { tool: "propose_form", input: ca };
         }
         if (/^verbal$/i.test(text)) return lastResult(view, "propose_form") ? { text: "Verbal it is." } : { tool: "propose_form", input: { ...ca, warning_level: "verbal", level_evidence: evidenceFrom(view, "verbal") } };
-        if (/coaching form/i.test(text)) return lastResult(view, "propose_form") ? { text: "Here's the Coaching Form." } : { tool: "propose_form", input: { template_key: "coaching", employee_id: "e-2", what_happened: "She was late to her shift on 11/14." } };
-        if (/corrective action form/i.test(text)) return lastResult(view, "propose_form") ? { text: "Here's the Corrective Action Form." } : { tool: "propose_form", input: { ...ca, ...(cites ? { warning_level: "verbal", level_evidence: evidenceFrom(view, "verbal", 3) } : {}) } };
+        // Changed on purpose (QA item 7, 20 Nov 2026, the form lock): a different form for the card's person needs this turn's words asking for it (form_change_evidence).
+        if (/coaching form/i.test(text)) return lastResult(view, "propose_form") ? { text: "Here's the Coaching Form." } : { tool: "propose_form", input: { template_key: "coaching", employee_id: "e-2", what_happened: "She was late to her shift on 11/14.", form_change_evidence: evidenceFrom(view, "Create a Coaching Form from this conversation") } };
+        if (/corrective action form/i.test(text)) return lastResult(view, "propose_form") ? { text: "Here's the Corrective Action Form." } : { tool: "propose_form", input: { ...ca, form_change_evidence: evidenceFrom(view, "Create a Corrective Action Form from this conversation"), ...(cites ? { warning_level: "verbal", level_evidence: evidenceFrom(view, "verbal", 3) } : {}) } };
         return { text: "Okay." };
       });
       t.loopModel!(standIn);
@@ -262,7 +263,8 @@ export const NOV16_LEVEL_CARRY_CASES: ReplayCase[] = [
           return lastResult(view, "propose_form") ? { text: "Here's the card." } : { tool: "propose_form", input: late };
         }
         if (/^verbal$/i.test(text)) return lastResult(view, "propose_form") ? { text: "Verbal it is." } : { tool: "propose_form", input: { ...late, warning_level: "verbal", level_evidence: evidenceFrom(view, "verbal") } };
-        if (/coaching form/i.test(text)) return lastResult(view, "propose_form") ? { text: "Here's the Coaching Form." } : { tool: "propose_form", input: { template_key: "coaching", employee_id: "e-2", what_happened: "She was late to her shift on 11/14." } };
+        // Changed on purpose (QA item 7, 20 Nov 2026, the form lock): a different form for the card's person needs this turn's words asking for it (form_change_evidence).
+        if (/coaching form/i.test(text)) return lastResult(view, "propose_form") ? { text: "Here's the Coaching Form." } : { tool: "propose_form", input: { template_key: "coaching", employee_id: "e-2", what_happened: "She was late to her shift on 11/14.", form_change_evidence: evidenceFrom(view, "Create a Coaching Form from this conversation") } };
         return lastResult(view, "propose_form") ? { text: "Here's the new card." } : { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: "She was rude to a guest on 11/15.", incident_date: "2026-11-15", new_form_evidence: evidenceFrom(view, "make a new ca for remy calder") } };
       }));
       const thread = t.thread();
@@ -292,10 +294,11 @@ export const NOV16_LEVEL_CARRY_CASES: ReplayCase[] = [
           return lastResult(view, "propose_form") ? { text: "Here's the card." } : { tool: "propose_form", input: late };
         }
         if (/^verbal$/i.test(text)) return lastResult(view, "propose_form") ? { text: "Verbal it is." } : { tool: "propose_form", input: { ...late, warning_level: "verbal", level_evidence: evidenceFrom(view, "verbal") } };
-        if (/coaching form/i.test(text)) return lastResult(view, "propose_form") ? { text: "Here's the Coaching Form." } : { tool: "propose_form", input: { template_key: "coaching", employee_id: "e-2", what_happened: "She was late to her shift on 11/14." } };
+        // Changed on purpose (QA item 7, 20 Nov 2026, the form lock): a different form for the card's person needs this turn's words asking for it (form_change_evidence).
+        if (/coaching form/i.test(text)) return lastResult(view, "propose_form") ? { text: "Here's the Coaching Form." } : { tool: "propose_form", input: { template_key: "coaching", employee_id: "e-2", what_happened: "She was late to her shift on 11/14.", form_change_evidence: evidenceFrom(view, "Create a Coaching Form from this conversation") } };
         // The model's choice, as the prompt teaches it: the same person and incident is the same request.
         taught = view.system.includes("for the same person and the same incident is the SAME request");
-        return lastResult(view, "propose_form") ? { text: "Here's the Corrective Action Form." } : { tool: "propose_form", input: { ...late, ...(taught ? {} : { new_form_evidence: evidenceFrom(view, "make it a corrective action instead") }) } };
+        return lastResult(view, "propose_form") ? { text: "Here's the Corrective Action Form." } : { tool: "propose_form", input: { ...late, ...(taught ? { form_change_evidence: evidenceFrom(view, "make it a corrective action instead") } : { new_form_evidence: evidenceFrom(view, "make it a corrective action instead") }) } };
       }));
       const thread = t.thread();
       await thread.say("ca for remy calder, she was late to her shift on 11/14");
