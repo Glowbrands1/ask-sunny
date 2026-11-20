@@ -792,6 +792,12 @@ export async function inactiveMatch(scope: AccessScope, typed: string): Promise<
 const ROSTER_FAILED = "The staff roster could not be loaded just now, so nobody could be looked up. Say so to the manager; do not guess a name.";
 const ROSTER_UNCHECKED = "This login covers a district or region, so the roster cannot be searched here. Use the name exactly as the manager typed it.";
 
+/** Item 27: `typed` is whole words of `name`, in order ("ann" in "Ann Lee", "lee" in "Ann Lee"; never "ann" in "Joann"). */
+export function wholeNameWords(name: string, typed: string): boolean {
+  const want = words(typed).join(" ");
+  return want !== "" && ` ${words(name).join(" ")} `.includes(` ${want} `);
+}
+
 function words(text: string): string[] {
   return text
     .toLowerCase()
@@ -1371,8 +1377,25 @@ export async function findPastForms(context: ToolContext, input: { employee_name
   if (nameWords.length === 0) return { forms: [] };
   try {
     /* 200, not 50 (F7): any name word matches, so other people's forms could push this person's older ones off the read. */
+    /*
+     * ONLY THE NAMED PERSON'S FORMS (QA's code audit, item 27; privacy): the read above matches any name word as a part of a
+     * word (`ilike`), and this filter used to keep a form whenever the typed name was a SUBSTRING of its employee's name:
+     * "Ann" listed Hannah's and Joann's forms, "Ann Lee" listed Joann Lee's. Now a form is kept only when the typed name is
+     * whole words of its employee's name (`wholeNameWords`: the full name, the first name or the last name), the same
+     * person by `samePerson`, or one roster holder's other name (aliases).
+     */
     let rows = visibleInstances(actor, await listInstances("all", 200, { ...instanceListFilterFor(actor), employeeNameWords: nameWords }))
-      .filter((row) => samePerson(row.employeeName, typed) || words(row.employeeName).join(" ").includes(words(typed).join(" ")) || (aliases.length > 0 && sameRosterPerson(row.employeeName, typed, people)));
+      .filter((row) => samePerson(row.employeeName, typed) || wholeNameWords(row.employeeName, typed) || (aliases.length > 0 && sameRosterPerson(row.employeeName, typed, people)));
+    /*
+     * Item 27: the typed name fits forms of more than one person ("Lee": Ann Lee and Joann Lee) and is nobody's full name
+     * on file: list none of them; the reply asks which person, by full name. One roster holder's names count as one.
+     */
+    const exact = rows.filter((row) => words(row.employeeName).join(" ") === words(typed).join(" ") || (aliases.length > 0 && aliases.some((alias) => words(alias).join(" ") === words(row.employeeName).join(" "))));
+    if (exact.length > 0) rows = exact;
+    const peopleOnFile = [...new Map(rows.map((row) => [words(row.employeeName).join(" "), row.employeeName])).values()];
+    if (exact.length === 0 && peopleOnFile.length > 1) {
+      return { forms: [], names_on_file: peopleOnFile.slice(0, 5), note: "Forms on file are under more than one person with that name. List no forms: ask which person, by full name." };
+    }
     /*
      * Batch G (G4, REOPEN_CLOSE_SPELLING, parity gap #43): no form under the typed name, so the forms this manager may
      * open are read for an employee whose name it closely spells. One person: theirs. Two or more: ask which.
