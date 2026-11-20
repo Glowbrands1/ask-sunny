@@ -2894,8 +2894,22 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
 
     // FORM_PATCH_REDUCER_ENABLED: the plan's payroll sentence (none while the plan is manager-only), then what the write really changed.
     const formDiff = reduced ? await reduced.settle() : null;
+    /*
+     * Pau (20 Nov 2026): an agent-loop form whose drafted Action Plan promises a follow-up gets a follow-up date (the
+     * one the manager stated, or one week after the form date). A Corrective Action already has one from Create.
+     */
+    const loopFollowUp = body.cardFromLoop === true
+      ? await (async () => {
+          const now = await (await import("@/lib/forms/instances")).loadInstance(id);
+          const { applyLoopFollowUpDefault, PLAN_FIELD_KEYS } = await import("@/lib/forms/follow-up-default-write");
+          if (!now) return null;
+          const actionPlan = now.values.filter((row) => PLAN_FIELD_KEYS.has(row.fieldKey)).map((row) => row.value ?? "").join("\n");
+          return applyLoopFollowUpDefault({ instance: now.instance, managerWords: sent, actorId: actor.id, actionPlan });
+        })().catch(() => null)
+      : null;
     return NextResponse.json({
       ...(reduced ? { formDiff } : {}),
+      ...(loopFollowUp ? { followUpNotice: loopFollowUp.notice } : {}),
       values: guarded.accepted.values,
       checked: guarded.accepted.checked,
       /*

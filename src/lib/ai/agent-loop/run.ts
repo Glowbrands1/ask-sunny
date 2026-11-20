@@ -467,7 +467,7 @@ function buildAgentLoopTools(config: AppConfig) {
   {
     name: "edit_form",
     description:
-      "Change a form. The form's date is a direct field edit, never the reviser: values form_date (MM/DD/YYYY), the date the manager typed for this request. Leave values out to have the form's own reviser apply the manager's latest message (details, the policy line); give values (field key to exact text) only for text the manager dictated word for word. A warning level or payroll answer (\"make it a written\", \"yes payroll, $<amount>\") is a targeted edit: values warning_type (verbal/written), payroll_deduct (yes/no), payroll_deduct_amount only. A finalized form is never changed: this opens a new draft revising it and applies the change there.",
+      "Change a form. The form's date is a direct field edit, never the reviser: values form_date (MM/DD/YYYY), the date the manager typed for this request. The follow-up date (\"change the follow up to 12/3\", \"move the follow up to next Friday\") is values follow_up_date: it is set from the manager's words, and a follow-up date after today is never refused. Leave values out to have the form's own reviser apply the manager's latest message (details, the policy line); give values (field key to exact text) only for text the manager dictated word for word. A warning level or payroll answer (\"make it a written\", \"yes payroll, $<amount>\") is a targeted edit: values warning_type (verbal/written), payroll_deduct (yes/no), payroll_deduct_amount only. A finalized form is never changed: this opens a new draft revising it and applies the change there.",
     input_schema: object(
       {
         instance_id: { type: "string" },
