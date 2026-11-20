@@ -1,5 +1,6 @@
 import "server-only";
 
+import { withFullOffRosterName } from "./off-roster-line";
 import { cardTurns, personKey, readLoopRecords, replyTurns, type CardRecord, type CardSlot, type ExitOfferSlot, type NameQuestionSlot, type PersonAskedSlot } from "./card-record";
 import { CLAUDE_EFFORT, CLAUDE_MAX_TOKENS, CLAUDE_MODEL } from "@/lib/config/models";
 import { MissingConfigurationError, requireEnv } from "@/lib/config/server-env";
@@ -642,6 +643,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   const openBefore = noop && input.openFormId ? await noop.formBeforeTurn(input.openFormId, input.request) : null;
   const steps: AgentLoopStep[] = [];
   const replyNames = new Set<string>();
+  const offRosterNames = new Set<string>();
   /* The tools this turn called so far (the hand-backs' too), for the item 7 check below. */
   const calledThisTurn = (tool: string) => steps.some((step) => step.tool === tool);
   /* Each model call's tokens and ms, for the trace (numbers only). */
@@ -770,6 +772,9 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     /* What the reply calls each person this turn's tools named (reply_name, by replyNameFor): the pronoun check's name. */
     const shownName = (result as { reply_name?: unknown }).reply_name;
     if (typeof shownName === "string" && shownName.trim()) replyNames.add(shownName.trim());
+    /* QA's f070: the full name a card used as typed (off_roster_name), for the not-on-the-staff-list line's guard. */
+    const typedAsIs = (result as { off_roster_name?: unknown; facts?: { off_roster_name?: unknown } }).facts?.off_roster_name ?? (result as { off_roster_name?: unknown }).off_roster_name;
+    if (typeof typedAsIs === "string" && typedAsIs.trim()) offRosterNames.add(typedAsIs.trim());
     steps.push({ step, tool: name, ms: Math.round(performance.now() - started), resultChars: JSON.stringify(result).length, ok: !("error" in result), ...(toolCalls > 0 ? { model_calls: toolCalls } : {}), ...stepReason(result, name) });
     return result;
   };
@@ -791,13 +796,45 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   const { jsonSchema, streamText, tool } = await import("ai");
   const model = modelForTests ?? (await import("@ai-sdk/anthropic")).createAnthropic({ apiKey: requireEnv("ANTHROPIC_API_KEY") })(CLAUDE_MODEL);
   let stepNumber = 1;
+  /*
+   * NO REPEATED IDENTICAL TOOL CALL IN ONE TURN (QA's f047, 20 Nov 2026: a 27 s reply made the same call with the same
+   * input more than once). Within one turn, a call to a tool that only reads, with the same input as an earlier call,
+   * returns that call's result instead of running again. A tool that writes (propose_form, edit_form, open_form,
+   * coach_team) always runs, and clears what was kept, so a read after a write reads again. A refused call is not kept:
+   * it runs again, so the retry guard above still counts it. Outside `runTool`, so a reused call neither starts nor
+   * finishes a tool. The trace counts the reuses (repeat_calls_reused).
+   */
+  const READS_ONLY = new Set(["find_staff", "find_past_forms", "read_form", "read_policy", "search_knowledge", "list_staff", "app_help", "read_reviews", "read_stats"]);
+  const keptCalls = new Map<string, Promise<ToolResult>>();
+  let repeatsReused = 0;
+  const sameInput = (value: unknown): string =>
+    JSON.stringify(value ?? {}, (_key, entry: unknown) =>
+      entry && typeof entry === "object" && !Array.isArray(entry) ? Object.fromEntries(Object.entries(entry as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b))) : entry,
+    );
+  const callTool = async (name: string, args: Record<string, unknown>): Promise<ToolResult> => {
+    if (!READS_ONLY.has(name)) {
+      keptCalls.clear();
+      return runTool(stepNumber, name, args);
+    }
+    const key = `${name}\u0000${sameInput(args)}`;
+    const earlier = keptCalls.get(key);
+    if (earlier) {
+      repeatsReused += 1;
+      return earlier;
+    }
+    const pending = runTool(stepNumber, name, args);
+    keptCalls.set(key, pending);
+    const result = await pending;
+    if (typeof (result as { reason_code?: unknown }).reason_code === "string" && keptCalls.get(key) === pending) keptCalls.delete(key);
+    return result;
+  };
   const tools = Object.fromEntries(
     agentLoopTools().map((definition) => [
       definition.name,
       tool({
         description: definition.description,
         inputSchema: jsonSchema<Record<string, unknown>>(definition.input_schema as never),
-        execute: (args: Record<string, unknown>) => runTool(stepNumber, definition.name, args),
+        execute: (args: Record<string, unknown>) => callTool(definition.name, args),
       }),
     ]),
   );
@@ -1146,6 +1183,12 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     text = named.text;
     pronounsReplaced = named.replaced;
   }
+  /*
+   * QA's f070 (20 Nov 2026): the not-on-the-staff-list line names the full name exactly as typed (the rules book's
+   * confirm-which-person lines), never the short reply name; with one such card this turn, code keeps it so
+   * (`withFullOffRosterName`, the app's own sentence matched by its shape).
+   */
+  if (offRosterNames.size === 1 && text) text = withFullOffRosterName(text, [...offRosterNames][0]!, appConfig().staffSystem);
   const cardSlot: CardSlot | null = effects.proposal
     ? { proposalId: effects.proposal.proposalId, employeeKey: effects.proposalEmployeeId ? personKey(effects.proposalEmployeeId) : null, nameKey: effects.proposal.employeeName ? personKey(effects.proposal.employeeName) : null, templateKey: effects.proposal.templateKey, templateName: effects.proposal.templateName ?? null, ...(effects.proposalAsked?.length ? { asked: effects.proposalAsked } : {}), ...(effects.proposalLevel ? { level: effects.proposalLevel } : {}), ...(effects.proposalPayroll ? { payroll: effects.proposalPayroll } : {}), ...(effects.proposalPayroll === "yes" && effects.proposalPayrollAmount ? { payrollAmount: effects.proposalPayrollAmount } : {}), ...(effects.proposal.policyLine ? { policyLine: effects.proposal.policyLine } : {}), ...(effects.proposalAccountKey ? { accountKey: effects.proposalAccountKey } : {}), ...(effects.proposal.formDate ? { incidentDate: effects.proposal.formDate } : {}) }
     : null;
@@ -1163,7 +1206,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     trace.firstTokenMs = firstTokenMs;
     trace.slots = {
       ...(trace.slots ?? {}),
-      agent_loop: { question_key: personKey(input.question), ...(cardSlot ? { card: cardSlot } : {}), ...(nameQuestionSlot ? { name_question: nameQuestionSlot } : {}), ...(personAskedSlot ? { person_asked: personAskedSlot } : {}), ...(exitOfferSlot ? { exit_offer: exitOfferSlot } : {}), steps, model_steps: modelSteps, model_calls: modelCalls, ...(turn.manualRead ? { manual_read: turn.manualRead } : {}), step_limit: limit, steps_used: stepNumber - 1 + hiddenCalls, ...(hiddenCalls > 0 ? { tool_model_calls: hiddenCalls } : {}), stopped: stoppedAt, ms: latencyMs, first_token_ms: firstTokenMs, ...(selfReview ? { self_review: selfReview } : {}), ...(draftReview ? { draft_review: draftReview } : {}), ...(levelReview ? { level_review: levelReview } : {}), ...(replyUnwrapped ? { reply_unwrapped: true } : {}), ...(retriesBlocked > 0 ? { stop_retrying: retriesBlocked } : {}), ...(pronounsReplaced > 0 ? { pronouns_replaced: pronounsReplaced } : {}) },
+      agent_loop: { question_key: personKey(input.question), ...(cardSlot ? { card: cardSlot } : {}), ...(nameQuestionSlot ? { name_question: nameQuestionSlot } : {}), ...(personAskedSlot ? { person_asked: personAskedSlot } : {}), ...(exitOfferSlot ? { exit_offer: exitOfferSlot } : {}), steps, model_steps: modelSteps, model_calls: modelCalls, ...(turn.manualRead ? { manual_read: turn.manualRead } : {}), step_limit: limit, steps_used: stepNumber - 1 + hiddenCalls, ...(hiddenCalls > 0 ? { tool_model_calls: hiddenCalls } : {}), stopped: stoppedAt, ms: latencyMs, first_token_ms: firstTokenMs, ...(selfReview ? { self_review: selfReview } : {}), ...(draftReview ? { draft_review: draftReview } : {}), ...(levelReview ? { level_review: levelReview } : {}), ...(replyUnwrapped ? { reply_unwrapped: true } : {}), ...(retriesBlocked > 0 ? { stop_retrying: retriesBlocked } : {}), ...(repeatsReused > 0 ? { repeat_calls_reused: repeatsReused } : {}), ...(pronounsReplaced > 0 ? { pronouns_replaced: pronounsReplaced } : {}) },
     };
   }
 

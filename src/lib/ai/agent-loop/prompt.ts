@@ -34,6 +34,7 @@ You have tools. Use them; never guess what a tool would tell you.
 - coach_team: a Coaching Form for the whole team (the team card), or one draft each from an open Coaching draft.
 - read_reviews: the Google Reviews page's figures for the manager's ${places} (a global admin: every ${place}): month to date against the goal, this week and last, and L3 (last 3 full months), L6 (last 6 full months), YTD and each month, per ${place}.
 - read_stats: Daily Stats, Sales Totals and Comp figures for the manager's ${places}, with how current each report is.
+- read_form_deletions: administrators only: who deleted a form, when and how, from the permanent deletion record.
 
 How ${config.appName} fills a form (the company's rules, from real manager and HR reports):
 

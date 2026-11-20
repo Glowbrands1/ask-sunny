@@ -165,6 +165,7 @@ import {
   withoutDerivedKeys,
 } from "@/lib/forms/exit-draft";
 import { EXIT_DERIVED_KEYS } from "@/lib/forms/exit-facts";
+import { EXIT_DETAIL_FIELDS, EXIT_OPTION, EXIT_TYPE_GROUP } from "@/lib/forms/exit-library";
 import { ABSENCE_CLAIM_REMOVED_NOTICE, guardAbsenceClaims } from "@/lib/forms/absence-claims";
 import { describesIncident, describesMoreThanTheRequest } from "@/lib/forms/corrective-action-intake";
 import {
@@ -214,6 +215,7 @@ import { twoSentenceActionPlan } from "@/lib/forms/action-plan-sentences";
 import { attendanceActionPlan, isAttendancePlan, missedMeetingNotLateness } from "@/lib/forms/attendance-action-plan";
 import { withPayrollSentence } from "@/lib/forms/plan-payroll-sentence";
 import { managerTypedActionPlan } from "@/lib/forms/manager-action-plan";
+import { loopCoachingWriteUp } from "@/lib/forms/loop-coaching-write-up";
 import { cardNotesPayrollAmount } from "@/lib/forms/card-payroll-amount";
 import {
   citeAttendanceForTardiness,
@@ -239,6 +241,7 @@ import { WARNING_TYPE_KEY } from "@/lib/forms/corrective-action-intake";
 import { WARNING_LEVEL_KEYS, WARNING_LEVEL_STATED_KEYS, warningLevelFromTurns, withoutModelWarningLevel } from "@/lib/forms/warning-level";
 import {
   COACHING_CONTEXT_RULES,
+  COACHING_TYPE_KEY,
   LANGUAGE_CLEANUP_RULES,
   guardCoachingFraming,
 } from "@/lib/forms/coaching-framing";
@@ -334,6 +337,8 @@ interface DraftBody {
   cardOther?: string;
   /** HOTFIX (QA, 17 Nov 2026): the card came from the agent loop, so its policy is the form's (`loopCardHeading`). */
   cardFromLoop?: boolean;
+  /** The prior actions the loop's card recorded ("" for none), sent with `cardFromLoop` (Pau via QA, 20 Nov 2026). */
+  cardPriorActions?: string;
   /** QA (20 Nov 2026; c198): the agent loop card's own account, so the saved account keeps its times (`withCardTimes`). */
   cardAccount?: string;
   /**
@@ -660,6 +665,21 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      * lines. Anything the manager did not say stays blank.
      */
     /*
+     * QA item 17 (20 Nov 2026; the production audit's exit form): the lines the manager STATED on this exit form (written
+     * as their statement at Create: the agent loop's termination, reason and payroll answer) are never replaced by the
+     * reader, the derived ticks or the model. A stated involuntary separation is not a resignation: the reader's
+     * "resignation method" and its own type tick are not written for it (the termination story landed in the method).
+     */
+    const exitStatedRows = isExitForm
+      ? (loaded.values ?? []).filter((row) => row.provenance?.source === "manager_statement" && ((row.value ?? "").trim() !== "" || row.checked.length > 0))
+      : [];
+    const exitStatedKeysNow = new Set(exitStatedRows.map((row) => row.fieldKey));
+    const statedInvoluntary = exitStatedRows.some((row) => row.fieldKey === EXIT_TYPE_GROUP && row.checked.includes(EXIT_OPTION.immediateInvoluntary));
+    const withoutStatedExit = (read: { values: Record<string, string>; checked: Record<string, string[]> }) => ({
+      values: Object.fromEntries(Object.entries(read.values).filter(([key]) => !exitStatedKeysNow.has(key) && !(statedInvoluntary && key === EXIT_DETAIL_FIELDS.resignationMethod))),
+      checked: Object.fromEntries(Object.entries(read.checked).filter(([key]) => !exitStatedKeysNow.has(key) && !(statedInvoluntary && key === EXIT_TYPE_GROUP))),
+    });
+    /*
      * ONLY THE MANAGER'S OWN ADDRESS (Pau via QA, item 19): the Permanent Address is kept only when it is in the manager's
      * own lines of the notes. A loop card's lines ("What happened: …") are the agent loop's words, never the manager's.
      */
@@ -673,14 +693,14 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       ? formEditSingleWriterEnabled()
         ? await (await import("@/lib/forms/form-write")).statedWrite(
             id,
-            exitDetailValues(exitDetails),
+            withoutStatedExit(exitDetailValues(exitDetails)),
             actor.id,
             exitStatedKeys(),
             { notes },
           )
         : await applyStatedFacts(
             id,
-            exitDetailValues(exitDetails),
+            withoutStatedExit(exitDetailValues(exitDetails)),
             actor.id,
             // EXIT_INTAKE_FIX_ENABLED adds the Permanent Address the manager typed.
             exitStatedKeys(),
@@ -1632,7 +1652,22 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       ? guardCoachingFraming({ values: followUp.values, checked: followUp.checked }, notes)
       : { values: followUp.values, checked: followUp.checked, adjusted: [] as string[], underperformanceRefused: false };
     // OTHER_WRITE_IN_GUARD_ENABLED: a ticked "Other" gets its write-in in the manager's words, or is unticked.
-    const framing = guardOtherWriteIn(framed, notes, new Set(fields.map((field) => field.key)), loaded.instance.employeeName, typeof body.cardTopic === "string" ? body.cardTopic.trim().slice(0, 120) : null);
+    const otherWritten = guardOtherWriteIn(framed, notes, new Set(fields.map((field) => field.key)), loaded.instance.employeeName, typeof body.cardTopic === "string" ? body.cardTopic.trim().slice(0, 120) : null);
+    /*
+     * Pau via QA (20 Nov 2026, item 14): a loop coaching card's Create saves Observed as what was seen, an Expectation
+     * about the employee, and no Type of Coaching the manager did not name. See `loop-coaching-write-up.ts`.
+     */
+    const coachingDetailsKey = [...narrativeKeys].find((key) => fields.some((field) => field.key === key));
+    const framing =
+      isCoachingFamily && body.cardFromLoop === true
+        ? loopCoachingWriteUp(otherWritten, {
+            detailsKey: coachingDetailsKey,
+            notes,
+            employeeName: loaded.instance.employeeName,
+            typeOptions: groups.find((group) => group.key === COACHING_TYPE_KEY)?.options ?? [],
+            drafted: coachingDetailsKey ? dated.values[coachingDetailsKey] : undefined,
+          })
+        : otherWritten;
 
     /*
      * ========================================================================
@@ -1933,7 +1968,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       checked: isExitForm ? withoutDerivedKeys(modelChecked) : modelChecked,
     });
 
-    const exit = isExitForm
+    const exitDrafted = isExitForm
       ? applyExitDraft({
           values: attributions.values,
           checked: sensitive.checked,
@@ -1945,6 +1980,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
           },
         })
       : null;
+    /* QA item 17: the manager's stated exit lines stay as stated (see `withoutStatedExit` above). */
+    const exit = exitDrafted ? { ...exitDrafted, ...withoutStatedExit(exitDrafted) } : null;
 
     /*
      * ========================================================================
@@ -2761,6 +2798,14 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
           draftedPayload.values = { ...draftedPayload.values, policy_violated: cardLine };
         }
       }
+    }
+    /*
+     * Pau via QA (20 Nov 2026, item 13): Prior actions read "None \u2014 first occurrence" though the manager said nothing
+     * about earlier steps. A loop card's Create saves the drafter's prior actions only when the card recorded some (the
+     * loop's record of what the manager said, checked against their words); with none recorded the line stays blank.
+     */
+    if (body.cardFromLoop === true && typeof body.cardPriorActions === "string" && body.cardPriorActions.trim() === "" && !keeps("prior_actions") && (draftedPayload.values.prior_actions ?? "").trim() !== "") {
+      draftedPayload.values = { ...draftedPayload.values, prior_actions: "" };
     }
     // The citation line above is rebuilt from the cited sections; the card's Other goes back on it.
     if (cardOtherOnViolated && typeof draftedPayload.values.policy_violated === "string") {

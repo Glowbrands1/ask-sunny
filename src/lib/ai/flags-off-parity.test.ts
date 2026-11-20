@@ -692,6 +692,8 @@ const NEW_FLAGS = [
   "NEAR_MISS_NEVER_SEATED_ENABLED",
   // coding B: STARTER_FOLLOW_UP_EXAMPLE (QA item 24, 20 Nov 2026; default off).
   "STARTER_FOLLOW_UP_EXAMPLE_ENABLED",
+  // coding B: DEAD_END_SAYS_WHERE (QA item 25, 20 Nov 2026; default off).
+  "DEAD_END_SAYS_WHERE_ENABLED",
 ] as const;
 
 const PROTECTED = [

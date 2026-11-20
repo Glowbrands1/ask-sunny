@@ -221,6 +221,11 @@ export async function createInlineForm({
        */
       ...(proposal.warningLevel ? { warningLevel: proposal.warningLevel } : proposal.loopTermination ? { warningLevel: "termination" } : {}),
       ...(proposal.fromAgentLoop ? { fromAgentLoop: true } : {}),
+      /*
+       * QA item 17 (20 Nov 2026): a loop termination's account, so an exit form's reason line is the manager's account
+       * (the loop checked it against their words). Create writes it only on a form that has that line.
+       */
+      ...(proposal.fromAgentLoop && proposal.loopTermination && proposal.issue ? { loopAccount: proposal.issue } : {}),
       locationId: proposal.locationId,
       source: "ask_sunny",
       /* The card's own id: a second press of it returns the draft it already made. */
@@ -315,6 +320,8 @@ export async function createInlineForm({
         ...(cardPolicyToDraftEnabled() && cardOtherTopic(proposal, messages) ? { cardOther: cardOtherTopic(proposal, messages) } : {}),
         // HOTFIX (QA, 17 Nov 2026): a loop card's policy is the saved form's (the draft route reads it as named).
         ...(proposal.fromAgentLoop ? { cardFromLoop: true } : {}),
+        // Pau via QA (20 Nov 2026): the prior actions the loop's card recorded; none recorded, none saved.
+        ...(proposal.fromAgentLoop ? { cardPriorActions: proposal.priorActions?.trim() ?? "" } : {}),
         // QA (20 Nov 2026; c198): the loop card's own account, so the saved account keeps the times it holds.
         ...(proposal.fromAgentLoop && typeof proposal.issue === "string" && proposal.issue.trim() ? { cardAccount: proposal.issue.trim().slice(0, 2_000) } : {}),
         // Pau (17 Nov 2026): a Coaching Form always carries the policy and page; the card's whole line goes with it.
