@@ -1,3 +1,4 @@
+import { foldName } from "./fold-name";
 import { rosterCompoundSurnameEnabled, sharedLoginNotStaffEnabled } from "@/lib/config/chat-quality-flags";
 
 /**
@@ -123,9 +124,7 @@ export function displayName(employee: RosterEmployee): string {
 }
 
 function normalize(text: string): string {
-  return text
-    .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")
+  return foldName(text)
     .toLowerCase()
     .replace(/['’.]/g, "")
     .replace(/[^a-z\s-]/g, " ")

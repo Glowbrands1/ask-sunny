@@ -98,6 +98,7 @@ import {
 } from "@/lib/forms/responsibility";
 import { stripPlaceholdersFromDraft } from "@/lib/forms/drafted-text";
 import { splitAppCitationLine } from "@/lib/forms/app-citation-line";
+import { withCardTimes } from "@/lib/forms/card-times";
 import { withoutUnstatedDates } from "@/lib/forms/form-date-grounding";
 import {
   FOLLOW_UP_TIMEFRAME_RULES,
@@ -214,6 +215,7 @@ import { attendanceActionPlan, isAttendancePlan, missedMeetingNotLateness } from
 import { withPayrollSentence } from "@/lib/forms/plan-payroll-sentence";
 import { managerTypedActionPlan } from "@/lib/forms/manager-action-plan";
 import { firstNameNotPronouns } from "@/lib/forms/first-name-write-up";
+import { cardNotesPayrollAmount } from "@/lib/forms/card-payroll-amount";
 import {
   citeAttendanceForTardiness,
   policyFieldsWithCitation,
@@ -333,6 +335,8 @@ interface DraftBody {
   cardOther?: string;
   /** HOTFIX (QA, 17 Nov 2026): the card came from the agent loop, so its policy is the form's (`loopCardHeading`). */
   cardFromLoop?: boolean;
+  /** QA (20 Nov 2026; c198): the agent loop card's own account, so the saved account keeps its times (`withCardTimes`). */
+  cardAccount?: string;
   /**
    * SAME_FORM_COPY_NEW_PERSON_ENABLED: the form the card was asked to copy
    * ("the same draft that we did with <name>"). Re-checked: this account's
@@ -465,9 +469,13 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         (loaded.values ?? [])
           .find((row) => row.fieldKey === PAYROLL_DEDUCT_KEY)
           ?.checked.find(isPayrollDeductAnswer) ?? null;
-      const amount = payrollAmountFromConversation([{ role: "user", content: notes }], {
-        payrollAnswer,
-      });
+      // QA's code audit (20 Nov 2026, item 20): a loop card's amount is the card's own line in the notes.
+      const amount =
+        body.cardFromLoop === true
+          ? payrollAnswer === "yes" ? cardNotesPayrollAmount(notes) : null
+          : payrollAmountFromConversation([{ role: "user", content: notes }], {
+              payrollAnswer,
+            });
       // FORM_EDIT_SINGLE_WRITER_ENABLED: each stated-facts write through the one writer (`lib/forms/form-write.ts`).
       if (amount && formEditSingleWriterEnabled()) {
         await (await import("@/lib/forms/form-write")).statedWrite(
@@ -2784,6 +2792,20 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       }
     }
     /*
+     * QA (20 Nov 2026; Runner 2's c198): the loop card's account held 9:15PM, 9:01 and 8:11 PM, and the saved observation
+     * kept only 8:11 PM. A clock time of the card's own account that the drafted account lost brings back the card's
+     * sentence that holds it (`withCardTimes`), before the app's citation line. A field the manager typed is never touched.
+     */
+    const accountKey = narrativeTargets[0];
+    if (body.cardFromLoop === true && typeof body.cardAccount === "string" && accountKey && !keeps(accountKey)) {
+      const drafted = draftedPayload.values[accountKey] ?? "";
+      if (drafted.trim() !== "") {
+        const { body: account, line: citation } = splitAppCitationLine(drafted);
+        const timed = withCardTimes(account, body.cardAccount.slice(0, 2_000));
+        if (timed !== account) draftedPayload.values = { ...draftedPayload.values, [accountKey]: citation ? `${timed}\n\n${citation}` : timed };
+      }
+    }
+    /*
      * Pau via QA (20 Nov 2026, item 15): a loop card's saved write-up calls the employee by first name, never a pronoun.
      * The manual's quoted policy fields (and the two the server derives) are left exactly as the manual has them.
      */
@@ -2889,9 +2911,12 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
     if (payrollAmountFieldEnabled() && payrollAnswer === "yes") {
       const held =
         (loaded.values ?? []).find((row) => row.fieldKey === PAYROLL_AMOUNT_KEY)?.value?.trim() || null;
-      const statedNow = payrollAmountFromConversation([{ role: "user", content: notes }], {
-        payrollAnswer: "yes",
-      });
+      const statedNow =
+        body.cardFromLoop === true
+          ? cardNotesPayrollAmount(notes)
+          : payrollAmountFromConversation([{ role: "user", content: notes }], {
+              payrollAnswer: "yes",
+            });
       const keep = statedNow ?? held;
       if (keep && formEditSingleWriterEnabled()) {
         await (await import("@/lib/forms/form-write")).statedWrite(
