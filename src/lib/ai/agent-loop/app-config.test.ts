@@ -55,6 +55,10 @@ import { rulesBookText } from "./rules-book";
  * first name (it said **<employee>**, which contradicted the rule), and the lines that say which person it is keep the full
  * name. Then (QA and Pau): both lines say <reply_name>, which code decides (propose_form / edit_form's reply_name).
  *
+ * Re-taken on purpose on 20 Nov 2026 (QA item 22, Pau's call: prior discipline on file): the prior actions line now lets
+ * propose_form's prior_on_file fill prior actions when the manager states none, and says it never sets the level. It
+ * reads the same under every config; nothing else changed.
+ *
  * Re-taken on purpose on 16 Nov 2026 (QA, c019 in #1056): one line in "Which form" teaches that "Create a <form> from this
  * conversation" / "make it a <form> instead" for the same person and incident is the same request, not
  * new_form_evidence. It names no app, place, staff system or form key; nothing else changed.

@@ -2020,6 +2020,53 @@ async function closeSpellingOfRoster(context: ToolContext, effects: ToolEffects 
   };
 }
 
+/** One finalized form on file for this person, as a Corrective Action card's prior actions name it (item 22). */
+export interface PriorOnFile {
+  readonly form: string;
+  readonly level: string | null;
+  readonly date: string | null;
+}
+
+/**
+ * PRIOR DISCIPLINE ON FILE (QA item 22, from the production audit, 20 Nov 2026; Pau's call): a manager whose employee had a
+ * finalized Verbal CA on file (and another with 7) got a card with no prior actions, and typed the history and chose the
+ * level themselves. A Corrective Action card's prior actions now list this person's FINALIZED Corrective Actions and
+ * Coaching forms already in the app (form, level, date), oldest first, only the ones this manager may open
+ * (`visibleInstances`), none dated after today, at most 10 (the newest). The level of each CA is read from its saved
+ * form. The card's own level is never set from them: it stays the manager's.
+ */
+async function finalizedPriorsOnFile(context: ToolContext, person: RosterEmployee, roster: readonly RosterEmployee[], today: string): Promise<PriorOnFile[]> {
+  const actor = await chatFormsActor(context.actor).catch(() => undefined);
+  if (!actor) return [];
+  const keys = appConfig().formKeys;
+  const kinds = new Set([keys.corrective, keys.coaching, keys.followUpCoaching]);
+  const names = fullNamesOf(person);
+  const nameWords = [...new Set(names.flatMap(candidateNameWords))];
+  const rows = visibleInstances(actor, await listInstances("all", 200, { ...instanceListFilterFor(actor), employeeNameWords: nameWords }).catch(() => []))
+    .filter((row) => row.status === "finalized" && kinds.has(row.templateKey) && (row.formDate ?? "") <= today)
+    .filter((row) => names.some((full) => samePerson(full, row.employeeName)) || sameRosterPerson(row.employeeName, displayName(person), roster))
+    .sort((a, b) => (a.formDate ?? "").localeCompare(b.formDate ?? "") || a.createdAt.localeCompare(b.createdAt))
+    .slice(-10);
+  const levelName: Record<string, string> = { verbal: "Verbal Warning", written: "Written Warning", termination: "Termination" };
+  return Promise.all(rows.map(async (row) => {
+    const level = row.templateKey === keys.corrective
+      ? await authorizeInstance(context.request, row.id, "view")
+        .then(({ loaded }) => (loaded.values.find((value) => value.fieldKey === "warning_type")?.checked ?? []).map((key) => levelName[key] ?? key).join(", ") || null)
+        .catch(() => null)
+      : null;
+    return { form: row.templateName, level, date: row.formDate ?? null };
+  }));
+}
+
+/** The prior actions line for forms on file: "Corrective Action Form, Verbal Warning — 10/20/2026; Coaching Form — 09/12/2026". */
+export function priorsOnFileLine(priors: readonly PriorOnFile[]): string {
+  const usDay = (iso: string | null) => {
+    const found = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso ?? "");
+    return found ? `${found[2]}/${found[3]}/${found[1]}` : "date not recorded";
+  };
+  return priors.map((prior) => `${prior.form}${prior.level ? `, ${prior.level}` : ""} — ${usDay(prior.date)}`).join("; ");
+}
+
 /**
  * QA (16 Nov 2026, live group E on main 63ba4c48): an EDIT asked for a form type (a Corrective Action) while this person's
  * card on screen is another type (a Coaching Form, not created) and forms of the asked type are on file: never a new card
@@ -3214,8 +3261,16 @@ export async function proposeForm(
    * only when every date in them is one the manager typed and none is this incident's date, and a count the manager
    * stated ("two prior written warnings") is kept. Otherwise not kept, with the reason; the rules book words the line.
    */
-  const priorActionsRefused = askedPriorActions ? priorActionsProblem(askedPriorActions, requestWords, date) : null;
-  const priorActions = priorActionsRefused ? null : askedPriorActions;
+  /*
+   * PRIOR DISCIPLINE ON FILE (QA item 22): this person's finalized Corrective Actions and Coaching forms on file
+   * (`finalizedPriorsOnFile`) fill a Corrective Action card's prior actions when the manager stated none; the manager's
+   * own steps win. A date from a form on file counts as stated (the model may copy the line), never this incident's date.
+   */
+  const rosterPerson = caOnlyFields && employee.id && read.kind === "read" ? read.roster.find((row) => row.id === employee.id) ?? null : null;
+  const priorsOnFile = rosterPerson ? await finalizedPriorsOnFile(context, rosterPerson, read.kind === "read" ? read.roster : [], today) : [];
+  const onFileLine = priorsOnFile.length > 0 ? priorsOnFileLine(priorsOnFile) : null;
+  const priorActionsRefused = askedPriorActions ? priorActionsProblem(askedPriorActions, onFileLine ? `${requestWords}\n${onFileLine}` : requestWords, date) : null;
+  const priorActions = priorActionsRefused ? null : (askedPriorActions ?? (statedSteps.length === 0 ? onFileLine : null));
   /*
    * THE COACHING TOPIC (QA, 17 Nov 2026; the tester's coaching form saved "Coaching for <name> on greeting guests at the
    * door" as Other's topic). A coaching card carries the topic the model names, kept only when its evidence is a manager
@@ -3551,6 +3606,8 @@ export async function proposeForm(
     ...(whatHappened && addedLinks(managerWords, whatHappened).length > 0 ? { reword_added_link: addedLinks(managerWords, whatHappened) } : {}),
     ...(whatHappened && ACCOUNT_FORMS.has(template.key) && accountSubjectChanged(managerWords, whatHappened, employee.name) ? { account_subject_changed: { employee: employee.name, account_says_it_was: accountSubjectChanged(managerWords, whatHappened, employee.name) } } : {}),
     ...(statedSteps.length > 0 ? { prior_steps_said: statedSteps } : {}),
+    /* QA item 22: the finalized forms on file for this person; the card's level is never chosen from them. */
+    ...(priorsOnFile.length > 0 ? { prior_on_file: { forms: priorsOnFile, line: onFileLine, used_on_card: priorActions === onFileLine } } : {}),
     ...(corrective && payroll === "yes" && !amount && statedAmount ? { payroll_amount_said: `$${statedAmount}` } : {}),
     ...(cleaning && !careAndCleaning ? { cleaning_duty: cleaning } : {}),
     ...(awaiting ? { policy_named_by_manager: policyNamedByManager } : {}),
