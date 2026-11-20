@@ -308,6 +308,9 @@ export const NOV16_LEVEL_CARRY_CASES: ReplayCase[] = [
       expect(taught, "the system prompt does not teach that \"make it a <form> instead\" is the same request").toBe(true);
       expect(thread.proposal?.templateKey).toBe("dpoa");
       expect(levelOf(thread), "the same request's level was lost").toBe("verbal");
+      // QA (20 Nov 2026, item 7's approval): the same request also keeps its account and date through the form change.
+      expect(thread.proposal?.formDate, "the same request's date was lost").toBe("2026-11-14");
+      expect(thread.proposal?.issue ?? "", "the same request's account was lost").toMatch(/late to her shift on 11\/14/i);
     },
   },
 ];
