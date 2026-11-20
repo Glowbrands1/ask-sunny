@@ -20,6 +20,7 @@ import type { DirectoryRosterRow } from "@/lib/forms/employee-roster";
 import { inlineDraftVariantKey, supportsInlineDraft } from "@/lib/forms/inline-draft";
 import { authorizeInstance, InstanceNotVisibleError, instanceListFilterFor, visibleInstances } from "@/lib/forms/instance-scope";
 import { applyAssistantRevision, deleteInstance, listInstances } from "@/lib/forms/instances";
+import { countFormsOnFile } from "@/lib/forms/forms-on-file-counts";
 import {
   currentManualScopeEnabled,
   formEditPlainWordsEnabled,
@@ -1330,13 +1331,28 @@ export async function listStaffTool(context: ToolContext, effects: ToolEffects, 
 
 /** A period list ("who got a CA this month?") reads every such form, up to this many. */
 const PERIOD_LIST_LIMIT = 100;
+/*
+ * QA's f081 (20 Nov 2026): "list ca for the month" read the newest 100 forms by created_at and said "The list stops at
+ * 100", where the month had more (every salon, archived included). The month is read up to 1000 rows (PostgREST's page),
+ * counted by code over all of them, and up to 100 are listed; past 1000 it says the counts are of the first 1000 read.
+ */
+const PERIOD_READ_LIMIT = 1000;
+
+/*
+ * QA's f081: Form Monitoring opens on its active view (archived forms hidden; `view=archived` / `all` only when chosen).
+ * The forms-on-file readers do the same: archived forms are read only when the manager asks for them (include_archived),
+ * and are then labelled archived.
+ */
+function onFileView(input: { include_archived?: unknown }): "active" | "all" {
+  return input.include_archived === true ? "all" : "active";
+}
 
 /*
  * "WHO GOT A CA THIS MONTH?" (the owner, 18 Nov 2026, on the sibling app: "why capped at 20"). With no employee, a form
  * kind or a period lists every such form this manager may see, read by form date and form name in the query (not the
  * newest rows filtered after), and says whether the list is complete or stopped at its cap.
  */
-async function findFormsInPeriod(context: ToolContext, input: { form?: unknown; date_from?: unknown; date_to?: unknown; forms_on_file_evidence?: unknown }): Promise<ToolResult> {
+async function findFormsInPeriod(context: ToolContext, input: { form?: unknown; date_from?: unknown; date_to?: unknown; forms_on_file_evidence?: unknown; include_archived?: unknown }): Promise<ToolResult> {
   const asked = formsOnFileAsked(context, input.forms_on_file_evidence);
   if (!asked.ok) return privacyRefusal(asked.reason, undefined, context);
   const today = context.today || businessToday();
@@ -1347,18 +1363,21 @@ async function findFormsInPeriod(context: ToolContext, input: { form?: unknown; 
   if (actor === undefined) return { reason_code: "read_failed", error: "Form Monitoring could not be read just now. Say so; do not say there are no forms." };
   if (actor === null) return { reason_code: "scope", error: "This manager's role cannot view Form Monitoring, so past forms cannot be listed." };
   try {
-    const read = await listInstances("all", PERIOD_LIST_LIMIT, {
+    const read = await listInstances(onFileView(input), PERIOD_READ_LIMIT, {
       ...instanceListFilterFor(actor),
       ...(range ? { formDateFrom: range.from, formDateTo: range.to } : {}),
       ...(kind ? { templateNameWords: kind.templateNameWords } : {}),
     });
     /* QA's code audit (item 28): a Coaching kind never keeps a Follow-Up Coaching Form (`ofKind`). */
-    const rows = ofKind(visibleInstances(actor, read), kind).slice(0, PERIOD_LIST_LIMIT);
+    const visible = ofKind(visibleInstances(actor, read), kind);
+    /* f081: listed by form date (newest first), then employee; counted over every visible row, never only the listed ones. */
+    const rows = [...visible].sort((a, b) => (b.formDate ?? "").localeCompare(a.formDate ?? "") || a.employeeName.localeCompare(b.employeeName)).slice(0, PERIOD_LIST_LIMIT);
     /*
      * QA's code audit (item 29): complete only when the DATABASE returned fewer rows than it was asked for. Counting the
      * rows left after the visibility filter called a cut-off list complete (100 read, 60 visible, "every such form").
      */
-    const complete = read.length < PERIOD_LIST_LIMIT;
+    const complete = read.length < PERIOD_READ_LIMIT;
+    const counts = countFormsOnFile(visible);
     return {
       period: range ? { from: range.from, to: range.to } : null,
       form_kind: kind?.label ?? null,
@@ -1369,18 +1388,20 @@ async function findFormsInPeriod(context: ToolContext, input: { form?: unknown; 
         status: row.status,
         form_date: row.formDate,
         salon: salonLabel(row.locationId, row.locationName) ?? `no ${locationWord()}`,
+        ...(row.archivedAt ? { archived: true } : {}),
       })),
       complete,
-      note: complete
-        ? "Every such form this manager can see, read by form date: never say the list is capped or that some may be missing. A draft is not on file."
-        : `The list stops at ${PERIOD_LIST_LIMIT}; there may be more. Say so, and that Form Monitoring has the full list.`,
+      counts,
+      archived: input.include_archived === true ? "included, each marked archived" : "not included (as Form Monitoring's default view); read them only when the manager asks",
+      ...(visible.length > rows.length ? { listed: rows.length, of: visible.length } : {}),
+      note: `${complete ? "Every such form this manager can see, read by form date: never say the list is capped or that some may be missing." : `More than ${PERIOD_READ_LIMIT} forms match: the counts are of the first ${PERIOD_READ_LIMIT} read. Say so, and that Form Monitoring has the full list.`} Numbers come only from counts (total, by_person, by_form, by_date): copy them, never count or add rows yourself, and never put one person's forms under another's name.${visible.length > rows.length ? ` ${rows.length} of ${visible.length} forms are listed; say how many are not shown.` : ""} A draft is not on file.`,
     };
   } catch {
     return { reason_code: "read_failed", error: "Form Monitoring could not be read just now. Say so; do not say there are no forms." };
   }
 }
 
-export async function findPastForms(context: ToolContext, input: { employee_name?: unknown; form?: unknown; date?: unknown; date_from?: unknown; date_to?: unknown; about?: unknown; forms_on_file_evidence?: unknown; open?: unknown }, effects?: ToolEffects): Promise<ToolResult> {
+export async function findPastForms(context: ToolContext, input: { employee_name?: unknown; form?: unknown; date?: unknown; date_from?: unknown; date_to?: unknown; about?: unknown; forms_on_file_evidence?: unknown; open?: unknown; include_archived?: unknown }, effects?: ToolEffects): Promise<ToolResult> {
   const typed = typeof input.employee_name === "string" ? input.employee_name.trim() : "";
   if (typed === "" && input.open !== true && (input.date_from || input.date_to || input.form)) return findFormsInPeriod(context, input);
   if (typed === "") return { reason_code: "missing_input", error: "Give the employee's name." };
@@ -1425,7 +1446,7 @@ export async function findPastForms(context: ToolContext, input: { employee_name
      * whole words of its employee's name (`wholeNameWords`: the full name, the first name or the last name), the same
      * person by `samePerson`, or one roster holder's other name (aliases).
      */
-    let rows = visibleInstances(actor, await listInstances("all", 200, { ...instanceListFilterFor(actor), employeeNameWords: nameWords }))
+    let rows = visibleInstances(actor, await listInstances(onFileView(input), 200, { ...instanceListFilterFor(actor), employeeNameWords: nameWords }))
       .filter((row) => samePerson(row.employeeName, typed) || wholeNameWords(row.employeeName, typed) || nameThenStartOfNext(row.employeeName, typed) || (aliases.length > 0 && sameRosterPerson(row.employeeName, typed, people)));
     /*
      * Item 27: the typed name fits forms of more than one person ("Lee": Ann Lee and Joann Lee) and is nobody's full name
@@ -1503,6 +1524,7 @@ export async function findPastForms(context: ToolContext, input: { employee_name
         /* G4 follow-up (QA, 15 Nov 2026): "no salon" in words, so the manager's "the one with no salon" can single it out. */
         salon: salonLabel(row.locationId, row.locationName) ?? `no ${locationWord()}`,
         choice: choices.get(row)!,
+        ...(row.archivedAt ? { archived: true } : {}),
       }));
     /* "Draw me up a coaching document … she already has one" (the live re-run's sun-late-date): none on file is no reason to stop. */
     if (forms.length === 0) {
@@ -1572,6 +1594,10 @@ export async function findPastForms(context: ToolContext, input: { employee_name
     }
     return {
       forms,
+      /* QA's f081: counted by code over every form found (not only the 20 listed); the reply copies the numbers. */
+      counts: countFormsOnFile(rows),
+      count_note: "Numbers come only from counts (total, by_form, by_date): copy them, never count or add rows yourself, and never put another person's forms under this name.",
+      archived: input.include_archived === true ? "included, each marked archived" : "not included (as Form Monitoring's default view); read them only when the manager asks",
       /* Never a silent cut ("why capped at 20", 18 Nov 2026): more than the 20 listed are on file for this person. */
       ...(rows.length > forms.length ? { more_on_file: rows.length - forms.length, more_note: `${rows.length - forms.length} more forms are on file for this person than listed; say so, or narrow by form or dates.` } : {}),
       ...(withdrawn ? { card_withdrawn: `The ${withdrawn} card proposed earlier this turn was withdrawn: the manager asked to open a form on file, not to make one.` } : {}),

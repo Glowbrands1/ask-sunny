@@ -100,6 +100,10 @@ import { rulesBookText } from "./rules-book";
  * Updated on purpose on 20 Nov 2026 (Pau's ruling via QA, c091): a Corrective Action may cite two headings when the
  * manager describes two offenses ("<heading>; <heading>", never more than two); the clock-out line no longer says "a card
  * cites one heading" (closing early is part of the same Attendance offense). No app, place, staff system or form key.
+ *
+ * Re-taken on purpose on 20 Nov 2026 (QA's f081: forms-on-file lists miscounted): one Replies line was added: a list of
+ * forms on file copies find_past_forms' counts, never adds rows itself, never puts one person's forms under another's name,
+ * and says archived forms are not included unless asked. It reads the same under every config; nothing else changed.
  */
 
 const fixture = (name: string): string => readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), "utf8");
