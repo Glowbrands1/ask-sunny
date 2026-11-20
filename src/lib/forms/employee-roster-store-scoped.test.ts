@@ -56,7 +56,7 @@ vi.mock("./roster-non-person", async (importOriginal) => {
   return { ...actual, isNonPersonWovenId: (id: string | null | undefined) => actual.isNonPersonWovenId(id, new Set([SHARED_LOGIN])) };
 });
 
-const { loadScopedRoster, readDirectoryFacts, readStoreRoster } = await import("./employee-roster");
+const { loadScopedRoster, readDirectoryFacts, readDirectoryRoster, readStoreRoster } = await import("./employee-roster");
 
 const SALON_A = "loc-0309";
 const SALON_B = "loc-0462";
@@ -116,7 +116,8 @@ describe("ROSTER_STORE_SCOPED_ENABLED off", () => {
     expect(names(await loadScopedRoster(storeScope(SALON_A)))).toEqual(["Avery Quill", "Casey Morrow"]);
     const directory = reads.filter((read) => read.table === "employee_access_directory");
     expect(directory.length).toBeGreaterThan(0);
-    expect(directory.every((read) => read.calls.includes("limit(5000)"))).toBe(true);
+    // Changed on purpose (QA's code audit item 18, 20 Nov 2026): the whole-directory read is paged, never `limit(5000)`.
+    expect(directory.every((read) => read.calls.some((call) => call.startsWith("range(")))).toBe(true);
   });
 });
 
@@ -168,9 +169,24 @@ describe("ROSTER_STORE_SCOPED_ENABLED on", () => {
     for (let index = 0; index < 1205; index += 1) person(`bulk-${String(index).padStart(4, "0")}`, "Bulk", `Person${index}`, SALON_A);
     const roster = await readStoreRoster(storeScope(SALON_A));
     expect(roster).toHaveLength(1206);
-    // Flag off, the same directory is cut at the cap with no error.
+    // Changed on purpose (QA's code audit item 18, 20 Nov 2026): flag off, the whole-directory read is paged too, so the
+    // same directory is no longer cut at the cap.
     delete process.env.ROSTER_STORE_SCOPED_ENABLED;
-    expect((await loadScopedRoster(storeScope(SALON_A))).length).toBeLessThan(1206);
+    expect((await loadScopedRoster(storeScope(SALON_A))).length).toBeGreaterThanOrEqual(1206);
+  });
+
+  /*
+   * QA's code audit on 9e1d1f67 (item 18, 20 Nov 2026): the whole-directory read (the agent loop's "no longer active in
+   * Woven" check reads it) asked for 5,000 / 20,000 rows, but the service answers at most 1,000, so past that a terminated
+   * person was simply missing and reported as "not on the staff list". Every read is paged.
+   */
+  it("the whole-directory read pages past the 1,000-row cap: a terminated person after it is still read", async () => {
+    for (let index = 0; index < 1205; index += 1) person(`bulk-${String(index).padStart(4, "0")}`, "Bulk", `Person${index}`, SALON_A);
+    person("zz-gone", "Quill", "Fenwick", SALON_A, { employment_status: "terminated" });
+    const rows = await readDirectoryRoster();
+    const gone = rows.find((row) => row.id === "zz-gone");
+    expect(gone, "the terminated person past the cap was not read").toBeTruthy();
+    expect(gone!.salonIds.length, "their affiliation past the cap was not read").toBeGreaterThan(0);
   });
 
   it("a read error is unchecked (empty, the typed name used as typed), never everyone", async () => {
