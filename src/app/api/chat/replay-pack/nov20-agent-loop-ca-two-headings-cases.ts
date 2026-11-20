@@ -33,8 +33,17 @@ const DRESS_CODE = {
   content: "Dress Code for The Company\nEmployees wear approved work attire and their name tag on every shift.\nAll Locations Dress Code:\nNo mini skirts or short shorts.",
 };
 
-const C091_T2 = "Written warning for Remy Calder. On 11/14 she did not do the 10 minute sanitization. She was also not in dress code, was not wearing her nametag, and did not have a goal sheet until she was asked about it.";
-const C091_ACCOUNT = "On 11/14 Remy did not do the 10-minute sanitization. She was also not in dress code, was not wearing her nametag, and did not have a goal sheet until she was asked about it.";
+/*
+ * c091's turns, verbatim (spacing and typos kept), with invented names: Remy Calder is the card's person; Brisa, Corin
+ * Rennick and Delphine Sorrowby as Runner 2 masked them.
+ */
+const C091_T1 = "I need a corrective action for  f";
+const C091_T2 = `Remy Calder, today, - Brisa set up a spray booth, then went into Room 4 and stayed there until the first customer arrived at 7:57am.
+- When we arrived at 8:15am, the lobby lights were still off.
+- When Corin asked whether she had completed her 10-minute sanitization, Brisa said yes. The footage showed that it had not been completed.
+- She was also not in dress code, was not wearing her nametag, and did not have a goal sheet until she was asked about it. Written warning. previous coaching. verbal (06/25/2026) and written (07/28/2026). no payroll deducation. TC`;
+/* The loop's what_happened on T2 (Runner 2's trace). */
+const C091_ACCOUNT = "Brisa set up a spray booth, then went into Room 4 and stayed there until the first customer arrived at 7:57am. When we arrived at 8:15am, the lobby lights were still off. When Corin asked whether she had completed her 10-minute sanitization, Brisa said yes. The footage showed that it had not been completed. She was also not in dress code, was not wearing her nametag, and did not have a goal sheet until she was asked about it.";
 
 function start(t: ReplayContext) {
   vi.setSystemTime(new Date("2026-11-16T18:00:00Z"));
@@ -72,15 +81,28 @@ const fixed = (id: string, title: string, run: (t: ReplayContext) => Promise<voi
 });
 
 export const NOV20_AGENT_LOOP_CA_TWO_HEADINGS_CASES: ReplayCase[] = [
-  fixed("nov20-ca-two-headings-c091", "c091: \"… She was also not in dress code, was not wearing her nametag, and did not have a goal sheet …\" proposed with \"Dress Code for The Company; Standards of Conduct; Other — 10-minute sanitization\": the card cites both headings with their pages and the Other; Create ticks Dress Code and Standards of Conduct (and Other) and Policy Violated names both", async (t) => {
+  fixed("nov20-ca-two-headings-c091", "c091: \"I need a corrective action for  f\", then \"Remy Calder, today, - Brisa set up a spray booth … She was also not in dress code, was not wearing her nametag, and did not have a goal sheet until she was asked about it. Written warning. …\" proposed (as live) with \"Standards of Conduct; Other — 10-minute sanitization\": dress_code_heading offers both headings, the card made with them cites Dress Code and Standards of Conduct with their pages and the Other; Create ticks dress_code, standards_of_conduct and other, and Policy Violated names both", async (t) => {
     const seen: Record<string, unknown>[] = [];
-    card(t, "Dress Code for The Company; Standards of Conduct; Other — 10-minute sanitization", C091_ACCOUNT, seen);
+    t.loopModel!(loopStandIn((view): LoopDecision => {
+      const results = view.results.filter((result) => result.tool === "propose_form").map((result) => result.output);
+      const last = results.at(-1);
+      if (view.turns.filter((turn) => turn.role === "user").length === 1) return { text: "Who is this Corrective Action Form for?" };
+      if (last) seen.push(last);
+      if (last && (last.reason_code !== "dress_code_heading" || results.length > 1)) return { text: "Here's the card." };
+      /* As live: Standards of Conduct and Other first; then the pair the refusal offers, else its first fit. */
+      const offered = last ? /cite both: policy "([^"]+)"/.exec(String(last.error ?? ""))?.[1] ?? (last.fits_headings as string[] | undefined)?.[0] : undefined;
+      return { tool: "propose_form", input: { template_key: "dpoa", employee_name: "Remy Calder", person_evidence: evidenceFrom(view, "Remy Calder"), what_happened: C091_ACCOUNT, policy: offered ?? "Standards of Conduct; Other — 10-minute sanitization", warning_level: "written", level_evidence: evidenceFrom(view, "Written warning") } };
+    }));
+    t.draftWrites({ observation: `Observed:\n${C091_ACCOUNT}\n\nExpectation:\nRemy is expected to follow the policy.` });
     const thread = t.thread();
+    await thread.say(C091_T1);
     const reply = await thread.say(C091_T2);
-    expect(seen[0]?.reason_code, JSON.stringify(seen[0])).toBeUndefined();
-    expect(policyLineOf(reply)).toMatch(/^Dress Code for The Company Policy, JBA Policy Manual p\.15; Standards of Conduct Policy, JBA Policy Manual p\.12; Other — 10-minute sanitization$/);
+    expect(seen[0]?.reason_code, JSON.stringify(seen[0])).toBe("dress_code_heading");
+    expect(String(seen[0]?.error ?? ""), "the refusal does not offer both headings").toContain('cite both: policy "Dress Code for The Company; Standards of Conduct; Other — 10-minute sanitization"');
+    expect(seen[1]?.reason_code, JSON.stringify(seen[1])).toBeUndefined();
+    expect(policyLineOf(reply)).toBe("Dress Code for The Company Policy, JBA Policy Manual p.15; Standards of Conduct Policy, JBA Policy Manual p.12; Other — 10-minute sanitization");
     const id = await thread.create();
-    expect(t.checked(id).offense_type ?? [], "Type of Offense").toEqual(expect.arrayContaining(["dress_code", "standards_of_conduct", "other"]));
+    expect([...(t.checked(id).offense_type ?? [])].sort(), "Type of Offense").toEqual(["dress_code", "other", "standards_of_conduct"]);
     const violated = t.values(id).policy_violated ?? "";
     expect(violated, "Policy Violated").toContain("Dress Code for The Company Policy, JBA Policy Manual p.15");
     expect(violated, "Policy Violated").toContain("Standards of Conduct Policy, JBA Policy Manual p.12");

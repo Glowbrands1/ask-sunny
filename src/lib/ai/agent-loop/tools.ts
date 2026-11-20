@@ -3076,7 +3076,12 @@ export async function proposeForm(
       namedPolicies(requestWords).some((named) => !dressFits?.some((heading) => namesHeading(named.phrase, heading)));
     const otherOnly = !policyHeading && /^other\b/i.test(askedPolicyWhole) && !saysMustSee(requestWords) && !cleaningUndonePhrase(requestWords);
     if (dressFits && !namedAnother && ((policyHeading && !cardHeadings.some((heading) => dressFits.includes(heading))) || otherOnly)) {
-      return { reason_code: "dress_code_heading", error: `The manager's words describe a dress-code offense (dress code, or clothing worn on shift), which the manual's Dress Code section covers, not "${askedPolicyWhole}". Propose the card again with policy "${dressFits[0]}"${dressFits.length > 1 ? ` (or ${dressFits.slice(1).map((heading) => `"${heading}"`).join(", ")})` : ""}.`, fits_headings: dressFits };
+      /*
+       * Pau's ruling (20 Nov 2026; c091): the heading the model chose may be a second offense the manager also describes
+       * ("not in dress code … did not have a goal sheet"): then both are cited, never the dress code alone in its place.
+       */
+      const beside = policyHeading && !secondHeading ? ` If the manager also describes a second offense that ${policyHeading} covers, cite both: policy "${dressFits[0]}; ${policyHeading}${askedOther ? `; ${askedOther}` : ""}".` : "";
+      return { reason_code: "dress_code_heading", error: `The manager's words describe a dress-code offense (dress code, or clothing worn on shift), which the manual's Dress Code section covers, not "${askedPolicyWhole}". Propose the card again with policy "${dressFits[0]}"${dressFits.length > 1 ? ` (or ${dressFits.slice(1).map((heading) => `"${heading}"`).join(", ")})` : ""}.${beside}`, fits_headings: dressFits };
     }
     if (citesMustSee(askedPolicyWhole) && !saysMustSee(requestWords)) {
       const conduct = manual.headings.find((heading) => headingKey(heading) === headingKey("Standards of Conduct"));
