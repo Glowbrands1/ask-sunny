@@ -16,6 +16,9 @@ import { evidenceFrom, lastResult, loopStandIn, type LoopDecision } from "./loop
  *     manual" as the NAME TAGS paragraph, the first thing under that heading. The pinned manual here is production's own
  *     dress code rows (chunks 44-48 of `jba-manual-production-151.json`).
  * 17. The write-up added "at the salon", which the manager never said.
+ * 18. QA's production audit (a real manager; name invented): "I need a verbal CA wrote up for <P>. I need the JBA policy
+ *     for dress code enclosed." The finalized Direct policy held only "Source: JBA Policy Manual — All Locations Dress
+ *     Code, p. 15", with no policy wording. A card with a heading always fills it with that heading's passage.
  */
 
 const FLAG = "AGENT_LOOP_ENABLED";
@@ -36,6 +39,19 @@ const DRESS_CODE_ROWS = production.chunks
     content: row.content,
   }));
 
+/**
+ * Item 18's layout: the heading printed as the LAST line of its chunk ("All Locations Dress Code:"), its wording in the
+ * next chunk. Production's rows, with chunk 44 cut after the heading.
+ */
+const HEADING_ENDS_CHUNK = DRESS_CODE_ROWS.flatMap((row) => {
+  if (row.chunkIndex !== 44) return [row];
+  const cut = row.content.indexOf("Name tags");
+  return [
+    { ...row, content: row.content.slice(0, cut).trimEnd() },
+    { ...row, chunkIndex: 44.5, chunkId: "jba-44-5", section: "All Locations Dress Code", sections: [{ page: 15, heading: "All Locations Dress Code" }], content: row.content.slice(cut) },
+  ];
+});
+
 function start(t: ReplayContext) {
   vi.setSystemTime(new Date("2026-11-16T18:00:00Z"));
   t.directory([...STAFF]);
@@ -43,7 +59,7 @@ function start(t: ReplayContext) {
   t.manualAlsoHas?.(DRESS_CODE_ROWS);
 }
 
-async function created(t: ReplayContext, said: string, whatHappened: string, observation: string) {
+async function created(t: ReplayContext, said: string, whatHappened: string | null, observation: string | null) {
   t.loopModel!(loopStandIn((view): LoopDecision => lastResult(view, "propose_form")
     ? { text: "Here's the Corrective Action Form for **Remy**." }
     : {
@@ -52,12 +68,12 @@ async function created(t: ReplayContext, said: string, whatHappened: string, obs
           template_key: "dpoa",
           employee_name: "Remy Calder",
           person_evidence: evidenceFrom(view, "Remy Calder"),
-          what_happened: whatHappened,
+          ...(whatHappened ? { what_happened: whatHappened } : {}),
           policy: "All Locations Dress Code",
           incident_date: "2026-09-12",
         },
       }));
-  t.draftWrites({ observation });
+  t.draftWrites(observation ? { observation } : {});
   const thread = t.thread();
   await thread.say(said);
   const id = await thread.create();
@@ -108,5 +124,12 @@ export const NOV20_WRITE_UP_EXCERPT_PLACE_CASES: ReplayCase[] = [
   fixed("nov20-write-up-said-salon-kept", `Control: "${SKIRT} at the salon": the place the manager said stays`, async (t) => {
     const values = await created(t, `${SKIRT} at the salon`, "Remy was wearing a mini skirt at the salon on 9/12.", SKIRT_OBSERVATION);
     expect(values.observation ?? "").toMatch(/\bat the salon\b/i);
+  }),
+  fixed("nov20-direct-policy-enclosed-never-blank", `"I need a verbal CA wrote up for Remy Calder. I need the JBA policy for dress code enclosed.": Direct policy carries the dress code's wording, not only its Source line`, async (t) => {
+    t.manualAlsoHas?.(HEADING_ENDS_CHUNK);
+    const values = await created(t, "I need a verbal CA wrote up for Remy Calder. I need the JBA policy for dress code enclosed.", null, null);
+    const quoted = values.policy_language ?? "";
+    const wording = quoted.split("\n").filter((line) => line.trim() !== "" && !/^Source:/i.test(line.trim())).join("\n");
+    expect(wording, `Direct policy has no policy wording:\n${quoted}`).not.toBe("");
   }),
 ];

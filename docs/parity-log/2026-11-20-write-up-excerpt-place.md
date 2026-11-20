@@ -24,3 +24,13 @@ paragraph, which is the first thing under that heading.
   likely source. That example is shared with the older path and is left unchanged here.
 
 The older chat path (not the loop) is unchanged.
+
+**18. Direct policy with no wording.** QA's production audit: "I need the JBA policy for dress code enclosed"
+finalized a Direct policy that held only "Source: JBA Policy Manual — All Locations Dress Code, p. 15".
+
+- Cause, as reproduced: the heading is printed as the last line of its chunk, so "the wording from the heading on" was
+  empty.
+- Fix (`sectionWording`, shared by both paths): an empty wording is read from the next chunk, up to the manual's next
+  titled section.
+- Ask Bubbles has its own `sectionWording` and the same layout can occur there. **Port this part when the loop is
+  ported, or earlier if QA asks.**
