@@ -179,6 +179,7 @@ import { cardRequestTurn, listPolicyOnCard, withPolicyListedAtCreate } from "./l
 import { withoutNoAccountAppPolicy } from "./no-account-policy-line";
 import { cardMetaTurn } from "./card-meta-turn";
 import { withFirstNameAsk } from "./first-name-ask";
+import { withStarterFollowUp } from "./starter-follow-up";
 import { withUnknownNameAsk } from "./unknown-name-ask";
 import { withExitOtherPersonNotOffered } from "./exit-other-person";
 import { withoutLetterSigner } from "./letter-signer";
@@ -445,8 +446,9 @@ async function answerQuestionChecked(
     // FORM_TYPE_SWITCH_AFTER_CREATE_NOTE_ENABLED: the form already created is said to stay as it is.
     // FIRST_NAME_SUGGEST_ENABLED: a first name alone is asked about from the manager's own roster.
     // MANAGER_NAME_NOT_EMPLOYEE_ENABLED: last — the manager's own name is never the employee.
-    // CARD_POLICY_PLAN_ONLY_ENABLED: outermost — the Action Plan and the sources name only the card's policy.
-    return withCardPolicyPlanOnly(withManagerNameGuard(keepManagerActionPlan(await withFirstNameSuggestFor(
+    // CARD_POLICY_PLAN_ONLY_ENABLED: the Action Plan and the sources name only the card's policy.
+    // STARTER_FOLLOW_UP_EXAMPLE_ENABLED: outermost — a home starter's "who?" / "which issue?" carries one example answer.
+    return withStarterFollowUp(withCardPolicyPlanOnly(withManagerNameGuard(keepManagerActionPlan(await withFirstNameSuggestFor(
       // OUT_OF_SCOPE_PLACE_KEEPS_OWN_ENABLED: the card goes back to the manager's own salon, or asks which.
       // FORM_TYPE_SWITCH: the switched card is drafted from the account, never from the switch turn.
       withSwitchSources(withSwitchNote(withOutOfScopePlace(withOwnPlace(withAmountUnknownAck(
@@ -469,7 +471,7 @@ async function answerQuestionChecked(
       ), request, actor), request, actor), request, "Form Monitoring"), request),
       request,
       actor,
-    ), request), request));
+    ), request), request)), request);
   };
   // MANAGER_NAME_NOT_EMPLOYEE_ENABLED: last on every path — the manager's own name is never the employee.
   if (!chatTraceEnabled()) {
