@@ -60,6 +60,12 @@ export const DPOA_DATABASE_REVISION = 6;
  */
 export const DPOA_OFFENSE_REVISION = 8;
 
+/**
+ * Revision 9 (HR via Pau, 19 Nov 2026) replaces the one history line with two
+ * required boxes. See `prior-actions.ts` (POLICY_MANUAL_SIGNED_KEY).
+ */
+export const DPOA_REQUIRED_BOXES_REVISION = 9;
+
 export function withoutPayrollAmountField(document: FormDocument): FormDocument {
   const present = document.blocks.some(
     (block) => block.kind === "field" && block.field.key === PAYROLL_AMOUNT_KEY,
