@@ -132,6 +132,8 @@ const patchScript = vi.hoisted(() => ({
   // CARD_CHECKED_AGAINST_WORDS_ENABLED: the card check's model outputs (`t.cardChecks`).
   cards: [] as unknown[],
   cardCalls: 0,
+  // QA's audit (item 14b): how long each form-patch call takes this case (`t.patchTakes`), in real time.
+  delayMs: 0,
 }));
 vi.mock("@/lib/forms/form-patch-call", () => ({
   FORM_PATCH_DEFAULT_TIMEOUT_MS: 5_000,
@@ -139,6 +141,7 @@ vi.mock("@/lib/forms/form-patch-call", () => ({
   callFormPatchModel: async (input?: { prompt?: string }) => {
     /* PR 6: a model call made inside a loop tool counts toward the step limit, as the real call notes itself. */
     (await import("@/lib/ai/model-call-scope")).noteModelCall();
+    if (patchScript.delayMs > 0) await new Promise<void>((resolve) => setTimeout(resolve, patchScript.delayMs));
     /*
      * EDIT_SEES_SAVED_FORM_ENABLED (coding 6, 13 Nov 2026): a check round (the prompt holds "SAVED AFTER YOUR LAST
      * PATCH") never takes a reading from the script above. It answers `t.patchChecks([...])` in order; past the end,
@@ -935,6 +938,7 @@ beforeEach(async () => {
   patchScript.checkCalls = 0;
   patchScript.cards = [];
   patchScript.cardCalls = 0;
+  patchScript.delayMs = 0;
   faults.field = null;
   faults.deleteTable = null;
   summaries.reply = null;
@@ -1154,6 +1158,9 @@ function context(): ReplayContext {
       patchScript.checkCalls = 0;
     },
     patchCheckCalls: () => patchScript.checkCalls,
+    patchTakes: (ms) => {
+      patchScript.delayMs = ms;
+    },
     cardChecks: (outputs) => {
       patchScript.cards = [...outputs];
       patchScript.cardCalls = 0;
