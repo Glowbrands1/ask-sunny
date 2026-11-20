@@ -8,7 +8,7 @@ migration, with its own view's columns).
   `nameWords`, `looksLikeItNamesSomebody` (`chat-form-records.ts`) and the close-spelling reader's `wordsOf`
   (`reopen-close-spelling.ts`) now fold accents first with `foldName` (#1141).
 - The database's ilike compares the letters as stored, so "lucia ramirez" never found a form stored as "Lucía Ramírez".
-  Migration `20261120001000_form_overview_folded_employee_name.sql` (not applied by the pull request; QA applies it after
+  Migration `20261120002000_forms_overview_unaccent.sql` (not applied by the pull request; QA applies it after
   merge) installs `unaccent` and adds `employee_name_folded = lower(unaccent(employee_name))` as the overview's last
   column; `listInstances` matches it beside `employee_name`. Until the migration is applied, a read that names the missing
   column is read again by the stored name only, as before.

@@ -10,7 +10,7 @@ import { lastResult, loopStandIn, type LoopDecision, type LoopView } from "./loo
  *
  * The forms-on-file readers split names on [^a-z], so "Ramírez" was read as "ram rez"; and the database's ilike compares
  * the letters as stored, so "lucia ramirez" never found a form stored as "Lucía Ramírez". The readers fold accents first
- * (`foldName`), and the overview's employee_name_folded (lower(unaccent(employee_name)), migration 20261120001000) is
+ * (`foldName`), and the overview's employee_name_folded (lower(unaccent(employee_name)), migration 20261120002000) is
  * matched beside the stored name. Each case makes the form through the chat (Create); the person then leaves the staff
  * list (a former employee's forms, read by the name alone), and the manager asks for them the other way.
  * Invented names only (Lucía Ramírez, Inés Peñalver).

@@ -258,7 +258,7 @@ export async function listInstances(
 
   /*
    * QA's f072 (20 Nov 2026): "lucia ramirez" never found a form stored as "Lucía Ramírez": ilike compares the letters as
-   * stored. The overview's employee_name_folded (lower(unaccent(employee_name)), migration 20261120001000) is matched as
+   * stored. The overview's employee_name_folded (lower(unaccent(employee_name)), migration 20261120002000) is matched as
    * well. Until that migration is applied, a read that names the missing column is read again as before.
    */
   let foldedColumn = true;
@@ -358,7 +358,7 @@ export async function listInstances(
   try {
     return await readAll();
   } catch (error) {
-    /* Before migration 20261120001000 is applied, the folded column is missing: read again by the stored name only. */
+    /* Before migration 20261120002000 is applied, the folded column is missing: read again by the stored name only. */
     if (foldedColumn && nameWords.length > 0 && String(error).includes("employee_name_folded")) {
       foldedColumn = false;
       return readAll();
