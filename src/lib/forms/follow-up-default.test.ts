@@ -14,8 +14,30 @@ const TODAY = "2026-11-20"; // a Friday
 
 describe("the follow-up date a loop form gets", () => {
   it("is one week after the form date", () => {
-    expect(defaultFollowUpDate("2026-11-20")).toBe("2026-11-27");
-    expect(defaultFollowUpDate("2026-12-28")).toBe("2027-01-04");
+    expect(defaultFollowUpDate("2026-11-20", TODAY)).toBe("2026-11-27");
+    expect(defaultFollowUpDate("2026-12-28", "2026-12-28")).toBe("2027-01-04");
+  });
+
+  /* Pau (via QA, 20 Nov 2026), option b: form date + 7, unless that is already before today; then today + 7. */
+  it("a form dated today: today + 7", () => {
+    expect(followUpDateForNewForm({ formDate: TODAY, followUpDate: null, managerWords: "", today: TODAY })).toBe("2026-11-27");
+  });
+
+  it("a form dated 3 days ago: form date + 7", () => {
+    expect(followUpDateForNewForm({ formDate: "2026-11-17", followUpDate: null, managerWords: "", today: TODAY })).toBe("2026-11-24");
+  });
+
+  it("a form dated 15 days ago: today + 7, never a follow-up already overdue", () => {
+    expect(followUpDateForNewForm({ formDate: "2026-11-05", followUpDate: null, managerWords: "", today: TODAY })).toBe("2026-11-27");
+  });
+
+  it("a form dated exactly 7 days ago: form date + 7 is today, kept", () => {
+    expect(defaultFollowUpDate("2026-11-13", TODAY)).toBe(TODAY);
+  });
+
+  it("a date the manager stated is kept as stated, on a backdated form too", () => {
+    const managerWords = "write up Test Testy for being late to her shift on 11/5, follow up 12/1";
+    expect(followUpDateForNewForm({ formDate: "2026-11-05", followUpDate: null, managerWords, today: TODAY })).toBe("2026-12-01");
   });
 
   it("is the date the manager stated, when they stated one", () => {

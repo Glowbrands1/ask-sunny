@@ -17,7 +17,7 @@ import { datesInText } from "@/lib/forms/form-date-answer";
  *
  * So a form Ask Sunny's agent loop creates — a Corrective Action, or any form
  * whose Action Plan promises a follow-up — gets a follow-up date when the
- * manager gave none: the form date plus seven days. A date the manager stated
+ * manager gave none: the form date plus seven days (today plus seven, when that has passed). A date the manager stated
  * ("follow up 12/1", "follow up next Friday") wins. Either way it is the same
  * `follow_up_date` the form's own date control sets, so the manager changes it
  * there, or in chat ("change the follow up to 12/3").
@@ -28,9 +28,13 @@ import { datesInText } from "@/lib/forms/form-date-answer";
 
 export const FOLLOW_UP_DEFAULT_DAYS = 7;
 
-/** One week after the form date. */
-export function defaultFollowUpDate(formDate: string): string {
-  return shiftDays(formDate, FOLLOW_UP_DEFAULT_DAYS);
+/**
+ * One week after the form date; when that day has already passed (a backdated form), one week after today (Pau, via
+ * QA, 20 Nov 2026: option b), so a new follow-up is never overdue the moment it is made. `today` is the salon's date.
+ */
+export function defaultFollowUpDate(formDate: string, today: string): string {
+  const weekOut = shiftDays(formDate, FOLLOW_UP_DEFAULT_DAYS);
+  return weekOut < today ? shiftDays(today, FOLLOW_UP_DEFAULT_DAYS) : weekOut;
 }
 
 /** An Action Plan that says a follow-up will happen ("A follow-up meeting will be scheduled…", "check in with her"). */
@@ -105,7 +109,7 @@ export function followUpLine(iso: string): string {
 }
 
 /**
- * The follow-up date a newly created form gets: the one the manager stated, else one week after the form date. Null
+ * The follow-up date a newly created form gets: the one the manager stated (always as stated), else the default. Null
  * when the form already has one (a reused draft, a date the manager set) — never overwritten.
  */
 export function followUpDateForNewForm(input: {
@@ -115,5 +119,5 @@ export function followUpDateForNewForm(input: {
   today: string;
 }): string | null {
   if (input.followUpDate) return null;
-  return statedFollowUpDate(input.managerWords, input.today) ?? defaultFollowUpDate(input.formDate);
+  return statedFollowUpDate(input.managerWords, input.today) ?? defaultFollowUpDate(input.formDate, input.today);
 }
