@@ -72,3 +72,23 @@ describe("a salon by its name, never its id (F7)", () => {
     expect(salonLabel(null)).toBeNull();
   });
 });
+
+/*
+ * QA's code audit on main d7960a5f (item 14b, 20 Nov 2026): coach_team's "create all" saves drafts that never reached
+ * the effects, so a later model error said "Nothing was saved" over them; and a tool still saving when the turn stopped
+ * could save after a reply that said nothing was. Both are now what the turn did.
+ */
+describe("drafts made and work still saving count as done (QA audit 14b)", () => {
+  it("coach_team's drafts are named, so an error after them never says nothing was saved", () => {
+    const done = doneThisTurn({ proposal: null, formUpdate: null, draftsCreated: 12 });
+    expect(done).toBe("I created 12 draft Coaching Forms in Form Monitoring.");
+    expect(partialReply(done!, "error")).not.toMatch(/Nothing was saved/);
+    expect(doneThisTurn({ proposal: null, formUpdate: null, draftsCreated: 1 })).toBe("I created 1 draft Coaching Form in Form Monitoring.");
+  });
+
+  it("a tool still running when the turn stopped: the reply says to check the form, never that nothing was saved", () => {
+    const done = doneThisTurn({ proposal: null, formUpdate: null, workUnfinished: true });
+    expect(done).toMatch(/may still be saving, so please check the form before you send it again/);
+    expect(partialReply(done!, "timeout")).not.toMatch(/Nothing was (?:saved|sent)/);
+  });
+});

@@ -16,7 +16,7 @@ import { chatTraceDraft } from "../chat-trace-store";
 import { AiError } from "../errors";
 import { noteModelCall } from "../model-failure";
 import { activeSpendMeter } from "../spend-meter";
-import { AI_TIMEOUT_MESSAGE, isAiTimeLimitError, logAiFailure, withStreamTimeLimit } from "../time-limit";
+import { AI_TIMEOUT_MESSAGE, isAiTimeLimitError, logAiFailure, msLeftForCleanup, withStreamTimeLimit, type StreamWatch } from "../time-limit";
 import type { AskResponse } from "../types";
 import { withoutSensitiveDefaults } from "../sensitive-defaults";
 import { finalReplyWithoutMarkers, withoutSourceMarkers, withoutSourceNotes } from "../source-note";
@@ -90,6 +90,8 @@ import {
  */
 
 export const AGENT_LOOP_TOTAL_MS = 100_000;
+/** QA's audit (item 14b): how long a stopped turn waits for a tool still saving (less when the route has less left). */
+export const TOOL_SETTLE_MS = 5_000;
 
 import { LOOP_FAILED_REPLY, STEP_LIMIT_REPLY } from "./replies";
 import { fieldLabel, readableValue } from "./saved-diff";
@@ -108,8 +110,12 @@ export { LOOP_FAILED_REPLY, STEP_LIMIT_REPLY };
  * fields saved. Facts only, so a reply that stops early never says "nothing was saved" over a save, nor "couldn't
  * finish" over a card ready to review. Null when the turn did nothing.
  */
-export function doneThisTurn(effects: Pick<ToolEffects, "proposal" | "formUpdate" | "formOpened">): string | null {
+export function doneThisTurn(effects: Pick<ToolEffects, "proposal" | "formUpdate" | "formOpened" | "draftsCreated" | "workUnfinished">): string | null {
   const done: string[] = [];
+  /* QA's audit (item 14b): coach_team's "create all" saves drafts in Form Monitoring; a later failure never says nothing was saved. */
+  if (effects.draftsCreated && effects.draftsCreated > 0) {
+    done.push(`I created ${effects.draftsCreated} draft Coaching Form${effects.draftsCreated === 1 ? "" : "s"} in Form Monitoring.`);
+  }
   if (effects.proposal) {
     const who = effects.proposal.employeeName ? ` for **${effects.proposal.employeeName}**` : "";
     done.push(`Here is the **${effects.proposal.templateName}**${who} for you to review.`);
@@ -128,6 +134,11 @@ export function doneThisTurn(effects: Pick<ToolEffects, "proposal" | "formUpdate
     const back = effects.formUpdate.putBack ?? [];
     if (back.length > 0) done.push(`${back.map(fieldLabel).join(", ")} ${back.length === 1 ? "was" : "were"} changed and put back, so ${back.length === 1 ? "it is" : "they are"} unchanged.`);
   }
+  /*
+   * QA's audit (item 14b): a tool (the form's reviser, a batch of drafts) was still running when the turn stopped, and
+   * did not finish in the time left. It may still save, so the reply never says nothing was saved: it says to check.
+   */
+  if (effects.workUnfinished) done.push("A change I started may still be saving, so please check the form before you send it again.");
   return done.length > 0 ? done.join(" ") : null;
 }
 
@@ -400,7 +411,7 @@ function buildAgentLoopTools(config: AppConfig) {
       about: { type: "string", description: "Words the manager used about the form (\"getting rooms ready between guests\"), if any." },
       forms_on_file_evidence: FORMS_ON_FILE_EVIDENCE,
       open: { type: "boolean", description: "true when the manager asks to open, edit or see one form on file (not a list of what is on file)." },
-    }, []),
+    }, ["forms_on_file_evidence"]),
   },
   {
     name: "read_form",
@@ -467,6 +478,12 @@ function buildAgentLoopTools(config: AppConfig) {
         prior_actions: { type: "string", description: "Earlier steps only as the manager stated them (\"verbal on 10/2\", \"coached last month\"); never from records on file." },
         topic: { type: "string", description: "Coaching card only: the coaching topic in a few of the manager's words (\"greeting guests at the door\"), never the request sentence or the person's name. With topic_evidence." },
         topic_evidence: evidence("With topic: the manager message of this request and its words that name the topic."),
+        attendance: {
+          type: "string",
+          enum: ["absence", "lateness", "both"],
+          description: "Corrective Action card whose offense is attendance: what the manager described. absence: a shift missed (did not come in, no-show, no call no show, called out). lateness: late, or left early. both: each. With attendance_evidence.",
+        },
+        attendance_evidence: evidence("With attendance: the manager message of this request and its words that describe the absence or the lateness."),
         incident_time: { type: "string", description: "The time of the incident if the manager gave one, as they said it." },
         salon: { type: "string", description: "The " + place + " the form is for, as the manager named it (\"kearney\", \"IA Altoona\"), when the card asks which " + place + " or the manager says one. Only the manager's own " + places + " are accepted." },
       },
@@ -665,6 +682,21 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   const callsUsed = () => stepNumber + hiddenCalls;
   /* What one reviser run costs at least: its patch call, and a check round when EDIT_SEES_SAVED_FORM is on. */
   const reviserModelCalls = () => (editSeesSavedFormEnabled() ? 2 : 1);
+  /*
+   * QA's audit (item 15, 20 Nov 2026): THE REVISER HAS ITS OWN BUDGET. The pre-check below reserves reviserModelCalls()
+   * for it, but its chain (patch, check rounds, the plain-words revise) can make more calls, and charging them all ended
+   * the turn after a saved edit with "send the change again", which a resend applied twice. The turn is charged the
+   * reservation only; the chain is bounded by its own code (SAVED_CHECK_MAX_PATCHES, one pass per reader). The trace
+   * keeps the real count (tool_model_calls).
+   */
+  const usesReviser = (name: string, args: unknown) => {
+    const values = name === "edit_form" && args && typeof args === "object" ? (args as { values?: unknown }).values : null;
+    return name === "edit_form" && (!values || typeof values !== "object" || Object.keys(values).length === 0);
+  };
+  let toolModelCalls = 0;
+  /* QA's audit (items 14a/14b): the turn's stream watch (set while the loop runs), and the tools still running. */
+  let activeWatch: StreamWatch | null = null;
+  const toolsRunning = new Set<Promise<unknown>>();
   const handlers: Record<string, (args: Record<string, unknown>) => Promise<ToolResult>> = {
     find_staff: async (args) => withLookupReplyName(context, await findStaff(context, args, effects), undefined),
     find_past_forms: async (args) => withLookupReplyName(context, await findPastForms(context, args, effects), (args as { employee_name?: unknown }).employee_name),
@@ -678,7 +710,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
      * with what is saved. Code never writes the reply here.
      */
     edit_form: async (args) => {
-      const reviser = !args.values || typeof args.values !== "object" || Object.keys(args.values as object).length === 0;
+      const reviser = usesReviser("edit_form", args);
       const needs = reviserModelCalls() + 1;
       if (reviser && callsUsed() + needs > limit) {
         return { reason_code: "step_budget", error: "There is no room left in this message for the form's reviser and a reply. Nothing more was written. Say what was saved this turn, and ask the manager to send the rest again.", step_budget: { model_calls_left: Math.max(0, limit - callsUsed()), reviser_and_reply_need: needs } };
@@ -705,6 +737,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   /* QA's f074: this turn's propose_form calls that made no card, by reason code (the reply's honesty check reads it). */
   const proposeNoCard: string[] = [];
   const refusalCounts = new Map<string, number>();
+  const refusalSteps = new Map<string, Set<number>>();
   const stoppedTools = new Map<string, { reason_code: string; ask_exactly?: string }>();
   /* A refusal about a person (not_on_roster for one typed name) counts across tools: c134 alternated find_staff and propose_form. */
   const stoppedPeople = new Map<string, { reason_code: string; ask_exactly?: string }>();
@@ -723,7 +756,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     const stopped = stoppedTools.get(name) ?? (asked ? stoppedPeople.get(asked) : undefined);
     if (stopped) {
       retriesBlocked += 1;
-      result = { reason_code: "stop_retrying", error: `${name} was refused twice this turn for ${stopped.reason_code}; it was not run again. Reply to the manager now${stopped.ask_exactly ? ", ending with ask_exactly" : ""}.`, stop_retrying: stopped, ...(stopped.ask_exactly ? { ask_exactly: stopped.ask_exactly } : {}) };
+      result = { reason_code: "stop_retrying", error: `${name} was refused twice this turn for ${stopped.reason_code}; it was not run again. Reply to the manager now${stopped.ask_exactly ? ", ending with ask_exactly" : ""}, saying what the tool needs; never call it a lookup problem or ask them to try again.`, stop_retrying: stopped, ...(stopped.ask_exactly ? { ask_exactly: stopped.ask_exactly } : {}) };
     } else {
       /* PR 6 item 5: the screen's status as the tool starts (a call the retry guard stops never runs, so it shows none). */
       try {
@@ -734,9 +767,21 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
       try {
         const handler = handlers[name];
         /* PR 6 item 3: the model calls the tool made itself (the reviser's), counted toward the turn's step budget. */
-        const counted = handler ? await countModelCalls(() => handler((args && typeof args === "object" ? args : {}) as Record<string, unknown>)) : null;
+        /* QA's audit (item 14b): a tool's work is not a model call, so the stream's gap limit is paused while it runs. */
+        const watch = activeWatch;
+        watch?.toolStarted();
+        const work = handler ? countModelCalls(() => handler((args && typeof args === "object" ? args : {}) as Record<string, unknown>)) : Promise.resolve(null);
+        toolsRunning.add(work);
+        let counted: Awaited<typeof work>;
+        try {
+          counted = await work;
+        } finally {
+          toolsRunning.delete(work);
+          watch?.toolFinished();
+        }
         toolCalls = counted ? counted.calls : 0;
-        hiddenCalls += toolCalls;
+        toolModelCalls += toolCalls;
+        hiddenCalls += usesReviser(name, args) ? Math.min(toolCalls, reviserModelCalls()) : toolCalls;
         result = counted ? counted.value : { reason_code: "unknown_tool", error: `There is no tool named ${name}.` };
       } catch {
         result = { reason_code: "tool_threw", error: "That lookup failed just now." };
@@ -750,7 +795,15 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
       if (typeof refusal.reason_code === "string" && (typeof refusal.error === "string" || typeof refusal.ask_exactly === "string")) {
         const person = typeof refusal.not_on_roster === "string" && refusal.not_on_roster.trim() ? personKey(refusal.not_on_roster.trim().replace(/^use\s+/i, "")) : null;
         const key = person ? `person\u0000${refusal.reason_code}\u0000${person}` : `${name}\u0000${refusal.reason_code}`;
-        const count = (refusalCounts.get(key) ?? 0) + 1;
+        /*
+         * Pau's live chat (20 Nov 2026, 14:23Z): two find_past_forms calls in ONE model step (CA and coaching), both with no
+         * evidence, were counted as two refusals before the model had seen either, so the call it then made with evidence was
+         * never run. Refusals in the same step count once: a retry is a later step, after the model read the refusal.
+         */
+        const steps = refusalSteps.get(key) ?? new Set<number>();
+        steps.add(step);
+        refusalSteps.set(key, steps);
+        const count = steps.size;
         refusalCounts.set(key, count);
         if (count >= 2) {
           const stop = { reason_code: refusal.reason_code, ...(typeof refusal.ask_exactly === "string" ? { ask_exactly: refusal.ask_exactly } : {}) };
@@ -877,6 +930,9 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
      * never cut. Each step's usage goes into the request's spend meter, as every other call's does.
      */
     await withStreamTimeLimit("agent_loop", { firstTokenMs: mainAnswerTimeoutMs(), gapMs: streamGapTimeoutMs(), totalMs: AGENT_LOOP_TOTAL_MS }, async (timed, watch) => {
+      activeWatch = watch;
+      /* QA's audit (item 14a): every model call reads its own stream the same way; a first text or tool call ends its first-token wait. */
+      const startsAnswer = (chunk: { type: string }) => chunk.type === "text-delta" || chunk.type === "reasoning-delta" || chunk.type === "tool-input-start" || chunk.type === "tool-call";
       let stepStarted = performance.now();
       const result = streamText({
         model: model as never,
@@ -902,7 +958,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
         },
         onChunk: ({ chunk }) => {
           watch.chunk();
-          if (chunk.type === "text-delta" || chunk.type === "reasoning-delta" || chunk.type === "tool-input-start" || chunk.type === "tool-call") {
+          if (startsAnswer(chunk)) {
             watch.firstToken();
             /* Batch J10 (the J6 speed report: first_token_ms was null on every loop trace): the turn's first token. */
             if (firstTokenMs === null) firstTokenMs = Math.round(performance.now() - started);
@@ -927,6 +983,8 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
         },
       });
       const steps = await result.steps;
+      /* QA's audit (item 14a): the loop's calls are done; the code's checks below are not a model call. */
+      watch.idle();
       const last = steps.at(-1);
       text = (last?.text ?? "").trim();
       stoppedAt = last && last.finishReason === "tool-calls" ? "step_limit" : "reply";
@@ -945,6 +1003,8 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
         const response = await result.response;
         const turn = [...response.messages];
         if (turn.at(-1)?.role === "assistant") turn.pop();
+        /* QA's audit (item 14a): the retry is its own model call, with its own first-token wait. */
+        watch.attempt();
         const again = streamText({
           model: model as never,
           system: [
@@ -956,7 +1016,10 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
           maxRetries: timed.maxRetries,
           abortSignal: timed.signal,
           onError: () => {},
-          onChunk: () => watch.chunk(),
+          onChunk: ({ chunk }) => {
+            watch.chunk();
+            if (startsAnswer(chunk)) watch.firstToken();
+          },
           onStepFinish: (step) => {
             const used = tokensOf(step.usage as StepUsage);
             for (const key of Object.keys(usage) as (keyof typeof usage)[]) usage[key] += used[key];
@@ -967,6 +1030,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
           },
         });
         const retried = await again.steps;
+        watch.idle();
         const final = retried.at(-1);
         text = final?.finishReason === "length" ? "" : (final?.text ?? "").trim();
         if (text === "") stoppedAt = "step_limit";
@@ -983,6 +1047,8 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
         const hiddenBefore = hiddenCalls;
         const proposalBefore = effects.proposal;
         const response = await result.response;
+        /* QA's audit (item 14a): the hand-back is its own model call; each of its steps waits for its own first token. */
+        watch.attempt();
         const review = streamText({
           model: model as never,
           system: [
@@ -1002,7 +1068,10 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
           maxRetries: timed.maxRetries,
           abortSignal: timed.signal,
           onError: () => {},
-          onChunk: () => watch.chunk(),
+          onChunk: ({ chunk }) => {
+            watch.chunk();
+            if (startsAnswer(chunk)) watch.firstToken();
+          },
           onStepFinish: (step) => {
             const used = tokensOf(step.usage as StepUsage);
             for (const key of Object.keys(usage) as (keyof typeof usage)[]) usage[key] += used[key];
@@ -1010,9 +1079,11 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
             modelSteps.push({ step: stepNumber, ms: 0, stop: step.finishReason ?? null, ...used });
             modelCalls += 1;
             stepNumber += 1;
+            watch.attempt();
           },
         });
         const last = (await review.steps).at(-1);
+        watch.idle();
         const finished = last && last.finishReason !== "tool-calls" ? (last.text ?? "").trim() : "";
         /*
          * F4 meets batch E's hand-back (nov14-agent-loop-msb-family after the merge): a hand-back cut off by the turn's
@@ -1181,6 +1252,23 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     stoppedAt = isAiTimeLimitError(error) ? "timeout" : "error";
     if (stoppedAt === "error") logAiFailure("agent_loop", performance.now() - started, error);
   }
+  activeWatch = null;
+  /*
+   * QA's audit (item 14b): a tool still running when the turn stopped (the form's reviser, coach_team's drafts) may still
+   * save. The turn waits for it, within the time the route has left, so the reply says what it saved; if it still has
+   * not finished, the reply says to check the form instead of "nothing was saved".
+   */
+  if (toolsRunning.size > 0) {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const settled = await Promise.race([
+      Promise.allSettled([...toolsRunning]).then(() => true),
+      new Promise<false>((resolve) => {
+        timer = setTimeout(() => resolve(false), msLeftForCleanup(TOOL_SETTLE_MS));
+      }),
+    ]);
+    if (timer !== undefined) clearTimeout(timer);
+    if (!settled) effects.workUnfinished = true;
+  }
 
   /*
    * NEVER JSON TO A MANAGER (QA's live finding, 16 Nov 2026, conv_mwin8fc82kk8c7i): the reply was the response envelope
@@ -1243,7 +1331,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     trace.firstTokenMs = firstTokenMs;
     trace.slots = {
       ...(trace.slots ?? {}),
-      agent_loop: { question_key: personKey(input.question), ...(cardSlot ? { card: cardSlot } : {}), ...(nameQuestionSlot ? { name_question: nameQuestionSlot } : {}), ...(personAskedSlot ? { person_asked: personAskedSlot } : {}), ...(exitOfferSlot ? { exit_offer: exitOfferSlot } : {}), steps, model_steps: modelSteps, model_calls: modelCalls, ...(turn.manualRead ? { manual_read: turn.manualRead } : {}), step_limit: limit, steps_used: stepNumber - 1 + hiddenCalls, ...(hiddenCalls > 0 ? { tool_model_calls: hiddenCalls } : {}), stopped: stoppedAt, ms: latencyMs, first_token_ms: firstTokenMs, ...(selfReview ? { self_review: selfReview } : {}), ...(draftReview ? { draft_review: draftReview } : {}), ...(levelReview ? { level_review: levelReview } : {}), ...(honestyReview ? { honesty_review: honestyReview } : {}), ...(replyUnwrapped ? { reply_unwrapped: true } : {}), ...(retriesBlocked > 0 ? { stop_retrying: retriesBlocked } : {}), ...(repeatsReused > 0 ? { repeat_calls_reused: repeatsReused } : {}), ...(pronounsReplaced > 0 ? { pronouns_replaced: pronounsReplaced } : {}) },
+      agent_loop: { question_key: personKey(input.question), ...(cardSlot ? { card: cardSlot } : {}), ...(nameQuestionSlot ? { name_question: nameQuestionSlot } : {}), ...(personAskedSlot ? { person_asked: personAskedSlot } : {}), ...(exitOfferSlot ? { exit_offer: exitOfferSlot } : {}), steps, model_steps: modelSteps, model_calls: modelCalls, ...(turn.manualRead ? { manual_read: turn.manualRead } : {}), step_limit: limit, steps_used: stepNumber - 1 + hiddenCalls, ...(toolModelCalls > 0 ? { tool_model_calls: toolModelCalls } : {}), stopped: stoppedAt, ms: latencyMs, first_token_ms: firstTokenMs, ...(selfReview ? { self_review: selfReview } : {}), ...(draftReview ? { draft_review: draftReview } : {}), ...(levelReview ? { level_review: levelReview } : {}), ...(honestyReview ? { honesty_review: honestyReview } : {}), ...(replyUnwrapped ? { reply_unwrapped: true } : {}), ...(retriesBlocked > 0 ? { stop_retrying: retriesBlocked } : {}), ...(repeatsReused > 0 ? { repeat_calls_reused: repeatsReused } : {}), ...(pronounsReplaced > 0 ? { pronouns_replaced: pronounsReplaced } : {}) },
     };
   }
 

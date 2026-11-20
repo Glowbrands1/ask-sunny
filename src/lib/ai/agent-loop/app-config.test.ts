@@ -30,6 +30,10 @@ import { rulesBookText } from "./rules-book";
  * and the Business data rules one line for it (administrators only). Neither names the app, place, staff system or form
  * key; nothing else changed.
  *
+ * Re-taken on purpose on 20 Nov 2026 (f048b, QA's live 23a): one Card replies line was added for propose_form's
+ * follow_up_on_create (say the follow-up date Create sets; never deny a follow-up the form will have). It reads the same
+ * under every config; nothing else changed.
+ *
  * Re-taken on purpose on 19 Nov 2026 (the Google Reviews page's L3, L6 and YTD): read_reviews's line in the prompt now
  * names L3, L6, YTD and each month, and the Business data rule says L3 / L6 are full months and come from read_reviews.
  * Both use the config's place word; nothing else changed.
@@ -88,6 +92,10 @@ import { rulesBookText } from "./rules-book";
  * edit_form's form_state ("It's saved on the draft", never "press Create"); the payroll line adds edit_form's
  * payroll_amount_missing (ask the amount in one question), and the stated line adds ", as you said" only for
  * stated_this_turn. No app, place, staff system or form key.
+ *
+ * Re-taken on purpose on 20 Nov 2026 (Pau's live chat: a refused find_past_forms told as "a lookup issue on my end"): one
+ * Replies line was added: a tool's refusal is never told to the manager as a lookup problem or "try again". It reads the
+ * same under every config; nothing else changed.
  *
  * Updated on purpose on 20 Nov 2026 (Pau's ruling via QA, c091): a Corrective Action may cite two headings when the
  * manager describes two offenses ("<heading>; <heading>", never more than two); the clock-out line no longer says "a card

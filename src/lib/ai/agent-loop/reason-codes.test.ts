@@ -56,6 +56,8 @@ const KNOWN = new Set([
   "person_not_named",
   // QA (16 Nov 2026, the 266 audit on train 4): c261/c263 dress code cited as another heading; c207 Must See Behaviors with no MSB said.
   "dress_code_heading", "msb_not_said",
+  // Added on purpose (QA's review of #1137, 20 Nov 2026): an Attendance CA card with no attendance record, or one not in the manager's words.
+  "attendance_not_given", "attendance_evidence_not_found",
 ]);
 
 /** A line that returns a refusal: `error:` followed by a string, a template or a named message (not `error: Boolean(...)`). */
