@@ -690,6 +690,8 @@ const NEW_FLAGS = [
   "FORM_EDIT_TOUCHES_UPDATED_AT_ENABLED",
   // coding 7: NEAR_MISS_NEVER_SEATED (batch K1; Pau 15 Nov: A; on in production).
   "NEAR_MISS_NEVER_SEATED_ENABLED",
+  // coding B: DEAD_END_SAYS_WHERE (QA item 25, 20 Nov 2026; default off).
+  "DEAD_END_SAYS_WHERE_ENABLED",
 ] as const;
 
 const PROTECTED = [

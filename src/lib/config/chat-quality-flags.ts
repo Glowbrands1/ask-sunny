@@ -3804,6 +3804,17 @@ export function unknownNameAskEnabled(): boolean {
 }
 
 /**
+ * DEAD_END_SAYS_WHERE_ENABLED (QA item 25, the production audit, 20 Nov 2026; default off). An Assistant Salon Director
+ * (view_daily_stats, no view_reports) asking for the latest Daily Stats was told "I don't have access to view reports";
+ * a Regional Manager asking to add to the DM L10 was told it is not one of the forms Sunny prepares. On: the prompt says
+ * where in the app to go, by this person's real permissions (`WhereToGo` in `ai/prompts.ts`): Daily Stats on the Home
+ * page's Performance section, the L10 page under Resources, or who to ask. Prompt only. Off, as before.
+ */
+export function deadEndSaysWhereEnabled(): boolean {
+  return envFlag("DEAD_END_SAYS_WHERE_ENABLED");
+}
+
+/**
  * CORRECTED_DATE_KEPT_ENABLED (QA's round-5 trace of corrective-action-conversation-qa Q6, 8 Nov 2026; coding 5;
  * default off). "the meeting was actually on 10-19-26" after a request dated 10-20-26: PRIOR_SENTENCE_FIX's date step
  * saw two incident dates and dated the card null, so Create saved today's date. On: the incident date the manager

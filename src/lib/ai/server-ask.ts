@@ -7,6 +7,7 @@ import {
   chatParallelRewriteEnabled,
   chatMemoryEnabled,
   chatStyleRulesEnabled,
+  deadEndSaysWhereEnabled,
   chatTraceEnabled,
   fieldAccuracyEnabled,
   fewShotExamplesEnabled,
@@ -1927,6 +1928,15 @@ async function answerQuestionUntraced(
     canViewReports:
       actor.role !== null &&
       hasPermission(DEFAULT_PERMISSION_MATRIX, actor.role, "view_reports"),
+    /* DEAD_END_SAYS_WHERE_ENABLED (QA item 25): where to send this person, by their real permissions. */
+    ...(deadEndSaysWhereEnabled()
+      ? {
+          whereToGo: {
+            canViewDailyStats: actor.role !== null && hasPermission(DEFAULT_PERMISSION_MATRIX, actor.role, "view_daily_stats"),
+            canViewL10: actor.role !== null && hasPermission(DEFAULT_PERMISSION_MATRIX, actor.role, "view_l10_meetings"),
+          },
+        }
+      : {}),
     styleRules: chatStyleRulesEnabled(),
     priorCoachingOptional: priorCoachingOptionalEnabled(),
     recalledMemory,
