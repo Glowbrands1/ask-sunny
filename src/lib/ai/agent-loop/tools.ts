@@ -3234,6 +3234,13 @@ export async function proposeForm(
    * another template, whatever the conversation said for the CA (code may refuse; the fact says what was dropped).
    */
   const caOnlyFields = template.key === appConfig().formKeys.corrective;
+  /*
+   * QA item 16 (20 Nov 2026; the production audit's exit form: "Payroll deduct isn't part of the exit form"): payroll is on
+   * every form whose own template asks it (the Corrective Action's payroll deduct, the exit form's "Is Payroll Deduction
+   * applicable?"), read from the template document's field keys, never from a list of forms. The level and the termination
+   * stay Corrective Action only.
+   */
+  const payrollFields = caOnlyFields || [...documentFieldKeys(template.currentVersion?.document)].some((fieldKey) => /^payroll_deduct/.test(fieldKey));
   const askedPayroll = (input.payroll_deduct === "yes" || input.payroll_deduct === "no") ? input.payroll_deduct : null;
   /*
    * QA (16 Nov 2026, the Runner's live set on 1a53042: "and payroll"): payroll stated in the message that asked for THIS
@@ -3241,7 +3248,7 @@ export async function proposeForm(
    * (c158), a corrected card's request under its earlier name included. A later answer still belongs only to the card it
    * answered (QA's PR 1c: an older "yes" never reaches "another ca for <name>").
    */
-  const payrollCheck = caOnlyFields && askedPayroll
+  const payrollCheck = payrollFields && askedPayroll
     ? (() => {
         const byCard = notTheOfferAnswer(answerEvidence(context, input.payroll_evidence, { card: employee.name, aliases }, evidencePerson), context, evidencePerson.roster);
         if (byCard.ok || !requestStart) return byCard;
@@ -3253,7 +3260,7 @@ export async function proposeForm(
   const typedAmount = typeof input.payroll_amount === "string" && /\d/.test(input.payroll_amount) ? input.payroll_amount.replace(/[^\d.]/g, "") : null;
   /* The amount the manager stated, read as today reads it (`payrollAmountFromConversation`) when the model left it out. */
   const statedAmount = payroll === "yes" ? payrollAmountFromConversation(conversationTurns(context), { payrollAnswer: "yes" })?.replace(/[^\d.]/g, "") ?? null : null;
-  let amount = caOnlyFields && typedAmount && managerWords.replace(/[^\d.]/g, " ").split(/\s+/).some((n) => n !== "" && Number(n) === Number(typedAmount)) ? typedAmount : null;
+  let amount = payrollFields && typedAmount && managerWords.replace(/[^\d.]/g, " ").split(/\s+/).some((n) => n !== "" && Number(n) === Number(typedAmount)) ? typedAmount : null;
   const today = context.today || businessToday();
   let date = typeof input.incident_date === "string" && DATE.test(input.incident_date.trim()) ? input.incident_date.trim() : null;
   /* Several incident dates and the latest message does not pick one: the date waits, and the card asks (today's rule). */
@@ -3408,7 +3415,7 @@ export async function proposeForm(
   /* The key holds the incident date the model gave too: "another ca …, late on 11/14" after a card for 11/12 with the same words is another incident (PR 1c). */
   const sameCardKept = !context.openFormId && isThisCard(context.earlierCard) && Boolean(context.earlierCard.accountKey && modelAccount && context.earlierCard.accountKey === cardAccountKey(modelAccount, input.incident_date));
   const openCard = isThisCard(context.cardOnScreen) ? context.cardOnScreen : sameCardKept ? context.earlierCard : null;
-  const payrollRecord = caOnlyFields && !asksNewForm && openCard?.payroll ? openCard : null;
+  const payrollRecord = payrollFields && !asksNewForm && openCard?.payroll ? openCard : null;
   if (payroll === null && !answerUnclear && payrollRecord?.payroll) {
     payroll = payrollRecord.payroll;
     if (payroll === "yes" && !amount && payrollRecord.payrollAmount) amount = payrollRecord.payrollAmount;
@@ -3849,8 +3856,8 @@ export async function proposeForm(
     ...(policyNotForThisCard ? [{ field: "policy", reason_code: "policy_not_for_this_card" }] : []),
     ...((modelLevel && level !== modelLevel) ? [{ field: "warning_level", reason_code: caOnlyFields ? "level_not_stated" : "not_on_this_form" }] : []),
     ...((askedTermination && !loopTermination) ? [{ field: "warning_level", reason_code: "termination_not_stated" }] : []),
-    ...((askedPayroll && !payroll) ? [{ field: "payroll_deduct", reason_code: caOnlyFields ? "payroll_not_stated" : "not_on_this_form" }] : []),
-    ...((typedAmount && !amount) ? [{ field: "payroll_amount", reason_code: caOnlyFields ? "amount_not_stated" : "not_on_this_form" }] : []),
+    ...((askedPayroll && !payroll) ? [{ field: "payroll_deduct", reason_code: payrollFields ? "payroll_not_stated" : "not_on_this_form" }] : []),
+    ...((typedAmount && !amount) ? [{ field: "payroll_amount", reason_code: payrollFields ? "amount_not_stated" : "not_on_this_form" }] : []),
     ...((askedExitTermination && !exitTermination) ? [{ field: "exit_type", reason_code: "termination_not_stated" }] : []),
     ...(priorActionsRefused ? [{ field: "prior_actions", reason_code: "prior_actions_not_kept" }] : []),
     ...(futureDate ? [{ field: "form_date", reason_code: "date_after_today" }] : []),
