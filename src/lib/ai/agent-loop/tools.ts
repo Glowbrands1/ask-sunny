@@ -3824,6 +3824,20 @@ export async function proposeForm(
       whatHappened = unplaced;
     }
   }
+  /*
+   * THE CARD'S ACCOUNT CALLS THE PERSON BY THE SHORT NAME (QA, 20 Nov 2026; live on main b06e51be): "ca for Test Testy,
+   * late 11/18" got the account "Test Testy was late on 11/18.", and the drafter carried the full name into Observed.
+   * The card's own full name in its account becomes the reply name (`replyNameFor`: the first name, or the full name
+   * when someone else shares it; `short-name.ts`). The card's name field keeps the full name.
+   */
+  if (card.issue && card.employeeName) {
+    const short = replyNameFor(card.employeeName, read.kind === "read" ? read.roster : [], extractEmployeeNames(managerTurns(context)), employee.id ?? null);
+    const named = (await import("@/lib/forms/short-name")).withShortName(card.issue, card.employeeName, short);
+    if (named.replaced > 0) {
+      card.issue = named.text;
+      whatHappened = named.text;
+    }
+  }
   card.employeeRole = employee.id ? await rosterTitle(context.actor.scope, employee.id) : null;
   /*
    * A TITLE THE MANAGER TYPED (batch H4/H6: JOB_TITLE_FROM_WORDS, JOB_TITLE_APPOSITION, TITLE_SPELLED_OUT, JOB_TITLE_CASE):
