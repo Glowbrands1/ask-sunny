@@ -61,8 +61,9 @@ export const NOV15_AGENT_LOOP_BATCH_K_GATE_CASES: ReplayCase[] = [
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };
         if (!lastResult(view, "propose_form")) {
           const coaching = view.turns.some((turn) => /coaching/i.test(turn.text) && turn.role === "user" && /make a coaching/i.test(turn.text));
+          // Changed on purpose (QA item 7, 20 Nov 2026, the form lock): a different form for the card's person needs this turn's words asking for it (form_change_evidence).
           return coaching
-            ? { tool: "propose_form", input: { template_key: "coaching", employee_id: "e-2", what_happened: "Remy Calder was late on 11/12.", incident_date: "2026-11-12", payroll_deduct: "no", payroll_evidence: evidenceFrom(view), warning_level: "verbal", level_evidence: evidenceFrom(view) } }
+            ? { tool: "propose_form", input: { template_key: "coaching", form_change_evidence: evidenceFrom(view, "now make a coaching form"), employee_id: "e-2", what_happened: "Remy Calder was late on 11/12.", incident_date: "2026-11-12", payroll_deduct: "no", payroll_evidence: evidenceFrom(view), warning_level: "verbal", level_evidence: evidenceFrom(view) } }
             : { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: "Remy Calder was late on 11/12.", incident_date: "2026-11-12", payroll_deduct: "no", payroll_evidence: evidenceFrom(view), warning_level: "verbal", level_evidence: evidenceFrom(view) } };
         }
         return { text: "Here's the form." };

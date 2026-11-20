@@ -441,6 +441,7 @@ function buildAgentLoopTools(config: AppConfig) {
           description: "Earlier messages of this request the name lookup missed (the manager typed the name differently there, and this message gives it).",
         },
         new_form_evidence: evidence("Only when this message asks for another or a new form (a second form for the person on the open draft, or a new request after an earlier card): its words."),
+        form_change_evidence: evidence("Only when this message asks for the card on screen to be a different form for the same incident (\"make it a CA instead\", or the manager's yes to your offer of the other form): its words."),
         policy: { type: "string", description: "Always on a Corrective Action, Coaching or Follow-Up Coaching card (Pau, 17 Nov 2026), the heading that fits THIS card's own account, never one copied from another form's card. The one JBA Policy Manual heading that fits what happened, exactly. \"Other — <short topic>\" only for Must See Behaviors, a cleaning or sanitation duty left undone, or an incident no section covers; or both, \"<heading>; Other — <topic>\" (a cleaning duty beside another offense), as the rules book says." },
         what_happened: {
           type: "string",
@@ -467,7 +468,7 @@ function buildAgentLoopTools(config: AppConfig) {
   {
     name: "edit_form",
     description:
-      "Change a form. The form's date is a direct field edit, never the reviser: values form_date (MM/DD/YYYY), the date the manager typed for this request. Leave values out to have the form's own reviser apply the manager's latest message (details, the policy line); give values (field key to exact text) only for text the manager dictated word for word. A warning level or payroll answer (\"make it a written\", \"yes payroll, $<amount>\") is a targeted edit: values warning_type (verbal/written), payroll_deduct (yes/no), payroll_deduct_amount only. A finalized form is never changed: this opens a new draft revising it and applies the change there.",
+      "Change a form. The form's date is a direct field edit, never the reviser: values form_date (MM/DD/YYYY), the date the manager typed for this request. The follow-up date (\"change the follow up to 12/3\", \"move the follow up to next Friday\") is values follow_up_date: it is set from the manager's words, and a follow-up date after today is never refused. Leave values out to have the form's own reviser apply the manager's latest message (details, the policy line); give values (field key to exact text) only for text the manager dictated word for word. A warning level or payroll answer (\"make it a written\", \"yes payroll, $<amount>\") is a targeted edit: values warning_type (verbal/written), payroll_deduct (yes/no), payroll_deduct_amount only. A finalized form is never changed: this opens a new draft revising it and applies the change there.",
     input_schema: object(
       {
         instance_id: { type: "string" },
@@ -1236,6 +1237,16 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   /* Never twice: the reply already asks for a change in its own words (QA: "change" and a question mark in one sentence). */
   const asksForChange = /\bchange\b[^.!?\n]*\?/i.test(content);
   if (effects.replyMustAsk && !content.includes(effects.replyMustAsk) && !asksForChange) content = `${content.trim()}\n\n${effects.replyMustAsk}`.trim();
+  /*
+   * STARTER_FOLLOW_UP_EXAMPLE_ENABLED (QA's live re-test of #1127, 20 Nov 2026): the same step as the regular chat's. When
+   * one of the app's own home starters is the chat's first message and the reply asks who or which, it ends with one
+   * example answer. Keyed to the app's starter texts (never the manager's own words), like replyMustAsk above.
+   */
+  content = (await import("@/lib/ai/starter-follow-up")).starterExampleText(content, input.question, {
+    firstMessage: !input.history.some((turn) => turn.role === "user"),
+    namesPerson: Boolean(effects.proposal?.employeeName),
+    showedSomething: cited.length > 0,
+  });
   const answer: AskResponse = {
     /* The evidence tags are the app's protocol, like the source markers: never shown to the manager. */
     content: withoutMessageIdTags(withoutSourceMarkers(withoutSourceNotes(content))),

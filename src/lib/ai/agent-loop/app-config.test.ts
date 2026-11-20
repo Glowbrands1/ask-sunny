@@ -84,6 +84,10 @@ import { rulesBookText } from "./rules-book";
  * Re-taken on purpose on 20 Nov 2026 (Pau's live chat: a refused find_past_forms told as "a lookup issue on my end"): one
  * Replies line was added: a tool's refusal is never told to the manager as a lookup problem or "try again". It reads the
  * same under every config; nothing else changed.
+ *
+ * Updated on purpose on 20 Nov 2026 (Pau's ruling via QA, c091): a Corrective Action may cite two headings when the
+ * manager describes two offenses ("<heading>; <heading>", never more than two); the clock-out line no longer says "a card
+ * cites one heading" (closing early is part of the same Attendance offense). No app, place, staff system or form key.
  */
 
 const fixture = (name: string): string => readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), "utf8");
