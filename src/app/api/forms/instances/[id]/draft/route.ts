@@ -148,7 +148,7 @@ import {
   unconfirmedManualNotice,
 } from "@/lib/forms/official-policy-manual";
 import { manualGroundedPolicies, policyFieldValue } from "@/lib/forms/policy-citation";
-import { cardPolicyPhrase } from "@/lib/forms/card-policy";
+import { cardPolicyHeading, cardPolicyPhrase } from "@/lib/forms/card-policy";
 import {
   EPP_POLICY_REFERENCE_KEY,
   EPP_POLICY_RULES,
@@ -828,8 +828,20 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       body.cardFromLoop === true && cardPolicyToDraftEnabled() && typeof body.cardPolicy === "string" && body.cardPolicy.trim() && !/^other$/i.test(body.cardPolicy.trim())
         ? body.cardPolicy.trim().slice(0, 80)
         : null;
+    /*
+     * Pau's ruling (20 Nov 2026, via QA; c091): a loop Corrective Action may cite two headings ("Dress Code …; Standards of
+     * Conduct …"). The second is the card line's second part that is not Other; it is grounded and ticked beside the first.
+     */
+    const loopCardSecondHeading = ((): string | null => {
+      if (!loopCardHeading || typeof body.cardPolicyLine !== "string") return null;
+      const second = body.cardPolicyLine.split(";").map((part) => part.trim()).filter((part) => part && !/^other\b/i.test(part))[1];
+      const heading = second ? cardPolicyHeading(`**Policy:** ${second}`) : null;
+      return heading && heading.toLowerCase() !== loopCardHeading.toLowerCase() ? heading.slice(0, 80) : null;
+    })();
     const requestPolicyNotes = secondRequestOwnAccountEnabled() ? currentFormRequestText(notes) : notes;
-    const policyNotes = loopCardHeading ? `${requestPolicyNotes}\nfor violating the ${cardPolicyPhrase(loopCardHeading)}` : requestPolicyNotes;
+    const policyNotes = loopCardHeading
+      ? `${requestPolicyNotes}\nfor violating the ${cardPolicyPhrase(loopCardHeading)}${loopCardSecondHeading ? ` and the ${cardPolicyPhrase(loopCardSecondHeading)}` : ""}`
+      : requestPolicyNotes;
     const wantsEppPolicy = fields.some((field) => field.key === EPP_POLICY_REFERENCE_KEY);
     const needsPolicy = fields.some(
       (field) => field.policyGrounded && field.key !== EPP_POLICY_REFERENCE_KEY,
@@ -2726,18 +2738,25 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      * Opening) is left as the readers above set it.
      */
     if (loopCardHeading && !keeps("policy_violated")) {
-      const headingWords = new Set(loopCardHeading.toLowerCase().match(/[a-z0-9]+/g) ?? []);
       const generic = new Set(["policy", "policies", "violation", "violations", "of", "the", "for", "and"]);
       const options = groups.find((group) => group.key === "offense_type")?.options ?? [];
-      const box = options
-        .filter((option) => option.key !== "other")
-        .map((option) => ({ key: option.key, core: (option.label.toLowerCase().match(/[a-z0-9]+/g) ?? []).filter((word) => !generic.has(word)) }))
-        .filter((option) => option.core.length > 0 && option.core.every((word) => headingWords.has(word)))
-        .sort((a, b) => b.core.length - a.core.length)[0];
-      const cardLine = typeof body.cardPolicyLine === "string" ? body.cardPolicyLine.split(";")[0]!.trim().slice(0, 200) : "";
+      const boxFor = (heading: string) => {
+        const headingWords = new Set(heading.toLowerCase().match(/[a-z0-9]+/g) ?? []);
+        return options
+          .filter((option) => option.key !== "other")
+          .map((option) => ({ key: option.key, core: (option.label.toLowerCase().match(/[a-z0-9]+/g) ?? []).filter((word) => !generic.has(word)) }))
+          .filter((option) => option.core.length > 0 && option.core.every((word) => headingWords.has(word)))
+          .sort((a, b) => b.core.length - a.core.length)[0];
+      };
+      const box = boxFor(loopCardHeading);
+      /* Pau's ruling (20 Nov 2026; c091): the card's second heading ticks its own box, and Policy Violated names both. */
+      const secondBox = loopCardSecondHeading ? boxFor(loopCardSecondHeading) : undefined;
+      const headingLines = typeof body.cardPolicyLine === "string" ? body.cardPolicyLine.split(";").map((part) => part.trim()).filter((part) => part && !/^other\b/i.test(part)) : [];
+      const cardLine = (secondBox ? headingLines.slice(0, 2).join("; ") : (headingLines[0] ?? "")).slice(0, 400);
       if (box) {
         const keepOther = (draftedPayload.checked.offense_type ?? []).includes("other") && cardOther !== null;
-        draftedPayload.checked = { ...draftedPayload.checked, offense_type: [box.key, ...(keepOther ? ["other"] : [])] };
+        const boxes = [box.key, ...(secondBox && secondBox.key !== box.key ? [secondBox.key] : [])];
+        draftedPayload.checked = { ...draftedPayload.checked, offense_type: [...boxes, ...(keepOther ? ["other"] : [])] };
         if (cardLine && fields.some((field) => field.key === "policy_violated")) {
           draftedPayload.values = { ...draftedPayload.values, policy_violated: cardLine };
         }
