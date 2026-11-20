@@ -80,6 +80,10 @@ import { rulesBookText } from "./rules-book";
  * edit_form's form_state ("It's saved on the draft", never "press Create"); the payroll line adds edit_form's
  * payroll_amount_missing (ask the amount in one question), and the stated line adds ", as you said" only for
  * stated_this_turn. No app, place, staff system or form key.
+ *
+ * Re-taken on purpose on 20 Nov 2026 (QA: "show me forms for Tes" opened another person's draft): the find_past_forms
+ * close-spelling line now says did_you_mean (end with ask_exactly, open nothing) in place of close_spelling_of ("Opening
+ * **<on_file>**'s form."). It reads the same under every config; nothing else changed.
  */
 
 const fixture = (name: string): string => readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), "utf8");
