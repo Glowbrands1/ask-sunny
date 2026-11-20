@@ -308,6 +308,11 @@ async function script(): Promise<{ replies: unknown[]; bodies: string[] }> {
   return { replies, bodies };
 }
 
+/*
+ * Re-recorded on purpose on 20 Nov 2026 (QA item 25): DEAD_END_SAYS_WHERE_ENABLED is on in production with its pull
+ * request, so the production run's two answering bodies carry its where-to-go lines in the reports section. The
+ * flags-off run is unchanged, and no body carries the glossary.
+ */
 const FIXTURE = join("src", "lib", "ai", "chat-glossary-flags-off.main.json");
 const RECORDING = process.env.RECORD_MAIN_FIXTURE === "1";
 const GLOSSARY_HEAD = "ABBREVIATIONS MANAGERS USE";
