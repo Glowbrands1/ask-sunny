@@ -72,7 +72,7 @@ export const NOV20_LEFT_EARLY_NOT_LATENESS_CASES: ReplayCase[] = [
       expect(observation, `the Expectation does not speak of staying:\n${observation}`).toMatch(/Expectation:\s*\n?Test is expected to stay for the full scheduled shift\./);
       const plan = values.action_plan ?? "";
       expect(plan, "no Action Plan was saved (the case proves nothing)").not.toBe("");
-      expect(plan, `the Action Plan calls leaving early lateness:\n${plan}`).not.toMatch(/Continued lateness|arrive on time/i);
+      expect(plan, `the Action Plan calls leaving early lateness:\n${plan}`).not.toMatch(/arrive on time|lateness|\blate\b|tardi/i);
     },
   },
   {
