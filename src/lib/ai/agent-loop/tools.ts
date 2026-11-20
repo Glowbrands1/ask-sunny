@@ -123,6 +123,8 @@ export interface ToolContext {
   /** QA (16 Nov 2026; c158, c208): every card this chat's loop made, and every "who is it for?" it asked, oldest first. */
   readonly cardRecords?: readonly CardRecord[];
   readonly personAskedRecords?: readonly PersonAskedRecord[];
+  /** QA's code audit, coach_team C: the last reply asked the open Coaching draft's "create all?" (the server's record). */
+  readonly teamConfirmAsked?: boolean;
   /** QA's review of #1062: each earlier loop turn's record (saved fields, a card), oldest first. */
   readonly turnRecords?: readonly TurnRecord[];
   /** Rebuild plan PR 6: what this turn already read, read once per turn (`turnManual`). A tool called outside a turn reads fresh. */
@@ -706,6 +708,8 @@ export interface ToolEffects {
   nameLines?: Record<string, string>;
   /** Fix batch item 6: propose_form asked who this form is for (no person yet), for the record. */
   personAsked?: { templateKey: string };
+  /** coach_team asked "create all?" for this open Coaching draft this turn, for the record. */
+  teamConfirm?: { sourceInstanceId: string };
   /** find_staff ran this turn: a person was named, so a card without one is not "nobody named" (item 6). */
   staffLookedUp?: boolean;
   /** Fix batch items 4 and 3: this turn's last "Did you mean" (the roster ids offered, the name typed), for the record. */
@@ -3786,9 +3790,12 @@ function isShownCardId(context: ToolContext, effects: ToolEffects, id: string): 
  */
 export async function coachTeam(context: ToolContext, effects: ToolEffects): Promise<ToolResult> {
   if (context.openFormId) {
-    const { coachingForEveryoneTurn } = await import("@/lib/forms/coaching-for-everyone");
-    const turn = await coachingForEveryoneTurn({ request: context.request, question: context.question, history: context.history as ChatMessage[], activeInstanceId: context.openFormId });
-    if (turn) return { app_reply: untrusted(turn.content), note: "Say app_reply to the manager as given, every line: it holds the people, the counts and the exact words the next step reads." };
+    const { coachingForEveryone } = await import("@/lib/forms/coaching-for-everyone");
+    const turn = await coachingForEveryone({ request: context.request, question: context.question, history: context.history as ChatMessage[], activeInstanceId: context.openFormId, confirmationAsked: context.teamConfirmAsked === true });
+    if (turn) {
+      if (turn.askedConfirmation) effects.teamConfirm = { sourceInstanceId: context.openFormId };
+      return { app_reply: untrusted(turn.response.content), note: "Say app_reply to the manager as given, every line: it holds the people and the counts." };
+    }
   }
   const { wholeTeamRequest } = await import("@/lib/forms/whole-team-coaching");
   /*
