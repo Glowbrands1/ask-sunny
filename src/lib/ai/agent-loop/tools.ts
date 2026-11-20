@@ -2992,7 +2992,7 @@ export async function proposeForm(
     const reading = readCaPolicy(requestWords);
     const namedAnother = (reading.source === "stated" && reading.stated !== null && reading.stated !== "dress_code") ||
       namedPolicies(requestWords).some((named) => !dressFits?.some((heading) => namesHeading(named.phrase, heading)));
-    const otherOnly = !policyHeading && /^other\b/i.test(askedPolicyWhole) && !saysMustSee(requestWords) && !cleaningUndonePhrase(requestWords);
+    const otherOnly = !policyHeading && /^other\b/i.test(askedPolicyWhole) && !saysMustSee(requestWords) && !cleaningUndonePhrase(requestWords, { rulesAreNotDuties: true });
     if (dressFits && !namedAnother && ((policyHeading && !dressFits.includes(policyHeading)) || otherOnly)) {
       return { reason_code: "dress_code_heading", error: `The manager's words describe a dress-code offense (dress code, or clothing worn on shift), which the manual's Dress Code section covers, not "${askedPolicyWhole}". Propose the card again with policy "${dressFits[0]}"${dressFits.length > 1 ? ` (or ${dressFits.slice(1).map((heading) => `"${heading}"`).join(", ")})` : ""}.`, fits_headings: dressFits };
     }
@@ -3046,7 +3046,8 @@ export async function proposeForm(
     }
   }
   // The Other topic is read from the account as the model cleaned it (SPELLING_CLEANUP: "th e10 minute sanitaion" → "the 10-minute sanitation"), else the manager's words.
-  const cleaning = (whatHappened ? cleaningUndonePhrase(whatHappened) : null) ?? cleaningUndonePhrase(requestWords);
+  /* QA (20 Nov 2026; c259): "we do not do extra cleaning after hours" is a rule stated, never a cleaning duty left undone. */
+  const cleaning = (whatHappened ? cleaningUndonePhrase(whatHappened, { rulesAreNotDuties: true }) : null) ?? cleaningUndonePhrase(requestWords, { rulesAreNotDuties: true });
   const careAndCleaning = namesCareAndCleaning(requestWords);
   /* As today's card cites it: the heading, then the page the manual prints. */
   const page = policyHeading && manual ? findManualSection(manual.chunks, [policyHeading])?.page ?? null : null;
