@@ -59,11 +59,10 @@ export const NOV16_AGENT_LOOP_COACHING_POLICY_NOT_COPIED_CASES: ReplayCase[] = [
       expect(policyOf(ca.formProposal), "the CA keeps the policy the model chose (CA cards always carry one)").toMatch(/Standards of Conduct/);
       const coaching = await thread.say("Create a Coaching Form from this conversation.");
       expect((coaching.formProposal as ChatFormProposal | undefined)?.templateKey).toBe("coaching");
-      // Changed on purpose (QA's ruling on f074, 20 Nov 2026, option b): "Create a Coaching Form from this conversation" is
-      // the same request switched (form_change_evidence, #1123), so the heading chosen for it on the CA's card is the coaching
-      // card's own, never "copied from another form". A heading copied with no switch is still left off (policy_copied).
-      expect(JSON.stringify(results), "the same request's heading was called copied").not.toContain("policy_not_for_this_card");
-      expect(policyOf(coaching.formProposal) ?? "", `the coaching card has no policy: ${JSON.stringify(results.at(-1))}`).toMatch(/Standards of Conduct/);
+      // Pau, 17 Nov: coaching always has policy and page (this case expected none before): never the copied CA heading.
+      expect(JSON.stringify(results), "the copied heading was not refused").toContain("policy_not_for_this_card");
+      expect(policyOf(coaching.formProposal) ?? "", `the coaching card has no policy: ${JSON.stringify(results.at(-1))}`).not.toBe("");
+      expect(policyOf(coaching.formProposal), "the coaching card kept the copied CA heading").not.toMatch(/Standards of Conduct/);
     },
   },
   {

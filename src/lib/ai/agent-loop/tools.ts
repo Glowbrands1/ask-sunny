@@ -3329,13 +3329,7 @@ export async function proposeForm(
    * the model chose because it fits THIS card's account stays. What is left off is a heading COPIED from another form's
    * card in this chat (its card record's policy line), unnamed for this card and not fitted to it by the topic reader.
    */
-  /*
-   * QA's ruling on f074 (20 Nov 2026, option b): a same-request switch ("actually make it a coaching form", verified
-   * form_change_evidence from this message) keeps the request's account, so the heading chosen for it on the CA's card is
-   * this card's own, never "copied from another form" (this changes c014's expectation for a switch, on purpose).
-   */
-  const switchedRequest = verifyEvidence(input.form_change_evidence, identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId), { thisTurnOnly: true }).ok;
-  const copiedFromAnotherForm = !switchedRequest && policyHeading !== null && (context.cardRecords ?? []).some((record) => record.templateKey !== template.key && typeof record.policyLine === "string" && record.policyLine.toLowerCase().includes(policyHeading!.toLowerCase()));
+  const copiedFromAnotherForm = policyHeading !== null && (context.cardRecords ?? []).some((record) => record.templateKey !== template.key && typeof record.policyLine === "string" && record.policyLine.toLowerCase().includes(policyHeading!.toLowerCase()));
   /* Pau, 17 Nov: coaching always has policy and page: the forms whose cards always cite a manual heading (or Other). */
   const policyForms = new Set([appConfig().formKeys.corrective, appConfig().formKeys.coaching, appConfig().formKeys.followUpCoaching]);
   const policyNotForThisCard = template.key !== appConfig().formKeys.corrective && policyHeading !== null && copiedFromAnotherForm && !managerNamed && !(topicFits ?? []).some((heading) => headingKey(heading) === headingKey(policyHeading!));
