@@ -55,7 +55,7 @@ import { formatManualCitation } from "@/lib/ai/policy-citation-fields";
 import { redactSensitiveDefaults } from "@/lib/ai/sensitive-defaults";
 import { expandPolicyQuery } from "@/lib/knowledge/policy-retrieval";
 import type { SourceCitation } from "@/types";
-import { followUpChangeAsked, followUpLine, statedFollowUpDate } from "@/lib/forms/follow-up-default";
+import { followUpChangeAsked, followUpForCard, followUpLine, statedFollowUpDate } from "@/lib/forms/follow-up-default";
 import type { AccessScope, ChatFormProposal, ChatMessage, Role } from "@/types";
 import { accountKey, personKey, replyTurns, type CardRecord, type ExitOfferRecord, type NameQuestionRecord, type PersonAskedRecord, type TurnRecord } from "@/lib/ai/agent-loop/card-record";
 
@@ -4004,6 +4004,14 @@ export async function proposeForm(
     ...(cleaning && !careAndCleaning ? { cleaning_duty: cleaning } : {}),
     ...(awaiting ? { policy_named_by_manager: policyNamedByManager } : {}),
     ...(datedToday && (card.formDate ?? today) === today ? { dated_today: true } : {}),
+    /*
+     * f048b (QA's live 23a, 20 Nov 2026): the follow-up date Create sets (#1134: stated, else a week after the form date),
+     * said on the card so the reply never denies a follow-up the saved form will have.
+     */
+    ...((() => {
+      const followUp = followUpForCard({ corrective, formDate: card.formDate ?? today, managerWords, today });
+      return followUp ? { follow_up_on_create: { date: followUp.date, say_exactly: followUp.line } } : {};
+    })()),
     ...(offRosterName ? { off_roster_name: employee.name, staff_list: context.actor.scope.level === "salon" ? `your ${locationWord()}'s` : "the", ...((await inactiveMatch(context.actor.scope, employee.name)) ? { inactive_in_woven: true } : {}) } : {}),
     ...(personId && effects.nameLines?.[personId] ? { name_from_staff_list: employee.name } : {}),
     /* Pau's name ruling (15 Nov 2026): the card uses the preferred name; the reply says the Woven legal name once. */
