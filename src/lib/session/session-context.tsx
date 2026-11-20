@@ -213,6 +213,15 @@ export function SessionProvider({
    * In real mode it ends the Supabase session, which clears the cookie
    * server-side so the next request identifies nobody.
    *
+   * THIS BROWSER'S SESSION ONLY (`scope: "local"`). supabase-js defaults to
+   * "global", which revokes every session the person has: signing out on the
+   * shop computer also signed them out on their phone and in their other
+   * browser. That browser then came back holding a refresh token that no
+   * longer existed ("Invalid Refresh Token: Refresh Token Not Found" in the
+   * auth logs, 20 Nov 2026) and was dropped to the login screen with nothing
+   * to say why. Removing someone's access everywhere is the administrator's
+   * job and has its own path (`revokeAuthAccess`, src/lib/auth/revocation.ts).
+   *
    * Then `replace` and `refresh`, and both are needed. `replace` rather than
    * `push` so the back button cannot return to the app shell. `refresh`
    * because it invalidates the router cache — without it, Next may still hold
@@ -232,7 +241,7 @@ export function SessionProvider({
         const { getSupabaseBrowserClient } = await import(
           "@/lib/supabase/browser-client"
         );
-        await getSupabaseBrowserClient().auth.signOut();
+        await getSupabaseBrowserClient().auth.signOut({ scope: "local" });
       } catch {
         /*
          * Sign out must not be blockable. If ending the server session failed,
