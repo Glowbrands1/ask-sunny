@@ -313,6 +313,10 @@ const FLIPPED_AFTER_FIXTURE: readonly string[] = [
   "CARD_PLAN_MATCHES_CREATE_ENABLED",
   // QA 15 Nov 2026 (batch F8, #1002): a value edit moves the form's updated_at.
   "FORM_EDIT_TOUCHES_UPDATED_AT_ENABLED",
+  // Changed on purpose (20 Nov 2026, QA item 24): on in production with its pull request. The script's first message,
+  // "Create a coaching form.", now gets one example answer after the who-question; the fixture predates it, so it is
+  // compared with it off.
+  "STARTER_FOLLOW_UP_EXAMPLE_ENABLED",
 ];
 const PRODUCTION = [...PRODUCTION_FLAGS.on, ...PRODUCTION_FLAGS.assumedOn].filter((name) => !FLIPPED_AFTER_FIXTURE.includes(name));
 /*
