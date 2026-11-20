@@ -1519,6 +1519,25 @@ export async function findPastForms(context: ToolContext, input: { employee_name
 
 const VALUES_LIMIT = 6_000;
 
+/**
+ * Texts fitted into `limit` characters together (item 26): short ones whole, the longest cut first, each cut text ending
+ * "… (N more characters on the form)". Every text keeps at least 200 characters, so none is ever dropped.
+ */
+export function fitToLimit(texts: readonly string[], limit: number): string[] {
+  const total = texts.reduce((sum, text) => sum + text.length, 0);
+  if (total <= limit) return [...texts];
+  const out = [...texts];
+  let remaining = limit;
+  const byLength = texts.map((text, index) => ({ index, length: text.length })).sort((a, b) => a.length - b.length);
+  byLength.forEach(({ index, length }, rank) => {
+    const share = Math.max(200, Math.floor(remaining / (byLength.length - rank)));
+    const keep = Math.min(length, share);
+    if (keep < length) out[index] = `${texts[index]!.slice(0, keep).trimEnd()}… (${length - keep} more characters on the form)`;
+    remaining = Math.max(0, remaining - keep);
+  });
+  return out;
+}
+
 export async function readForm(context: ToolContext, input: { instance_id?: unknown; forms_on_file_evidence?: unknown }, effects?: ToolEffects): Promise<ToolResult> {
   const id = typeof input.instance_id === "string" ? input.instance_id.trim() : "";
   if (id === "") return { reason_code: "missing_input", error: "Give the form's instance_id (from find_past_forms or the open form)." };
@@ -1530,19 +1549,27 @@ export async function readForm(context: ToolContext, input: { instance_id?: unkn
     const { loaded } = await authorizeInstance(context.request, id, "view");
     const closeSpelled = loaded.instance.employeeName ? await closeSpellingRefusal(context, effects, loaded.instance.employeeName) : null;
     if (closeSpelled) return closeSpelled;
-    const values: Record<string, { untrusted_text: string }> = {};
-    let size = 0;
-    for (const row of loaded.values) {
-      const text = row.value?.trim() ?? "";
-      const ticked = row.checked.length > 0 ? row.checked.join(", ") : "";
-      const shown = text || ticked;
-      if (!shown) continue;
-      size += shown.length;
-      if (size > VALUES_LIMIT) break;
-      values[row.fieldKey] = untrusted(shown);
-    }
+    /*
+     * EVERY FIELD'S FILLED / EMPTY STATUS SURVIVES A LONG WRITE-UP (QA's code audit on d7960a5f, item 26): this loop used
+     * to stop at VALUES_LIMIT with `break` and build empty_fields from what it had kept, so a long Observation made the
+     * fields after it (the level, payroll) read as empty. Now every filled field is listed, in the template's order; only
+     * the longest texts are cut to fit (`fitToLimit`), and truncated_fields names them.
+     */
     const fieldKeys = documentFieldKeys(loaded.version.document);
-    const filled = new Set(Object.keys(values));
+    const order = [...fieldKeys];
+    const position = (key: string) => (order.indexOf(key) === -1 ? order.length : order.indexOf(key));
+    const shownRows = loaded.values
+      .map((row) => ({ key: row.fieldKey, shown: (row.value?.trim() ?? "") || (row.checked.length > 0 ? row.checked.join(", ") : "") }))
+      .filter((row) => row.shown !== "")
+      .sort((a, b) => position(a.key) - position(b.key));
+    const fitted = fitToLimit(shownRows.map((row) => row.shown), VALUES_LIMIT);
+    const values: Record<string, { untrusted_text: string }> = {};
+    const truncatedFields: string[] = [];
+    shownRows.forEach((row, index) => {
+      values[row.key] = untrusted(fitted[index]!);
+      if (fitted[index] !== row.shown) truncatedFields.push(row.key);
+    });
+    const filled = new Set(shownRows.map((row) => row.key));
     return {
       instance_id: loaded.instance.id,
       form: loaded.instance.templateName,
@@ -1555,6 +1582,7 @@ export async function readForm(context: ToolContext, input: { instance_id?: unkn
       /* The field the manager's account goes in (Observation on a CA, Details of Coaching on a coaching form). */
       account_field: ["observation", "coaching_details"].find((key) => fieldKeys.has(key)) ?? null,
       empty_fields: [...fieldKeys].filter((key) => !filled.has(key)).slice(0, 40),
+      ...(truncatedFields.length > 0 ? { truncated_fields: truncatedFields, note: "Each field in truncated_fields is longer on the form than shown here; it is filled. Never call it empty or missing." } : {}),
     };
   } catch (error) {
     if (error instanceof InstanceNotVisibleError) return { reason_code: "form_not_visible", error: "That form does not exist or this manager cannot open it." };
