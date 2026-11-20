@@ -25,7 +25,6 @@ function start(t: ReplayContext) {
   t.as("salon_director", KEARNEY);
 }
 
-const lastSaid = (view: LoopView) => [...view.turns].reverse().find((turn) => turn.role === "user")?.text ?? "";
 type CardOut = { reason_code?: string; ask_exactly?: string; level_evidence?: string; facts?: { title_differs?: { woven: string; manager_said: string } } } | null;
 const lastCardOut = (views: readonly LoopView[]) => views.flatMap((view) => view.results).filter((result) => result.tool === "propose_form").at(-1)?.output as CardOut;
 
