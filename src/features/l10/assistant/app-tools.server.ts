@@ -56,7 +56,8 @@ export function lastQuestion(messages: readonly { role: string; parts?: readonly
 
 export function appTools(viewer: AppToolsViewer, question: string): ToolSet {
   const handlers = dataToolHandlers({ actor: { role: viewer.role, scope: viewer.scope }, question, scopeId: activeKnowledgeCorpus(), today: businessToday() });
-  const specs = dataToolSpecs(appConfig());
+  // The L10 assistant's report tools only: read_form_deletions (f066) is the agent loop's admin record reader, not a meeting tool.
+  const specs = dataToolSpecs(appConfig()).filter((spec) => spec.name === "read_reviews" || spec.name === "read_stats");
   const tools: ToolSet = {};
   for (const spec of specs) {
     tools[spec.name] = tool({
