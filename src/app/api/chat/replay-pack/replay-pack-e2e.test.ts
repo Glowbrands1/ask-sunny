@@ -13,6 +13,7 @@ import { continuationFor, offeredCopyForTurn, type OfferedCopy } from "@/lib/for
 import { createId } from "@/lib/utils/id";
 import { fakeSupabase, type FakeStore } from "@/test/fake-supabase";
 import { JBA_MANUAL_CA_CHUNKS } from "@/test/fixtures/jba-manual-ca-sections";
+import { fullPolicyManualChunks, replayReadsFullPolicyManual } from "@/test/fixtures/jba-manual-full";
 import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
 
 import type { ReplayContext } from "./cases";
@@ -521,7 +522,8 @@ vi.mock("@/lib/knowledge/providers/supabase", () => ({
         documentTitle: "2025 JBA Policy Manual - Edited 5-2025",
         documentCategory: "policies_compliance",
         matchedBy: "tag",
-        chunks: [...JBA_MANUAL_CA_CHUNKS, ...state.manualExtra],
+        // REPLAY_FULL_POLICY_MANUAL=1 (QA, 20 Nov 2026): shadow and saved-form runs read the manual production reads.
+        chunks: [...(replayReadsFullPolicyManual() ? fullPolicyManualChunks() : JBA_MANUAL_CA_CHUNKS), ...state.manualExtra],
       };
     }
   },

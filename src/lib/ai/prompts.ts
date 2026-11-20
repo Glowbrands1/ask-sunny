@@ -328,11 +328,43 @@ DO NOT DUMP EVERY METRIC. Three priorities, chosen for impact. Everything else s
  * in-app report paths and nothing else, so a link here is a path the renderer
  * already knows rather than something the model was trusted to spell.
  */
+/**
+ * DEAD_END_SAYS_WHERE_ENABLED (QA item 25, the production audit, 20 Nov 2026): what this person may open, from the
+ * authorized actor's permissions (never a role name). An Assistant Salon Director holds view_daily_stats without
+ * view_reports and was told "I don't have access to view reports"; a Regional Manager without view_l10_meetings asking
+ * to add to the DM L10 was told it is not a form Sunny can prepare. When Sunny cannot do it, it says where in the app to go.
+ */
+export interface WhereToGo {
+  readonly canViewDailyStats: boolean;
+  readonly canViewL10: boolean;
+}
+
+function whereToGoLines(where: WhereToGo, canViewReports: boolean): string {
+  const lines = [
+    "- When you cannot do something here, say where in this app to do it instead, or who can. Never stop at \"I can't\" or \"I don't have access\".",
+    ...(!canViewReports && where.canViewDailyStats
+      ? ["- This person CAN see Daily Stats: the Performance section at the top of the Home page shows the latest figures. When they ask for Daily Stats or the latest numbers, send them there; never say they have no access."]
+      : []),
+    ...(!canViewReports && !where.canViewDailyStats ? ["- This person cannot open Daily Stats or reports in this app: for figures, tell them to ask their Salon Director."] : []),
+    where.canViewL10
+      ? "- The DM L10 (the L10 meeting) is kept on the L10 page: Resources, then L10. When they want to add something to it or see it, send them there; you cannot change it from the chat."
+      : "- The DM L10 (the L10 meeting) is kept on the L10 page, which this account cannot open: when they want to add something to it, tell them to ask their District Manager or an admin to add it. Never call it a form.",
+  ];
+  return lines.join("\n");
+}
+
 export function buildReportsGuideSection(
   canViewReports: boolean,
   assistantName: string,
+  where?: WhereToGo,
 ): string {
   if (!canViewReports) {
+    if (where) {
+      return `REPORTS & ANALYTICS, AND WHERE TO GO
+
+- This person's account cannot open the Reports & Analytics section of this app. Never send them there and never describe its tabs.
+${whereToGoLines(where, canViewReports)}`;
+    }
     return `REPORTS & ANALYTICS
 
 - This person's account cannot open the Reports & Analytics section of this app. Never send them there and never describe its tabs. If they ask where to find figures, answer from the sources and suggest they ask their Salon Director or District Manager for the report.`;
@@ -352,7 +384,7 @@ ${tabs}
 - Then guide them on the tab: the filters at the top narrow it to a period, district or salon, and the "Ask ${assistantName} about this report" bar on every tab answers questions about the figures on screen without leaving the report.
 - If they have not said which number they are after, ask, and offer the tabs that fit.
 - Systems outside this app — the OPS Dashboard, Power BI, the Portal Report Center and others — come second. Mention one only when the provided sources cover it and the measure is one these tabs do not carry, such as labor, app adoption, cancel/freeze or employee-level figures, and cite the source as usual.
-- Pointing somebody to a tab is not reading it to them. Never state a figure from a tab unless it is written in the REPORT DATA section.`;
+- Pointing somebody to a tab is not reading it to them. Never state a figure from a tab unless it is written in the REPORT DATA section.${where ? `\n${whereToGoLines(where, canViewReports)}` : ""}`;
 }
 
 export type SystemPromptRevision = "current" | "last-known-good";
@@ -531,6 +563,8 @@ export function buildSystemPrompt(input: {
    * cannot say the person may open the section has not said they may.
    */
   canViewReports?: boolean;
+  /** DEAD_END_SAYS_WHERE_ENABLED: this person's view_daily_stats and view_l10_meetings, from the authorized actor (`WhereToGo`). Absent: as before. */
+  whereToGo?: WhereToGo;
   /**
    * One shared order of authority for both framework blocks. Omitted or
    * false leaves each block's own list. Set only when
@@ -749,7 +783,7 @@ export function buildSystemPrompt(input: {
   const memorySection = input.recalledMemory ? `\n\n${input.recalledMemory}` : "";
   const fewShotSection = input.fewShot ? `\n\n${input.fewShot}` : "";
 
-  const reportsGuideSection = `\n\n${buildReportsGuideSection(input.canViewReports ?? false, assistantName)}`;
+  const reportsGuideSection = `\n\n${buildReportsGuideSection(input.canViewReports ?? false, assistantName, input.whereToGo)}`;
 
   /*
    * Flag off: the return below is main's prompt (b9ae362), including where

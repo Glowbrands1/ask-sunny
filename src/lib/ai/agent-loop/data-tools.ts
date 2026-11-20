@@ -12,6 +12,7 @@ import { narrowSalonSelection, reportingScopeOf, type ReportingScope } from "@/l
 import { goalStatus, GOAL_STATUS_LABEL, goalSummary, formatGoalMonth, formatMonthToDate } from "@/lib/reviews/goal";
 import type { ReviewsSnapshot, ReviewFeed } from "@/lib/reviews/queries";
 import type { MonthlyProgress } from "@/lib/reviews/monthly-progress";
+import { reviewDateOf } from "@/lib/reviews/timeline";
 import { asksForMonthlyPeriods } from "@/lib/ai/google-reviews-chat";
 import type { AccessScope, Role } from "@/types";
 
@@ -240,11 +241,18 @@ export async function readReviews(context: DataToolContext, input: { salon?: unk
     latest = feeds
       .flatMap((feed) => feed.reviews)
       .filter((review) => allowed === null || (review.salonNumber !== null && allowed.has(review.salonNumber)))
-      .sort((a, b) => (b.googleAbsoluteDate ?? b.firstSeenAt).localeCompare(a.googleAbsoluteDate ?? a.firstSeenAt))
+      /*
+       * QA's code audit (20 Nov 2026, on 9e1d1f67): sorted and dated by googleAbsoluteDate ?? firstSeenAt's UTC day, so a
+       * review Google dates "3 months ago" but first scraped yesterday read as the newest, and an 8 PM Central review
+       * showed tomorrow's date. The page's own date (`reviewDateOf`: Google's date, else its estimate, else first seen, as
+       * a Central calendar date) orders and dates them, as the Google Reviews page does.
+       */
+      .map((review) => ({ review, date: reviewDateOf(review)?.date ?? null }))
+      .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? "") || b.review.firstSeenAt.localeCompare(a.review.firstSeenAt))
       .slice(0, LATEST_MAX)
-      .map((review) => ({
+      .map(({ review, date }) => ({
         salon: salonName(review.salonNumber, review.locationName),
-        date: review.googleAbsoluteDate ?? review.firstSeenAt.slice(0, 10),
+        date,
         stars: review.rating,
         text: review.reviewText ? untrusted(review.reviewText.slice(0, REVIEW_TEXT_MAX), REVIEWS_SOURCE) : null,
       }));

@@ -50,7 +50,8 @@ function liveModel(claimsAmount: boolean) {
     const card = lastResult(view, "propose_form") as CardOut | null;
     const base = { employee_id: "e-2", what_happened: "Remy Calder was late on 11/12.", incident_date: "2026-11-12" };
     if (/^coaching/i.test(said)) return card ? { text: "Here's the Coaching Form for **Remy Calder**." } : { tool: "propose_form", input: { template_key: "coaching", ...base } };
-    if (/^edit/i.test(said)) return card ? { text: `Here's the Corrective Action Form for **Remy Calder**.${card.facts?.unset?.length === 2 ? ` ${UNSET_BOTH}` : ""}` } : { tool: "propose_form", input: { template_key: "dpoa", ...base } };
+    // Changed on purpose (QA item 7, 20 Nov 2026, the form lock): a different form for the card's person needs this turn's words asking for it (form_change_evidence).
+    if (/^edit/i.test(said)) return card ? { text: `Here's the Corrective Action Form for **Remy Calder**.${card.facts?.unset?.length === 2 ? ` ${UNSET_BOTH}` : ""}` } : { tool: "propose_form", input: { template_key: "dpoa", ...base, form_change_evidence: evidenceFrom(view, "edit remy calder ca") } };
     if (!card) {
       return {
         tool: "propose_form",
