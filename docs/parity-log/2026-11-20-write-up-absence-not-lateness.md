@@ -25,3 +25,17 @@ Background: QA's production audit (item 21), a real finalized form. Names in the
   - "lateness" and "both" cards.
   - Cards without the record.
   - The non-loop path.
+
+## Required, never ignored (QA's review of #1137)
+
+- A Corrective Action card that cites the manual's Attendance heading and has an account must carry `attendance`.
+  This is decided from the card's own policy record, not from the manager's words; a word check on the account was
+  not added.
+- A missing value is refused with `attendance_not_given`.
+- So is evidence whose quote is not in this request's manager messages: the existing normalized whole-word check
+  refuses it with `attendance_evidence_not_found`.
+- The refusal asks for the field, and the rules book says the same. Both codes are in `reason-codes.test.ts`.
+- Replay cases:
+  - the signed-warning shape with the field set;
+  - the field omitted, where the tool asks;
+  - a quote the manager never typed, which is refused.
