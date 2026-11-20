@@ -9,6 +9,8 @@ import {
   goalSummary,
   type ReviewGoalContext,
 } from "@/lib/reviews/goal";
+import { formatProgressMonth, type MonthlyProgress } from "@/lib/reviews/monthly-progress";
+import { formatMonthsWindow } from "@/lib/reviews/reporting-week";
 import { GOOGLE_REVIEW_LOCATIONS } from "@/lib/reviews/store-codes";
 import type { LocationRollup } from "@/lib/reviews/types";
 
@@ -44,7 +46,23 @@ const GOOGLE_REVIEW_PATTERNS: readonly RegExp[] = [
   /\b(?:recent|latest|newest|new|last few)\s+(?:google\s+)?reviews\b/i,
   /\baverage\s+(?:star\s+)?rating\b/i,
   /\b(?:bad|negative|good|positive|[1-5][- ]?star|one[- ]star|five[- ]star)\s+reviews\b/i,
+  /* L3, L6 and YTD (manager request, 19 Nov 2026): the Google Reviews page's month-by-month periods. */
+  /\breviews?\b[\s\S]{0,60}\b(?:l3|l6|ytd|year[- ]to[- ]date|per month|by month|month by month|monthly)\b/i,
+  /\b(?:l3|l6|ytd|year[- ]to[- ]date)\b[\s\S]{0,40}\breviews?\b/i,
+  /\breviews?\b[\s\S]{0,60}\b(?:last|past)\s+(?:3|three|6|six)\s+(?:full\s+)?(?:months?|mos?)\b/i,
+  /\b(?:last|past)\s+(?:3|three|6|six)\s+(?:full\s+)?(?:months?|mos?)\b[\s\S]{0,40}\breviews?\b/i,
 ];
+
+/**
+ * A question for the longer periods the Google Reviews page now offers: L3 (last 3 full months), L6 (last 6 full
+ * months), YTD (Jan 1 through today) and month by month. Only these turns pay for the month-by-month read.
+ */
+const MONTHS_PERIOD =
+  /\b(?:l3|l6|ytd|year[- ]to[- ]date|this year|per month|by month|month by month|(?:last|past|previous)\s+(?:3|three|6|six)\s+(?:full\s+)?(?:months?|mos?)|(?:3|three|6|six)[- ]months?)\b/i;
+
+export function asksForMonthlyPeriods(question: string): boolean {
+  return MONTHS_PERIOD.test(question);
+}
 
 /** A review of a person or a document, not a Google review. */
 const OTHER_REVIEW = /\b(?:policy|performance|annual|employee|coaching|90[- ]day|manager|peer)\s+reviews?\b/i;
@@ -281,4 +299,77 @@ export function formatReviewWeeksSection(input: {
   }
 
   return [...lines, "", WEEK_RULES].join("\n");
+}
+
+
+/* ------------------------------------------------ L3, L6, YTD, month by month -- */
+
+/**
+ * L3, L6 AND YTD, AND EACH MONTH BETWEEN (manager request, 19 Nov 2026: "per month pls last 3 mos last 6 mos and YTD").
+ * The Google Reviews page's Month by month table, written for the model: qualifying (3, 4 or 5 star) reviews per salon
+ * per month, counted by the month-to-date rule, with L3 and L6 as full months only and YTD from Jan 1 through today.
+ * Built from `monthlyProgress` (`reviews/monthly-progress.ts`), the table's own figures.
+ */
+export const MONTHS_HEADING = "GOOGLE REVIEWS — L3, L6, YTD AND MONTH BY MONTH";
+
+const MONTHS_RULES = [
+  "- A question about the last 3 months (L3), the last 6 months (L6), year to date (YTD) or a month is answered from this section, for the salons asked about, naming the months each total covers.",
+  "- L3 and L6 are FULL months: the current, partial month is not in them. YTD is January 1 through today, the current month included.",
+  "- These are qualifying reviews (3, 4 or 5 stars). Say so, and never present them as every review. Where a month is marked as before counting began, the figure is the qualifying reviews Google dates to that month.",
+  "- Never state a month or total that is not written here, never estimate one, and never say there are no figures when they are written here.",
+].join("\n");
+
+export function formatReviewMonthsSection(input: {
+  readonly progress: MonthlyProgress;
+  /** The page's rows, already narrowed to any salon the question names. */
+  readonly locations: readonly Pick<LocationRollup, "storeCode" | "salonNumber" | "locationName">[];
+  readonly ownStoreCodes: ReadonlySet<string>;
+}): string {
+  const { progress } = input;
+  const monthName = (month: string) => formatProgressMonth(month, month.endsWith("-01"));
+  const span = (months: readonly string[]) =>
+    months.length === 0
+      ? "no months yet"
+      : formatMonthsWindow({
+          start: `${months[0]}-01`,
+          endExclusive: `${nextMonth(months[months.length - 1]!)}-01`,
+        });
+  const rows = progress.rows.filter((row) => input.locations.some((location) => location.storeCode === row.storeCode));
+  const lines = [
+    MONTHS_HEADING,
+    "",
+    `Months run on the Google Reviews page's month-by-month table, Central time. L3 = last 3 full months (${span(progress.l3Months)}). L6 = last 6 full months (${span(progress.l6Months)}). YTD = ${span(progress.ytdMonths)} through today, the current month (${monthName(progress.currentMonth)}) included so far.`,
+    `Months shown, oldest first: ${progress.months.map(monthName).join(", ")}.`,
+  ];
+  if (rows.length === 0) {
+    lines.push("", "No month-by-month figures are held for these salons.", "", MONTHS_RULES);
+    return lines.join("\n");
+  }
+  const sum = (pick: (row: (typeof rows)[number]) => number) => rows.reduce((total, row) => total + pick(row), 0);
+  if (rows.length > 1) {
+    lines.push(
+      "",
+      `All ${rows.length} salons together (qualifying): L3 ${sum((r) => r.l3)}, L6 ${sum((r) => r.l6)}, YTD ${sum((r) => r.ytd)}. By month: ${progress.months
+        .map((month, i) => `${monthName(month)} ${sum((r) => r.months[i]!)}`)
+        .join(", ")}.`,
+    );
+  }
+  lines.push("", "Per salon, qualifying reviews:");
+  for (const row of rows) {
+    const location = input.locations.find((entry) => entry.storeCode === row.storeCode)!;
+    const own = input.ownStoreCodes.has(row.storeCode) ? ", this manager's salon" : "";
+    const months = progress.months
+      .map((month, i) => `${monthName(month)} ${row.months[i]}${row.beforeCounting[i] ? "*" : ""}`)
+      .join(", ");
+    lines.push(`- ${salonLabel(location)} (store ${row.storeCode}${own}): L3 ${row.l3}, L6 ${row.l6}, YTD ${row.ytd}. By month: ${months}.`);
+  }
+  if (rows.some((row) => row.beforeCounting.some(Boolean))) {
+    lines.push("* Before this salon counted the whole month: reviews Google dates to that month.");
+  }
+  return [...lines, "", MONTHS_RULES].join("\n");
+}
+
+function nextMonth(month: string): string {
+  const index = Number(month.slice(0, 4)) * 12 + Number(month.slice(5, 7));
+  return `${Math.floor(index / 12)}-${String((index % 12) + 1).padStart(2, "0")}`;
 }
