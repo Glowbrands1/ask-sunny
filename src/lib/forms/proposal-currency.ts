@@ -263,6 +263,12 @@ export function checkProposalIsCurrent(input: {
           ? "dpoa"
           : null;
     if (asked === null) continue;
+    /*
+     * The loop's card (c134; QA, 20 Nov 2026, Pau's rule): a later form request counts against this card only when it is
+     * for this card's person or names no person. "Please write up a corrective action for <B>. On 11/12 <B> was seen …"
+     * asks nothing of <A>'s open exit card. The same person asking for another form is still a switch.
+     */
+    if (settled && forSomebodyElse(message.content, isCardPerson, input.employeeName)) continue;
     if (asked !== input.templateKey) {
       return {
         current: false,
@@ -294,6 +300,18 @@ function partOfName(said: string, card: string): boolean {
   const full = words(card);
   const part = words(said);
   return part.length > 0 && part.every((word) => full.includes(word));
+}
+
+/**
+ * A turn that names a person, none of whom is the card's person, and never says a word of the card's name: a form it asks
+ * for is that person's. A turn naming nobody, or the card's person in any spelling, is not.
+ */
+function forSomebodyElse(content: string, isCardPerson: (name: string) => boolean, cardName: string): boolean {
+  const { resolution } = employeeState(managerContext([], { content }));
+  const named = resolution.kind === "resolved" ? [resolution.employeeName] : resolution.kind === "ambiguous" ? resolution.candidates : [];
+  if (named.length === 0 || named.some(isCardPerson)) return false;
+  const said = new Set(content.toLowerCase().match(/[a-z][a-z'’-]*/g) ?? []);
+  return !(cardName.toLowerCase().match(/[a-z][a-z'’-]*/g) ?? []).some((word) => word.length >= 2 && said.has(word));
 }
 
 type FormRequest = { templateKey: string; employeeName: string };
