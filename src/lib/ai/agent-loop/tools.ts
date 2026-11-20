@@ -3791,6 +3791,20 @@ export async function proposeForm(
     ...(awaiting ? { awaitingIncident: true as const, supportsInlineDraft: false } : {}),
   };
   /*
+   * THE CARD'S ACCOUNT CALLS THE PERSON BY THE SHORT NAME (QA, 20 Nov 2026; live on main b06e51be): "ca for Test Testy,
+   * late 11/18" got the account "Test Testy was late on 11/18.", and the drafter carried the full name into Observed.
+   * The card's own full name in its account becomes the reply name (`replyNameFor`: the first name, or the full name
+   * when someone else shares it; `short-name.ts`). The card's name field keeps the full name.
+   */
+  if (card.issue && card.employeeName) {
+    const short = replyNameFor(card.employeeName, read.kind === "read" ? read.roster : [], extractEmployeeNames(managerTurns(context)), employee.id ?? null);
+    const named = (await import("@/lib/forms/short-name")).withShortName(card.issue, card.employeeName, short);
+    if (named.replaced > 0) {
+      card.issue = named.text;
+      whatHappened = named.text;
+    }
+  }
+  /*
    * THE JOB TITLE IS THIS PERSON'S (TITLE_OF_THE_EMPLOYEE, TITLE_NOT_SPEAKERS_MANAGER, EXIT_OTHER_PERSON_NOT_SUBJECT;
    * parity gaps #33, #34, #39): from the roster row's Woven title, never read off the whole chat, where it can be the
    * manager's ("my DM told me"), a coworker's or a letter signer's. A name not on the roster gets none; the manager fills it.
@@ -3822,20 +3836,6 @@ export async function proposeForm(
     if (unplaced !== card.issue && unplaced !== "") {
       card.issue = unplaced;
       whatHappened = unplaced;
-    }
-  }
-  /*
-   * THE CARD'S ACCOUNT CALLS THE PERSON BY THE SHORT NAME (QA, 20 Nov 2026; live on main b06e51be): "ca for Test Testy,
-   * late 11/18" got the account "Test Testy was late on 11/18.", and the drafter carried the full name into Observed.
-   * The card's own full name in its account becomes the reply name (`replyNameFor`: the first name, or the full name
-   * when someone else shares it; `short-name.ts`). The card's name field keeps the full name.
-   */
-  if (card.issue && card.employeeName) {
-    const short = replyNameFor(card.employeeName, read.kind === "read" ? read.roster : [], extractEmployeeNames(managerTurns(context)), employee.id ?? null);
-    const named = (await import("@/lib/forms/short-name")).withShortName(card.issue, card.employeeName, short);
-    if (named.replaced > 0) {
-      card.issue = named.text;
-      whatHappened = named.text;
     }
   }
   card.employeeRole = employee.id ? await rosterTitle(context.actor.scope, employee.id) : null;
