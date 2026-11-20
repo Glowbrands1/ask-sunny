@@ -3647,6 +3647,22 @@ export async function proposeForm(
       whatHappened = unplaced;
     }
   }
+  /*
+   * THE CARD'S ACCOUNT NAMES THE PERSON TOO (QA's live retest of #1147, 20 Nov 2026, conv_mwp5inao2y4s849): the card's
+   * issue read "Her shift lead, <L>, told her to clock out early and she refused." The reply's pronoun pass
+   * (`reply-pronouns.ts`) runs on the card's account with the card's own reply name, as on the reply's account line.
+   */
+  if (card.issue && card.employeeName) {
+    const { withoutPersonPronouns } = await import("./reply-pronouns");
+    const name = replyNameFor(card.employeeName, read.kind === "read" ? read.roster : [], extractEmployeeNames(managerTurns(context)), employee.id ?? null);
+    const others = await otherPeopleNamed(context, card.issue, name).catch(() => [] as string[]);
+    const reporters = await trustedReporters(context).catch(() => [] as string[]);
+    const named = withoutPersonPronouns(card.issue, name, others, managerTurns(context), reporters);
+    if (named.replaced > 0) {
+      card.issue = named.text;
+      whatHappened = named.text;
+    }
+  }
   card.employeeRole = employee.id ? await rosterTitle(context.actor.scope, employee.id) : null;
   /*
    * A TITLE THE MANAGER TYPED (batch H4/H6: JOB_TITLE_FROM_WORDS, JOB_TITLE_APPOSITION, TITLE_SPELLED_OUT, JOB_TITLE_CASE):
