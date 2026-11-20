@@ -44,7 +44,7 @@ import {
   saveInstanceValues,
   type LoadedInstance,
 } from "./instances";
-import { NO_PRIOR_ACTION, PRIOR_ACTIONS_KEY } from "./prior-actions";
+import { NO_PRIOR_ACTION, POLICY_MANUAL_SIGNED_KEY, PRIOR_ACTIONS_KEY } from "./prior-actions";
 import { takeReaderFoundNothing } from "./reader-found-nothing";
 import { draftableCheckboxGroups, draftableFields, type DraftValues } from "./responsibility";
 import { copiedContent } from "./same-form-copy";
@@ -558,7 +558,9 @@ export async function writeFormEdits(instanceId: string, ops: readonly FormEditO
   refused.push(...diff.refused);
 
   /* Code's own values: as computed, never over a typed line (unless exempt), never blanking one. */
-  const writerOf = (op: FormEditOp) => op.by ?? defaultWriter(rules.path);
+  // HR via Pau, 19 Nov 2026: the policy manual's signed date is the form creator's; a chat edit of it is their own, in their words (the reducer's verbatim rule), never the assistant's.
+  const writerOf = (op: FormEditOp) =>
+    op.by ?? (op.field === POLICY_MANUAL_SIGNED_KEY && (rules.path === "patch" || rules.path === "tool") ? ("manager" as const) : defaultWriter(rules.path));
   const derivedChanges: FieldChange[] = [];
   for (const op of derivedOps) {
     const field = before[op.field];

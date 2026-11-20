@@ -47,7 +47,7 @@ import {
 import { formLabels, snapshotDiff, snapshotOf } from "./form-snapshot";
 import { authorizeInstance } from "./instance-scope";
 import { applyAssistantRevision, applyStatedFacts, loadInstance, saveInstanceValues, type LoadedInstance } from "./instances";
-import { NO_PRIOR_ACTION, PRIOR_ACTIONS_KEY } from "./prior-actions";
+import { NO_PRIOR_ACTION, POLICY_MANUAL_SIGNED_KEY, PRIOR_ACTIONS_KEY } from "./prior-actions";
 import { draftableCheckboxGroups, draftableFields } from "./responsibility";
 import type { ChatMessage } from "@/types";
 
@@ -176,7 +176,8 @@ function preparePatch(loaded: Awaited<ReturnType<typeof authorizeInstance>>["loa
      * message's words ("change her position to Team Member"), written as the manager's own edit.
      */
     const fixes = formPatchReaderFixesEnabled();
-    const verbatim = new Set(fixes ? allFields.filter((field) => field.key === "job_title").map((field) => field.key) : []);
+    // HR via Pau, 19 Nov 2026: the policy manual's signed date is the form creator's, so a chat edit may set it, to their words only.
+    const verbatim = new Set(fixes ? allFields.filter((field) => field.key === "job_title" || field.key === POLICY_MANUAL_SIGNED_KEY).map((field) => field.key) : []);
     const writable = new Set([...template.writable, ...stated, ...verbatim]);
     const fields: FormPatchField[] = [];
     const readOnly: FormPatchReadOnly[] = [];
