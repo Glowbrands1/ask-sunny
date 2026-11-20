@@ -105,8 +105,10 @@ describe("a tool that finishes after the call settled arms nothing", () => {
       watch.toolStarted();
       return "done";
     });
+    // Compared with the count before, so a timer anything else left behind never decides this.
+    const before = vi.getTimerCount();
     late!.toolFinished();
-    expect(vi.getTimerCount()).toBe(0);
+    expect(vi.getTimerCount()).toBe(before);
     vi.useRealTimers();
   });
 });
