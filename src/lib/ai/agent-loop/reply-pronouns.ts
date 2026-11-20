@@ -164,16 +164,40 @@ export function withoutPersonPronouns(
   const inQuote = (at: number) => quoted.some(([from, to]) => at >= from && at < to) || keepsOwn(at);
   const edits: Array<{ from: number; to: number; text: string }> = [];
 
+  /*
+   * QA (20 Nov 2026, item 19; the production audit): "<P> did not come into <P>'s scheduled shift today" reads clumsily.
+   * The person's second mention in one sentence (the name already written, or an earlier pronoun of theirs replaced) is
+   * not the name again: a possessive right after a preposition is "the" ("did not come into the scheduled shift"; one
+   * elsewhere, "said her car broke down", keeps its owner as the name), and a subject after "and",
+   * "but", "or" or "then" is dropped ("came in late and left early"). The first mention is the name, as before, and no
+   * pronoun is ever kept.
+   */
+  const nameInSentence = nameRe(display.toLowerCase(), "iu");
+  const mentionedBefore = (at: number) => {
+    const before = sentenceBefore(reply, at);
+    const sentenceStart = at - before.length;
+    return nameInSentence.test(before) || edits.some((edit) => edit.from >= sentenceStart && edit.from < at);
+  };
   for (const match of reply.matchAll(ALWAYS)) {
     const at = match.index!;
     if (inQuote(at)) continue;
     const word = match[0].toLowerCase();
     const end = at + match[0].length;
-    let text: string;
-    if (word === "his" || word === "hers") text = possessive(display);
+    const owns = word === "his" || word === "hers" || (word === "her" && /^\s+[A-Za-z0-9$]/.test(reply.slice(end)) && !NOT_OWNED.test(reply.slice(end)));
+    const again = mentionedBefore(at);
+    // Only after a place or time preposition ("into her scheduled shift"): "Remy said her car broke down" keeps the owner.
+    const afterPreposition = /\b(?:into|for|to|on|at|during|from|before|after|in)[ \t]+$/i.test(reply.slice(Math.max(0, at - 10), at));
+    if (again && owns && word !== "hers" && afterPreposition) {
+      edits.push({ from: at, to: end, text: match[0][0] === match[0][0]!.toUpperCase() ? "The" : "the" });
+      continue;
+    }
+    const joined = /\b(?:and|but|or|then)[ \t]+$/i.exec(reply.slice(Math.max(0, at - 8), at));
+    if (again && (word === "she" || word === "he") && joined && /^\s+[a-z]/.test(reply.slice(end))) {
+      edits.push({ from: at, to: end + (/^[ \t]/.test(reply.slice(end)) ? 1 : 0), text: "" });
+      continue;
+    }
     // "her shift", "her 146 tans", "her own" own something; "for her.", "with her and", "talked to her" do not.
-    else if (word === "her") text = /^\s+[A-Za-z0-9$]/.test(reply.slice(end)) && !NOT_OWNED.test(reply.slice(end)) ? possessive(display) : display;
-    else text = display;
+    const text = owns ? possessive(display) : display;
     edits.push({ from: at, to: end, text });
   }
   for (const match of reply.matchAll(THEY_PERSON)) {
