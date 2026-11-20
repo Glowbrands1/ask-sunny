@@ -1,5 +1,6 @@
 import "server-only";
 
+import { withFullOffRosterName } from "./off-roster-line";
 import { cardTurns, personKey, readLoopRecords, replyTurns, type CardRecord, type CardSlot, type ExitOfferSlot, type NameQuestionSlot, type PersonAskedSlot } from "./card-record";
 import { CLAUDE_EFFORT, CLAUDE_MAX_TOKENS, CLAUDE_MODEL } from "@/lib/config/models";
 import { MissingConfigurationError, requireEnv } from "@/lib/config/server-env";
@@ -392,7 +393,7 @@ function buildAgentLoopTools(config: AppConfig) {
       about: { type: "string", description: "Words the manager used about the form (\"getting rooms ready between guests\"), if any." },
       forms_on_file_evidence: FORMS_ON_FILE_EVIDENCE,
       open: { type: "boolean", description: "true when the manager asks to open, edit or see one form on file (not a list of what is on file)." },
-    }, []),
+    }, ["forms_on_file_evidence"]),
   },
   {
     name: "read_form",
@@ -459,6 +460,12 @@ function buildAgentLoopTools(config: AppConfig) {
         prior_actions: { type: "string", description: "Earlier steps only as the manager stated them (\"verbal on 10/2\", \"coached last month\"); never from records on file." },
         topic: { type: "string", description: "Coaching card only: the coaching topic in a few of the manager's words (\"greeting guests at the door\"), never the request sentence or the person's name. With topic_evidence." },
         topic_evidence: evidence("With topic: the manager message of this request and its words that name the topic."),
+        attendance: {
+          type: "string",
+          enum: ["absence", "lateness", "both"],
+          description: "Corrective Action card whose offense is attendance: what the manager described. absence: a shift missed (did not come in, no-show, no call no show, called out). lateness: late, or left early. both: each. With attendance_evidence.",
+        },
+        attendance_evidence: evidence("With attendance: the manager message of this request and its words that describe the absence or the lateness."),
         incident_time: { type: "string", description: "The time of the incident if the manager gave one, as they said it." },
         salon: { type: "string", description: "The " + place + " the form is for, as the manager named it (\"kearney\", \"IA Altoona\"), when the card asks which " + place + " or the manager says one. Only the manager's own " + places + " are accepted." },
       },
@@ -642,6 +649,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   const openBefore = noop && input.openFormId ? await noop.formBeforeTurn(input.openFormId, input.request) : null;
   const steps: AgentLoopStep[] = [];
   const replyNames = new Set<string>();
+  const offRosterNames = new Set<string>();
   /* The tools this turn called so far (the hand-backs' too), for the item 7 check below. */
   const calledThisTurn = (tool: string) => steps.some((step) => step.tool === tool);
   /* Each model call's tokens and ms, for the trace (numbers only). */
@@ -694,6 +702,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
    * without running it (the count goes in the trace). Code never writes the reply.
    */
   const refusalCounts = new Map<string, number>();
+  const refusalSteps = new Map<string, Set<number>>();
   const stoppedTools = new Map<string, { reason_code: string; ask_exactly?: string }>();
   /* A refusal about a person (not_on_roster for one typed name) counts across tools: c134 alternated find_staff and propose_form. */
   const stoppedPeople = new Map<string, { reason_code: string; ask_exactly?: string }>();
@@ -712,7 +721,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     const stopped = stoppedTools.get(name) ?? (asked ? stoppedPeople.get(asked) : undefined);
     if (stopped) {
       retriesBlocked += 1;
-      result = { reason_code: "stop_retrying", error: `${name} was refused twice this turn for ${stopped.reason_code}; it was not run again. Reply to the manager now${stopped.ask_exactly ? ", ending with ask_exactly" : ""}.`, stop_retrying: stopped, ...(stopped.ask_exactly ? { ask_exactly: stopped.ask_exactly } : {}) };
+      result = { reason_code: "stop_retrying", error: `${name} was refused twice this turn for ${stopped.reason_code}; it was not run again. Reply to the manager now${stopped.ask_exactly ? ", ending with ask_exactly" : ""}, saying what the tool needs; never call it a lookup problem or ask them to try again.`, stop_retrying: stopped, ...(stopped.ask_exactly ? { ask_exactly: stopped.ask_exactly } : {}) };
     } else {
       /* PR 6 item 5: the screen's status as the tool starts (a call the retry guard stops never runs, so it shows none). */
       try {
@@ -738,7 +747,15 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
       if (typeof refusal.reason_code === "string" && (typeof refusal.error === "string" || typeof refusal.ask_exactly === "string")) {
         const person = typeof refusal.not_on_roster === "string" && refusal.not_on_roster.trim() ? personKey(refusal.not_on_roster.trim().replace(/^use\s+/i, "")) : null;
         const key = person ? `person\u0000${refusal.reason_code}\u0000${person}` : `${name}\u0000${refusal.reason_code}`;
-        const count = (refusalCounts.get(key) ?? 0) + 1;
+        /*
+         * Pau's live chat (20 Nov 2026, 14:23Z): two find_past_forms calls in ONE model step (CA and coaching), both with no
+         * evidence, were counted as two refusals before the model had seen either, so the call it then made with evidence was
+         * never run. Refusals in the same step count once: a retry is a later step, after the model read the refusal.
+         */
+        const steps = refusalSteps.get(key) ?? new Set<number>();
+        steps.add(step);
+        refusalSteps.set(key, steps);
+        const count = steps.size;
         refusalCounts.set(key, count);
         if (count >= 2) {
           const stop = { reason_code: refusal.reason_code, ...(typeof refusal.ask_exactly === "string" ? { ask_exactly: refusal.ask_exactly } : {}) };
@@ -770,6 +787,9 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     /* What the reply calls each person this turn's tools named (reply_name, by replyNameFor): the pronoun check's name. */
     const shownName = (result as { reply_name?: unknown }).reply_name;
     if (typeof shownName === "string" && shownName.trim()) replyNames.add(shownName.trim());
+    /* QA's f070: the full name a card used as typed (off_roster_name), for the not-on-the-staff-list line's guard. */
+    const typedAsIs = (result as { off_roster_name?: unknown; facts?: { off_roster_name?: unknown } }).facts?.off_roster_name ?? (result as { off_roster_name?: unknown }).off_roster_name;
+    if (typeof typedAsIs === "string" && typedAsIs.trim()) offRosterNames.add(typedAsIs.trim());
     steps.push({ step, tool: name, ms: Math.round(performance.now() - started), resultChars: JSON.stringify(result).length, ok: !("error" in result), ...(toolCalls > 0 ? { model_calls: toolCalls } : {}), ...stepReason(result, name) });
     return result;
   };
@@ -1178,6 +1198,12 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     text = named.text;
     pronounsReplaced = named.replaced;
   }
+  /*
+   * QA's f070 (20 Nov 2026): the not-on-the-staff-list line names the full name exactly as typed (the rules book's
+   * confirm-which-person lines), never the short reply name; with one such card this turn, code keeps it so
+   * (`withFullOffRosterName`, the app's own sentence matched by its shape).
+   */
+  if (offRosterNames.size === 1 && text) text = withFullOffRosterName(text, [...offRosterNames][0]!, appConfig().staffSystem);
   const cardSlot: CardSlot | null = effects.proposal
     ? { proposalId: effects.proposal.proposalId, employeeKey: effects.proposalEmployeeId ? personKey(effects.proposalEmployeeId) : null, nameKey: effects.proposal.employeeName ? personKey(effects.proposal.employeeName) : null, templateKey: effects.proposal.templateKey, templateName: effects.proposal.templateName ?? null, ...(effects.proposalAsked?.length ? { asked: effects.proposalAsked } : {}), ...(effects.proposalLevel ? { level: effects.proposalLevel } : {}), ...(effects.proposalPayroll ? { payroll: effects.proposalPayroll } : {}), ...(effects.proposalPayroll === "yes" && effects.proposalPayrollAmount ? { payrollAmount: effects.proposalPayrollAmount } : {}), ...(effects.proposal.policyLine ? { policyLine: effects.proposal.policyLine } : {}), ...(effects.proposalAccountKey ? { accountKey: effects.proposalAccountKey } : {}), ...(effects.proposal.formDate ? { incidentDate: effects.proposal.formDate } : {}) }
     : null;
