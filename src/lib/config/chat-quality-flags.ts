@@ -3795,6 +3795,16 @@ export function unknownNameAskEnabled(): boolean {
 }
 
 /**
+ * STARTER_FOLLOW_UP_EXAMPLE_ENABLED (QA item 24, the production audit, 20 Nov 2026; default off). The home starters
+ * "Create a coaching form." and "Show me training related to this issue.", sent as a chat's first message, got "who?"
+ * or "which issue?" and three managers left. On: that follow-up carries one short example answer
+ * (`ai/starter-follow-up.ts`). Off, as before.
+ */
+export function starterFollowUpExampleEnabled(): boolean {
+  return envFlag("STARTER_FOLLOW_UP_EXAMPLE_ENABLED");
+}
+
+/**
  * CORRECTED_DATE_KEPT_ENABLED (QA's round-5 trace of corrective-action-conversation-qa Q6, 8 Nov 2026; coding 5;
  * default off). "the meeting was actually on 10-19-26" after a request dated 10-20-26: PRIOR_SENTENCE_FIX's date step
  * saw two incident dates and dated the card null, so Create saved today's date. On: the incident date the manager
