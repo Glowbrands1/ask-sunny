@@ -35,3 +35,29 @@ describe("account facts kept (f061)", () => {
     expect(withAccountFactsKept("", ACCOUNT, "Remy Calder")).toEqual({ text: "", added: [] });
   });
 });
+
+/*
+ * QA's live test of #1152 (20 Nov 2026, f083; draft c6a29914, the person invented): "ca for <P>, she was 40 minutes late
+ * on 11/18, this is the third time in two months, I've had two verbal talks with her already, and a customer said they
+ * won't come back because nobody was at the desk". The card's account was appended whole: the lateness and the customer
+ * twice, and the manager's "She". Only the missing fact is added, in the form's voice; a fact already there in other words
+ * ("would not return" for "won't come back", "November 18, 2026" for "11/18") is never added again.
+ */
+describe("account facts kept: only the missing fact (f083)", () => {
+  const card = "She was 40 minutes late on 11/18, this is the third time in two months. A customer said they won't come back because nobody was at the desk.";
+  const drafted =
+    "Observed:\nRemy was 40 minutes late to work on November 18, 2026. A customer stated they would not return because nobody was at the desk.\n\nExpectation:\nRemy is expected to arrive on time for every scheduled shift.";
+
+  it("adds only \"This is the third time in two months.\", never the account again", () => {
+    expect(missingAccountFacts(drafted, card, "Remy Calder")).toEqual(["This is the third time in two months."]);
+    expect(withAccountFactsKept(drafted, card, "Remy Calder").text).toBe(
+      "Observed:\nRemy was 40 minutes late to work on November 18, 2026. A customer stated they would not return because nobody was at the desk. This is the third time in two months.\n\nExpectation:\nRemy is expected to arrive on time for every scheduled shift.",
+    );
+  });
+
+  it("an added clause that opens with she/he names the person by first name", () => {
+    expect(missingAccountFacts("Observed:\nA customer complained.", "She left early on 11/18 without telling anyone.", "Remy Calder")).toEqual([
+      "Remy left early on 11/18 without telling anyone.",
+    ]);
+  });
+});

@@ -720,6 +720,10 @@ export interface ToolEffects {
    * manager's answer in a later turn (run.ts records it; propose_form refuses it where the card is set).
    */
   nameNotConfirmed?: { offeredIds: readonly string[]; ask: string };
+  /** QA's audit (item 14b): drafts coach_team's "create all" saved this turn, so a later failure never says nothing was saved. */
+  draftsCreated?: number;
+  /** QA's audit (item 14b): a tool was still running when the turn stopped and did not finish in the time left (run.ts). */
+  workUnfinished?: boolean;
   /** `saved`: each field that really changed on the form written, read back from the database (PR 3; `saved-diff.ts`). */
   formUpdate: { instanceId: string; updated: string[]; saved?: SavedChange[]; putBack?: string[] } | null;
   /** Roster ids find_staff chose from a close spelling or a lone first name this turn (the card's name_from_staff_list fact). */
@@ -2307,6 +2311,31 @@ async function personNotNamed(context: ToolContext, template: { key: string; nam
   return { ask_exactly: who.ask_exactly, reason_code: "person_not_named", error: `No words of the manager's in this chat name ${displayName(person)}, and nobody picked or confirmed them. The card was not made. End your reply with ask_exactly, exactly, once.` };
 }
 
+/**
+ * QA (20 Nov 2026, #1158's live test: the reply said "Filed as a resignation" while the saved form ticked no type). The exit
+ * card's ticks are the ones the saved form gets: the exit form's own reader over this request's words (`readExitFacts`, as
+ * the draft's `applyExitDraft`), or "Immediate involuntary separation" for a termination the loop decided (#1139). With
+ * none, the card asks how the person left (exit_unset resignation_type), never saying "Filed as" what will not be ticked;
+ * and it asks a missing last day worked, as before. Never a date or a reason the manager did not give.
+ */
+async function exitCardTicks(isExit: boolean, termination: boolean, requestWords: string, today: string): Promise<{ exit_ticks?: string[]; exit_unset?: string[] }> {
+  if (!isExit) return {};
+  const [{ readExitFacts, exitFactValues }, library] = await Promise.all([import("@/lib/forms/exit-facts"), import("@/lib/forms/exit-library")]);
+  const facts = readExitFacts(requestWords, today);
+  const labels: Record<string, string> = {
+    [library.EXIT_OPTION.submittedFulfilledNotice]: "Submitted & Fulfilled Notice",
+    [library.EXIT_OPTION.immediateVoluntary]: "Immediate Voluntary Resignation",
+    [library.EXIT_OPTION.immediateInvoluntary]: "Immediate involuntary separation",
+    [library.EXIT_OPTION.noticeNotFulfilled]: "Did not fulfill required 14 day / 30 day notice",
+    [library.EXIT_OPTION.noCallNoShow]: "No Call No Show",
+  };
+  const checked = exitFactValues(facts).checked;
+  const keys = termination ? [library.EXIT_OPTION.immediateInvoluntary] : [...(checked[library.EXIT_NOTICE_GROUP] ?? []), ...(checked[library.EXIT_TYPE_GROUP] ?? [])];
+  const ticks = keys.map((key) => labels[key] ?? key);
+  const unset = [...(!termination && !facts.lastDayWorked ? ["last_day_worked"] : []), ...(ticks.length === 0 ? ["resignation_type"] : [])];
+  return { ...(ticks.length > 0 ? { exit_ticks: ticks } : {}), ...(unset.length > 0 ? { exit_unset: unset } : {}) };
+}
+
 /** A roster person's full names: the Woven preferred name with the surname, and the legal one (batch G, QA). */
 export function fullNamesOf(person: Pick<RosterEmployee, "firstName" | "lastName" | "preferredFirstName">): string[] {
   const last = person.lastName?.trim() ?? "";
@@ -3399,6 +3428,13 @@ export async function proposeForm(
       })()
     : null;
   let payroll: "yes" | "no" | null = askedPayroll && payrollCheck?.ok ? askedPayroll : null;
+  /*
+   * QA (20 Nov 2026, #1158's live test: the card said payroll unset while Create saved Yes). ONE decision feeds the card,
+   * the reply and the saved form: on the exit form, with no answer from the model on evidence, payroll is the exit form's
+   * own reader (`readExitDetails`, the one Create's draft uses) over THIS request's words, never another request's.
+   */
+  const exitReading = exitForm ? (await import("@/lib/forms/exit-details")).readExitDetails(requestWords, context.today || businessToday()) : null;
+  if (payroll === null && payrollFields && exitReading?.answers.payroll_deduction_applicable) payroll = exitReading.answers.payroll_deduction_applicable;
   const typedAmount = typeof input.payroll_amount === "string" && /\d/.test(input.payroll_amount) ? input.payroll_amount.replace(/[^\d.]/g, "") : null;
   /* The amount the manager stated, read as today reads it (`payrollAmountFromConversation`) when the model left it out. */
   const statedAmount = payroll === "yes" ? payrollAmountFromConversation(conversationTurns(context), { payrollAnswer: "yes" })?.replace(/[^\d.]/g, "") ?? null : null;
@@ -4035,7 +4071,7 @@ export async function proposeForm(
      * QA item 17 (20 Nov 2026): the exit form's required last day worked, asked on the card when the manager has not said
      * it, as the Corrective Action asks its level (the rules book's exit_unset line). A termination's effective date is it.
      */
-    ...(template.key === appConfig().formKeys.exit && !exitTermination && !(await import("@/lib/forms/exit-facts")).readExitFacts(requestWords, today).lastDayWorked ? { exit_unset: ["last_day_worked"] } : {}),
+    ...(await exitCardTicks(template.key === appConfig().formKeys.exit, Boolean(exitTermination), requestWords, today)),
     ...(exitTermination ? { exit_termination: { form_label: "Immediate involuntary separation", effective: exitTermination.date, ...(exitTermination.dated_today ? { dated_today: true } : {}) } } : {}),
     ...(jobTitleTyped ? { job_title_from_your_words: card.employeeRole } : {}),
     ...(whichSalon ? { which_salon: true } : {}),
@@ -4101,7 +4137,10 @@ export async function proposeForm(
             payroll_deduct: payroll,
             payroll_amount: payroll === "yes" && amount ? `$${amount.replace(/^\$/, "")}` : null,
           }
-        : {}),
+        : payrollFields
+          /* QA (#1158's live test): a form that asks the payroll question shows the card's one payroll decision too. */
+          ? { payroll_deduct: payroll }
+          : {}),
       incident_time: card.incidentTime ?? null,
       prior_actions: priorActions,
       policy: policyLine,
@@ -4188,7 +4227,9 @@ function isShownCardId(context: ToolContext, effects: ToolEffects, id: string): 
 export async function coachTeam(context: ToolContext, effects: ToolEffects): Promise<ToolResult> {
   if (context.openFormId) {
     const { coachingForEveryoneTurn } = await import("@/lib/forms/coaching-for-everyone");
-    const turn = await coachingForEveryoneTurn({ request: context.request, question: context.question, history: context.history as ChatMessage[], activeInstanceId: context.openFormId });
+    const turn = await coachingForEveryoneTurn({ request: context.request, question: context.question, history: context.history as ChatMessage[], activeInstanceId: context.openFormId, onCreated: () => {
+      effects.draftsCreated = (effects.draftsCreated ?? 0) + 1;
+    } });
     if (turn) return { app_reply: untrusted(turn.content), note: "Say app_reply to the manager as given, every line: it holds the people, the counts and the exact words the next step reads." };
   }
   const { wholeTeamRequest } = await import("@/lib/forms/whole-team-coaching");

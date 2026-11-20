@@ -117,6 +117,8 @@ export async function coachingForEveryoneTurn(input: {
   question: string;
   history: readonly Pick<ChatMessage, "role" | "content">[];
   activeInstanceId?: string;
+  /** Called once for each draft saved (QA's audit, item 14b: the agent loop's reply never says nothing was saved over one). */
+  onCreated?: () => void;
 }): Promise<AskResponse | null> {
   if (!coachingForEveryoneEnabled() || !input.activeInstanceId) return null;
   const question = input.question.trim();
@@ -202,6 +204,7 @@ export async function coachingForEveryoneTurn(input: {
       continue;
     }
     const target = await loadInstance(created.id);
+    input.onCreated?.();
     if (target) await copyFormContent({ source, target, actorId: actor.id });
     made.push(displayName(person));
   }

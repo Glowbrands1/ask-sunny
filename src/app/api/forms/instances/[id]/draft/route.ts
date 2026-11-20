@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { withoutTopicPrefix } from "@/lib/forms/coaching-topic-prefix";
+import { loopWriteUpSections } from "@/lib/forms/loop-write-up-sections";
 import { withAccountFactsKept } from "@/lib/forms/account-facts-kept";
 import { TERMINATION_OPTION, withTerminationPlan } from "@/lib/forms/termination-stated";
 import { salesResultsOffenseLine, withCaChosenRule } from "@/lib/ai/ca-sales-prompt-lines";
@@ -398,6 +399,14 @@ async function readOfficialPolicyManual(
 }
 
 /** SPEND_GUARD_ALL_CALLS_ENABLED: this route's Claude calls are counted (`ai/spend-meter.ts`). Off, as before. */
+
+/**
+ * QA f071 (20 Nov 2026): manual headings whose saved Policy Violated keeps the readers' "<box> — <section>" line in place
+ * of a loop card's own policy line. Time Records stays "Standards of Conduct — Time Records", as Pau was last told (QA).
+ * The app's own manual headings, lower-case; never the manager's words. Remove an entry to give it the card's line.
+ */
+const READERS_LINE_HEADINGS: ReadonlySet<string> = new Set(["time records"]);
+
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   return withSpendMeter("forms_draft", () => postFormsDraft(request, context));
 }
@@ -2792,7 +2801,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      * Code": the box came from the manual section's place, not the card. The box follows the card's heading, read
      * against this form's own Type of Offense labels ("Dress Code Violation" is the Dress Code; "Attendance Policy" the
      * Attendance), and Policy Violated is the card's own heading line with its page. A heading no label names (Late
-     * Opening) is left as the readers above set it.
+     * Opening) keeps the box the readers above set.
      */
     if (loopCardHeading && !keeps("policy_violated")) {
       const generic = new Set(["policy", "policies", "violation", "violations", "of", "the", "for", "and"]);
@@ -2814,9 +2823,15 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         const keepOther = (draftedPayload.checked.offense_type ?? []).includes("other") && cardOther !== null;
         const boxes = [box.key, ...(secondBox && secondBox.key !== box.key ? [secondBox.key] : [])];
         draftedPayload.checked = { ...draftedPayload.checked, offense_type: [...boxes, ...(keepOther ? ["other"] : [])] };
-        if (cardLine && fields.some((field) => field.key === "policy_violated")) {
-          draftedPayload.values = { ...draftedPayload.values, policy_violated: cardLine };
-        }
+      }
+      /*
+       * QA f071 (20 Nov 2026, live item 15): a card citing "Late Opening Policy, JBA Policy Manual p.15" saved Policy
+       * Violated "Attendance Policy — Late Opening", so the card and the form showed two labels. The card's line is the
+       * saved Policy Violated whether or not a Type of Offense label names its heading; the box is left as set above.
+       * Except the headings in `READERS_LINE_HEADINGS`, which keep the readers' "<box> — <section>".
+       */
+      if (cardLine && !READERS_LINE_HEADINGS.has(loopCardHeading.trim().toLowerCase()) && fields.some((field) => field.key === "policy_violated")) {
+        draftedPayload.values = { ...draftedPayload.values, policy_violated: cardLine };
       }
     }
     /*
@@ -2901,6 +2916,17 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       const cardAccount = /^What happened:\s*(.+)$/im.exec(notes)?.[1]?.trim() ?? null;
       const absence = absenceWriteUp(draftedPayload.values, narrativeTargets.filter((key) => !keeps(key)), { employeeName: loaded.instance.employeeName, cardAccount });
       if (absence.changed) draftedPayload.values = absence.values;
+    }
+    /*
+     * QA's live test of #1154 (20 Nov 2026, f075): a loop card citing two headings saved an empty Expectation, its sentence
+     * under Going Forward, and the full name after the first. The loop card's write-up keeps the first name throughout and
+     * a filled Expectation (`loop-write-up-sections.ts`); the app's own drafted text only.
+     */
+    const sectionsKey = narrativeTargets[0];
+    if (body.cardFromLoop === true && sectionsKey && !keeps(sectionsKey) && typeof draftedPayload.values[sectionsKey] === "string") {
+      const { body: account, line: citation } = splitAppCitationLine(draftedPayload.values[sectionsKey]!);
+      const laid = loopWriteUpSections(account, loaded.instance.employeeName);
+      if (laid.changed) draftedPayload.values = { ...draftedPayload.values, [sectionsKey]: citation ? `${laid.text}\n\n${citation}` : laid.text };
     }
     /*
      * Pau via QA (20 Nov 2026, item 15): a loop card's saved write-up calls the employee by first name, never a pronoun.

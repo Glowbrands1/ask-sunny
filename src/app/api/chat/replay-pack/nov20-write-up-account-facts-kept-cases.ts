@@ -28,6 +28,16 @@ const ACCOUNT = "On 11/12, Remy Calder was scheduled to open the salon at 9:00 A
 /** What the live drafter kept: the account without the two facts, and one prior action. */
 const LIVE_OBSERVATION = "Observed:\nOn 11/12, Remy Calder was scheduled to open the salon at 9:00 AM that Thursday. The first customers were waiting outside the front door by 8:55, which is normal for the Thursday memberships rush, and the customers were still waiting at 9:20 because the doors were not unlocked and the lights were off. A customer called at 9:05 asking if the salon was closed for the day. Remy Calder was called twice and texted once, with no answer until 9:25, when Remy Calder replied that the alarm code had been entered wrong and the system had locked itself for fifteen minutes, then that the bus was late, and then that the key to the back door was in the other jacket. The explanations changed three times during the call. Remy Calder finally arrived at 9:38, thirty-eight minutes after the scheduled opening time. During those thirty-eight minutes at least six scheduled sessions were lost and two customers asked for refunds on their memberships. The opening checklist was not finished until 10:15, so the first sessions of the day were also delayed by twenty minutes. The bed cleaning log for the morning shows no entries for the first two rooms, so the rooms were used without the required wipe down. Remy Calder said it would not happen again and that the pressure of the morning schedule is hard to manage alone.\n\nExpectation:\nRemy is expected to open the salon on time and complete the opening checklist and cleaning log before the first session.\n\nGoing Forward:\nRemy will open the salon on time for every scheduled opening.";
 
+/*
+ * QA's live test of #1152 (20 Nov 2026, f083; draft c6a29914; the person invented). The manager's words, and the card's
+ * account as the live loop wrote it ("She was 40 minutes late …"). The keep-the-facts pass appended the whole account
+ * again: the lateness and the customer twice, with "She". Only "this is the third time in two months" was missing.
+ */
+const F083_SAID = "ca for Remy Calder, she was 40 minutes late on 11/18, this is the third time in two months, I've had two verbal talks with her already, and a customer said they won't come back because nobody was at the desk";
+const F083_ACCOUNT = "She was 40 minutes late on 11/18, this is the third time in two months. A customer said they won't come back because nobody was at the desk.";
+const F083_DRAFT =
+  "Observed:\nRemy was 40 minutes late to work on November 18, 2026. A customer stated they would not return because nobody was at the desk.\n\nExpectation:\nRemy is expected to arrive on time for every scheduled shift.";
+
 const fixed = (id: string, title: string, run: (t: ReplayContext) => Promise<void>): ReplayCase => ({
   id,
   title,
@@ -80,5 +90,31 @@ export const NOV20_WRITE_UP_ACCOUNT_FACTS_KEPT_CASES: ReplayCase[] = [
   fixed("nov20-f061-prior-actions-count-survives-create", "f061: the card's \"Prior actions: Verbal (2), dates not given\" is the saved Prior actions, never one verbal line", async (t) => {
     const prior = (await created(t)).prior_actions ?? "";
     expect(prior, `the saved Prior actions lost the count:\n${prior}`).toMatch(/Verbal \(2\)/);
+  }),
+  fixed("nov20-f083-only-the-missing-fact", `f083: "${F083_SAID}": the saved Observed adds only "This is the third time in two months.", never the card's account again`, async (t) => {
+    t.loopModel!(loopStandIn((view): LoopDecision => lastResult(view, "propose_form")
+      ? { text: "Here's the Corrective Action Form for **Remy**." }
+      : {
+          tool: "propose_form",
+          input: {
+            template_key: "dpoa",
+            employee_name: "Remy Calder",
+            person_evidence: evidenceFrom(view, "Remy Calder"),
+            what_happened: F083_ACCOUNT,
+            policy: "Attendance",
+            incident_date: "2026-11-18",
+            prior_actions: "Verbal (2), dates not given",
+          },
+        }));
+    t.draftWrites({ observation: F083_DRAFT });
+    const thread = t.thread();
+    await thread.say(F083_SAID);
+    const id = await thread.create();
+    const observation = t.values(id).observation ?? "";
+    const observed = (/Observed:\s*\n?([\s\S]*?)(?=\n\s*Expectation:|$)/i.exec(observation)?.[1] ?? "").trim();
+    expect(observed, `the Observed section is not the drafted text plus the one missing fact:\n${observation}`).toBe(
+      "Remy was 40 minutes late to work on November 18, 2026. A customer stated they would not return because nobody was at the desk. This is the third time in two months.",
+    );
+    expect(observed, "a pronoun about Remy").not.toMatch(/\b(?:she|her|he|him|his)\b/i);
   }),
 ];
