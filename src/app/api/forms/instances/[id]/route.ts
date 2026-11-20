@@ -225,8 +225,8 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
 export async function DELETE(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await context.params;
-    await authorizeInstance(request, id, "manage");
-    const deleted = await deleteInstance(id);
+    const { actor } = await authorizeInstance(request, id, "manage");
+    const deleted = await deleteInstance(id, { id: actor.id, role: actor.role, via: "route" });
     return NextResponse.json({
       deleted: { id: deleted.id, employeeName: deleted.employeeName },
     });
