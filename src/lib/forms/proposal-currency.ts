@@ -205,9 +205,32 @@ export function checkProposalIsCurrent(input: {
    * The loop's card: its recorded settlement decides which typed names are its person, never a "Did you mean" read from a
    * reply's text, which accepted the card's name whoever the chat named after it (a later switch to another person passed).
    */
-  const accepted = suggested || partial || preferred || loopSettled || (!settled && acceptedNameSuggestions(input.conversation).some(
+  /*
+   * QA item 9 (20 Nov 2026; Pau's name/form lock): a loop card is accepted only by the names the loop settled as its person
+   * (its record), or the person's own other names whole. The start rules (`typedFor`'s 2-letter starts, `looseFits`;
+   * PARTIAL_NAME_*, FIRST_NAME_SUGGEST) accept a start the loop never settles ("remy ca" with two Remys): never for a loop
+   * card. Cards from the old path keep them.
+   */
+  const startRules = !settled && (suggested || partial || preferred);
+  const wholeOtherName = Boolean(settled) && resolution.kind === "resolved" && alsoCalled.some((name) => samePerson(resolution.employeeName, name));
+  const accepted = startRules || wholeOtherName || loopSettled || (!settled && acceptedNameSuggestions(input.conversation).some(
     (name) => name.trim().toLowerCase() === input.employeeName.trim().toLowerCase(),
   ));
+  /*
+   * QA item 9: for a loop card, a name read after the card that is only part of the card's name and also part of another
+   * roster person's ("Remy", Remy Calder and Remy Cassidy) is a name the loop would ask about: the card is not current,
+   * though `samePerson` reads a first name as the person. The loop's settled names and the card's full name still pass.
+   */
+  if (
+    settled && resolution.kind === "resolved" &&
+    !settled(resolution.employeeName) && !(input.employeeName.trim().toLowerCase() === resolution.employeeName.trim().toLowerCase()) &&
+    partOfName(resolution.employeeName, input.employeeName) && partOfOthers(resolution.employeeName, input.employeeName, input.rosterNames)
+  ) {
+    return {
+      current: false,
+      reason: `This proposal is out of date: the conversation now says the form is for ${resolution.employeeName}, and more than one person on your staff list has that name. Tell Sunny which one the form is for, then use the newest proposal.`,
+    };
+  }
   if (
     resolution.kind === "resolved" &&
     !samePerson(resolution.employeeName, input.employeeName) &&
@@ -264,6 +287,14 @@ export function checkProposalIsCurrent(input: {
  * person. The card's full name came from the one roster person those words
  * fit (`ai/reader/check.ts`); the conversation reader only stops sooner.
  */
+/**
+ * QA item 9 (20 Nov 2026): for a loop card, a part of the card's name ("Remy") that is also part of another roster
+ * person's name (Remy Cassidy) is a name the loop would ask about, not the card's person.
+ */
+function partOfOthers(said: string, card: string, roster: readonly string[] | undefined): boolean {
+  return (roster ?? []).some((name) => !samePerson(name, card) && partOfName(said, name));
+}
+
 function partOfName(said: string, card: string): boolean {
   const words = (text: string) => text.toLowerCase().split(/[^a-z']+/).filter(Boolean);
   const full = words(card);

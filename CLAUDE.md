@@ -66,6 +66,26 @@ Finish each session with its work merged or its pull request open. Fixes that
 sat on unmerged branches (e.g. `claude/awesome-mayer-i0b5dj`,
 `claude/jolly-keller-j1o4ad`) reached Ask Bubbles but not Ask Sunny's `main`.
 
+## 5. Anything new in the app is readable by the AI
+
+Sunny's AI (the agent loop and the chat) never looks at pages; it reads the
+app only through its readers (`src/lib/ai/agent-loop/data-tools.ts`, the chat's
+data blocks such as `google-reviews-chat-read.ts`, read_forms_on_file). A new
+page, report, table, period or figure that a manager could ask about ships with
+its reader in the same pull request:
+
+1. The loop's tool (and the chat block) returns it, scoped by the same
+   permission and salons as the page itself.
+2. The tool's description and the rules book name it, so the model knows to ask
+   for it (re-take the prompt fixtures).
+3. A replay case asks for it in a manager's words and asserts the figures reach
+   the model.
+
+The pull request description says which: **AI can read it: yes (<tool>) / not
+needed because …**. Pau, 20 Nov 2026: "how can we program this AI to read new
+things added to the app? i need to always say it?" — no: the feature isn't done
+until the AI can read it.
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 # This is NOT the Next.js you know
