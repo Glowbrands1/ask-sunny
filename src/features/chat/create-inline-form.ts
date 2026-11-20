@@ -328,6 +328,8 @@ export async function createInlineForm({
         ...(cardPolicyToDraftEnabled() && cardPolicyLineFor(proposal, messages) ? { cardPolicyLine: cardPolicyLineFor(proposal, messages) } : {}),
         // The coaching card's topic (QA, 17 Nov 2026): the saved form's Other topic.
         ...(proposal.coachingTopic ? { cardTopic: proposal.coachingTopic } : {}),
+        // QA's production audit (20 Nov 2026, item 21): the loop card's attendance record; an absence is never written up as lateness.
+        ...(proposal.fromAgentLoop && proposal.attendanceKind ? { cardAttendance: proposal.attendanceKind } : {}),
         // SAME_FORM_COPY_NEW_PERSON_ENABLED: the form this card copies; re-checked by the route.
         ...(proposal.copyFromInstanceId ? { copyFromInstanceId: proposal.copyFromInstanceId } : {}),
       }),
