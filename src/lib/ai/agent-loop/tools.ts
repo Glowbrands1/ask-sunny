@@ -5,7 +5,7 @@ import { saysAmountUnknown } from "@/lib/ai/amount-unknown-ack";
 import { randomUUID } from "node:crypto";
 
 import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
-import { businessToday } from "@/lib/business-date";
+import { businessToday, formatBusinessTime } from "@/lib/business-date";
 import { appConfig } from "./app-config";
 import { isoDate, monthDayToIso, readDates, sameDate, withoutDates } from "./dates";
 import { candidateNameWords, chatFormsActor, formDateRangeFromInput, formKindFromText } from "@/lib/forms/chat-form-records";
@@ -1423,8 +1423,10 @@ export async function findPastForms(context: ToolContext, input: { employee_name
       if (top.length > 0) rows = top.map((entry) => entry.row);
     }
     const described = Boolean(wantForm || wantDate || about.length > 0);
-    const forms = rows
-      .slice(0, 20)
+    /* Item 18 (Pau via QA): each form's `choice` line says what tells it apart (`formChoices`); the reply lists them as given. */
+    const listed = rows.slice(0, 20);
+    const choices = formChoices(listed);
+    const forms = listed
       .map((row) => ({
         instance_id: row.id,
         form: row.templateName,
@@ -1434,6 +1436,7 @@ export async function findPastForms(context: ToolContext, input: { employee_name
         form_date: row.formDate,
         /* G4 follow-up (QA, 15 Nov 2026): "no salon" in words, so the manager's "the one with no salon" can single it out. */
         salon: salonLabel(row.locationId, row.locationName) ?? `no ${locationWord()}`,
+        choice: choices.get(row)!,
       }));
     /* "Draw me up a coaching document … she already has one" (the live re-run's sun-late-date): none on file is no reason to stop. */
     if (forms.length === 0) {
@@ -1483,7 +1486,8 @@ export async function findPastForms(context: ToolContext, input: { employee_name
     const onScreenChoice = ownCard
       ? (() => {
           const cardForm = ownCard.templateName ?? "card";
-          const dated = forms.map((form) => `${form.form}${form.form_date ? ` from ${form.form_date}` : ""}`);
+          /* Each form on file by its choice line (form, status, date, salon, created when they match). */
+          const dated = forms.map((form) => form.choice);
           const onFile = dated.length === 1 ? `the ${dated[0]} on file` : `one of the ${dated.length} forms on file (${dated.join("; ")})`;
           return {
             card_on_screen: { form: cardForm, created: false },
@@ -2060,6 +2064,32 @@ async function closeSpellingOfRoster(context: ToolContext, effects: ToolEffects 
 }
 
 /**
+ * THE CHOICES TELL THEMSELVES APART (Pau via QA, item 18, 17 and 20 Nov 2026): several forms of one person could read
+ * alike in a which-one list ("Corrective Action Form from 2026-11-10" twice). Each listed form's line, built by code from
+ * its record: form, status (draft / finalized), date and salon, and, when another listed form has the same form and
+ * date, the moment it was created (business time). Every which-one list (find_past_forms, the card-on-screen question)
+ * uses these lines.
+ */
+function formChoices<Row extends { templateName: string; status: string; formDate?: string | null; locationId?: string | null; locationName?: string | null; createdAt: string }>(listed: readonly Row[]): Map<Row, string> {
+  const usDay = (iso: string | null | undefined) => {
+    const found = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso ?? "");
+    return found ? `${found[2]}/${found[3]}/${found[1]}` : null;
+  };
+  return new Map(listed.map((row) => {
+    const twin = listed.some((other) => other !== row && other.templateName === row.templateName && (other.formDate ?? null) === (row.formDate ?? null));
+    const created = twin ? formatBusinessTime(row.createdAt, { year: true }) : null;
+    const line = [
+      row.templateName,
+      row.status,
+      usDay(row.formDate) ? `dated ${usDay(row.formDate)}` : "no date",
+      salonLabel(row.locationId ?? null, row.locationName ?? null) ?? `no ${locationWord()}`,
+      ...(created ? [`created ${created}`] : []),
+    ].join(" · ");
+    return [row, line] as const;
+  }));
+}
+
+/**
  * QA (16 Nov 2026, live group E on main 63ba4c48): an EDIT asked for a form type (a Corrective Action) while this person's
  * card on screen is another type (a Coaching Form, not created) and forms of the asked type are on file: never a new card
  * of that type. The which-one question, the card on screen first, as find_past_forms asks it. Read only when the
@@ -2083,13 +2113,15 @@ async function editAskedFormsOnFile(context: ToolContext, effects: ToolEffects, 
     .filter((row) => row.templateKey === template.key && (names.some((full) => samePerson(full, row.employeeName)) || sameRosterPerson(row.employeeName, displayName(person), roster)));
   if (onFile.length === 0) return null;
   const cardForm = shown.templateName ?? "card";
-  const dated = onFile.slice(0, 6).map((row) => `${row.templateName}${row.formDate ? ` from ${row.formDate}` : ""}`);
+  /* Each form on file by its choice line (`formChoices`): form, status, date, salon, created when they match. */
+  const choices = formChoices(onFile.slice(0, 6));
+  const dated = onFile.slice(0, 6).map((row) => choices.get(row)!);
   const files = dated.length === 1 ? `the ${dated[0]} on file` : `one of the ${onFile.length} ${template.name}s on file (${dated.join("; ")})`;
   effects.openRequested ??= displayName(person);
   return {
     reason_code: "edit_asked_forms_on_file", error: `The manager asked to edit a ${template.name}, and this person's ${cardForm} card is on screen (not created) while ${template.name}s are on file. No new card was made. End your reply with ask_exactly, exactly: the card on screen picked is changed (propose_form again); a dated form picked is opened with open_form.`,
     card_on_screen: { form: cardForm, created: false },
-    forms: onFile.slice(0, 6).map((row) => ({ instance_id: row.id, form: row.templateName, status: row.status, form_date: row.formDate })),
+    forms: onFile.slice(0, 6).map((row) => ({ instance_id: row.id, form: row.templateName, status: row.status, form_date: row.formDate, choice: choices.get(row)! })),
     ask_exactly: `Which one: the ${cardForm} on screen, or ${files}?`,
   };
 }
@@ -2335,6 +2367,27 @@ export function accountMissing(managerWords: string, account: string, priorActio
   return [...new Set(missing)];
 }
 
+
+/**
+ * `account` without a whole "at / in <salon>" phrase naming `salonId` (QA item 20): every word of the phrase is a word of
+ * that salon's name (or "the", "salon", "location", "store", "our"), it reads as that salon, and it ends at a comma, a
+ * sentence's end or the end of the account. "At Kearney, coaching about bed cleaning." → "Coaching about bed cleaning.";
+ * "at lincoln high during her shift" and "at the front desk" are never touched.
+ */
+export function withoutNamedSalon(account: string, salonId: string): string {
+  const nameWords = new Set((rosterSalonName(salonId) ?? "").toLowerCase().split(/[^a-z0-9]+/).filter(Boolean));
+  const filler = new Set(["the", "salon", "location", "store", "our", locationWord().toLowerCase()]);
+  const isThatSalon = (phrase: string) => {
+    const words = phrase.toLowerCase().split(/[^a-z0-9']+/).filter(Boolean);
+    return words.length > 0 && words.some((word) => nameWords.has(word)) && words.every((word) => nameWords.has(word) || filler.has(word)) &&
+      readSalonMentions(`at ${phrase}`).some((mention) => mention.salonIds.includes(salonId));
+  };
+  const out = account.replace(/(^|[\s,;])(?:at|in)\s+((?:[A-Za-z0-9'’-]+\s+){0,4}[A-Za-z0-9'’-]+)(?=\s*(?:[,.;!?]|$))(,?)/gi, (whole, before: string, phrase: string, comma: string) =>
+    isThatSalon(phrase) ? (before.trim() === "" ? "" : before.replace(/\s+$/, "")) + (comma && before.trim() !== "" ? comma : "") : whole);
+  if (out === account) return account;
+  const tidy = out.replace(/\s+([,.;!?])/g, "$1").replace(/[ \t]{2,}/g, " ").replace(/^[\s,;]+/, "").trim();
+  return tidy.charAt(0).toUpperCase() + tidy.slice(1);
+}
 
 /** Every message the manager typed in this chat, the latest included. */
 function managerTurns(context: Pick<ToolContext, "question" | "history">): string {
@@ -2704,7 +2757,13 @@ export async function proposeForm(
   const priorRead = withoutTextToManager(typeof input.prior_actions === "string" ? input.prior_actions : "", managerText);
   if (typeof input.prior_actions === "string") input = { ...input, prior_actions: priorRead.text };
   const toManagerRemoved = [...accountRead.removed, ...priorRead.removed];
-  let whatHappened = accountRead.text.trim().slice(0, 2_000);
+  /*
+   * ONLY THE MANAGER'S OWN ADDRESS (Pau via QA, item 19): a labelled address ("home address 412 …") in the model's account
+   * that the manager never typed in this chat is left out, so neither the card nor Create (which drafts from the card's
+   * lines) can put it on a form. An address the manager typed stays.
+   */
+  const addressRead = (await import("@/lib/forms/exit-details")).withoutUntypedAddresses(accountRead.text, managerText);
+  let whatHappened = addressRead.text.trim().slice(0, 2_000);
   /* The incident's own words (this person's turns, read below) are checked against the account once they are known. */
   const asked = managerContext(context.history as ChatMessage[], { id: context.questionMessageId, content: context.question });
   /* THIS request's turns (QA, 14 Nov 2026; THIS_PERSONS_TURNS behaviour): an earlier incident in the chat never feeds this card. */
@@ -3434,6 +3493,18 @@ export async function proposeForm(
       Object.assign(card, { locationId: null, locationResolution: "needs_selection", authorizedLocationIds: appConfig().locations().map((salon) => salon.id), status: "ready", supportsInlineDraft: true });
       const askedBefore = context.history.some((turn) => turn.role === "assistant" && new RegExp(`which ${locationWord()} is this about`, "i").test(String(turn.content ?? "")));
       whichSalon = !askedBefore;
+    }
+  }
+  /*
+   * THE SALON THE MANAGER NAMED IS THE CARD'S SALON, NOT PART OF THE ACCOUNT (QA item 20; Runner 2's c075: "At Kearney,
+   * coaching about bed cleaning."). When the card's salon is one the manager named in this request, a whole "at / in
+   * <that salon>" phrase leaves the account (`withoutNamedSalon`). Any other place stays word for word.
+   */
+  if (card.locationId && card.issue && readSalonMentions(requestWords).some((mention) => mention.salonIds.includes(card.locationId!))) {
+    const unplaced = withoutNamedSalon(card.issue, card.locationId);
+    if (unplaced !== card.issue && unplaced !== "") {
+      card.issue = unplaced;
+      whatHappened = unplaced;
     }
   }
   card.employeeRole = employee.id ? await rosterTitle(context.actor.scope, employee.id) : null;
