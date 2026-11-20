@@ -179,6 +179,69 @@ describe("app config: another app's words", () => {
   });
 });
 
+/** A made-up company's rules-book content (Phase 1 of the loop port, QA 21 Nov 2026): none of it is Sunny's. */
+const FAKE_CONTENT: AppConfig["content"] = ({ place }) => ({
+  formsPageName: "Forms Ledger",
+  notPeopleExamples: "\"Basket Size\" and other metrics",
+  otherTopics: "a kiosk wipe-down left undone",
+  statsReports: null,
+  terminationApproval: "owner approval",
+  timeZone: { label: "Pacific time", short: "Pacific", abbrev: "PT" },
+  whoRules: [],
+  policyRulings: ["A spilled order at the " + place + " is the Food Safety section."],
+  sectionRulings: [],
+  attendanceRules: [],
+  underPerformanceReplies: [],
+  metricsRule: null,
+  volumeRule: null,
+  statsGuideRule: null,
+  examples: {
+    addedTopic: "weekly coaching on upsells",
+    addedTopicQuestion: "Who is this weekly upsell coaching for?",
+    namedPolicy: "cite the uniform policy",
+    misspelledPolicy: "ca for the unifrom policy",
+    formAbout: "the 10/31 one about the late delivery",
+    spellingFixes: "\"recieved\" → \"received\"",
+    becausePlace: "late because of traffic on Main",
+    ruleInOtherSection: "\"No phones at the till\" is in Workplace Conduct",
+    approvedTermination: "the owner approved her termination",
+    rewordNoLink: "\"dropped the tray and left\" is \"She dropped the tray. She left.\"",
+    policyLine: "Food Safety Policy, JBA Policy Manual p.3",
+    position: "who are my baristas",
+    howTo: "\"how do I close the till\"",
+    businessDocs: "the store handbook",
+  },
+});
+
+describe("app config: another company's content in the rules book (Phase 1 of the loop port)", () => {
+  // Sunny's rulings, metrics, reports, time zone, approver, page name and example phrases (src/config/company/agent-loop.ts).
+  const SUNNY_CONTENT_WORDS = [
+    "Under Performance", "Club Close", "PPTA", "LPSVA", "tans", "Daily Stats", "Sales Totals", "Comp figures", "DM/HR",
+    "Central", "CT)", "Form Monitoring", "Must See", "sanitation", "EFT", "animals in the workplace", "key holdr",
+    "Dodge", "No tanning", "Employee Discounts", "tanning consultants", "beds between clients", "Attendance Policy",
+    "Late Opening", "Time Records", "Animals in the Workplace", "Handling Theft", "doctor's note", "the reviews SOP",
+  ];
+
+  it("takes every one of Sunny's content words from the content, and leaves out a rule the company has no use for", () => {
+    const fake: AppConfig = { ...FAKE, content: FAKE_CONTENT };
+    const text = rulesBookText(fake);
+    for (const word of SUNNY_CONTENT_WORDS) expect(text, `"${word}" is still in the rules book`).not.toContain(word);
+    expect(text).toContain("Forms Ledger");
+    expect(text).toContain("the owner approved her termination");
+    expect(text).toContain("Pacific time");
+    expect(text).toContain("A spilled order at the kiosk is the Food Safety section.");
+    // No stats reports and no stats guide: read_stats is never named, and no rule is left empty.
+    expect(text).not.toContain("read_stats");
+    expect(text).toContain("Google review figures come only from read_reviews. Give only the figures they return");
+    expect(text).not.toMatch(/^- (?:null|undefined)?$/m);
+  });
+
+  it("Sunny's own content holds every one of those words (so the check above is not vacuous)", () => {
+    const text = rulesBookText();
+    for (const word of SUNNY_CONTENT_WORDS) expect(text, `"${word}" is not in Sunny's rules book`).toContain(word);
+  });
+});
+
 describe("app config: no app literal is left in the loop's code", () => {
   const strip = (source: string): string => source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
   for (const file of ["tools.ts", "run.ts", "rules-book.ts", "prompt.ts"]) {

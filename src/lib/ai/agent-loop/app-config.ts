@@ -1,3 +1,4 @@
+import { sunnyLoopContent } from "@/config/company/agent-loop";
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { ACTIVE_BRAND } from "@/lib/brand";
 import { readDirectoryFacts, readDirectoryRoster, readScopedRoster } from "@/lib/forms/employee-roster";
@@ -18,6 +19,67 @@ import { JOB_TITLES } from "@/lib/forms/proposal";
  * proves Sunny's own text is byte-identical to before). Field and tool-argument names (`salon`, `which_salon`,
  * `salon_from_woven`) are the contract between the tools and the model, not wording, and stay as they are.
  */
+
+/** The place and staff words a company's content is written with (the config's own). */
+export interface LoopWords {
+  readonly place: string;
+  readonly places: string;
+  readonly staff: string;
+}
+
+/**
+ * ONE COMPANY'S CONTENT IN THE RULES BOOK (Phase 1 of the loop port, QA 21 Nov 2026). The rules book is mechanism; these
+ * are the parts that belong to one company: rulings on its manual's headings, its metrics and reports, its time zone,
+ * who approves a termination, the page forms are listed on, and the example phrases the rules teach with. Each app
+ * keeps its own in `src/config/company/agent-loop.ts`; a rule another app has no use for is null and left out.
+ */
+export interface AgentLoopContent {
+  /** The page that lists the forms ("Form Monitoring"). */
+  readonly formsPageName: string;
+  /** Company words that are never people, said in the "a name only if" rule. */
+  readonly notPeopleExamples: string;
+  /** What "Other — <topic>" is for, besides an incident no section covers. */
+  readonly otherTopics: string;
+  /** The reports read_stats reads ("Daily Stats, Sales Totals and Comp"); null when the app has no read_stats. */
+  readonly statsReports: string | null;
+  /** Who approves a termination before it is finalized ("DM/HR approval"). */
+  readonly terminationApproval: string;
+  /** The business time zone as the rules say it: in full, short, and its abbreviation on times. */
+  readonly timeZone: { readonly label: string; readonly short: string; readonly abbrev: string };
+  /** Who-the-form-is-for rules about this company's words (shorthand that is never a person). */
+  readonly whoRules: readonly string[];
+  /** Which manual heading fits which incident, before the general policy rules. */
+  readonly policyRulings: readonly string[];
+  /** Incidents that have their own section, after the general policy rules. */
+  readonly sectionRulings: readonly string[];
+  /** What a Corrective Action citing attendance must carry. */
+  readonly attendanceRules: readonly string[];
+  /** Card reply lines for this company's own card facts. */
+  readonly underPerformanceReplies: readonly string[];
+  /** How the account keeps this company's metrics; null when it has none to teach. */
+  readonly metricsRule: string | null;
+  /** How a volume figure before the metrics reads; null when it has none. */
+  readonly volumeRule: string | null;
+  /** How a stats focus answer cites its guide; null when the app has no stats guide. */
+  readonly statsGuideRule: string | null;
+  /** Example phrases in the rules, in this company's words. */
+  readonly examples: {
+    readonly addedTopic: string;
+    readonly addedTopicQuestion: string;
+    readonly namedPolicy: string;
+    readonly misspelledPolicy: string;
+    readonly formAbout: string;
+    readonly spellingFixes: string;
+    readonly becausePlace: string;
+    readonly ruleInOtherSection: string;
+    readonly approvedTermination: string;
+    readonly rewordNoLink: string;
+    readonly policyLine: string;
+    readonly position: string;
+    readonly howTo: string;
+    readonly businessDocs: string;
+  };
+}
 
 export interface AppConfig {
   /** What the assistant is called in its own prompt and help ("Sunny"). */
@@ -55,6 +117,8 @@ export interface AppConfig {
    * QA 17 Nov 2026). Read from the roster's job title, never from the manager's words.
    */
   readonly leadershipTitle: RegExp;
+  /** This company's content in the rules book, written with the config's own place and staff words. */
+  readonly content: (words: LoopWords) => AgentLoopContent;
 }
 
 /** Ask Sunny: the brand's names and place words, plus the staff system and form keys of this app. */
@@ -75,6 +139,7 @@ export const SUNNY_CONFIG: AppConfig = {
   },
   jobTitles: JOB_TITLES.map((entry) => entry.pattern),
   leadershipTitle: /\b(?:directors?|managers?|leads?|supervisors?)\b/i,
+  content: sunnyLoopContent,
 };
 
 let active: AppConfig = SUNNY_CONFIG;
