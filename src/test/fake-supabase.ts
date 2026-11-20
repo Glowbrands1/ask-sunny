@@ -53,6 +53,12 @@ export interface FakeStore {
    * once — and never twice — would have nothing to run against.
    */
   form_template_assets?: Row[];
+  /**
+   * Present to model the deletion record (board f066, `20261120001000_form_instance_deletions.sql`): a store that
+   * has it gets one row per deleted form, as the BEFORE DELETE trigger writes it, from the row's stamp (who, role,
+   * how) when it is under ten minutes old, else as `other`. A store without it is as before.
+   */
+  form_instance_deletions?: Row[];
 }
 
 /** The view is a read of the same array — see the note above. */
@@ -279,6 +285,7 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: null }> {
     if (this.op === "delete") {
       const cascades = (VIEW_SOURCE[this.table] ?? this.table) === "form_instances";
       for (const row of hits) {
+        if (cascades && this.store.form_instance_deletions) recordDeletion(this.store, row);
         rows.splice(rows.indexOf(row), 1);
         if (!cascades) continue;
         for (const child of CASCADES) {
@@ -309,6 +316,30 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: null }> {
   ): PromiseLike<TResult1 | TResult2> {
     return Promise.resolve(this.run()).then(onfulfilled, onrejected);
   }
+}
+
+/** The deletion trigger, modelled: the row as Postgres's `forms_record_deletion()` writes it. */
+function recordDeletion(store: FakeStore, row: Row): void {
+  const at = typeof row.deletion_requested_at === "string" ? Date.parse(row.deletion_requested_at) : NaN;
+  const stamped = Number.isFinite(at) && Date.now() - at < 10 * 60_000;
+  const template = (store.form_templates ?? []).find((entry) => entry.id === row.template_id);
+  store.form_instance_deletions!.push({
+    id: `fake-${(insertCounter += 1)}`,
+    instance_id: row.id,
+    template_key: template?.key ?? row.template_key ?? null,
+    template_name: template?.name ?? row.template_name ?? null,
+    employee_name: row.employee_name ?? null,
+    form_date: row.form_date ?? null,
+    status: row.status ?? null,
+    location_id: row.location_id ?? null,
+    location_name: row.location_name ?? null,
+    created_by: row.created_by ?? null,
+    deleted_by: stamped ? row.deletion_requested_by ?? null : null,
+    deleted_by_role: stamped ? row.deletion_requested_role ?? null : null,
+    deleted_via: (stamped ? row.deletion_requested_via : null) ?? "other",
+    deleted_at: new Date().toISOString(),
+    snapshot: { instance: { ...row }, values: store.form_instance_values.filter((value) => value.instance_id === row.id) },
+  });
 }
 
 export function fakeSupabase(store: FakeStore) {

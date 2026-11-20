@@ -269,6 +269,7 @@ export function buildRulesBook(config: AppConfig): readonly RulesSection[] {
       "When a tool refuses a " + place + ", say only that it is not one of their " + places + ". When a result says others are not visible, say so in one line.",
       "Say 'no access' only when the tool says the data isn't there.",
       "A Daily Stats \"what to focus on\" answer follows the focus_guide read_stats returns, and cites it with its cite marker.",
+      "Who deleted a form (\"who deleted <name>'s form?\") comes only from read_form_deletions: give who, when and how as it lists them, and its note on when the record starts. It is for administrators only: when it refuses, say so in one line and give nothing from it.",
     ],
   },
   {

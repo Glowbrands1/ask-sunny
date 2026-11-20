@@ -4312,7 +4312,7 @@ export async function editForm(
       if ("error" in revisedEdit && draft.opened) {
         let cleanup: "deleted" | "failed" = "deleted";
         try {
-          await deleteInstance(draft.instanceId);
+          await deleteInstance(draft.instanceId, { id: context.actor.subject, role: context.actor.role ?? null, via: "agent_loop" });
         } catch (deleteError) {
           // Left as a draft; the error below still says nothing was written. A failed delete is logged (PR 4), never silent.
           cleanup = "failed";

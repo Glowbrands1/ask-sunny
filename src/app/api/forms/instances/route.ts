@@ -624,7 +624,7 @@ export async function POST(request: Request) {
  */
 export async function DELETE(request: Request) {
   try {
-    await authorizeForms(request, "manage_form_records");
+    const actor = await authorizeForms(request, "manage_form_records");
     const { searchParams } = new URL(request.url);
 
     // Explicit and narrow: there is no "delete everything" shape of this call.
@@ -643,7 +643,7 @@ export async function DELETE(request: Request) {
       );
     }
 
-    const result = await deleteDemoInstances(expected);
+    const result = await deleteDemoInstances(expected, { id: actor.id, role: actor.role, via: "demo_sweep" });
     return NextResponse.json(result);
   } catch (error) {
     if (error instanceof InstanceProtectedError) {
