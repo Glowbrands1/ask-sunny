@@ -317,7 +317,18 @@ export function cleaningIncidentPhrase(rawText: string): string | null {
  * cleaning-is-Other rule (`withCleaningOther`) reads the cleaning with these
  * patterns and no others.
  */
-export function cleaningUndonePhrase(rawText: string): string | null {
+/*
+ * A RULE STATED, NOT A DUTY LEFT UNDONE (QA, 20 Nov 2026; c259 on the agent loop): "it has been clear that we do not do
+ * extra cleaning after hours" is the salon's rule, said by the manager; the employee left nothing undone. With
+ * `rulesAreNotDuties`, a "not" whose clause begins with a generic subject (we, you, employees, staff, everyone, team
+ * members, TCs) and an optional helper verb is never a cleaning duty left undone. The agent loop passes it; every other
+ * reader is unchanged.
+ */
+const RULE_SUBJECT_BEFORE = /\b(?:we|you|employees|staff|everyone|team\s+members?|tcs?)\s+(?:(?:do|does|should|must|can|will|are\s+to)\s+)?$/;
+
+export function cleaningUndonePhrase(rawText: string, options?: { readonly rulesAreNotDuties?: boolean }): string | null {
+  const isRule = (sentence: string, match: RegExpExecArray) =>
+    Boolean(options?.rulesAreNotDuties) && /^(?:not|don'?t|do\s+not)\b/.test(match[0]) && RULE_SUBJECT_BEFORE.test(clauseBefore(sentence, match.index));
   /*
    * SPELLING_CLEANUP_ENABLED: "sanitation" reads as the sanitizing it names. A same-length stand-in the cleaning words
    * match ("sanitzation") is read, and the phrase returned says "sanitation" again: it is quoted as the manager's words.
@@ -331,11 +342,11 @@ export function cleaningUndonePhrase(rawText: string): string | null {
     const sanitation = otherPolicyAgreesEnabled();
     for (const [index, pattern] of (sanitation ? CLEANING_UNDONE_WITH_SANITATION : CLEANING_UNDONE).entries()) {
       const match = pattern.exec(sentence);
-      if (match && readsAsIncident(sentence, match, index)) return said(match[0].trim());
+      if (match && readsAsIncident(sentence, match, index) && !isRule(sentence, match)) return said(match[0].trim());
     }
     if (cleaningOtherEveryWordingEnabled()) {
       const match = (sanitation ? CLEANING_UNDONE_GERUND_WITH_SANITATION : CLEANING_UNDONE_GERUND).exec(sentence);
-      if (match && readsAsIncident(sentence, match, 1)) return said(match[0].trim());
+      if (match && readsAsIncident(sentence, match, 1) && !isRule(sentence, match)) return said(match[0].trim());
     }
   }
   return null;
