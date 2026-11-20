@@ -161,7 +161,31 @@ export function withoutPersonPronouns(
     const reported = reportedBy(at);
     return reported !== null ? reported === "untrusted" : namesAnother(at);
   };
-  const inQuote = (at: number) => quoted.some(([from, to]) => at >= from && at < to) || keepsOwn(at);
+  /*
+   * THE PERSON TOLD (QA, 20 Nov 2026, board row f059; the live test of #1117): "<L>, the shift lead, told her to clock out
+   * early and she refused" kept both pronouns, because "her" sat after a reporting verb of a non-leader. But the pronoun
+   * right after "told / asked / reminded / instructed …" and before "to / not / that / if / whether" is the LISTENER, not
+   * part of what was said: when someone other than the card's person is the one telling, the listener is the card's
+   * person. The same pronoun opening a joined clause later in the sentence ("and she refused", "but he left") is that
+   * listener acting, and is named too. Text in quotes stays as typed.
+   */
+  const told = new Set<number>();
+  for (const match of reply.matchAll(/\b(?:told|asked|reminded|instructed|directed|warned)[\s*_]+(him|her|them)\b(?=\s+(?:to|not|that|if|whether)\b)/gi)) {
+    const at = match.index! + match[0].length - match[1]!.length;
+    if (quoted.some(([from, to]) => at >= from && at < to)) continue;
+    const before = sentenceBefore(reply, match.index!).toLowerCase();
+    // The card's person telling someone else ("Tamsin told her to …") is not this.
+    const named = knownKeys.flatMap((key) => [...before.matchAll(nameRe(key, "gu"))].map((hit) => ({ key, at: hit.index! })));
+    const teller = named.sort((a, b) => b.at - a.at)[0]?.key;
+    if (!teller || teller === display.toLowerCase()) continue;
+    told.add(at);
+    const subject = { him: "he", her: "she", them: "they" }[match[1]!.toLowerCase() as "him" | "her" | "them"];
+    const rest = reply.slice(at + match[1]!.length);
+    const end = rest.search(/[.?!](?!\d)|\n/);
+    const sentence = end === -1 ? rest : rest.slice(0, end);
+    for (const joined of sentence.matchAll(new RegExp(`\\b(?:and|but|so|then)\\s+(${subject})\\b`, "gi"))) told.add(at + match[1]!.length + joined.index! + joined[0].length - joined[1]!.length);
+  }
+  const inQuote = (at: number) => quoted.some(([from, to]) => at >= from && at < to) || (!told.has(at) && keepsOwn(at));
   const edits: Array<{ from: number; to: number; text: string }> = [];
 
   /*
@@ -192,7 +216,15 @@ export function withoutPersonPronouns(
       continue;
     }
     const joined = /\b(?:and|but|or|then)[ \t]+$/i.exec(reply.slice(Math.max(0, at - 8), at));
-    if (again && (word === "she" || word === "he") && joined && /^\s+[a-z]/.test(reply.slice(end))) {
+    /*
+     * Dropped only when the person is the subject the sentence opens with ("Remy came in late and she left early"). The
+     * listener of someone else's instruction ("Corin told her to clock out early and she refused", #1147's f059) is named,
+     * never dropped: the joined clause's subject would read as the teller's.
+     */
+    const lead = sentenceBefore(reply, at).replace(/^\s*(?:\*\*[^*]*\*\*\s*)?(?:[A-Z][\w ]{0,40}:\s+)?/, "");
+    const firstWord = (display.split(/\s+/)[0] ?? "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const opensWithPerson = new RegExp(`^(?:${firstWord}|she|he)\\b`, "iu").test(lead);
+    if (again && !told.has(at) && opensWithPerson && (word === "she" || word === "he") && joined && /^\s+[a-z]/.test(reply.slice(end))) {
       edits.push({ from: at, to: end + (/^[ \t]/.test(reply.slice(end)) ? 1 : 0), text: "" });
       continue;
     }
