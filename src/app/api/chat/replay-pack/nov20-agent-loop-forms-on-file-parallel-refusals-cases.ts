@@ -101,18 +101,15 @@ export const NOV20_AGENT_LOOP_FORMS_ON_FILE_PARALLEL_REFUSALS_CASES: ReplayCase[
     expect(listed?.reason_code, `the call with evidence was not run: ${JSON.stringify(listed)}`).toBeUndefined();
     expect(JSON.stringify(listed), JSON.stringify(listed)).toContain("Liesel Cobb");
   })),
-  fixed("nov20-forms-on-file-refusal-never-a-lookup-issue", "The model is taught that a refused tool is never told to the manager as a lookup problem or \"try again\", and find_past_forms' schema requires forms_on_file_evidence", async (t) => {
+  /* find_past_forms' schema requiring forms_on_file_evidence is checked in agent-loop/find-past-forms-schema.test.ts. */
+  fixed("nov20-forms-on-file-refusal-never-a-lookup-issue", "The model is taught that a refused tool is never told to the manager as a lookup problem or \"try again\"", async (t) => {
     let system = "";
-    let required: unknown = null;
     t.loopModel!(loopStandIn((view): LoopDecision => {
       system = view.system;
       return { text: "Here's what's on file." };
     }));
     await t.thread().say("list ca for the month");
-    const { agentLoopTools } = await import("@/lib/ai/agent-loop/run");
-    required = (agentLoopTools().find((tool) => tool.name === "find_past_forms")?.input_schema as { required?: unknown } | undefined)?.required;
     expect(system).toMatch(/never tell the manager it was a lookup problem/i);
-    expect(required).toEqual(["forms_on_file_evidence"]);
   }),
   fixed("nov20-forms-on-file-start-of-name-two-people-asks-which", "QA's condition (a): \"list ca or coaching forms for liesel co\" when Liesel Cobb and Liesel Cole both have forms on file: no form is listed (never one picked), and the result names both so the reply asks which person, by full name", async (t) => {
     await onFile(t, LIESEL_COLE);
