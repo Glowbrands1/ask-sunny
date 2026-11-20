@@ -393,7 +393,7 @@ function buildAgentLoopTools(config: AppConfig) {
       about: { type: "string", description: "Words the manager used about the form (\"getting rooms ready between guests\"), if any." },
       forms_on_file_evidence: FORMS_ON_FILE_EVIDENCE,
       open: { type: "boolean", description: "true when the manager asks to open, edit or see one form on file (not a list of what is on file)." },
-      include_archived: { type: "boolean", description: "true only when the manager asks for archived forms too. Otherwise archived forms are not read, as Form Monitoring's default view." },
+      include_archived: { type: "boolean", description: "true only when the manager asks for archived forms. Finalized forms are listed archived or not; this adds archived drafts." },
     }, ["forms_on_file_evidence"]),
   },
   {

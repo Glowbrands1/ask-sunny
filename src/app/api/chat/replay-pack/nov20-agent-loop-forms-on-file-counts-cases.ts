@@ -15,9 +15,10 @@ import { evidenceFrom, loopStandIn, type LoopDecision, type LoopView } from "./l
  *   a total of 19 that its own lines did not add up to, and archived forms as if on file.
  * - "list ca for the month" said "11/18 — <A> (×2)" (3), "11/20 … 1" (2), and "The list stops at 100 forms".
  * General rule: find_past_forms returns the counts itself, per person (the name as filed, never merged with another),
- * per form, per date, with statuses, and a total; the reply copies them. Archived forms are read only when asked, as Form
- * Monitoring's default view hides them. The month is read past 100 and counted over every row. Invented names only:
- * Avery Avebury (<A>) and Avery Av (the other person).
+ * per form, per date, with statuses, and a total; the reply copies them. QA's ruling on production's data (every archived
+ * form with a real name is finalized; archived drafts are test drafts): a finalized form counts whether or not it is
+ * archived, marked archived; an archived DRAFT is left out unless the manager asks for archived forms. The month is read
+ * past 100 and counted over every row. Invented names only: Avery Avebury (<A>) and Avery Av (the other person).
  */
 
 const FLAG = "AGENT_LOOP_ENABLED";
@@ -101,16 +102,17 @@ const fixed = (id: string, title: string, run: (t: ReplayContext) => Promise<voi
 const MONTH = { date_from: "2026-11-01", date_to: "2026-11-20" };
 
 export const NOV20_AGENT_LOOP_FORMS_ON_FILE_COUNTS_CASES: ReplayCase[] = [
-  fixed("nov20-f081-b-person-month-counts", "(b) \"show me CA and coaching forms for Avery Avebury this month\" (CA and coaching asked in one step, as live): the CA result's counts are Avery Avebury's 8 non-archived CAs (11/05: 1, 11/18: 3, 11/19: 3, 11/20: 1), never Avery Av's form, and no archived form is listed", async (t) => {
+  fixed("nov20-f081-b-person-month-counts", "(b) \"show me CA and coaching forms for Avery Avebury this month\" (CA and coaching asked in one step, as live): the CA result's counts are Avery Avebury's 9 (8 live drafts and the archived finalized CA of 11/10, marked archived: 11/05: 1, 11/10: 1, 11/18: 3, 11/19: 3, 11/20: 1); no archived draft, and never Avery Av's form", async (t) => {
     const seen: Out[] = [];
     const said = "show me CA and coaching forms for Avery Avebury this month";
     t.loopModel!(liveModel([{ employee_name: "Avery Avebury", form: "CA", ...MONTH }, { employee_name: "Avery Avebury", form: "coaching", ...MONTH }], said, seen));
     await t.thread().say(said);
     const ca = seen[0];
-    expect(ca?.counts?.total, JSON.stringify(ca?.counts)).toBe(8);
+    expect(ca?.counts?.total, JSON.stringify(ca?.counts)).toBe(9);
     expect(ca?.counts?.by_person.map((person) => person.employee)).toEqual(["Avery Avebury"]);
-    expect(byDate(ca?.counts, "Avery Avebury")).toEqual({ "2026-11-05": 1, "2026-11-18": 3, "2026-11-19": 3, "2026-11-20": 1 });
-    expect((ca?.forms ?? []).some((form) => form.archived), "an archived form was listed").toBe(false);
+    expect(byDate(ca?.counts, "Avery Avebury")).toEqual({ "2026-11-05": 1, "2026-11-10": 1, "2026-11-18": 3, "2026-11-19": 3, "2026-11-20": 1 });
+    const archived = (ca?.forms ?? []).filter((form) => form.archived) as { status?: string }[];
+    expect(archived.map((form) => form.status), "the archived finalized CA is listed (marked), and no archived draft").toEqual(["finalized"]);
     expect((ca?.forms ?? []).every((form) => form.employee === "Avery Avebury")).toBe(true);
   }),
   fixed("nov20-f081-b-archived-only-when-asked", "(b) asked with archived forms: \"show me all CA forms for Avery Avebury this month including archived\": the counts are all 19 of Avery Avebury's, 11 of them archived (11/19: 5, 2 archived), each archived form marked, and still never Avery Av's", async (t) => {
@@ -121,21 +123,23 @@ export const NOV20_AGENT_LOOP_FORMS_ON_FILE_COUNTS_CASES: ReplayCase[] = [
     const ca = seen[0];
     expect(ca?.counts?.total, JSON.stringify(ca?.counts)).toBe(19);
     const day = ca?.counts?.by_person[0]?.by_form[0]?.by_date.find((entry) => entry.date === "2026-11-19");
-    expect(day, JSON.stringify(ca?.counts)).toEqual({ date: "2026-11-19", count: 5, statuses: { draft: 3, archived: 2 } });
+    expect(day, JSON.stringify(ca?.counts)).toEqual({ date: "2026-11-19", count: 5, statuses: { draft: 3, "draft (archived)": 2 } });
     expect(ca?.counts?.by_person.map((person) => person.employee)).toEqual(["Avery Avebury"]);
   }),
-  fixed("nov20-f081-c-month-list-counts", "(c) \"list ca for the month\": counts per person and date come from code (Avery Avebury 11/18: 3, 11/20: 1 non-archived), Avery Av counted only under Avery Av (and not at all, archived), every row counted (complete), and never \"stops at 100\"", async (t) => {
+  fixed("nov20-f081-c-month-list-counts", "(c) \"list ca for the month\": counts per person and date come from code (Avery Avebury 11/18: 3, 11/20: 1, and the archived finalized CA of 11/10, marked archived), Avery Av's archived draft left out, every row counted (complete), and never \"stops at 100\"", async (t) => {
     const seen: Out[] = [];
     const said = "list ca for the month";
     t.loopModel!(liveModel([{ form: "CA", ...MONTH }], said, seen));
     await t.thread().say(said);
     const month = seen[0];
     expect(month?.complete, JSON.stringify(month)).toBe(true);
-    expect(byDate(month?.counts, "Avery Avebury")).toEqual({ "2026-11-05": 1, "2026-11-18": 3, "2026-11-19": 3, "2026-11-20": 1 });
-    expect(month?.counts?.by_person.some((person) => person.employee === "Avery Av"), "an archived form was counted").toBe(false);
+    expect(byDate(month?.counts, "Avery Avebury")).toEqual({ "2026-11-05": 1, "2026-11-10": 1, "2026-11-18": 3, "2026-11-19": 3, "2026-11-20": 1 });
+    expect(month?.counts?.by_person.some((person) => person.employee === "Avery Av"), "an archived draft was counted").toBe(false);
+    const archived = (month?.forms ?? []).filter((form) => form.archived) as { status?: string; form_date?: string }[];
+    expect(archived.map((form) => [form.form_date, form.status]), "the archived finalized CA is listed, marked").toEqual([["2026-11-10", "finalized"]]);
     expect(month?.note ?? "").not.toMatch(/stops at 100/);
   }),
-  fixed("nov20-f081-c-month-list-over-100", "(c) \"list ca for the month\" with 120 non-archived CAs this month: all 120 are counted (complete), 100 are listed and the result says 100 of 120, never a silent \"stops at 100\"", async (t) => {
+  fixed("nov20-f081-c-month-list-over-100", "(c) \"list ca for the month\" with 121 CAs on file this month: all 121 are counted (complete), 100 are listed and the result says 100 of 121, never a silent \"stops at 100\"", async (t) => {
     const forms = t.forms() as unknown as Row[];
     const base = forms.find((row) => row.employee_name === "Avery Avebury" && !row.archived_at)!;
     for (let k = 0; k < 112; k += 1) forms.push({ ...base, id: `f081-more-${k}`, form_date: "2026-11-15", created_at: `2026-11-15T${String(k % 24).padStart(2, "0")}:00:00Z` });
@@ -144,9 +148,9 @@ export const NOV20_AGENT_LOOP_FORMS_ON_FILE_COUNTS_CASES: ReplayCase[] = [
     t.loopModel!(liveModel([{ form: "CA", ...MONTH }], said, seen));
     await t.thread().say(said);
     const month = seen[0] as Out & { listed?: number; of?: number };
-    expect(month?.counts?.total, JSON.stringify({ listed: month?.listed, of: month?.of })).toBe(120);
+    expect(month?.counts?.total, JSON.stringify({ listed: month?.listed, of: month?.of })).toBe(121);
     expect(month?.forms?.length).toBe(100);
-    expect([month?.listed, month?.of]).toEqual([100, 120]);
+    expect([month?.listed, month?.of]).toEqual([100, 121]);
     expect(month?.complete).toBe(true);
   }),
 ];

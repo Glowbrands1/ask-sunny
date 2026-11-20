@@ -21,7 +21,7 @@ export interface CountedRow {
 export interface DateCount {
   readonly date: string | null;
   readonly count: number;
-  /** "draft: 2, finalized: 1"; archived forms (when read at all) are counted under "archived". */
+  /** "draft: 2, finalized (archived): 1": an archived form keeps its status, marked archived. */
   readonly statuses: Readonly<Record<string, number>>;
 }
 
@@ -47,8 +47,9 @@ export function personKeyOf(name: string): string {
   return name.normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
 }
 
+/* "finalized (archived)": an archived form keeps its status, marked archived (QA's f081 ruling). */
 function statusOf(row: CountedRow): string {
-  return row.archivedAt ? "archived" : row.status;
+  return row.archivedAt ? `${row.status} (archived)` : row.status;
 }
 
 /** Counts per person, per form, per date (oldest first), with statuses and a total. */

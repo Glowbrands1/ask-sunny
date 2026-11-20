@@ -1339,13 +1339,15 @@ const PERIOD_LIST_LIMIT = 100;
 const PERIOD_READ_LIMIT = 1000;
 
 /*
- * QA's f081: Form Monitoring opens on its active view (archived forms hidden; `view=archived` / `all` only when chosen).
- * The forms-on-file readers do the same: archived forms are read only when the manager asks for them (include_archived),
- * and are then labelled archived.
+ * QA's f081 (20 Nov 2026, from production's data: every archived form with a real name is finalized; archived drafts are
+ * test drafts): a finalized form counts and is listed whether or not it is archived (marked archived), as "who got a CA"
+ * asks what was filed; an archived DRAFT is left out unless the manager asks for archived forms (include_archived).
  */
-function onFileView(input: { include_archived?: unknown }): "active" | "all" {
-  return input.include_archived === true ? "all" : "active";
+function onFileKept(input: { include_archived?: unknown }) {
+  const all = input.include_archived === true;
+  return <T extends { archivedAt: string | null; status: string }>(row: T) => all || !(row.archivedAt && row.status === "draft");
 }
+const ARCHIVED_NOTE = "Finalized forms are included whether or not archived (each archived one marked archived: say \"(archived)\"); archived drafts are left out unless the manager asks for archived forms (include_archived).";
 
 /*
  * "WHO GOT A CA THIS MONTH?" (the owner, 18 Nov 2026, on the sibling app: "why capped at 20"). With no employee, a form
@@ -1363,13 +1365,13 @@ async function findFormsInPeriod(context: ToolContext, input: { form?: unknown; 
   if (actor === undefined) return { reason_code: "read_failed", error: "Form Monitoring could not be read just now. Say so; do not say there are no forms." };
   if (actor === null) return { reason_code: "scope", error: "This manager's role cannot view Form Monitoring, so past forms cannot be listed." };
   try {
-    const read = await listInstances(onFileView(input), PERIOD_READ_LIMIT, {
+    const read = await listInstances("all", PERIOD_READ_LIMIT, {
       ...instanceListFilterFor(actor),
       ...(range ? { formDateFrom: range.from, formDateTo: range.to } : {}),
       ...(kind ? { templateNameWords: kind.templateNameWords } : {}),
     });
     /* QA's code audit (item 28): a Coaching kind never keeps a Follow-Up Coaching Form (`ofKind`). */
-    const visible = ofKind(visibleInstances(actor, read), kind);
+    const visible = ofKind(visibleInstances(actor, read), kind).filter(onFileKept(input));
     /* f081: listed by form date (newest first), then employee; counted over every visible row, never only the listed ones. */
     const rows = [...visible].sort((a, b) => (b.formDate ?? "").localeCompare(a.formDate ?? "") || a.employeeName.localeCompare(b.employeeName)).slice(0, PERIOD_LIST_LIMIT);
     /*
@@ -1392,7 +1394,7 @@ async function findFormsInPeriod(context: ToolContext, input: { form?: unknown; 
       })),
       complete,
       counts,
-      archived: input.include_archived === true ? "included, each marked archived" : "not included (as Form Monitoring's default view); read them only when the manager asks",
+      archived: input.include_archived === true ? "every archived form included, each marked archived" : ARCHIVED_NOTE,
       ...(visible.length > rows.length ? { listed: rows.length, of: visible.length } : {}),
       note: `${complete ? "Every such form this manager can see, read by form date: never say the list is capped or that some may be missing." : `More than ${PERIOD_READ_LIMIT} forms match: the counts are of the first ${PERIOD_READ_LIMIT} read. Say so, and that Form Monitoring has the full list.`} Numbers come only from counts (total, by_person, by_form, by_date): copy them, never count or add rows yourself, and never put one person's forms under another's name.${visible.length > rows.length ? ` ${rows.length} of ${visible.length} forms are listed; say how many are not shown.` : ""} A draft is not on file.`,
     };
@@ -1446,7 +1448,8 @@ export async function findPastForms(context: ToolContext, input: { employee_name
      * whole words of its employee's name (`wholeNameWords`: the full name, the first name or the last name), the same
      * person by `samePerson`, or one roster holder's other name (aliases).
      */
-    let rows = visibleInstances(actor, await listInstances(onFileView(input), 200, { ...instanceListFilterFor(actor), employeeNameWords: nameWords }))
+    let rows = visibleInstances(actor, await listInstances("all", 200, { ...instanceListFilterFor(actor), employeeNameWords: nameWords }))
+      .filter(onFileKept(input))
       .filter((row) => samePerson(row.employeeName, typed) || wholeNameWords(row.employeeName, typed) || nameThenStartOfNext(row.employeeName, typed) || (aliases.length > 0 && sameRosterPerson(row.employeeName, typed, people)));
     /*
      * Item 27: the typed name fits forms of more than one person ("Lee": Ann Lee and Joann Lee) and is nobody's full name
@@ -1597,7 +1600,7 @@ export async function findPastForms(context: ToolContext, input: { employee_name
       /* QA's f081: counted by code over every form found (not only the 20 listed); the reply copies the numbers. */
       counts: countFormsOnFile(rows),
       count_note: "Numbers come only from counts (total, by_form, by_date): copy them, never count or add rows yourself, and never put another person's forms under this name.",
-      archived: input.include_archived === true ? "included, each marked archived" : "not included (as Form Monitoring's default view); read them only when the manager asks",
+      archived: input.include_archived === true ? "every archived form included, each marked archived" : ARCHIVED_NOTE,
       /* Never a silent cut ("why capped at 20", 18 Nov 2026): more than the 20 listed are on file for this person. */
       ...(rows.length > forms.length ? { more_on_file: rows.length - forms.length, more_note: `${rows.length - forms.length} more forms are on file for this person than listed; say so, or narrow by form or dates.` } : {}),
       ...(withdrawn ? { card_withdrawn: `The ${withdrawn} card proposed earlier this turn was withdrawn: the manager asked to open a form on file, not to make one.` } : {}),

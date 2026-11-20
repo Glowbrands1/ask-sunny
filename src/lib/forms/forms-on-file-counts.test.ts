@@ -20,7 +20,7 @@ describe("countFormsOnFile", () => {
     const avery = counts.by_person.find((person) => person.employee === "Avery Avebury")!;
     expect(avery.by_form[0]!.by_date).toEqual([
       { date: "2026-11-18", count: 1, statuses: { finalized: 1 } },
-      { date: "2026-11-19", count: 5, statuses: { draft: 3, archived: 2 } },
+      { date: "2026-11-19", count: 5, statuses: { draft: 3, "draft (archived)": 2 } },
     ]);
   });
   it("adds up: every person's total is the sum of its dates, and the total the sum of the people", () => {
