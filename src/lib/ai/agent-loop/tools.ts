@@ -33,7 +33,7 @@ import {
 import type { AskResponse } from "@/lib/ai/types";
 import { findManualSection, manualSectionHeadings, type ManualChunk } from "@/lib/forms/official-policy-manual";
 import { sectionWording } from "@/lib/forms/policy-citation";
-import { buildProposal, extractEmployeeNames, extractJobTitle, isJobTitlePhrase, managerContext, samePerson, tidyTypedName } from "@/lib/forms/proposal";
+import { buildProposal, extractEmployeeNames, extractJobTitle, isJobTitlePhrase, JOB_TITLES, managerContext, samePerson, tidyTypedName } from "@/lib/forms/proposal";
 import { cleaningUndonePhrase, namesCareAndCleaning, readCaPolicy } from "@/lib/forms/ca-policy";
 import { citesMustSee, dressCodeFit, saysMustSee } from "./policy-fit";
 import { fieldStates, mergeSaved, refusedFields, savedDiff, type SavedChange } from "@/lib/ai/agent-loop/saved-diff";
@@ -474,6 +474,12 @@ function evidencePersonFor(name: string, read: { kind: string; roster?: readonly
 function otherPersonNamed(said: string, person: EvidencePerson): boolean {
   const rosterNames = person.roster.map((row) => displayName(row));
   const isThisPerson = (name: string) => samePerson(name, person.name) || person.aliases.some((alias) => samePerson(name, alias));
+  /*
+   * QA (16 Nov 2026; the #1052 item 5 rule): a turn that names THIS card's person is this person's turn, even when it also
+   * names someone else ("Test Testi was disrespectful to her salon director Juno Paxton … I need a written CA"): the level,
+   * payroll or answer stated there carries. Only a turn that names another person and not this one is theirs.
+   */
+  if ([person.name, ...person.aliases].some((name) => mentionsPerson(said, name, rosterNames))) return false;
   if (rosterNames.some((name) => !isThisPerson(name) && mentionsPerson(said, name, rosterNames))) return true;
   const own = person.roster.filter((row) => [displayName(row), ...fullNamesOf(row)].some((full) => isThisPerson(full)));
   const ownFirsts = new Set([...own.flatMap((row) => [row.firstName, row.preferredFirstName]), person.name.split(/\s+/)[0]].map((first) => (first ?? "").trim().toLowerCase()).filter(Boolean));
@@ -1971,6 +1977,39 @@ function closeSpellingNotSettled(
     });
     if (close) return confirmed.includes(personKey(close)) || saidYes(personKey(close)) ? null : close;
     if (exactNames.some((name) => holdsPhrase(text, name))) return null;
+  }
+  return null;
+}
+
+/**
+ * THE MANAGER'S TITLE FOR THIS PERSON (QA, 16 Nov 2026, c219: title_differs read "Salon Director" from "your salon director
+ * Juno Paxton"). A title is the title of the name it is attached to: in its sentence, the nearest name the name reader finds
+ * (or a roster name). Attached to another person, it is never this person's; with no name in its sentence, it is this
+ * person's, as before. Null when no title is said for this person.
+ */
+export function titleSaidFor(text: string, person: string, rosterNames: readonly string[]): string | null {
+  const said = extractJobTitle(text);
+  if (!said) return null;
+  const patterns = JOB_TITLES.filter((entry) => entry.title === said).map((entry) => new RegExp(entry.pattern.source, entry.pattern.flags.includes("g") ? entry.pattern.flags : `${entry.pattern.flags}g`));
+  const first = person.trim().split(/\s+/)[0] ?? "";
+  for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
+    const lower = sentence.toLowerCase();
+    const named = [...new Set([...extractEmployeeNames(sentence), ...rosterNames.filter((name) => mentionsPerson(sentence, name, rosterNames)), person, ...(first ? [first] : [])])];
+    const spans = named.flatMap((name) => {
+      const key = name.toLowerCase().trim();
+      if (!key) return [];
+      const own = samePerson(name, person) || key === first.toLowerCase();
+      return [...lower.matchAll(new RegExp(`(?<![\\p{L}'-])${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}'-])`, "gu"))].map((hit) => ({ start: hit.index!, end: hit.index! + key.length, own }));
+    });
+    for (const pattern of patterns) {
+      for (const hit of sentence.matchAll(pattern)) {
+        const start = hit.index!;
+        const end = start + hit[0].length;
+        const gap = (span: { start: number; end: number }) => (span.end <= start ? start - span.end : span.start >= end ? span.start - end : 0);
+        const nearest = spans.filter((span) => span.end <= start || span.start >= end).sort((a, b) => gap(a) - gap(b))[0];
+        if (!nearest || nearest.own) return said;
+      }
+    }
   }
   return null;
 }
@@ -3606,7 +3645,7 @@ export async function proposeForm(
     ...(salonFromWoven ? { salon_from_woven: salonFromWoven } : {}),
     /* QA's live-app item 8: the card uses Woven's title; the manager called them something else ("Salon Director"). */
     ...(() => {
-      const said = extractJobTitle(requestWords);
+      const said = titleSaidFor(requestWords, employee.name, read.kind === "read" ? read.roster.map(displayName) : []);
       return said && card.employeeRole && said.trim().toLowerCase() !== card.employeeRole.trim().toLowerCase() ? { title_differs: { woven: card.employeeRole, manager_said: said } } : {};
     })(),
     ...(template.key === appConfig().formKeys.exit ? { exit_dates: await exitDateLines(requestWords, today, Boolean(exitTermination)) } : {}),
