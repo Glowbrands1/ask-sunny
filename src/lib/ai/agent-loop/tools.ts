@@ -2368,6 +2368,27 @@ export function accountMissing(managerWords: string, account: string, priorActio
 }
 
 
+/**
+ * `account` without a whole "at / in <salon>" phrase naming `salonId` (QA item 20): every word of the phrase is a word of
+ * that salon's name (or "the", "salon", "location", "store", "our"), it reads as that salon, and it ends at a comma, a
+ * sentence's end or the end of the account. "At Kearney, coaching about bed cleaning." → "Coaching about bed cleaning.";
+ * "at lincoln high during her shift" and "at the front desk" are never touched.
+ */
+export function withoutNamedSalon(account: string, salonId: string): string {
+  const nameWords = new Set((rosterSalonName(salonId) ?? "").toLowerCase().split(/[^a-z0-9]+/).filter(Boolean));
+  const filler = new Set(["the", "salon", "location", "store", "our", locationWord().toLowerCase()]);
+  const isThatSalon = (phrase: string) => {
+    const words = phrase.toLowerCase().split(/[^a-z0-9']+/).filter(Boolean);
+    return words.length > 0 && words.some((word) => nameWords.has(word)) && words.every((word) => nameWords.has(word) || filler.has(word)) &&
+      readSalonMentions(`at ${phrase}`).some((mention) => mention.salonIds.includes(salonId));
+  };
+  const out = account.replace(/(^|[\s,;])(?:at|in)\s+((?:[A-Za-z0-9'’-]+\s+){0,4}[A-Za-z0-9'’-]+)(?=\s*(?:[,.;!?]|$))(,?)/gi, (whole, before: string, phrase: string, comma: string) =>
+    isThatSalon(phrase) ? (before.trim() === "" ? "" : before.replace(/\s+$/, "")) + (comma && before.trim() !== "" ? comma : "") : whole);
+  if (out === account) return account;
+  const tidy = out.replace(/\s+([,.;!?])/g, "$1").replace(/[ \t]{2,}/g, " ").replace(/^[\s,;]+/, "").trim();
+  return tidy.charAt(0).toUpperCase() + tidy.slice(1);
+}
+
 /** Every message the manager typed in this chat, the latest included. */
 function managerTurns(context: Pick<ToolContext, "question" | "history">): string {
   return [...context.history.filter((message) => message.role === "user").map((message) => message.content), context.question].join("\n");
@@ -2736,7 +2757,13 @@ export async function proposeForm(
   const priorRead = withoutTextToManager(typeof input.prior_actions === "string" ? input.prior_actions : "", managerText);
   if (typeof input.prior_actions === "string") input = { ...input, prior_actions: priorRead.text };
   const toManagerRemoved = [...accountRead.removed, ...priorRead.removed];
-  let whatHappened = accountRead.text.trim().slice(0, 2_000);
+  /*
+   * ONLY THE MANAGER'S OWN ADDRESS (Pau via QA, item 19): a labelled address ("home address 412 …") in the model's account
+   * that the manager never typed in this chat is left out, so neither the card nor Create (which drafts from the card's
+   * lines) can put it on a form. An address the manager typed stays.
+   */
+  const addressRead = (await import("@/lib/forms/exit-details")).withoutUntypedAddresses(accountRead.text, managerText);
+  let whatHappened = addressRead.text.trim().slice(0, 2_000);
   /* The incident's own words (this person's turns, read below) are checked against the account once they are known. */
   const asked = managerContext(context.history as ChatMessage[], { id: context.questionMessageId, content: context.question });
   /* THIS request's turns (QA, 14 Nov 2026; THIS_PERSONS_TURNS behaviour): an earlier incident in the chat never feeds this card. */
@@ -3456,6 +3483,18 @@ export async function proposeForm(
       Object.assign(card, { locationId: null, locationResolution: "needs_selection", authorizedLocationIds: appConfig().locations().map((salon) => salon.id), status: "ready", supportsInlineDraft: true });
       const askedBefore = context.history.some((turn) => turn.role === "assistant" && new RegExp(`which ${locationWord()} is this about`, "i").test(String(turn.content ?? "")));
       whichSalon = !askedBefore;
+    }
+  }
+  /*
+   * THE SALON THE MANAGER NAMED IS THE CARD'S SALON, NOT PART OF THE ACCOUNT (QA item 20; Runner 2's c075: "At Kearney,
+   * coaching about bed cleaning."). When the card's salon is one the manager named in this request, a whole "at / in
+   * <that salon>" phrase leaves the account (`withoutNamedSalon`). Any other place stays word for word.
+   */
+  if (card.locationId && card.issue && readSalonMentions(requestWords).some((mention) => mention.salonIds.includes(card.locationId!))) {
+    const unplaced = withoutNamedSalon(card.issue, card.locationId);
+    if (unplaced !== card.issue && unplaced !== "") {
+      card.issue = unplaced;
+      whatHappened = unplaced;
     }
   }
   card.employeeRole = employee.id ? await rosterTitle(context.actor.scope, employee.id) : null;

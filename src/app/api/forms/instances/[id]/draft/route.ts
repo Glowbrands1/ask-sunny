@@ -667,18 +667,28 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       values: Object.fromEntries(Object.entries(read.values).filter(([key]) => !exitStatedKeysNow.has(key) && !(statedInvoluntary && key === EXIT_DETAIL_FIELDS.resignationMethod))),
       checked: Object.fromEntries(Object.entries(read.checked).filter(([key]) => !exitStatedKeysNow.has(key) && !(statedInvoluntary && key === EXIT_TYPE_GROUP))),
     });
-    const exitStatedFacts = isExitForm
+    /*
+     * ONLY THE MANAGER'S OWN ADDRESS (Pau via QA, item 19): the Permanent Address is kept only when it is in the manager's
+     * own lines of the notes. A loop card's lines ("What happened: …") are the agent loop's words, never the manager's.
+     */
+    const exitDetails = isExitForm ? readExitDetails(notes, businessToday()) : null;
+    if (exitDetails?.permanentAddress) {
+      const { addressTypedIn } = await import("@/lib/forms/exit-details");
+      const managerLines = body.cardFromLoop === true ? (await import("@/lib/forms/draft-notes")).notesWithoutCardLines(notes) : notes;
+      if (!addressTypedIn(exitDetails.permanentAddress, managerLines)) delete exitDetails.permanentAddress;
+    }
+    const exitStatedFacts = isExitForm && exitDetails
       ? formEditSingleWriterEnabled()
         ? await (await import("@/lib/forms/form-write")).statedWrite(
             id,
-            withoutStatedExit(exitDetailValues(readExitDetails(notes, businessToday()))),
+            withoutStatedExit(exitDetailValues(exitDetails)),
             actor.id,
             exitStatedKeys(),
             { notes },
           )
         : await applyStatedFacts(
             id,
-            withoutStatedExit(exitDetailValues(readExitDetails(notes, businessToday()))),
+            withoutStatedExit(exitDetailValues(exitDetails)),
             actor.id,
             // EXIT_INTAKE_FIX_ENABLED adds the Permanent Address the manager typed.
             exitStatedKeys(),
