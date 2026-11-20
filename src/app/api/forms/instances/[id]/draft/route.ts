@@ -213,6 +213,7 @@ import { twoSentenceActionPlan } from "@/lib/forms/action-plan-sentences";
 import { attendanceActionPlan, isAttendancePlan, missedMeetingNotLateness } from "@/lib/forms/attendance-action-plan";
 import { withPayrollSentence } from "@/lib/forms/plan-payroll-sentence";
 import { managerTypedActionPlan } from "@/lib/forms/manager-action-plan";
+import { firstNameNotPronouns } from "@/lib/forms/first-name-write-up";
 import {
   citeAttendanceForTardiness,
   policyFieldsWithCitation,
@@ -651,18 +652,27 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      * `exit-details.ts`, written before the model runs and only into empty
      * lines. Anything the manager did not say stays blank.
      */
+    /*
+     * Pau via QA (20 Nov 2026, item 15; Runner 2's c151): on a loop card's Create the Details lines name the employee by
+     * first name, never "she"/"her" ("Reason for resignation: she said her new job pays more").
+     */
+    const exitDetailsRead = () => {
+      const read = exitDetailValues(readExitDetails(notes, businessToday()));
+      if (body.cardFromLoop !== true) return read;
+      return { ...read, values: firstNameNotPronouns(read.values, loaded.instance.employeeName, new Set(Object.keys(read.values))).values };
+    };
     const exitStatedFacts = isExitForm
       ? formEditSingleWriterEnabled()
         ? await (await import("@/lib/forms/form-write")).statedWrite(
             id,
-            exitDetailValues(readExitDetails(notes, businessToday())),
+            exitDetailsRead(),
             actor.id,
             exitStatedKeys(),
             { notes },
           )
         : await applyStatedFacts(
             id,
-            exitDetailValues(readExitDetails(notes, businessToday())),
+            exitDetailsRead(),
             actor.id,
             // EXIT_INTAKE_FIX_ENABLED adds the Permanent Address the manager typed.
             exitStatedKeys(),
@@ -2762,6 +2772,15 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         const { body: account } = splitAppCitationLine(details);
         draftedPayload.values = { ...draftedPayload.values, [detailsKey]: `${account}\n\nPolicy reference: ${coachingPolicyLine}` };
       }
+    }
+    /*
+     * Pau via QA (20 Nov 2026, item 15): a loop card's saved write-up calls the employee by first name, never a pronoun.
+     * The manual's quoted policy fields (and the two the server derives) are left exactly as the manual has them.
+     */
+    if (body.cardFromLoop === true) {
+      const proseKeys = new Set(fields.filter((field) => !field.policyGrounded && !DERIVED_POLICY_FIELD_KEYS.has(field.key)).map((field) => field.key));
+      const named = firstNameNotPronouns(draftedPayload.values, loaded.instance.employeeName, proseKeys);
+      if (named.changed.length > 0) draftedPayload.values = named.values;
     }
     const kept = draftMergeEnabled()
       ? retainFilledFields({
