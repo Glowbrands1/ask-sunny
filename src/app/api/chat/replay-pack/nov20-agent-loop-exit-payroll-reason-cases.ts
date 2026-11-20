@@ -1,7 +1,7 @@
 import { expect, vi } from "vitest";
 
 import { KEARNEY, STAFF, type ReplayCase, type ReplayContext } from "./cases";
-import { evidenceFrom, lastResult, loopStandIn, type LoopDecision, type LoopView } from "./loop-stand-in";
+import { evidenceFrom, loopStandIn, type LoopDecision, type LoopView } from "./loop-stand-in";
 
 /**
  * ============================================================================
