@@ -55,7 +55,7 @@ import { redactSensitiveDefaults } from "@/lib/ai/sensitive-defaults";
 import { expandPolicyQuery } from "@/lib/knowledge/policy-retrieval";
 import type { SourceCitation } from "@/types";
 import type { AccessScope, ChatFormProposal, ChatMessage, Role } from "@/types";
-import { accountKey, personKey, replyTurns, type CardRecord, type NameQuestionRecord, type PersonAskedRecord, type TurnRecord } from "@/lib/ai/agent-loop/card-record";
+import { accountKey, personKey, replyTurns, type CardRecord, type ExitOfferRecord, type NameQuestionRecord, type PersonAskedRecord, type TurnRecord } from "@/lib/ai/agent-loop/card-record";
 
 /**
  * ============================================================================
@@ -123,6 +123,8 @@ export interface ToolContext {
   /** QA (16 Nov 2026; c158, c208): every card this chat's loop made, and every "who is it for?" it asked, oldest first. */
   readonly cardRecords?: readonly CardRecord[];
   readonly personAskedRecords?: readonly PersonAskedRecord[];
+  /** QA (#1055's follow-up): the exit-form offer the last reply's tools made (its record), or null. Never read from the reply. */
+  readonly exitOffered?: ExitOfferRecord | null;
   /** QA's review of #1062: each earlier loop turn's record (saved fields, a card), oldest first. */
   readonly turnRecords?: readonly TurnRecord[];
   /** Rebuild plan PR 6: what this turn already read, read once per turn (`turnManual`). A tool called outside a turn reads fresh. */
@@ -706,6 +708,8 @@ export interface ToolEffects {
   nameLines?: Record<string, string>;
   /** Fix batch item 6: propose_form asked who this form is for (no person yet), for the record. */
   personAsked?: { templateKey: string };
+  /** QA (#1055's follow-up): this turn's tools offered the exit form for this person (the exit_offer record). */
+  exitOffered?: { employeeId: string | null; name: string };
   /** find_staff ran this turn: a person was named, so a card without one is not "nobody named" (item 6). */
   staffLookedUp?: boolean;
   /** Fix batch items 4 and 3: this turn's last "Did you mean" (the roster ids offered, the name typed), for the record. */
@@ -2804,12 +2808,21 @@ export async function proposeForm(
      */
     const kind = exitEvidenceKind(input.exit_evidence);
     const offer = `Want the ${template.name} for **${employee.name}**?`;
+    /* #1055's follow-up: each refusal below offers the exit form, recorded for the next turn's yes (exit_offer). */
+    const offered = { employeeId: employee.id ?? null, name: employee.name };
     if (kind === "resignation_told") {
+      if (effects) effects.exitOffered = offered;
       return { exit_not_asked: true, reason_code: "exit_not_asked", ask_exactly: offer, note: "The manager told a resignation but did not ask for the exit form. Make no card: say what you understood in a few words and end the reply with ask_exactly. Propose the exit card only when they say yes (exit_evidence kind yes_to_exit_offer)." };
     }
-    /* A yes to the offer is this message, answering the app reply right before it. */
-    const answersOffer = kind === "yes_to_exit_offer" && check.ok && check.turn.index === turns.length - 1 && turns[turns.length - 2]?.role === "assistant";
+    /*
+     * A yes to the offer is this message, answering the reply right before it, AND that reply's tools offered the exit
+     * form for this person (its exit_offer record; #1055's follow-up). Turn order alone never makes a yes an exit ask.
+     */
+    const offerRecord = context.exitOffered ?? null;
+    const offeredThisPerson = Boolean(offerRecord && ((employee.id && offerRecord.employeeKey === personKey(employee.id)) || offerRecord.nameKey === personKey(employee.name)));
+    const answersOffer = kind === "yes_to_exit_offer" && check.ok && check.turn.index === turns.length - 1 && turns[turns.length - 2]?.role === "assistant" && offeredThisPerson;
     if (kind !== "asks_for_exit_form" && !answersOffer) {
+      if (effects) effects.exitOffered = offered;
       return { exit_not_stated: true, reason_code: "exit_not_stated", evidence: kind === null ? "exit_kind_missing" : "exit_offer_not_answered", ask_exactly: offer, note: "exit_evidence needs its kind: asks_for_exit_form (the manager's words ask for the exit form or its paperwork), yes_to_exit_offer (this message says yes to your offer of it, right after you asked), or resignation_told (a resignation told, no ask: make no card and end the reply with ask_exactly)." };
     }
   }
@@ -3507,7 +3520,13 @@ export async function proposeForm(
   const levelNotGiven = namedOptions.length === 1 ? namedOptions[0]! : null;
   const unset = corrective && !awaiting ? [...(payroll ? [] : ["payroll_deduct"]), ...(level || terminationStated ? [] : ["warning_level"])] : [];
   /* What this card's reply asks (the next turn's card record). After an unclear answer it still asks both (E r2). */
-  effects.proposalAsked = unset;
+  /*
+   * #1055's follow-up (QA, 20 Nov 2026): a card that asks which date (several dates, none chosen) records "form_date" in
+   * its asked fields, so a later turn knows the date was asked (dates_asked_before) from the record, never the reply.
+   */
+  effects.proposalAsked = [...unset, ...(datesAsked.length > 0 ? ["form_date"] : [])];
+  /* A termination card: the rules book offers the exit form after it; recorded for the next turn's yes (exit_offer). */
+  if (loopTermination) effects.exitOffered = { employeeId: employee.id ?? null, name: employee.name };
   effects.proposalLevel = level;
   effects.proposalPayroll = payroll;
   effects.proposalPayrollAmount = payroll === "yes" ? amount : null;
@@ -3559,8 +3578,11 @@ export async function proposeForm(
     /* AMOUNT_UNKNOWN_ACK (batch H1): "I don't know the amount" leaves it blank for the manager, said once, never asked again. */
     ...(corrective && payroll === "yes" && !amount ? (saysAmountUnknown(context.question, context.history, { amountOpen: true }) ? { payroll_amount_unknown: true } : { payroll_amount_unset: true }) : {}),
     ...(datesGiven.length > 1 ? { dates_given: datesGiven, ...(date ? { date_chosen: date } : {}) } : {}),
-    /* Batch G (G16): this chat already asked which date; a second ask is never made (the rules book: use the best reading). */
-    ...(datesGiven.length > 1 && context.history.some((message) => message.role === "assistant" && /more than one date|which date goes on the form/i.test(String(message.content))) ? { dates_asked_before: true } : {}),
+    /*
+     * Batch G (G16): this chat already asked which date; a second ask is never made (the rules book: use the best reading).
+     * #1055's follow-up (QA, 20 Nov 2026): known from the card records ("form_date" asked), never by reading the replies.
+     */
+    ...(datesGiven.length > 1 && (context.cardRecords ?? []).some((record) => record.asked.includes("form_date")) ? { dates_asked_before: true } : {}),
     ...(accountLost.length > 0 ? { account_words_missing: accountLost } : {}),
     /* PR 6: an exit card with no account at all. A fact: the model puts the manager's own account in what_happened, or leaves it. */
     ...(exitForm && !whatHappened ? { account_not_given: { note: "This exit card has no account. If the manager said how or when they left (\"resigned by text\", their last day), propose the card again with all of it in what_happened, in their own words." } } : {}),

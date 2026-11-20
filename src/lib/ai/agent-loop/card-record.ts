@@ -113,7 +113,25 @@ export interface PersonAskedRecord extends PersonAskedSlot {
   readonly questionKey?: string | null;
 }
 
-type TraceRow = { message_id: string | null; slots: { agent_loop?: { card?: unknown; name_question?: unknown; person_asked?: unknown; steps?: unknown; question_key?: unknown } } | null };
+/*
+ * THE EXIT OFFER RECORD (QA, 20 Nov 2026; #1055's follow-up): a turn whose tools offered the Employee Exit Form for a
+ * person (the exit refusals' "Want the … for <name>?", or a termination card, after which the rules book offers it)
+ * writes `slots.agent_loop.exit_offer = { employeeKey, nameKey }`, one-way keys only. The next turn's "yes" is a yes to
+ * that offer only when the reply right before it carries this record for that person, never by turn order alone.
+ */
+export interface ExitOfferSlot {
+  /** `personKey` of the person's roster id; null for a name not on the roster. */
+  readonly employeeKey: string | null;
+  /** `personKey` of the person's name as the card holds it. */
+  readonly nameKey: string;
+}
+
+export interface ExitOfferRecord extends ExitOfferSlot {
+  readonly messageId: string | null;
+  readonly questionKey?: string | null;
+}
+
+type TraceRow = { message_id: string | null; slots: { agent_loop?: { card?: unknown; name_question?: unknown; person_asked?: unknown; exit_offer?: unknown; steps?: unknown; question_key?: unknown } } | null };
 
 /** The turn's one-way key of the manager's message (`question_key`), to find that message when its id does not match. */
 const questionKeyOf = (row: TraceRow): string | null => (typeof row.slots?.agent_loop?.question_key === "string" ? row.slots.agent_loop.question_key : null);
@@ -132,8 +150,8 @@ export interface TurnRecord {
   readonly card: boolean;
 }
 
-type LoopRecords = { cards: CardRecord[]; nameQuestions: NameQuestionRecord[]; personAsked: PersonAskedRecord[]; turns: TurnRecord[] };
-const NO_RECORDS = (): LoopRecords => ({ cards: [], nameQuestions: [], personAsked: [], turns: [] });
+type LoopRecords = { cards: CardRecord[]; nameQuestions: NameQuestionRecord[]; personAsked: PersonAskedRecord[]; exitOffers: ExitOfferRecord[]; turns: TurnRecord[] };
+const NO_RECORDS = (): LoopRecords => ({ cards: [], nameQuestions: [], personAsked: [], exitOffers: [], turns: [] });
 
 /** This user's loop records in this conversation, oldest first, from one read. Empty without a conversation id, or if the read fails. */
 export async function readLoopRecords(conversationId: string | undefined, userId: string, historyMessageIds: readonly string[] = []): Promise<LoopRecords> {
@@ -190,6 +208,12 @@ export async function readLoopRecords(conversationId: string | undefined, userId
       personAsked: rows.flatMap((row) => {
         const asked = row.slots?.agent_loop?.person_asked as Partial<PersonAskedSlot> | undefined;
         return asked && typeof asked.templateKey === "string" ? [{ templateKey: asked.templateKey, messageId: row.message_id, questionKey: questionKeyOf(row) }] : [];
+      }),
+      exitOffers: rows.flatMap((row) => {
+        const offer = row.slots?.agent_loop?.exit_offer as Partial<ExitOfferSlot> | undefined;
+        return offer && typeof offer.nameKey === "string"
+          ? [{ employeeKey: typeof offer.employeeKey === "string" ? offer.employeeKey : null, nameKey: offer.nameKey, messageId: row.message_id, questionKey: questionKeyOf(row) }]
+          : [];
       }),
     };
   } catch {
