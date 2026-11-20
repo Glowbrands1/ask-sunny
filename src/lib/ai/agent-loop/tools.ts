@@ -2665,7 +2665,13 @@ export async function proposeForm(
   const priorRead = withoutTextToManager(typeof input.prior_actions === "string" ? input.prior_actions : "", managerText);
   if (typeof input.prior_actions === "string") input = { ...input, prior_actions: priorRead.text };
   const toManagerRemoved = [...accountRead.removed, ...priorRead.removed];
-  let whatHappened = accountRead.text.trim().slice(0, 2_000);
+  /*
+   * ONLY THE MANAGER'S OWN ADDRESS (Pau via QA, item 19): a labelled address ("home address 412 …") in the model's account
+   * that the manager never typed in this chat is left out, so neither the card nor Create (which drafts from the card's
+   * lines) can put it on a form. An address the manager typed stays.
+   */
+  const addressRead = (await import("@/lib/forms/exit-details")).withoutUntypedAddresses(accountRead.text, managerText);
+  let whatHappened = addressRead.text.trim().slice(0, 2_000);
   /* The incident's own words (this person's turns, read below) are checked against the account once they are known. */
   const asked = managerContext(context.history as ChatMessage[], { id: context.questionMessageId, content: context.question });
   /* THIS request's turns (QA, 14 Nov 2026; THIS_PERSONS_TURNS behaviour): an earlier incident in the chat never feeds this card. */
