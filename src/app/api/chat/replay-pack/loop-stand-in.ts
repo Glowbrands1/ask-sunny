@@ -102,7 +102,7 @@ type ToolCall = { readonly tool: string; readonly input: Record<string, unknown>
  * now requires `attendance` on a Corrective Action card citing Attendance, and propose_form refuses one without it
  * (`attendance_not_given`). A scripted model written before the rule follows it here, in one place rather than in each
  * of the 46 older cases: a "dpoa" propose_form whose policy names Attendance (never Late Opening) and that has no
- * `attendance` key gets "lateness", quoting the manager message it answers (`evidenceFrom`). "lateness" changes nothing
+ * `attendance` key gets "lateness", quoting the request message it already cites (see below). "lateness" changes nothing
  * those cards saved before (only "absence" does). A case that omits the field ON PURPOSE sets `attendance: undefined`
  * (nov20-write-up-attendance-omitted-tool-asks), and is left as written.
  */
@@ -111,7 +111,12 @@ function followsAttendanceRule(view: LoopView, decision: LoopDecision): LoopDeci
     if (call.tool !== "propose_form" || call.input.template_key !== "dpoa" || "attendance" in call.input) return call;
     const policy = typeof call.input.policy === "string" ? call.input.policy : "";
     if (!/\battendance\b/i.test(policy) || /\blate\s+open/i.test(policy)) return call;
-    return { ...call, input: { ...call.input, attendance: "lateness", attendance_evidence: evidenceFrom(view) } };
+    /*
+     * The quote is from the request message the card already cites for the person (or the level), so an answer turn
+     * ("25" to the payroll question) is never quoted as the account; else the message being answered.
+     */
+    const cited = [call.input.person_evidence, call.input.level_evidence].find((evidence) => typeof (evidence as { message_id?: unknown } | undefined)?.message_id === "string");
+    return { ...call, input: { ...call.input, attendance: "lateness", attendance_evidence: cited ?? evidenceFrom(view) } };
   };
   if ("tools" in decision) return { tools: decision.tools.map(fill) };
   if ("tool" in decision) return fill(decision);
