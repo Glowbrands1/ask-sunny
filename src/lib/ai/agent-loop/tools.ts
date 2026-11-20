@@ -34,6 +34,7 @@ import type { AskResponse } from "@/lib/ai/types";
 import { findManualSection, manualSectionHeadings, type ManualChunk } from "@/lib/forms/official-policy-manual";
 import { sectionWording } from "@/lib/forms/policy-citation";
 import { buildProposal, extractEmployeeNames, extractJobTitle, isJobTitlePhrase, JOB_TITLES, managerContext, samePerson, tidyTypedName } from "@/lib/forms/proposal";
+import { foldName } from "@/lib/forms/fold-name";
 import { cleaningUndonePhrase, namesCareAndCleaning, readCaPolicy } from "@/lib/forms/ca-policy";
 import { citesMustSee, dressCodeFit, saysMustSee } from "./policy-fit";
 import { fieldStates, mergeSaved, refusedFields, savedDiff, type SavedChange } from "@/lib/ai/agent-loop/saved-diff";
@@ -793,9 +794,8 @@ const ROSTER_FAILED = "The staff roster could not be loaded just now, so nobody 
 const ROSTER_UNCHECKED = "This login covers a district or region, so the roster cannot be searched here. Use the name exactly as the manager typed it.";
 
 function words(text: string): string[] {
-  return text
+  return foldName(text)
     .toLowerCase()
-    .normalize("NFKD")
     .replace(/[^a-z\s'-]/g, " ")
     .split(/\s+/)
     .filter((word) => word.length > 0);
@@ -998,6 +998,8 @@ export async function findStaff(context: ToolContext, input: { name?: unknown; p
       if (effects) effects.nameLines = { ...(effects.nameLines ?? {}), [chosen.employee.id]: chosen.name };
       return { matches: [staffRow(chosen.employee)], name_from_staff_list: chosen.name, note: `A close spelling of ${chosen.name}, the only one on the roster. Use them, and say so as the rules book's Card replies teach.` };
     }
+    /* QA item 13 (20 Nov 2026): the app's name check found the person exactly (an accent or apostrophe typed another way). */
+    if (close.kind === "exact") return { matches: [staffRow(close.employee)] };
     if (close.kind === "confirm" && close.candidates.length > 0) {
       const names = close.candidates.map((candidate) => candidate.name);
       if (effects) effects.nameQuestion = { offeredIds: close.candidates.slice(0, 5).map((candidate) => candidate.employee.id), typed };
