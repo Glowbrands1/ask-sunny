@@ -3828,10 +3828,19 @@ export async function proposeForm(
       job_title: card.employeeRole ?? null,
       form_date: card.formDate ?? null,
       observation: card.issue ?? null,
-      warning_level: level ?? (loopTermination ? "termination" : null),
+      /*
+       * QA (20 Nov 2026, board row f060): the Corrective-Action-only fields are on a Corrective Action card's result only.
+       * On a Coaching card they came back null, and the model read the nulls as "Payroll deduct and warning level aren't
+       * set" for a form that has neither.
+       */
+      ...(caOnlyFields
+        ? {
+            warning_level: level ?? (loopTermination ? "termination" : null),
+            payroll_deduct: payroll,
+            payroll_amount: payroll === "yes" && amount ? `$${amount.replace(/^\$/, "")}` : null,
+          }
+        : {}),
       incident_time: card.incidentTime ?? null,
-      payroll_deduct: payroll,
-      payroll_amount: payroll === "yes" && amount ? `$${amount.replace(/^\$/, "")}` : null,
       prior_actions: priorActions,
       policy: policyLine,
       create_offered: card.supportsInlineDraft,
