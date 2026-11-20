@@ -79,6 +79,66 @@ export const NO_NOTES_WARNING =
 /** The JSON `fetch` wrapper the caller supplies — `formsFetch`, in the app. */
 export type FormsCall = <T>(url: string, init?: RequestInit) => Promise<T>;
 
+/*
+ * ============================================================================
+ * f073 (QA live test, 20 Nov 2026): A CREATE THAT NEVER ANSWERS IS GIVEN UP
+ * ============================================================================
+ *
+ * A "Create draft" press sent no create the server saw, showed nothing, and a second press 115 s later worked; the
+ * deploy had changed just before. A request on a connection that stalls (not one that fails) waits until the browser
+ * gives up on its own, minutes later. The create POST alone is a few database writes, no model call, so it gets
+ * CREATE_ANSWER_MS and is then aborted, and the card says to press Create again in words a manager reads.
+ *
+ * NEVER A SECOND FORM: a second press of the same card sends the same `proposalId`, and the create route returns the
+ * draft that card already made (`findRecentAssistantDraft`), so a first request that did reach the server is reused.
+ * The prefill after it is not limited here: it is a model call with its own limits, and the row exists by then.
+ */
+export const CREATE_ANSWER_MS = 30_000;
+
+export const CREATE_RETRY_MESSAGE = "Something went wrong — press Create again.";
+
+/** The create POST did not answer within CREATE_ANSWER_MS. */
+export class CreateNoAnswerError extends Error {
+  constructor() {
+    super(CREATE_RETRY_MESSAGE);
+    this.name = "CreateNoAnswerError";
+  }
+}
+
+/** `call`, with the create POST given up after `limitMs`; every other request is passed through unchanged. */
+export function createAnswerLimited(call: FormsCall, limitMs: number = CREATE_ANSWER_MS): FormsCall {
+  return async <T,>(url: string, init: RequestInit = {}): Promise<T> => {
+    if (url !== "/api/forms/instances" || String(init.method ?? "GET").toUpperCase() !== "POST") return call<T>(url, init);
+    const controller = new AbortController();
+    let gaveUp = false;
+    const timer = setTimeout(() => {
+      gaveUp = true;
+      controller.abort();
+    }, limitMs);
+    try {
+      return await call<T>(url, { ...init, signal: controller.signal });
+    } catch (error) {
+      if (gaveUp) throw new CreateNoAnswerError();
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+}
+
+/**
+ * The words a create failure is shown in. A refusal from the route keeps its own reason (it describes the template or
+ * the permission); a request the network lost or that never answered says to press Create again, never the browser's
+ * own "Failed to fetch" / "Load failed".
+ */
+export function createFailureMessage(error: unknown): string {
+  if (error instanceof CreateNoAnswerError) return CREATE_RETRY_MESSAGE;
+  const name = (error as { name?: unknown } | null)?.name;
+  if (error instanceof TypeError || name === "AbortError" || name === "TypeError") return CREATE_RETRY_MESSAGE;
+  const message = error instanceof Error ? error.message.trim() : "";
+  return message || CREATE_RETRY_MESSAGE;
+}
+
 export async function createInlineForm({
   proposal,
   messages,
@@ -115,7 +175,7 @@ export async function createInlineForm({
    * docs/chat-phase-3.md. A validated id with no name is honest; a validated id
    * with a demo name beside it is not.
    */
-  const created = await call<{ instance: { id: string }; reused?: boolean; reusedFrom?: string }>("/api/forms/instances", {
+  const created = await call<{ instance: { id: string }; reused?: boolean; reusedFrom?: string; followUpNotice?: unknown }>("/api/forms/instances", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
@@ -161,6 +221,11 @@ export async function createInlineForm({
        */
       ...(proposal.warningLevel ? { warningLevel: proposal.warningLevel } : proposal.loopTermination ? { warningLevel: "termination" } : {}),
       ...(proposal.fromAgentLoop ? { fromAgentLoop: true } : {}),
+      /*
+       * QA item 17 (20 Nov 2026): a loop termination's account, so an exit form's reason line is the manager's account
+       * (the loop checked it against their words). Create writes it only on a form that has that line.
+       */
+      ...(proposal.fromAgentLoop && proposal.loopTermination && proposal.issue ? { loopAccount: proposal.issue } : {}),
       locationId: proposal.locationId,
       source: "ask_sunny",
       /* The card's own id: a second press of it returns the draft it already made. */
@@ -234,12 +299,17 @@ export async function createInlineForm({
       : draftNotesAreUsable(fromTurns) || !remapDraftSourcesClientEnabled()
         ? fromTurns
         : draftNotesFromCard(proposal);
+  /*
+   * Pau (20 Nov 2026): the follow-up date Create set on a loop's Corrective Action, said on the card ("Follow-up: Fri,
+   * Nov 27 (change it anytime)."). The drafting route says it for any other form whose Action Plan promised one.
+   */
+  const createdFollowUp = typeof created.followUpNotice === "string" && created.followUpNotice.trim() !== "" ? created.followUpNotice : null;
   if (!draftNotesAreUsable(notes)) {
-    return { reference, draftWarning: NO_NOTES_WARNING };
+    return { reference, draftWarning: NO_NOTES_WARNING, ...(createdFollowUp ? { draftNotice: createdFollowUp } : {}) };
   }
 
   try {
-    const drafted = await call<{ notice?: unknown }>(`/api/forms/instances/${reference.instanceId}/draft`, {
+    const drafted = await call<{ notice?: unknown; followUpNotice?: unknown }>(`/api/forms/instances/${reference.instanceId}/draft`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -250,6 +320,8 @@ export async function createInlineForm({
         ...(cardPolicyToDraftEnabled() && cardOtherTopic(proposal, messages) ? { cardOther: cardOtherTopic(proposal, messages) } : {}),
         // HOTFIX (QA, 17 Nov 2026): a loop card's policy is the saved form's (the draft route reads it as named).
         ...(proposal.fromAgentLoop ? { cardFromLoop: true } : {}),
+        // Pau via QA (20 Nov 2026): the prior actions the loop's card recorded; none recorded, none saved.
+        ...(proposal.fromAgentLoop ? { cardPriorActions: proposal.priorActions?.trim() ?? "" } : {}),
         // QA (20 Nov 2026; c198): the loop card's own account, so the saved account keeps the times it holds.
         ...(proposal.fromAgentLoop && typeof proposal.issue === "string" && proposal.issue.trim() ? { cardAccount: proposal.issue.trim().slice(0, 2_000) } : {}),
         // Pau (17 Nov 2026): a Coaching Form always carries the policy and page; the card's whole line goes with it.
@@ -261,9 +333,11 @@ export async function createInlineForm({
       }),
     });
     const notice = typeof drafted?.notice === "string" && drafted.notice.trim() !== "" ? drafted.notice : null;
-    return { reference, draftWarning: null, draftNotice: notice };
+    const draftedFollowUp = typeof drafted?.followUpNotice === "string" && drafted.followUpNotice.trim() !== "" ? drafted.followUpNotice : null;
+    const notices = [notice, createdFollowUp ?? draftedFollowUp].filter((line): line is string => Boolean(line));
+    return { reference, draftWarning: null, draftNotice: notices.length > 0 ? notices.join(" ") : null };
   } catch {
     // The form exists. Report it, warn about the prefill, change nothing else.
-    return { reference, draftWarning: DRAFT_FAILED_WARNING };
+    return { reference, draftWarning: DRAFT_FAILED_WARNING, ...(createdFollowUp ? { draftNotice: createdFollowUp } : {}) };
   }
 }

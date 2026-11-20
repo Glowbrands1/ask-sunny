@@ -13,6 +13,7 @@ import { continuationFor, offeredCopyForTurn, type OfferedCopy } from "@/lib/for
 import { createId } from "@/lib/utils/id";
 import { fakeSupabase, type FakeStore } from "@/test/fake-supabase";
 import { JBA_MANUAL_CA_CHUNKS } from "@/test/fixtures/jba-manual-ca-sections";
+import { fullPolicyManualChunks, replayReadsFullPolicyManual } from "@/test/fixtures/jba-manual-full";
 import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
 
 import type { ReplayContext } from "./cases";
@@ -59,6 +60,8 @@ const store: FakeStore = {
   // without them every write failed silently and the record's row counts were always 0).
   user_memory: [],
   chat_context_summaries: [],
+  // Board f066 (20 Nov 2026): the deletion record, written by the fake as the BEFORE DELETE trigger writes it.
+  form_instance_deletions: [],
 } as unknown as FakeStore;
 
 // As production builds the role table when the ASD may create forms (NEXT_PUBLIC_, read once at load).
@@ -518,7 +521,8 @@ vi.mock("@/lib/knowledge/providers/supabase", () => ({
         documentTitle: "2025 JBA Policy Manual - Edited 5-2025",
         documentCategory: "policies_compliance",
         matchedBy: "tag",
-        chunks: [...JBA_MANUAL_CA_CHUNKS, ...state.manualExtra],
+        // REPLAY_FULL_POLICY_MANUAL=1 (QA, 20 Nov 2026): shadow and saved-form runs read the manual production reads.
+        chunks: [...(replayReadsFullPolicyManual() ? fullPolicyManualChunks() : JBA_MANUAL_CA_CHUNKS), ...state.manualExtra],
       };
     }
   },

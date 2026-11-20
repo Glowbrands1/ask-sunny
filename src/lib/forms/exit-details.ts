@@ -323,9 +323,14 @@ function payrollDeduction(clause: string, sentence: string): Reading {
   // "payroll" alone is usually the department — "notify payroll".
   const match = /\b(?:payroll deduct(?:ed|ion|ions)?|deduct(?:ed|ing|s|ion|ions)?)\b/.exec(clause);
   if (!match) return undefined;
-  if (/\b(?:not|n't)\s+(?:be\s+)?(?:appl(?:y|ies|icable)|needed|required|necessary)\b|\bn\/a\b/.test(clause)) {
+  /*
+   * QA item 17 (20 Nov 2026; the production audit's exit form): "payroll deduct no apply" was read as Yes. "no apply" /
+   * "no applicable" and "payroll deduct: no" / "payroll deduct no" answer No, as "not apply" did.
+   */
+  if (/\b(?:not|n't|no)\s+(?:be\s+)?(?:appl(?:y|ies|icable)|needed|required|necessary)\b|\bn\/a\b/.test(clause)) {
     return "no";
   }
+  if (/\bdeduct(?:ed|ion|ions)?\s*[:=-]?\s*no\b(?!\s+(?:more|longer|later)\b)/.test(clause)) return "no";
   return negatedAt(clause, match.index) ? "no" : "yes";
 }
 

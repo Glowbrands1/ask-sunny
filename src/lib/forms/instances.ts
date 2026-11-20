@@ -1455,7 +1455,7 @@ export class InstanceProtectedError extends Error {}
  * in which values outlive their form. A revision pointing at this row has its
  * `revises_instance_id` set to null by the same declaration.
  */
-export async function deleteInstance(id: string): Promise<InstanceRow> {
+export async function deleteInstance(id: string, by?: DeletionActor): Promise<InstanceRow> {
   const supabase = getSupabaseAdmin();
 
   const { data: row, error: readError } = await supabase
@@ -1473,9 +1473,45 @@ export async function deleteInstance(id: string): Promise<InstanceRow> {
     );
   }
 
+  await stampDeletion([id], by);
   const { error } = await supabase.from("form_instances").delete().eq("id", id);
   if (error) throw new Error(`Could not delete that form: ${error.message}`);
   return instance;
+}
+
+/**
+ * WHO DELETED A FORM, AND HOW (board f066, Pau approved 20 Nov 2026).
+ *
+ * Every delete of a `form_instances` row is recorded by a BEFORE DELETE trigger in `form_instance_deletions`, an
+ * append-only table (`20261120001000_form_instance_deletions.sql`), whatever path made it. The app's own deletes
+ * say who and how by stamping the row just before (`deletion_requested_*`): Postgres is reached one HTTP request at a
+ * time, so the stamp is how the acting user reaches the trigger. A delete without a stamp is still recorded, as
+ * `other`.
+ */
+export interface DeletionActor {
+  /** The app user (`FormsActor.id`, or the loop's `actor.subject`). */
+  id: string;
+  role: string | null;
+  via: "route" | "chat" | "agent_loop" | "demo_sweep";
+}
+
+/**
+ * Stamps the rows about to be deleted. Best-effort and said: a failed stamp (the migration not yet applied, a
+ * network fault) never stops a delete the manager asked for. The trigger then records it without the user, and
+ * the log says why.
+ */
+async function stampDeletion(ids: readonly string[], by: DeletionActor | undefined): Promise<void> {
+  if (!by || ids.length === 0) return;
+  const { error } = await getSupabaseAdmin()
+    .from("form_instances")
+    .update({
+      deletion_requested_by: by.id,
+      deletion_requested_role: by.role,
+      deletion_requested_via: by.via,
+      deletion_requested_at: new Date().toISOString(),
+    })
+    .in("id", [...ids]);
+  if (error) console.error("forms: the deletion stamp was not written; the delete is recorded without its user", { reason: error.message, via: by.via });
 }
 
 /**
@@ -1549,7 +1585,7 @@ export async function findDemoInstances(): Promise<DemoSweep> {
  *   If a form was finalized between the confirmation dialog and the click, the
  *   sweep refuses rather than deleting a different set than was agreed to.
  */
-export async function deleteDemoInstances(expected: number): Promise<{ deleted: number }> {
+export async function deleteDemoInstances(expected: number, by?: DeletionActor): Promise<{ deleted: number }> {
   const sweep = await findDemoInstances();
   if (sweep.deletable.length !== expected) {
     throw new InstanceProtectedError(
@@ -1558,6 +1594,7 @@ export async function deleteDemoInstances(expected: number): Promise<{ deleted: 
   }
   if (sweep.deletable.length === 0) return { deleted: 0 };
 
+  await stampDeletion(sweep.deletable.map((row) => row.id), by);
   const supabase = getSupabaseAdmin();
   const { error } = await supabase
     .from("form_instances")
