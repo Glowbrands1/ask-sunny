@@ -85,6 +85,9 @@ function deps(overrides: Partial<DataToolDeps> = {}) {
     loadReviewsSnapshot: async () => SNAPSHOT,
     loadReviewFeed: async (storeCode) =>
       ({ reviews: storeCode === null ? Object.values(FEED_BY_STORE).flat() : (FEED_BY_STORE[storeCode] ?? []), total: 0 }) as unknown as ReviewFeed,
+    loadMonthlyProgress: async () => {
+      throw new Error("this test asks for no month-by-month period");
+    },
     loadReportBriefing: async (input) => {
       briefings.push(input);
       return BRIEFING;
