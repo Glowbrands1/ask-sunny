@@ -43,10 +43,13 @@ const exitModel = (said: string, account: string, amount?: string) => loopStandI
   };
   if (!last) return { tool: "propose_form", input: base };
   const unsetPayroll = ((last.facts as { unset?: string[] } | undefined)?.unset ?? last.unset ?? []).includes("payroll_deduct");
-  if (unsetPayroll && tries.length === 1) {
+  // Changed on purpose (QA, #1158's live test, 20 Nov 2026): the card's payroll is decided on the first proposal (the exit
+  // form's own reader over the request's words), so it is not "unset"; the model still adds a stated amount, once.
+  const cardPayroll = (last.card as { payroll_deduct?: string | null } | undefined)?.payroll_deduct ?? null;
+  if ((unsetPayroll || (amount && cardPayroll === "yes")) && tries.length === 1) {
     return { tool: "propose_form", input: { ...base, payroll_deduct: "yes", payroll_evidence: evidenceFrom(view, said), ...(amount ? { payroll_amount: amount } : {}) } };
   }
-  return { text: tries.length === 1 ? LIVE_REPLY : "Here's the Resignation/Exit Form for **Rowan Kestrel**. Payroll deduction: Yes. The form has no amount line, so the uniform cost is in Additional Details." };
+  return { text: tries.length === 1 && cardPayroll !== "yes" ? LIVE_REPLY : "Here's the Resignation/Exit Form for **Rowan Kestrel**. Payroll deduction: Yes. The form has no amount line, so the uniform cost is in Additional Details." };
 });
 
 async function run(t: ReplayContext, said: string, quote: string, account: string, amount?: string) {
