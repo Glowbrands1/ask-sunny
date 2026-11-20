@@ -277,7 +277,8 @@ export function formDateRangeFromQuestion(question: string, today: string): Form
     const monday = addDays(today, -weekday - 7);
     return { from: monday, to: addDays(monday, 6), label: "last week" };
   }
-  if (/\b(?:this|current)\s+month\b|\bmonth to date\b|\bmtd\b/.test(text)) {
+  // FORMS_ON_FILE_COUNTS_ENABLED (QA's f081): "list ca for the month" asks about this month.
+  if (/\b(?:this|current)\s+month\b|\bmonth to date\b|\bmtd\b/.test(text) || (formsOnFileCountsEnabled() && /\b(?:for|in|during|over) the month\b/.test(text))) {
     return { ...monthRange(year, monthIndex), to: today, label: `this month (${monthRange(year, monthIndex).label})` };
   }
   if (/\b(?:last|past|previous)\s+month\b/.test(text)) {
@@ -354,6 +355,23 @@ export function isFormRangeQuestion(question: string, today: string): boolean {
   if (!formKindFromText(text)) return false;
   if (/\b(?:make|create|draft|draw|start|write|do|need|prepare|fill|generate|new)\b(?! (?:on file|filed))/.test(text) && !/\b(?:who|how many|which|list|show)\b/.test(text)) return false;
   return formDateRangeFromQuestion(text, today) !== null || /\b(?:who (?:got|gets|received|had|has|was|were)|how many|which (?:employees|people|team members|staff)|list (?:all|every|the)|show (?:me )?(?:all|every|the))\b/.test(text);
+}
+
+/**
+ * FORMS_ON_FILE_COUNTS_ENABLED (QA's f081, 20 Nov 2026): a request to LIST forms on file, never to make one or open one.
+ * "list ca for the month" started a new CA ("Who is this form for?"), and "show me CA and coaching forms for <A> this
+ * month" went to the open-which-one flow. A listing word (list, show me, how many, who got / has / had, any) with a kind
+ * of form, and a period or plural form words ("forms", "CAs", "coachings"); never with a word that opens or changes one
+ * ("open", "edit", "change", "fix", "update", "the draft", "make", "create"). Off: never.
+ */
+export function isFormListQuestion(question: string, today: string): boolean {
+  if (!formsOnFileCountsEnabled()) return false;
+  const text = (question ?? "").toLowerCase().replace(/\s+/g, " ");
+  if (!formKindFromText(text)) return false;
+  if (/\b(?:open|edit|change|fix|update|correct|reopen|finali[sz]e|sign|make|create|draft|write(?!-?ups?\b)|start|new)\b|\bthe draft\b/.test(text)) return false;
+  const listing = /\b(?:list|show me|show|how many|who (?:got|gets|has|had|received)|are there any|any)\b/.test(text);
+  const many = formDateRangeFromQuestion(text, today) !== null || /\b(?:forms|cas|caf?s|coachings|write-?ups|warnings|corrective actions)\b/.test(text);
+  return listing && many;
 }
 
 /* Words that name a date or a kind of form, never a person ("november", "ca"). */
