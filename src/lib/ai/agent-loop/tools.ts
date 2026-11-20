@@ -445,9 +445,9 @@ async function formOnFileRefusal(context: ToolContext, id: string, evidence: unk
   const person = await authorizeInstance(context.request, id, "view").then(({ loaded }) => loaded.instance.employeeName).catch(() => null);
   if (!person) return null;
   const basic = formsOnFileAsked(context, evidence);
-  if (!basic.ok) return privacyRefusal(basic.reason);
+  if (!basic.ok) return privacyRefusal(basic.reason, undefined, context);
   const asked = await formsOnFileAskedFor(context, evidence, person);
-  return asked.ok ? null : privacyRefusal(asked.reason, asked.reasonCode);
+  return asked.ok ? null : privacyRefusal(asked.reason, asked.reasonCode, context);
 }
 
 /**
@@ -613,10 +613,16 @@ function answerEvidence(
 }
 
 /** The refusal when the manager has not asked about forms on file: privacy_not_asked, with the evidence check's reason. */
-function privacyRefusal(reason: string, reasonCode = "privacy_not_asked"): ToolResult {
+function privacyRefusal(reason: string, reasonCode = "privacy_not_asked", context?: Pick<ToolContext, "questionMessageId">): ToolResult {
+  /*
+   * Pau's live chat (20 Nov 2026, 14:23Z): calls with no forms_on_file_evidence were refused, and the model's next call
+   * cited the wrong id. The refusal names the id of the message being answered now, which the model cites when that
+   * message is the one asking.
+   */
+  const now = context ? { this_message_id: context.questionMessageId || CURRENT_MESSAGE_ID } : {};
   return reasonCode === "privacy_not_this_person"
-    ? { error: "The manager's words asking about forms on file are about someone else, not this person, so this person's forms stay closed (company privacy rule). Ask whether they want this person's forms on file.", reason_code: reasonCode, evidence: reason }
-    : { error: NOT_ASKED, reason_code: reasonCode, evidence: reason };
+    ? { error: "The manager's words asking about forms on file are about someone else, not this person, so this person's forms stay closed (company privacy rule). Ask whether they want this person's forms on file.", reason_code: reasonCode, evidence: reason, ...now }
+    : { error: NOT_ASKED, reason_code: reasonCode, evidence: reason, ...now };
 }
 
 const COUNT_WORDS: Readonly<Record<string, number>> = { two: 2, three: 3, four: 4, five: 5, six: 6 };
@@ -810,6 +816,18 @@ const ROSTER_UNCHECKED = "This login covers a district or region, so the roster 
 export function wholeNameWords(name: string, typed: string): boolean {
   const want = words(typed).join(" ");
   return want !== "" && ` ${words(name).join(" ")} `.includes(` ${want} `);
+}
+
+/**
+ * Pau's live chat (20 Nov 2026, 14:23Z: "list ca or coaching forms for <P> co"): a whole name word, then the START of the
+ * next one ("liesel co" for Liesel Cobb). The first word is matched whole (never "ann lee" for Joann Lee, item 27), and
+ * each later typed word begins the name word after it.
+ */
+export function nameThenStartOfNext(name: string, typed: string): boolean {
+  const want = words(typed);
+  const own = words(name);
+  if (want.length < 2) return false;
+  return own.some((word, at) => word === want[0] && want.slice(1).every((part, k) => part.length >= 2 && (own[at + 1 + k] ?? "").startsWith(part)));
 }
 
 function words(text: string): string[] {
@@ -1317,7 +1335,7 @@ const PERIOD_LIST_LIMIT = 100;
  */
 async function findFormsInPeriod(context: ToolContext, input: { form?: unknown; date_from?: unknown; date_to?: unknown; forms_on_file_evidence?: unknown }): Promise<ToolResult> {
   const asked = formsOnFileAsked(context, input.forms_on_file_evidence);
-  if (!asked.ok) return privacyRefusal(asked.reason);
+  if (!asked.ok) return privacyRefusal(asked.reason, undefined, context);
   const today = context.today || businessToday();
   const range = formDateRangeFromInput(input.date_from, input.date_to, today);
   const kind = typeof input.form === "string" ? formKindFromText(input.form) : null;
@@ -1364,7 +1382,7 @@ export async function findPastForms(context: ToolContext, input: { employee_name
   if (typed === "" && input.open !== true && (input.date_from || input.date_to || input.form)) return findFormsInPeriod(context, input);
   if (typed === "") return { reason_code: "missing_input", error: "Give the employee's name." };
   const asked = await formsOnFileAskedFor(context, input.forms_on_file_evidence, typed);
-  if (!asked.ok) return privacyRefusal(asked.reason, asked.reasonCode);
+  if (!asked.ok) return privacyRefusal(asked.reason, asked.reasonCode, context);
   const closeSpelled = await closeSpellingRefusal(context, effects, typed);
   if (closeSpelled) return closeSpelled;
   /*
@@ -1405,7 +1423,7 @@ export async function findPastForms(context: ToolContext, input: { employee_name
      * person by `samePerson`, or one roster holder's other name (aliases).
      */
     let rows = visibleInstances(actor, await listInstances("all", 200, { ...instanceListFilterFor(actor), employeeNameWords: nameWords }))
-      .filter((row) => samePerson(row.employeeName, typed) || wholeNameWords(row.employeeName, typed) || (aliases.length > 0 && sameRosterPerson(row.employeeName, typed, people)));
+      .filter((row) => samePerson(row.employeeName, typed) || wholeNameWords(row.employeeName, typed) || nameThenStartOfNext(row.employeeName, typed) || (aliases.length > 0 && sameRosterPerson(row.employeeName, typed, people)));
     /*
      * Item 27: the typed name fits forms of more than one person ("Lee": Ann Lee and Joann Lee) and is nobody's full name
      * on file: list none of them; the reply asks which person, by full name. One roster holder's names count as one.
