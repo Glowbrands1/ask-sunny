@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withAccountFactsKept } from "@/lib/forms/account-facts-kept";
 import { TERMINATION_OPTION, withTerminationPlan } from "@/lib/forms/termination-stated";
 import { salesResultsOffenseLine, withCaChosenRule } from "@/lib/ai/ca-sales-prompt-lines";
 import { noteSpendUser } from "@/lib/ai/spend-meter";
@@ -334,6 +335,8 @@ interface DraftBody {
   cardFromLoop?: boolean;
   /** The prior actions the loop's card recorded ("" for none), sent with `cardFromLoop` (Pau via QA, 20 Nov 2026). */
   cardPriorActions?: string;
+  /** The loop card's account (`issue`), the record of what the manager said (QA's live test of #1121, f061). */
+  cardAccount?: string;
   /**
    * SAME_FORM_COPY_NEW_PERSON_ENABLED: the form the card was asked to copy
    * ("the same draft that we did with <name>"). Re-checked: this account's
@@ -2735,6 +2738,14 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
     if (body.cardFromLoop === true && typeof body.cardPriorActions === "string" && body.cardPriorActions.trim() === "" && !keeps("prior_actions") && (draftedPayload.values.prior_actions ?? "").trim() !== "") {
       draftedPayload.values = { ...draftedPayload.values, prior_actions: "" };
     }
+    /*
+     * QA's live test of #1121 (20 Nov 2026, f061): the card showed "Prior actions: Verbal (2), dates not given" and the form
+     * saved "Verbal coaching \u2014 date not given", one of the two talks lost. When the loop card recorded prior actions,
+     * the saved line is the card's own, count and all.
+     */
+    if (body.cardFromLoop === true && typeof body.cardPriorActions === "string" && body.cardPriorActions.trim() !== "" && !keeps("prior_actions") && fields.some((field) => field.key === "prior_actions")) {
+      draftedPayload.values = { ...draftedPayload.values, prior_actions: body.cardPriorActions.trim().slice(0, 600) };
+    }
     // The citation line above is rebuilt from the cited sections; the card's Other goes back on it.
     if (cardOtherOnViolated && typeof draftedPayload.values.policy_violated === "string") {
       draftedPayload.values = { ...draftedPayload.values, policy_violated: cardOtherViolated(draftedPayload.values.policy_violated) };
@@ -2772,6 +2783,16 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         const { body: account } = splitAppCitationLine(details);
         draftedPayload.values = { ...draftedPayload.values, [detailsKey]: `${account}\n\nPolicy reference: ${coachingPolicyLine}` };
       }
+    }
+    /*
+     * QA's live test of #1121 (20 Nov 2026, f061): a 351-word account saved without "this is the third time in two months"
+     * and "a customer said she would not come back". Every fact on the loop card's account (the record of what the manager
+     * said) stays: one the drafter dropped is added to the Observed part in the card's own words (`account-facts-kept.ts`).
+     */
+    const factsKey = narrativeTargets[0];
+    if (body.cardFromLoop === true && typeof body.cardAccount === "string" && body.cardAccount.trim() !== "" && factsKey && !keeps(factsKey)) {
+      const facts = withAccountFactsKept(draftedPayload.values[factsKey] ?? "", body.cardAccount.trim().slice(0, 6_000), loaded.instance.employeeName);
+      if (facts.added.length > 0) draftedPayload.values = { ...draftedPayload.values, [factsKey]: facts.text };
     }
     const kept = draftMergeEnabled()
       ? retainFilledFields({

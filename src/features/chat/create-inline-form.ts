@@ -252,6 +252,8 @@ export async function createInlineForm({
         ...(proposal.fromAgentLoop ? { cardFromLoop: true } : {}),
         // Pau via QA (20 Nov 2026): the prior actions the loop's card recorded; none recorded, none saved.
         ...(proposal.fromAgentLoop ? { cardPriorActions: proposal.priorActions?.trim() ?? "" } : {}),
+        // QA's live test of #1121 (f061): the loop card's account, so every fact on it stays in the saved Observation.
+        ...(proposal.fromAgentLoop && proposal.issue?.trim() ? { cardAccount: proposal.issue.trim() } : {}),
         // Pau (17 Nov 2026): a Coaching Form always carries the policy and page; the card's whole line goes with it.
         ...(cardPolicyToDraftEnabled() && cardPolicyLineFor(proposal, messages) ? { cardPolicyLine: cardPolicyLineFor(proposal, messages) } : {}),
         // The coaching card's topic (QA, 17 Nov 2026): the saved form's Other topic.
