@@ -3266,7 +3266,14 @@ export async function proposeForm(
   if (headingParts.length > 2) {
     return { reason_code: "too_many_headings", error: `A Corrective Action cites one heading, or two when the manager describes two offenses that two headings cover, never ${headingParts.length}. Propose the card again with the one or two headings that fit what happened.` };
   }
-  const askedPolicy = headingParts.length > 0 ? headingParts[0]! : askedOther && askedPolicyWhole.includes(";") ? askedPolicyWhole.split(";")[0]!.trim() : askedPolicyWhole;
+  /*
+   * QA's f074 (20 Nov 2026, live on 29270d58): "actually make it a coaching form" after a CA citing two headings made no
+   * card: the coaching card's "<heading>; <heading>" went to the manual whole and was not_a_heading. Two headings are the
+   * Corrective Action's only (Pau's ruling); any other form cites the first, and the second is left off (not_on_card).
+   */
+  const otherFormParts = !twoHeadingsAllowed && !askedOther ? askedPolicyWhole.split(";").map((part) => part.trim()).filter(Boolean) : [];
+  const secondLeftOff = otherFormParts.length > 1 ? otherFormParts.slice(1).join("; ") : null;
+  const askedPolicy = headingParts.length > 0 ? headingParts[0]! : otherFormParts.length > 1 ? otherFormParts[0]! : askedOther && askedPolicyWhole.includes(";") ? askedPolicyWhole.split(";")[0]!.trim() : askedPolicyWhole;
   const askedSecond = headingParts.length === 2 ? headingParts[1]! : null;
   let policyHeading: string | null = null;
   let secondHeading: string | null = null;
@@ -4131,6 +4138,8 @@ export async function proposeForm(
   const notOnCard: { field: string; reason_code: string }[] = [
     ...(dateFromAnotherRequest ? [{ field: "incident_date", reason_code: "date_from_another_request" }] : []),
     ...(policyNotForThisCard ? [{ field: "policy", reason_code: "policy_not_for_this_card" }] : []),
+    /* QA's f074: a second heading on a form that cites one (Pau's two headings are the Corrective Action's only). */
+    ...(secondLeftOff ? [{ field: "policy_second_heading", reason_code: "not_on_this_form" }] : []),
     ...((modelLevel && level !== modelLevel) ? [{ field: "warning_level", reason_code: caOnlyFields ? "level_not_stated" : "not_on_this_form" }] : []),
     ...((askedTermination && !loopTermination) ? [{ field: "warning_level", reason_code: "termination_not_stated" }] : []),
     ...((askedPayroll && !payroll) ? [{ field: "payroll_deduct", reason_code: payrollFields ? "payroll_not_stated" : "not_on_this_form" }] : []),
