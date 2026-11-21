@@ -61,3 +61,33 @@ describe("account facts kept: only the missing fact (f083)", () => {
     ]);
   });
 });
+
+/*
+ * QA2 (21 Nov 2026), #1180 live on main 37c2ad82, PARTIAL (the person invented): the live card's account read "She was 40
+ * minutes late on 11/18, the third time in two months." The pass added that whole sentence ("<P> was 40 minutes late on
+ * 11/18, the third time in two months."), so the lateness was stated twice. Only the missing clause is added, as a short
+ * sentence of its own.
+ */
+describe("account facts kept: a missing appositive clause alone (f083 follow-up)", () => {
+  const card = "She was 40 minutes late on 11/18, the third time in two months. A customer said they won't come back because nobody was at the desk.";
+  const drafted =
+    "Observed:\nRemy was 40 minutes late to work on November 18, 2026. A customer stated they would not return because nobody was at the desk.\n\nExpectation:\nRemy is expected to arrive on time for every scheduled shift.";
+
+  it("adds \"This is the third time in two months.\", never the lateness again", () => {
+    expect(missingAccountFacts(drafted, card, "Remy Calder")).toEqual(["This is the third time in two months."]);
+  });
+
+  it("a missing \"which …\" clause reads as its own sentence", () => {
+    expect(missingAccountFacts("Observed:\nRemy was 40 minutes late on 11/18.", "Remy was 40 minutes late on 11/18, which made the salon open late for six guests.", "Remy Calder")).toEqual([
+      "This made the salon open late for six guests.",
+    ]);
+  });
+});
+
+describe("account facts kept: a whole clause is never turned into a phrase", () => {
+  it("\"…, the doors were not unlocked\" stays a sentence of its own", () => {
+    expect(missingAccountFacts("Observed:\nRemy arrived at 9:38 on 11/18.", "Remy arrived at 9:38 on 11/18, the doors were not unlocked until then.", "Remy Calder")).toEqual([
+      "The doors were not unlocked until then.",
+    ]);
+  });
+});

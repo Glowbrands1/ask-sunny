@@ -136,7 +136,21 @@ export interface ExitOfferRecord extends ExitOfferSlot {
   readonly questionKey?: string | null;
 }
 
-type TraceRow = { message_id: string | null; slots: { agent_loop?: { card?: unknown; name_question?: unknown; person_asked?: unknown; exit_offer?: unknown; steps?: unknown; question_key?: unknown } } | null };
+/*
+ * THE TEAM CONFIRMATION RECORD (QA's code audit, coach_team C, 20 Nov 2026): a turn whose coach_team asked "create all?"
+ * for an open Coaching draft writes `slots.agent_loop.team_confirm = { sourceKey }`, a one-way key of that draft's id. The
+ * next turn reads the manager's answer against this record, never against the reply's wording.
+ */
+export interface TeamConfirmSlot {
+  readonly sourceKey: string;
+}
+
+export interface TeamConfirmRecord extends TeamConfirmSlot {
+  readonly messageId: string | null;
+  readonly questionKey?: string | null;
+}
+
+type TraceRow = { message_id: string | null; slots: { agent_loop?: { card?: unknown; name_question?: unknown; person_asked?: unknown; exit_offer?: unknown; team_confirm?: unknown; steps?: unknown; question_key?: unknown } } | null };
 
 /** The turn's one-way key of the manager's message (`question_key`), to find that message when its id does not match. */
 const questionKeyOf = (row: TraceRow): string | null => (typeof row.slots?.agent_loop?.question_key === "string" ? row.slots.agent_loop.question_key : null);
@@ -155,8 +169,8 @@ export interface TurnRecord {
   readonly card: boolean;
 }
 
-type LoopRecords = { cards: CardRecord[]; nameQuestions: NameQuestionRecord[]; personAsked: PersonAskedRecord[]; exitOffers: ExitOfferRecord[]; turns: TurnRecord[] };
-const NO_RECORDS = (): LoopRecords => ({ cards: [], nameQuestions: [], personAsked: [], exitOffers: [], turns: [] });
+type LoopRecords = { cards: CardRecord[]; nameQuestions: NameQuestionRecord[]; personAsked: PersonAskedRecord[]; exitOffers: ExitOfferRecord[]; teamConfirms: TeamConfirmRecord[]; turns: TurnRecord[] };
+const NO_RECORDS = (): LoopRecords => ({ cards: [], nameQuestions: [], personAsked: [], exitOffers: [], teamConfirms: [], turns: [] });
 
 /** This user's loop records in this conversation, oldest first, from one read. Empty without a conversation id, or if the read fails. */
 export async function readLoopRecords(conversationId: string | undefined, userId: string, historyMessageIds: readonly string[] = []): Promise<LoopRecords> {
@@ -213,6 +227,10 @@ export async function readLoopRecords(conversationId: string | undefined, userId
       personAsked: rows.flatMap((row) => {
         const asked = row.slots?.agent_loop?.person_asked as Partial<PersonAskedSlot> | undefined;
         return asked && typeof asked.templateKey === "string" ? [{ templateKey: asked.templateKey, messageId: row.message_id, questionKey: questionKeyOf(row) }] : [];
+      }),
+      teamConfirms: rows.flatMap((row) => {
+        const asked = row.slots?.agent_loop?.team_confirm as Partial<TeamConfirmSlot> | undefined;
+        return asked && typeof asked.sourceKey === "string" ? [{ sourceKey: asked.sourceKey, messageId: row.message_id, questionKey: questionKeyOf(row) }] : [];
       }),
       exitOffers: rows.flatMap((row) => {
         const offer = row.slots?.agent_loop?.exit_offer as Partial<ExitOfferSlot> | undefined;

@@ -62,7 +62,8 @@ export const NOV20_AGENT_LOOP_RULE_NOT_CLEANING_DUTY_CASES: ReplayCase[] = [
     t.loopModel!(oneCard("Stayed over hours until 9:53 on 11/4 and on 11/11 until 10:19 pm. Remy said Remy was cleaning, but it has been clear that we do not do extra cleaning after hours and this is not acceptable.", "Time Records", seen));
     const reply = await t.thread().say("Please make me a CA form for Remy Calder for staying overhours until 9:53 on 11/4 and 11/11 until 10:19 pm. Remy said Remy was cleaning but it has been clear that we do not do extra cleaning after hours and this is not acceptable.");
     expect(factsOf(seen[0]).cleaning_duty, JSON.stringify(seen[0])).toBeUndefined();
-    expect(String((reply.formProposal as { policyLine?: string } | undefined)?.policyLine ?? "")).toMatch(/^Time Records Policy, JBA Policy Manual p\.\d+$/);
+    // Changed on purpose (QA2, 21 Nov 2026, c259 option (a)): a Time Records card names the box it is saved under, as the form does.
+    expect(String((reply.formProposal as { policyLine?: string } | undefined)?.policyLine ?? "")).toMatch(/^Standards of Conduct \u2014 Time Records, JBA Policy Manual p\.\d+$/);
   }),
   fixed("nov20-rule-not-cleaning-duty-control-employee-did-not-clean", "Control: \"CA for Remy Calder, she did not do the 10 minute cleaning on the beds today\": propose_form still gives the cleaning_duty fact", async (t) => {
     const seen: Record<string, unknown>[] = [];
