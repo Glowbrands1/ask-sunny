@@ -3426,6 +3426,15 @@ export async function proposeForm(
    * gave, the Employee Exit Form's too. Code compares formats only (`accountMissing`); the model writes the account.
    */
   const exitForm = template.key === appConfig().formKeys.exit;
+  /*
+   * QA's live L6 (22 Nov 2026): "…, terminated for job abandonment, not eligible for rehire" got the account "job abandonment"
+   * from the model, so the card and the saved reason lost "terminated for". An exit account that is part of one clause the
+   * manager typed in this request is that whole clause, as typed (`own-clause.ts`; never a list of words).
+   */
+  if (exitForm && whatHappened) {
+    const own = (await import("@/lib/forms/own-clause")).ownClauseHolding(whatHappened, requestWords);
+    if (own) whatHappened = own;
+  }
   if (exitForm && whatHappened) accountLost = accountMissing(withoutPayrollClauses(requestWords), whatHappened, null);
   if (whatHappened && ACCOUNT_FORMS.has(template.key)) {
     /* A message that is only a level or payroll answer (the model's evidence quotes the whole message) is not the incident's account. */
