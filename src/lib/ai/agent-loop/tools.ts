@@ -11,7 +11,7 @@ import { businessToday, formatBusinessTime } from "@/lib/business-date";
 import { appConfig } from "./app-config";
 import { isoDate, monthDayToIso, readDates, sameDate, withoutDates } from "./dates";
 import { candidateNameWords, chatFormsActor, formDateRangeFromInput, formKindFromText, ofKind } from "@/lib/forms/chat-form-records";
-import { CURRENT_MESSAGE_ID, holdsPhrase, identifiedTurns, verifyEvidence, withoutMessageIdTags, type IdentifiedTurn } from "./evidence";
+import { CURRENT_MESSAGE_ID, holdsPhrase, identifiedTurns, readEvidence, verifyEvidence, withoutMessageIdTags, type IdentifiedTurn } from "./evidence";
 import { personNamedInRequest, requestStart } from "./person-in-request";
 import { keptFormDate } from "./kept-form-date";
 import { answeredNameQuestions, answerNamesSomeoneElse, everKeptOrUsedTyped, isConfirmedSpelling, latestTurnAnswersFor, latestTurnConfirms, latestTurnKeepsOrUsesTyped, latestTurnKeepsTyped, spellingKeysConfirmedFor, spellingKeysConfirmedForName, type NameQuestionView } from "./confirmed-spelling";
@@ -312,6 +312,20 @@ export function levelFormWords(formName: string): string[] {
   const words = formName.toLowerCase().match(/\p{L}+/gu)?.filter((word) => word !== "form") ?? [];
   const initials = words.length > 1 ? [words.map((word) => word[0]).join("")] : [];
   return [...words, ...initials, "form", "warning", "warnings"];
+}
+
+/**
+ * Board f108: whether `text` names this form, as whole words: its name ("Coaching Form"), its short name ("Corrective
+ * Action"), either without "Form", or the initials of a name of two or more words ("CA"). Hyphens read as spaces
+ * ("follow up coaching"). The form's own names, never a list of what words mean.
+ */
+export function quoteNamesForm(text: string, template: { readonly name: string; readonly shortName?: string | null }): boolean {
+  const spaced = (value: string) => value.replace(/[-‐-―]+/g, " ");
+  const names = [template.name, template.shortName ?? ""].map((name) => spaced(name).replace(/\s+form\s*$/i, "").trim()).filter(Boolean);
+  const initials = names.map((name) => name.split(/\s+/)).filter((parts) => parts.length > 1).map((parts) => parts.map((part) => part[0]).join(""));
+  /* Whole words, any case and spacing (holdsPhrase needs 3 characters, and "CA" is two). */
+  const said = ` ${foldName(withoutMessageIdTags(spaced(text))).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim()} `;
+  return [...new Set([...names, ...initials])].some((name) => said.includes(` ${foldName(name).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim()} `));
 }
 
 /** The question when no level option was named (Pau's ruling, fix batch item 2). */
@@ -872,6 +886,16 @@ export function rosterMatches(typed: string, roster: readonly RosterEmployee[]):
 }
 
 /**
+ * Whether every typed word is a WHOLE first, preferred or last name of this person (board f110): "Rowan" or "Rowan
+ * Kestrel" is, "Rowan Kes" and "Row Kes" are not (they only start the names, as "Tes" starts "Test", #1160).
+ */
+export function namedWholly(typed: string, person: RosterEmployee): boolean {
+  const wanted = words(typed);
+  const own = words([person.firstName, person.preferredFirstName ?? "", person.lastName].join(" "));
+  return wanted.length > 0 && wanted.every((word) => own.includes(word));
+}
+
+/**
  * The salon's name as the manager knows it, never its id (F7, batch F: the past-forms list showed "(loc-0468)"). A
  * stored name is the fallback; an id on no list is said as such, never shown raw.
  */
@@ -1004,6 +1028,43 @@ export async function findStaff(context: ToolContext, input: { name?: unknown; p
       confirmed_by_manager: { name: displayName(found[0]!), answer: confirmed.by },
       note: `The manager confirmed ${displayName(found[0]!)} (their answer to Did you mean). Do not ask again: propose the card for ${displayName(found[0]!)} now, with this request's account from the earlier turns.`,
     };
+  }
+  /*
+   * BOARD f110 (QA handoff, 22 Nov 2026: partial names still match staff). A typed word that only STARTS a roster name
+   * ("Rowan Kes", "Row Kes", "Juno Pax") seated that person with no question, or (two partial words) handed the card a
+   * person the manager's words never named ("Who is this form for?"). People whose names the words hold whole are the
+   * matches; when none are, the people the words only start are a Did-you-mean (Pau's ruling A, as #1160 on forms on
+   * file), unless this chat already confirmed that spelling for them.
+   */
+  if (found.length > 0) {
+    const whole = found.filter((person) => namedWholly(typed, person));
+    if (whole.length > 0) found = whole;
+    else {
+      const view = nameQuestionView(context, read.roster);
+      /*
+       * The model may type less than the manager did ("tamsin orwel" looked up while the manager typed "tamsin orwell"): a
+       * person whose full name is in the manager's own words (the person_evidence quote, or else any of their turns) is
+       * settled, as closeSpellingNotSettled settles a full name first.
+       */
+      const turns = identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId);
+      const quoted = verifyEvidence(input.person_evidence, turns);
+      const managerTexts = quoted.ok ? [String((input.person_evidence as { quote: string }).quote)] : turns.filter((turn) => turn.role === "user").map((turn) => withoutMessageIdTags(turn.content));
+      const namedInFull = (person: RosterEmployee) => managerTexts.some((text) => fullNamesOf(person).some((full) => holdsPhrase(text, full)));
+      const settled = found.filter((person) => namedInFull(person) || spellingKeysConfirmedFor(view, person.id).includes(personKey(typed)));
+      if (settled.length === 1) found = settled;
+      else {
+        const names = found.slice(0, 5).map(displayName);
+        if (effects) effects.nameQuestion = { offeredIds: found.slice(0, 5).map((row) => row.id), typed };
+        return {
+          matches: [],
+          reason_code: "close_spelling_not_confirmed",
+          ask_exactly: nameConfirmationQuestion(typed, names),
+          did_you_mean: found.slice(0, 5).map((row) => staffRow(row)),
+          note: `"${typed}" only starts ${names.length === 1 ? "this name" : "these names"} on the roster. Ask the manager, in these words: ${nameConfirmationQuestion(typed, names)}`,
+          also_ask_if_no_account: ALSO_ASK_ACCOUNT,
+        };
+      }
+    }
   }
   /* QA (16 Nov 2026, live): the roster spelling the model looked up is settled only by the manager's own words. */
   const unsettled = found.length > 0 ? found.map((row) => closeSpellingNotSettled(context, row, read.roster, input.person_evidence)) : [];
@@ -3193,12 +3254,24 @@ export async function proposeForm(
       if (before && before.templateKey !== template.key) switchedFrom = { templateName: before.templateName, created: before.created };
     }
     const exitAsked = template.key === appConfig().formKeys.exit && verifyEvidence(input.exit_evidence, thisTurn, { thisTurnOnly: true }).ok;
-    if (!asksNewForm && !changeAsked && !exitAsked) {
+    /*
+     * BOARD f108 (QA handoff, 22 Nov 2026: the form lock trusts the AI's quote). A real quote of this turn was enough to
+     * switch the open card's form, whatever it said: "she said she'd be late again" made the CA a Coaching card. To leave
+     * the lock for another template, the quote must name that form (`quoteNamesForm`: its name, short name or initials),
+     * or this turn answers Sunny's own offer of it (the reply right before named it). Never reads what the words mean.
+     */
+    const lockLeft = (evidence: unknown) => {
+      const quote = readEvidence(evidence)?.quote ?? "";
+      if (quoteNamesForm(quote, template)) return true;
+      const reply = thisTurn.length >= 2 ? thisTurn[thisTurn.length - 2]! : null;
+      return reply?.role === "assistant" && quoteNamesForm(reply.content, template);
+    };
+    if (!(asksNewForm && lockLeft(input.new_form_evidence)) && !(changeAsked && lockLeft(input.form_change_evidence)) && !exitAsked) {
       const locked = await lockedForm(context, employee);
       if (locked && locked.templateKey !== template.key) {
         return {
           template_key: locked.templateKey,
-          reason_code: "form_locked", error: `The ${locked.templateName} for ${employee.name} is open on screen, and this message does not ask for another form. Put this on that card: propose the ${locked.templateName} again (template_key "${locked.templateKey}") with everything it already has, or edit the draft with edit_form. Pass new_form_evidence (another form) or form_change_evidence (make this card a different form) only with the manager's own words that ask.`,
+          reason_code: "form_locked", error: `The ${locked.templateName} for ${employee.name} is open on screen, and this message does not ask for another form. Put this on that card: propose the ${locked.templateName} again (template_key "${locked.templateKey}") with everything it already has, or edit the draft with edit_form. Pass new_form_evidence (another form) or form_change_evidence (make this card a different form) only with the manager's own words that ask for the ${template.name ?? "other form"} by name, or their answer to your offer of it; if they may want it, ask: "Do you want this to be a ${template.name ?? "different form"} instead of the ${locked.templateName}?"`,
         };
       }
     }
