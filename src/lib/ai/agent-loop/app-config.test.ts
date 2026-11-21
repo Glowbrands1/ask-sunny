@@ -211,6 +211,7 @@ const FAKE_CONTENT: AppConfig["content"] = ({ place }) => ({
     howTo: "\"how do I close the till\"",
     businessDocs: "the store handbook",
   },
+  toolExamples: { formAbout: "the late delivery", position: "baristas", placesNamed: "\"north kiosk\"" },
 });
 
 describe("app config: another company's content in the rules book (Phase 1 of the loop port)", () => {
@@ -266,6 +267,24 @@ describe("app config: the policy guards' headings (Phase 1 of the loop port)", (
       expect(code, file).not.toMatch(/["'`]Late Opening["'`]|["'`]Attendance["'`]|["'`]Standards of Conduct["'`]/);
       expect(code, file).not.toMatch(/standards of conduct\/i/);
     }
+  });
+});
+
+describe("app config: tool-description examples and the prompt's reports (Phase 1 of the loop port)", () => {
+  it("another company's examples reach the tool descriptions, and with no stats reports the prompt names no read_stats", () => {
+    setAppConfigForTests({ ...FAKE, content: FAKE_CONTENT });
+    const described = JSON.stringify(agentLoopTools().map((tool) => tool.input_schema));
+    for (const word of ["rooms ready between guests", "tanning consultants", "kearney", "Altoona"]) expect(described, word).not.toContain(word);
+    expect(described).toContain("the late delivery");
+    expect(described).toContain("baristas");
+    expect(agentLoopRules()).not.toContain("- read_stats:");
+    expect(agentLoopRules()).not.toContain("Daily Stats");
+  });
+
+  it("Sunny's own descriptions keep its examples and the read_stats line", () => {
+    const described = JSON.stringify(agentLoopTools().map((tool) => tool.input_schema));
+    expect(described).toContain("getting rooms ready between guests");
+    expect(agentLoopRules()).toContain("- read_stats: Daily Stats, Sales Totals and Comp figures for the manager's salons");
   });
 });
 

@@ -386,6 +386,7 @@ export function agentLoopTools(config: AppConfig = appConfig()) {
 function buildAgentLoopTools(config: AppConfig) {
   const place = config.locationWord;
   const places = config.locationWordPlural;
+  const examples = config.content({ place, places, staff: config.staffSystem }).toolExamples;
   return [
   {
     name: "find_staff",
@@ -401,7 +402,7 @@ function buildAgentLoopTools(config: AppConfig) {
       date: { type: "string", description: "The form's date as the manager gave it (\"10/31\"), if any." },
       date_from: { type: "string", description: "First form date of a period the manager asked about (\"this month\": the 1st), YYYY-MM-DD, if any." },
       date_to: { type: "string", description: "Last form date of that period (\"this month\": today), YYYY-MM-DD, if any." },
-      about: { type: "string", description: "Words the manager used about the form (\"getting rooms ready between guests\"), if any." },
+      about: { type: "string", description: "Words the manager used about the form (\"" + examples.formAbout + "\"), if any." },
       forms_on_file_evidence: FORMS_ON_FILE_EVIDENCE,
       open: { type: "boolean", description: "true when the manager asks to open, edit or see one form on file (not a list of what is on file)." },
       include_archived: { type: "boolean", description: "true only when the manager asks for archived forms. Finalized forms are listed archived or not; this adds archived drafts." },
@@ -415,7 +416,7 @@ function buildAgentLoopTools(config: AppConfig) {
   {
     name: "list_staff",
     description: "The staff of one of the signed-in manager's own " + places + ", by name and position. For \"who's on my staff\" and for a form asked for a whole staff (never one card for everyone). With several " + places + " and none named, it gives the question to ask.",
-    input_schema: object({ salon: { type: "string", description: "The " + place + " the manager named, if any." }, position: { type: "string", description: "One position the manager asked about (\"tanning consultants\"), if any." } }, []),
+    input_schema: object({ salon: { type: "string", description: "The " + place + " the manager named, if any." }, position: { type: "string", description: "One position the manager asked about (\"" + examples.position + "\"), if any." } }, []),
   },
   {
     name: "search_knowledge",
@@ -479,7 +480,7 @@ function buildAgentLoopTools(config: AppConfig) {
         },
         attendance_evidence: evidence("With attendance: the manager message of this request and its words that describe the absence or the lateness."),
         incident_time: { type: "string", description: "The time of the incident if the manager gave one, as they said it." },
-        salon: { type: "string", description: "The " + place + " the form is for, as the manager named it (\"kearney\", \"IA Altoona\"), when the card asks which " + place + " or the manager says one. Only the manager's own " + places + " are accepted." },
+        salon: { type: "string", description: "The " + place + " the form is for, as the manager named it (" + examples.placesNamed + "), when the card asks which " + place + " or the manager says one. Only the manager's own " + places + " are accepted." },
       },
       ["template_key"],
     ),

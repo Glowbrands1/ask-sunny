@@ -63,6 +63,11 @@ export function sunnyLoopContent({ place, staff }: LoopWords): AgentLoopContent 
       howTo: "\"how do I do the 10 minute sanitation\", \"what's the opening checklist\"",
       businessDocs: "the reviews SOP, the trackers, the Daily Stats guide",
     },
+    toolExamples: {
+      formAbout: "getting rooms ready between guests",
+      position: "tanning consultants",
+      placesNamed: "\"kearney\", \"IA Altoona\"",
+    },
   };
 }
 

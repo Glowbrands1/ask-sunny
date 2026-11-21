@@ -77,6 +77,12 @@ export interface AgentLoopContent {
     readonly howTo: string;
     readonly businessDocs: string;
   };
+  /** Example phrases in the tool descriptions (`run.ts`): words about a form, a position, places as typed. */
+  readonly toolExamples: {
+    readonly formAbout: string;
+    readonly position: string;
+    readonly placesNamed: string;
+  };
 }
 
 /**
