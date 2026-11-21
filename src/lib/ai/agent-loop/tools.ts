@@ -2096,10 +2096,21 @@ export function quoteNamesOption(quote: string, label: string): boolean {
   const wordsOf = (text: string) => [...new Set((text.toLowerCase().match(/[a-z]+/g) ?? []).filter((word) => word.length >= 3))];
   const labelWords = wordsOf(label);
   const said = (text: string) => (text.toLowerCase().match(/[a-z]+/g) ?? []);
-  const quoted = said(quote);
+  /* "didn't" is "did not": the contraction's own two words, so "didn't fulfill her notice" names "Did not fulfill … notice". */
+  const quoted = said(quote.replace(/([a-z])n['’]t\b/gi, "$1 not"));
   if (labelWords.length === 0) return false;
+  /*
+   * QA (22 Nov 2026, B6 on Sunny): a word sharing a stem of six letters or more with a label word names it ("fulfilling"
+   * names "Fulfilled"). A typed word that only starts with a short label word never names it: "notice" is not the label's
+   * "not" (it made "gave 2 weeks notice and is fulfilling them" name "Did not fulfill … notice").
+   */
+  const stem = (a: string, b: string) => {
+    let shared = 0;
+    while (shared < a.length && shared < b.length && a[shared] === b[shared]) shared += 1;
+    return shared >= 6;
+  };
   const named = labelWords.filter((word) =>
-    quoted.some((typed) => typed === word || (typed.length >= 3 && (word.startsWith(typed) || typed.startsWith(word))) || (typed.length >= 5 && word.length >= 5 && editDistance(typed, word) <= 2)),
+    quoted.some((typed) => typed === word || (typed.length >= 3 && word.startsWith(typed)) || (word.length >= 4 && typed.startsWith(word)) || stem(typed, word) || (typed.length >= 5 && word.length >= 5 && editDistance(typed, word) <= 2)),
   );
   return named.length >= Math.max(1, Math.ceil(labelWords.length / 2)) && (labelWords.length < 2 || named.length >= 2);
 }
@@ -2511,7 +2522,13 @@ async function exitCardTicks(isExit: boolean, termination: boolean, requestWords
   const checked = exitFactValues(facts).checked;
   /* A real manager's exit form (20 Nov 2026): the card's exit_how (the model's reading, kept on her words) when the reader ticked no type. */
   const typeTicks = checked[library.EXIT_TYPE_GROUP] ?? [];
-  const keys = termination ? [library.EXIT_OPTION.immediateInvoluntary] : [...(checked[library.EXIT_NOTICE_GROUP] ?? []), ...(typeTicks.length === 0 && exitHow ? [exitHow] : typeTicks)];
+  const noticeTicks = checked[library.EXIT_NOTICE_GROUP] ?? [];
+  /* QA (22 Nov 2026, B6 on Sunny): exit_how is shown in its own group ("Submitted & Fulfilled Notice" is a notice box), only when the reader ticked neither. */
+  const howIsNotice = exitHow === library.EXIT_OPTION.submittedFulfilledNotice;
+  const readerTicked = typeTicks.length > 0 || noticeTicks.length > 0;
+  const keys = termination
+    ? [library.EXIT_OPTION.immediateInvoluntary]
+    : [...(howIsNotice && !readerTicked ? [exitHow!] : noticeTicks), ...(!howIsNotice && typeTicks.length === 0 && exitHow ? [exitHow] : typeTicks)];
   const ticks = keys.map((key) => labels[key] ?? key);
   const unset = [...(!termination && !facts.lastDayWorked ? ["last_day_worked"] : []), ...(ticks.length === 0 ? ["resignation_type"] : [])];
   return { ...(ticks.length > 0 ? { exit_ticks: ticks } : {}), ...(unset.length > 0 ? { exit_unset: unset } : {}) };
@@ -4066,7 +4083,8 @@ export async function proposeForm(
    * and quotes the manager's words (exit_how_evidence); kept only on that evidence, from this request, on a resignation
    * (never the involuntary box, which only a locked termination ticks). A record, never a word list over her messages.
    */
-  const EXIT_HOW = new Set(["immediate_voluntary_resignation", "notice_not_fulfilled", "no_call_no_show"]);
+  /* QA (22 Nov 2026, B6 on Sunny): submitted_fulfilled_notice too; it is written to its own group on the template (resignation_notice). */
+  const EXIT_HOW = new Set(["submitted_fulfilled_notice", "immediate_voluntary_resignation", "notice_not_fulfilled", "no_call_no_show"]);
   const exitHowQuote = typeof (input.exit_how_evidence as { quote?: unknown } | null | undefined)?.quote === "string" ? String((input.exit_how_evidence as { quote: string }).quote).trim() : "";
   /*
    * QA2's live check of #1197 (21 Nov 2026): "<A> quit without notice" (the reader's Immediate Voluntary Resignation, said

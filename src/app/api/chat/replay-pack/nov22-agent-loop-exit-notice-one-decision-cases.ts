@@ -39,8 +39,8 @@ function start(t: ReplayContext) {
   t.as("salon_director", KEARNEY);
 }
 
-/** T1 then T6 with the live model (exit_how notice_not_fulfilled on "she gave 2 weeks notice"); the draft is created. */
-async function exitChat(t: ReplayContext, first: string) {
+/** T1 then T6 with the live model (by default exit_how notice_not_fulfilled on "she gave 2 weeks notice"); the draft is created. */
+async function exitChat(t: ReplayContext, first: string, how = { option: "notice_not_fulfilled", quote: "she gave 2 weeks notice" }) {
   const model = loopStandIn((view): LoopDecision => {
     const result = lastResult(view, "propose_form") as Out;
     if (result) return { text: `Here's the Resignation/Exit Form for **Marnie**. Filed as: ${(result.facts?.exit_ticks ?? []).join(", ") || "nothing yet"}.` };
@@ -53,7 +53,7 @@ async function exitChat(t: ReplayContext, first: string) {
         exit_evidence: { ...evidenceFrom(view, "can you make me an exit form", firstBack), kind: "asks_for_exit_form" },
         what_happened: "Marnie gave 2 weeks notice and is fulfilling it; Marnie is resigning due to a second job.",
         // The live model: the notice box read as "not fulfilled".
-        exit_how: "notice_not_fulfilled", exit_how_evidence: evidenceFrom(view, "she gave 2 weeks notice", firstBack),
+        exit_how: how.option, exit_how_evidence: evidenceFrom(view, how.quote, firstBack),
       },
     };
   });
@@ -120,6 +120,37 @@ export const NOV22_AGENT_LOOP_EXIT_NOTICE_ONE_DECISION_CASES: ReplayCase[] = [
       expect(facts, "the payroll note is not on the card (the case proves nothing)").toMatch(/payroll_question_only/);
       expect(facts, "the payroll note tells the model the form has no reason line at all").not.toMatch(/it has no amount or reason line/);
       expect(facts).toMatch(/Reason for Resignation/);
+    },
+  },
+  {
+    id: "nov22-b6-live-wording-ticks-submitted-fulfilled-only",
+    title: "B6 on Sunny (QA, 22 Nov 2026): T1 \"… she gave 2 weeks notice and is fulfilling them …\" with the model's exit_how submitted_fulfilled_notice on those words: the card and the saved form tick Submitted & Fulfilled Notice only",
+    report: `${REPORT}; Sunny's exit reader does not read "is fulfilling them", so the model's exit_how carries it, kept by its label (#1214)`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.() || !offline) return;
+      start(t);
+      const { reply, card, checked } = await exitChat(t, T1, { option: "submitted_fulfilled_notice", quote: "she gave 2 weeks notice and is fulfilling them" });
+      expect(reply.content, `the card does not file the fulfilled notice:\n${reply.content}`).toMatch(/Submitted & Fulfilled Notice/);
+      expect(reply.content).not.toMatch(/Did not fulfill/i);
+      expect(card?.exitHow).toBe("submitted_fulfilled_notice");
+      expect(checked.resignation_notice ?? [], JSON.stringify(checked)).toEqual(["submitted_fulfilled_notice"]);
+      expect(checked.resignation_type ?? [], JSON.stringify(checked)).toEqual([]);
+    },
+  },
+  {
+    id: "nov22-b6-live-wording-not-fulfilled-dropped",
+    title: "B6 control: the same words with exit_how notice_not_fulfilled: \"Did not fulfill … notice\" is not named by them, so it is never filed or saved",
+    report: REPORT,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.() || !offline) return;
+      start(t);
+      const { reply, checked } = await exitChat(t, T1, { option: "notice_not_fulfilled", quote: "she gave 2 weeks notice and is fulfilling them" });
+      expect(reply.content).not.toMatch(/Did not fulfill/i);
+      expect(checked.resignation_type ?? [], JSON.stringify(checked)).not.toContain("notice_not_fulfilled");
     },
   },
 ];

@@ -61,7 +61,15 @@ import { EXIT_DETAIL_FIELDS, EXIT_NOTICE_GROUP, EXIT_OPTION, EXIT_TEMPLATE_KEY, 
 import { exitReasonOnly } from "@/lib/forms/exit-reason-only";
 
 /** The resignation types a loop exit card may carry (never the involuntary box). */
-const LOOP_EXIT_HOW = new Set<string>([EXIT_OPTION.immediateVoluntary, EXIT_OPTION.noticeNotFulfilled, EXIT_OPTION.noCallNoShow]);
+const LOOP_EXIT_HOW = new Set<string>([EXIT_OPTION.submittedFulfilledNotice, EXIT_OPTION.immediateVoluntary, EXIT_OPTION.noticeNotFulfilled, EXIT_OPTION.noCallNoShow]);
+
+/** The checkbox group that holds this option on the draft's own template version, or null when it is not on it. */
+async function exitOptionGroup(instanceId: string, option: string): Promise<string | null> {
+  const loaded = await loadInstance(instanceId).catch(() => null);
+  if (!loaded) return null;
+  const { checkboxGroupsForVariant, parseFormDocument } = await import("@/lib/forms/document");
+  return checkboxGroupsForVariant(parseFormDocument(loaded.version.document), loaded.instance.variantKey).find((group) => group.options.some((candidate) => candidate.key === option))?.key ?? null;
+}
 /** The exit form's Additional Details line (`exit-library.ts`). */
 const EXIT_ADDITIONAL_DETAILS_KEY = "details";
 /** QA item 17: the exit form's own payroll question (`exit-library.ts`, EXIT_YES_NO_QUESTIONS). */
@@ -461,14 +469,16 @@ export async function POST(request: Request) {
               return [EXIT_TYPE_GROUP, EXIT_NOTICE_GROUP].some((group) => (checked[group] ?? []).length > 0);
             })())
           : false;
-        if (card.templateKey === EXIT_TEMPLATE_KEY && card.warningLevel !== "termination" && exitStated.checked[EXIT_TYPE_GROUP] === undefined && !readerTicks) {
+        if (card.templateKey === EXIT_TEMPLATE_KEY && card.warningLevel !== "termination" && exitStated.checked[EXIT_TYPE_GROUP] === undefined && exitStated.checked[EXIT_NOTICE_GROUP] === undefined && !readerTicks) {
           const how = typeof card.exitHow === "string" && LOOP_EXIT_HOW.has(card.exitHow) ? card.exitHow : null;
           const flat = (text: string) => text.toLowerCase().replace(/[*_"“”]/g, "").replace(/\s+/g, " ").trim();
           const quote = typeof card.exitHowQuote === "string" ? flat(card.exitHowQuote) : "";
-          if (how && quote !== "" && flat(userTurns).includes(quote)) exitStated.checked[EXIT_TYPE_GROUP] = [how];
+          /* QA (22 Nov 2026, B6 on Sunny): the option goes to its own group on this draft's template version (Submitted & Fulfilled Notice: resignation_notice). */
+          const group = how ? await exitOptionGroup(instanceId, how) : null;
+          if (how && group && quote !== "" && flat(userTurns).includes(quote)) exitStated.checked[group] = [how];
         }
         if (Object.keys(exitStated.checked).length > 0 || Object.keys(exitStated.values).length > 0) {
-          await applyStatedFacts(instanceId, exitStated, actor.id, new Set([EXIT_PAYROLL_KEY, EXIT_TYPE_GROUP, EXIT_DETAIL_FIELDS.resignationReason, EXIT_ADDITIONAL_DETAILS_KEY, EXIT_REHIRE_KEY]));
+          await applyStatedFacts(instanceId, exitStated, actor.id, new Set([EXIT_PAYROLL_KEY, EXIT_TYPE_GROUP, EXIT_NOTICE_GROUP, EXIT_DETAIL_FIELDS.resignationReason, EXIT_ADDITIONAL_DETAILS_KEY, EXIT_REHIRE_KEY]));
         }
       }
     }
