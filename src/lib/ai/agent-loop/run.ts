@@ -1,5 +1,6 @@
 import "server-only";
 
+import { observationDateMismatch, withoutMisdatedRestatements } from "./observation-dates";
 import { withFullOffRosterName } from "./off-roster-line";
 import { cardTurns, personKey, readLoopRecords, replyTurns, type CardRecord, type CardSlot, type ExitOfferSlot, type NameQuestionSlot, type PersonAskedSlot, type TeamConfirmSlot } from "./card-record";
 import { CLAUDE_EFFORT, CLAUDE_MAX_TOKENS, CLAUDE_MODEL } from "@/lib/config/models";
@@ -1188,7 +1189,8 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
       const cardShownNow = () => effects.proposal !== null || cardOnScreen !== null;
       const mismatchOf = (reply: string) => {
         const claims = cardClaims(reply);
-        if (effects.proposal) return cardMismatch(claims, effects.proposal);
+        /* QA's re-run (22 Nov 2026, A3; port of Ask Bubbles #1004): a restated Observation keeps the Observation's dates (`observation-dates.ts`). */
+        if (effects.proposal) return [...cardMismatch(claims, effects.proposal), ...observationDateMismatch(reply, effects.proposal.issue)];
         const onScreen = cardOnScreen ? ({ warningLevel: cardOnScreen.level ?? null, policyLine: cardOnScreen.policyLine ?? null } as unknown as ChatFormProposal) : null;
         return cardMismatch(claims, onScreen);
       };
@@ -1213,7 +1215,9 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
          */
         const shownForm = effects.proposal?.templateKey ?? cardOnScreen?.templateKey ?? null;
         const caOnly = (field: string) => /^(?:policy|warning level|payroll deduct|payroll amount) \(/.test(field);
-        const offer = shownForm === appConfig().formKeys.corrective ? still : still.filter((field) => !caOnly(field));
+        /* A misdated restatement of the Observation is no change the manager asked for: it is never offered as one. */
+        const observationDate = (field: string) => /^observation date \(/.test(field);
+        const offer = (shownForm === appConfig().formKeys.corrective ? still : still.filter((field) => !caOnly(field))).filter((field) => !observationDate(field));
         const withoutPolicyLine = (reply: string) => (shownForm !== appConfig().formKeys.corrective ? reply.replace(/^\s*\*\*Policy:?\*\*:?.*$\n?/gim, "").trim() : reply);
         selfReview = { mismatched: [...wrong, ...(missing ? ["policy line (missing)"] : [])], fixed: still.length === 0 && Boolean(again) && !noPolicyLine(again) };
         /*
@@ -1253,6 +1257,8 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
         if (offer.length > 0 && cardShownNow()) text = [...(sayBack.length > 0 ? [`That change isn't on the card yet: ${sayBack.join("; ")}. Tell me again and I'll update the card.`] : []), ...asks].join(" ");
         else if (again) text = withoutPolicyLine(again);
         else if (still.length > 0) text = withoutPolicyLine(text);
+        /* Still misdated after the hand-back: the false restatement is left out; the card under the reply shows the Observation. */
+        if (!(offer.length > 0 && cardShownNow()) && still.some(observationDate)) text = withoutMisdatedRestatements(text, effects.proposal?.issue);
       }
       /*
        * THE DRAFT'S HONESTY CHECK HANDS BACK FIRST (code-check #48, batch D): with a draft open, a reply that claims the
