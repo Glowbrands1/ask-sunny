@@ -55,7 +55,11 @@ export interface ReplayContext {
   /** `extra`: other fields of the draft tool's input, e.g. `{ offense_basis: "sales" }` (CA_SALES_POLICY_ENABLED). */
   draftWrites(values: Record<string, string>, checked?: Record<string, string[]>, extra?: Record<string, unknown>): void;
   /** The pinned policy manual also has these chunks this case (as `fetchOfficialPolicyManual` returns them); none by default. */
-  manualAlsoHas?(chunks: readonly Record<string, unknown>[]): void;
+  /**
+   * Chunks the pinned manual also has. `inPlace` (QA2, 21 Nov 2026): they take the place of the pinned chunks with the same
+   * chunk numbers, so a case reads production's own layout of those sections (the pinned CA fixture words them differently).
+   */
+  manualAlsoHas?(chunks: readonly Record<string, unknown>[], options?: { inPlace?: boolean }): void;
   /**
    * FULL_MANUAL_KEEPS_RETRIEVAL (QA, 10 Nov 2026): what the knowledge search returns this case (none by default), the
    * message normalizer's intent label (none by default: the glossary's reading), and whether the whole JBA Policy Manual

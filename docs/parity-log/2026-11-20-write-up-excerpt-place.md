@@ -51,3 +51,18 @@ The fix:
 Ask Bubbles: if its loop port (#991, Coding-D) copied `account-passage.ts` from #1146, it needs the same change.
 That change is self-contained in that file: the `list` check and the `pick` split. This session cannot read the Ask
 Bubbles repository, so QA2 relays it to Coding-D.
+
+## A fit is a shared content word; a long list quotes its item (QA2's second #1146 case, 21 Nov 2026)
+
+"ca for <P>, on the phone while a guest waited, 11/18", with the card citing Standards of Conduct p.12, saved the list
+block "o Lack of sales performance o Indecent or immoral behavior …". It shared only the word "while" with the account.
+
+- Grammar words never make a block fit.
+- A plain heading runs on through its continuation chunks (no heading of their own: Standards of Conduct's list, chunks
+  37–39) and stops at the next heading.
+- A list block longer than an excerpt is narrowed to the item that fits. For example, "o Insubordination -the refusal to
+  follow the directions of the manager."
+- With no fit, the section's opening wording stands.
+
+The replay pack's `manualAlsoHas(rows, { inPlace: true })` lets a case read production's own layout of those sections.
+The same Bubbles relay applies: the whole change is in `account-passage.ts`.

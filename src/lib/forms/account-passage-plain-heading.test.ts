@@ -31,3 +31,22 @@ describe("accountPassage: a plain heading ends at the next heading (QA2, #1146 r
     expect(quoted).toMatch(/shoes/i);
   });
 });
+
+/*
+ * QA2 (21 Nov 2026), the second #1146 case on main 3b0038f4 (the person invented): "ca for <P>, on the phone while a guest
+ * waited, 11/18", the card citing Standards of Conduct p.12, saved the list block "o Lack of sales performance o Indecent
+ * or immoral behavior …": it shared only the word "while" with the account. A grammar word is no match; with no block
+ * about the account, the section's own opening wording stands (null here). A plain heading still reads on through its
+ * continuation chunks (no heading of their own), so an account that fits a later list item is quoted.
+ */
+describe("accountPassage: a fit is a shared content word, never a grammar word (QA2, second #1146 case)", () => {
+  it("phone while a guest waited, under Standards of Conduct: no list block, the opening wording stands", () => {
+    const quoted = accountPassage(rows(35, 40), { heading: "Standards of Conduct", chunkIndex: 36 }, "Remy was on the phone while a guest waited, 11/18.", "Remy Calder");
+    expect(quoted ?? "").not.toMatch(/Lack of sales performance|Indecent or immoral/);
+  });
+
+  it("an account that fits a later Standards of Conduct item is quoted from the continuation chunk", () => {
+    const quoted = accountPassage(rows(35, 40), { heading: "Standards of Conduct", chunkIndex: 36 }, "Remy refused to follow the directions of the manager on 11/18.", "Remy Calder") ?? "";
+    expect(quoted).toMatch(/Insubordination/);
+  });
+});
