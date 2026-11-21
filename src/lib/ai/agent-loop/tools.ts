@@ -4001,7 +4001,9 @@ export async function proposeForm(
   if (!card.employeeRole && card.employeeName) {
     const words = await import("@/lib/ai/job-title-from-words");
     const typed = words.jobTitleFromWordsEnabled() ? words.typedJobTitle(asked.messages.filter((message) => requestIds.includes(message.id ?? "")).map((message) => String(message.content ?? "")), card.employeeName) : null;
-    if (typed) {
+    // QA2 for Pau (21 Nov 2026): "team member" / "staff member" is the frontline staff, never a Position on the card.
+    const roleWordsOnly = typed !== null && new RegExp(`^(?:${appConfig().roleWords.source})(?:\\s+(?:part|full)[- ]?time)?$`, "i").test(typed.trim());
+    if (typed && !roleWordsOnly) {
       card.employeeRole = words.spelledOutTitle(words.titleCaseIfLower(typed));
       jobTitleTyped = true;
     }
