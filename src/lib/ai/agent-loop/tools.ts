@@ -20,6 +20,7 @@ import type { DirectoryRosterRow } from "@/lib/forms/employee-roster";
 import { inlineDraftVariantKey, supportsInlineDraft } from "@/lib/forms/inline-draft";
 import { authorizeInstance, InstanceNotVisibleError, instanceListFilterFor, visibleInstances } from "@/lib/forms/instance-scope";
 import { applyAssistantRevision, deleteInstance, listInstances } from "@/lib/forms/instances";
+import { countFormsOnFile } from "@/lib/forms/forms-on-file-counts";
 import {
   currentManualScopeEnabled,
   formEditPlainWordsEnabled,
@@ -1334,13 +1335,30 @@ export async function listStaffTool(context: ToolContext, effects: ToolEffects, 
 
 /** A period list ("who got a CA this month?") reads every such form, up to this many. */
 const PERIOD_LIST_LIMIT = 100;
+/*
+ * QA's f081 (20 Nov 2026): "list ca for the month" read the newest 100 forms by created_at and said "The list stops at
+ * 100", where the month had more (every salon, archived included). The month is read up to 1000 rows (PostgREST's page),
+ * counted by code over all of them, and up to 100 are listed; past 1000 it says the counts are of the first 1000 read.
+ */
+const PERIOD_READ_LIMIT = 1000;
+
+/*
+ * QA's f081 (20 Nov 2026, from production's data: every archived form with a real name is finalized; archived drafts are
+ * test drafts): a finalized form counts and is listed whether or not it is archived (marked archived), as "who got a CA"
+ * asks what was filed; an archived DRAFT is left out unless the manager asks for archived forms (include_archived).
+ */
+function onFileKept(input: { include_archived?: unknown }) {
+  const all = input.include_archived === true;
+  return <T extends { archivedAt: string | null; status: string }>(row: T) => all || !(row.archivedAt && row.status === "draft");
+}
+const ARCHIVED_NOTE = "Finalized forms are included whether or not archived (each archived one marked archived: say \"(archived)\"); archived drafts are left out unless the manager asks for archived forms (include_archived).";
 
 /*
  * "WHO GOT A CA THIS MONTH?" (the owner, 18 Nov 2026, on the sibling app: "why capped at 20"). With no employee, a form
  * kind or a period lists every such form this manager may see, read by form date and form name in the query (not the
  * newest rows filtered after), and says whether the list is complete or stopped at its cap.
  */
-async function findFormsInPeriod(context: ToolContext, input: { form?: unknown; date_from?: unknown; date_to?: unknown; forms_on_file_evidence?: unknown }): Promise<ToolResult> {
+async function findFormsInPeriod(context: ToolContext, input: { form?: unknown; date_from?: unknown; date_to?: unknown; forms_on_file_evidence?: unknown; include_archived?: unknown }): Promise<ToolResult> {
   const asked = formsOnFileAsked(context, input.forms_on_file_evidence);
   if (!asked.ok) return privacyRefusal(asked.reason, undefined, context);
   const today = context.today || businessToday();
@@ -1351,18 +1369,21 @@ async function findFormsInPeriod(context: ToolContext, input: { form?: unknown; 
   if (actor === undefined) return { reason_code: "read_failed", error: "Form Monitoring could not be read just now. Say so; do not say there are no forms." };
   if (actor === null) return { reason_code: "scope", error: "This manager's role cannot view Form Monitoring, so past forms cannot be listed." };
   try {
-    const read = await listInstances("all", PERIOD_LIST_LIMIT, {
+    const read = await listInstances("all", PERIOD_READ_LIMIT, {
       ...instanceListFilterFor(actor),
       ...(range ? { formDateFrom: range.from, formDateTo: range.to } : {}),
       ...(kind ? { templateNameWords: kind.templateNameWords } : {}),
     });
     /* QA's code audit (item 28): a Coaching kind never keeps a Follow-Up Coaching Form (`ofKind`). */
-    const rows = ofKind(visibleInstances(actor, read), kind).slice(0, PERIOD_LIST_LIMIT);
+    const visible = ofKind(visibleInstances(actor, read), kind).filter(onFileKept(input));
+    /* f081: listed by form date (newest first), then employee; counted over every visible row, never only the listed ones. */
+    const rows = [...visible].sort((a, b) => (b.formDate ?? "").localeCompare(a.formDate ?? "") || a.employeeName.localeCompare(b.employeeName)).slice(0, PERIOD_LIST_LIMIT);
     /*
      * QA's code audit (item 29): complete only when the DATABASE returned fewer rows than it was asked for. Counting the
      * rows left after the visibility filter called a cut-off list complete (100 read, 60 visible, "every such form").
      */
-    const complete = read.length < PERIOD_LIST_LIMIT;
+    const complete = read.length < PERIOD_READ_LIMIT;
+    const counts = countFormsOnFile(visible);
     return {
       period: range ? { from: range.from, to: range.to } : null,
       form_kind: kind?.label ?? null,
@@ -1373,18 +1394,20 @@ async function findFormsInPeriod(context: ToolContext, input: { form?: unknown; 
         status: row.status,
         form_date: row.formDate,
         salon: salonLabel(row.locationId, row.locationName) ?? `no ${locationWord()}`,
+        ...(row.archivedAt ? { archived: true } : {}),
       })),
       complete,
-      note: complete
-        ? "Every such form this manager can see, read by form date: never say the list is capped or that some may be missing. A draft is not on file."
-        : `The list stops at ${PERIOD_LIST_LIMIT}; there may be more. Say so, and that Form Monitoring has the full list.`,
+      counts,
+      archived: input.include_archived === true ? "every archived form included, each marked archived" : ARCHIVED_NOTE,
+      ...(visible.length > rows.length ? { listed: rows.length, of: visible.length } : {}),
+      note: `${complete ? "Every such form this manager can see, read by form date: never say the list is capped or that some may be missing." : `More than ${PERIOD_READ_LIMIT} forms match: the counts are of the first ${PERIOD_READ_LIMIT} read. Say so, and that Form Monitoring has the full list.`} Numbers come only from counts (total, by_person, by_form, by_date): copy them, never count or add rows yourself, and never put one person's forms under another's name.${visible.length > rows.length ? ` ${rows.length} of ${visible.length} forms are listed; say how many are not shown.` : ""} A draft is not on file.`,
     };
   } catch {
     return { reason_code: "read_failed", error: "Form Monitoring could not be read just now. Say so; do not say there are no forms." };
   }
 }
 
-export async function findPastForms(context: ToolContext, input: { employee_name?: unknown; form?: unknown; date?: unknown; date_from?: unknown; date_to?: unknown; about?: unknown; forms_on_file_evidence?: unknown; open?: unknown }, effects?: ToolEffects): Promise<ToolResult> {
+export async function findPastForms(context: ToolContext, input: { employee_name?: unknown; form?: unknown; date?: unknown; date_from?: unknown; date_to?: unknown; about?: unknown; forms_on_file_evidence?: unknown; open?: unknown; include_archived?: unknown }, effects?: ToolEffects): Promise<ToolResult> {
   const typed = typeof input.employee_name === "string" ? input.employee_name.trim() : "";
   if (typed === "" && input.open !== true && (input.date_from || input.date_to || input.form)) return findFormsInPeriod(context, input);
   if (typed === "") return { reason_code: "missing_input", error: "Give the employee's name." };
@@ -1430,6 +1453,7 @@ export async function findPastForms(context: ToolContext, input: { employee_name
      * person by `samePerson`, or one roster holder's other name (aliases).
      */
     let rows = visibleInstances(actor, await listInstances("all", 200, { ...instanceListFilterFor(actor), employeeNameWords: nameWords }))
+      .filter(onFileKept(input))
       .filter((row) => samePerson(row.employeeName, typed) || wholeNameWords(row.employeeName, typed) || nameThenStartOfNext(row.employeeName, typed) || (aliases.length > 0 && sameRosterPerson(row.employeeName, typed, people)));
     /*
      * Item 27: the typed name fits forms of more than one person ("Lee": Ann Lee and Joann Lee) and is nobody's full name
@@ -1507,6 +1531,7 @@ export async function findPastForms(context: ToolContext, input: { employee_name
         /* G4 follow-up (QA, 15 Nov 2026): "no salon" in words, so the manager's "the one with no salon" can single it out. */
         salon: salonLabel(row.locationId, row.locationName) ?? `no ${locationWord()}`,
         choice: choices.get(row)!,
+        ...(row.archivedAt ? { archived: true } : {}),
       }));
     /* "Draw me up a coaching document … she already has one" (the live re-run's sun-late-date): none on file is no reason to stop. */
     if (forms.length === 0) {
@@ -1576,6 +1601,10 @@ export async function findPastForms(context: ToolContext, input: { employee_name
     }
     return {
       forms,
+      /* QA's f081: counted by code over every form found (not only the 20 listed); the reply copies the numbers. */
+      counts: countFormsOnFile(rows),
+      count_note: "Numbers come only from counts (total, by_form, by_date): copy them, never count or add rows yourself, and never put another person's forms under this name.",
+      archived: input.include_archived === true ? "every archived form included, each marked archived" : ARCHIVED_NOTE,
       /* Never a silent cut ("why capped at 20", 18 Nov 2026): more than the 20 listed are on file for this person. */
       ...(rows.length > forms.length ? { more_on_file: rows.length - forms.length, more_note: `${rows.length - forms.length} more forms are on file for this person than listed; say so, or narrow by form or dates.` } : {}),
       ...(withdrawn ? { card_withdrawn: `The ${withdrawn} card proposed earlier this turn was withdrawn: the manager asked to open a form on file, not to make one.` } : {}),
@@ -2309,6 +2338,31 @@ async function personNamedOrPicked(context: ToolContext, row: RosterEmployee, ro
 async function personNotNamed(context: ToolContext, template: { key: string; name: string }, effects: ToolEffects, person: RosterEmployee): Promise<ToolResult> {
   const who = await askWhoFor(context, template, effects);
   return { ask_exactly: who.ask_exactly, reason_code: "person_not_named", error: `No words of the manager's in this chat name ${displayName(person)}, and nobody picked or confirmed them. The card was not made. End your reply with ask_exactly, exactly, once.` };
+}
+
+/**
+ * QA (20 Nov 2026, #1158's live test: the reply said "Filed as a resignation" while the saved form ticked no type). The exit
+ * card's ticks are the ones the saved form gets: the exit form's own reader over this request's words (`readExitFacts`, as
+ * the draft's `applyExitDraft`), or "Immediate involuntary separation" for a termination the loop decided (#1139). With
+ * none, the card asks how the person left (exit_unset resignation_type), never saying "Filed as" what will not be ticked;
+ * and it asks a missing last day worked, as before. Never a date or a reason the manager did not give.
+ */
+async function exitCardTicks(isExit: boolean, termination: boolean, requestWords: string, today: string): Promise<{ exit_ticks?: string[]; exit_unset?: string[] }> {
+  if (!isExit) return {};
+  const [{ readExitFacts, exitFactValues }, library] = await Promise.all([import("@/lib/forms/exit-facts"), import("@/lib/forms/exit-library")]);
+  const facts = readExitFacts(requestWords, today);
+  const labels: Record<string, string> = {
+    [library.EXIT_OPTION.submittedFulfilledNotice]: "Submitted & Fulfilled Notice",
+    [library.EXIT_OPTION.immediateVoluntary]: "Immediate Voluntary Resignation",
+    [library.EXIT_OPTION.immediateInvoluntary]: "Immediate involuntary separation",
+    [library.EXIT_OPTION.noticeNotFulfilled]: "Did not fulfill required 14 day / 30 day notice",
+    [library.EXIT_OPTION.noCallNoShow]: "No Call No Show",
+  };
+  const checked = exitFactValues(facts).checked;
+  const keys = termination ? [library.EXIT_OPTION.immediateInvoluntary] : [...(checked[library.EXIT_NOTICE_GROUP] ?? []), ...(checked[library.EXIT_TYPE_GROUP] ?? [])];
+  const ticks = keys.map((key) => labels[key] ?? key);
+  const unset = [...(!termination && !facts.lastDayWorked ? ["last_day_worked"] : []), ...(ticks.length === 0 ? ["resignation_type"] : [])];
+  return { ...(ticks.length > 0 ? { exit_ticks: ticks } : {}), ...(unset.length > 0 ? { exit_unset: unset } : {}) };
 }
 
 /** A roster person's full names: the Woven preferred name with the surname, and the legal one (batch G, QA). */
@@ -3403,6 +3457,13 @@ export async function proposeForm(
       })()
     : null;
   let payroll: "yes" | "no" | null = askedPayroll && payrollCheck?.ok ? askedPayroll : null;
+  /*
+   * QA (20 Nov 2026, #1158's live test: the card said payroll unset while Create saved Yes). ONE decision feeds the card,
+   * the reply and the saved form: on the exit form, with no answer from the model on evidence, payroll is the exit form's
+   * own reader (`readExitDetails`, the one Create's draft uses) over THIS request's words, never another request's.
+   */
+  const exitReading = exitForm ? (await import("@/lib/forms/exit-details")).readExitDetails(requestWords, context.today || businessToday()) : null;
+  if (payroll === null && payrollFields && exitReading?.answers.payroll_deduction_applicable) payroll = exitReading.answers.payroll_deduction_applicable;
   const typedAmount = typeof input.payroll_amount === "string" && /\d/.test(input.payroll_amount) ? input.payroll_amount.replace(/[^\d.]/g, "") : null;
   /* The amount the manager stated, read as today reads it (`payrollAmountFromConversation`) when the model left it out. */
   const statedAmount = payroll === "yes" ? payrollAmountFromConversation(conversationTurns(context), { payrollAnswer: "yes" })?.replace(/[^\d.]/g, "") ?? null : null;
@@ -4039,7 +4100,7 @@ export async function proposeForm(
      * QA item 17 (20 Nov 2026): the exit form's required last day worked, asked on the card when the manager has not said
      * it, as the Corrective Action asks its level (the rules book's exit_unset line). A termination's effective date is it.
      */
-    ...(template.key === appConfig().formKeys.exit && !exitTermination && !(await import("@/lib/forms/exit-facts")).readExitFacts(requestWords, today).lastDayWorked ? { exit_unset: ["last_day_worked"] } : {}),
+    ...(await exitCardTicks(template.key === appConfig().formKeys.exit, Boolean(exitTermination), requestWords, today)),
     ...(exitTermination ? { exit_termination: { form_label: "Immediate involuntary separation", effective: exitTermination.date, ...(exitTermination.dated_today ? { dated_today: true } : {}) } } : {}),
     ...(jobTitleTyped ? { job_title_from_your_words: card.employeeRole } : {}),
     ...(whichSalon ? { which_salon: true } : {}),
@@ -4105,7 +4166,10 @@ export async function proposeForm(
             payroll_deduct: payroll,
             payroll_amount: payroll === "yes" && amount ? `$${amount.replace(/^\$/, "")}` : null,
           }
-        : {}),
+        : payrollFields
+          /* QA (#1158's live test): a form that asks the payroll question shows the card's one payroll decision too. */
+          ? { payroll_deduct: payroll }
+          : {}),
       incident_time: card.incidentTime ?? null,
       prior_actions: priorActions,
       policy: policyLine,
