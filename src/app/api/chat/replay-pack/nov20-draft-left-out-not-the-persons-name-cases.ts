@@ -55,8 +55,10 @@ export const NOV20_DRAFT_LEFT_OUT_NOT_THE_PERSONS_NAME_CASES: ReplayCase[] = [
     t.draftWrites({ observation: "Observed:\nRemy was late on 11/18." });
     const thread = t.thread();
     await thread.say(SAID);
-    await thread.create();
+    const id = await thread.create();
     expect(notices(t), "the employee's own surname was reported as left out").not.toMatch(/left out[^.;]*\bCalder\b/);
+    /* QA (20 Nov 2026, after #1175 passed live): the saved Observed starts with the first name only (Pau's rule). */
+    expect(t.values(id).observation ?? "", "the saved Observed does not start with the first name only").toMatch(/^Observed:\s*Remy was late\b/);
   }),
   fixed("nov20-draft-left-out-still-says-a-lost-date", `Control: "${SAID}", and the draft writes "Remy was late." (the date lost): the note still says it left out 11/18`, async (t) => {
     t.loopModel!(cardModel());
