@@ -117,7 +117,8 @@ export const NOV16_PAYROLL_CARRY_CASES: ReplayCase[] = [
         if (lastResult(view, "propose_form")) return { text: "Here's the card." };
         if (/^can you create/i.test(text)) return lastResult(view, "find_staff") ? { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2" } } : { tool: "find_staff", input: { name: "remy calder" } };
         if (/^payroll/i.test(text)) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", payroll_deduct: "yes", payroll_evidence: evidenceFrom(view) } };
-        return lastResult(view, "find_staff") ? { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-3", what_happened: ACCOUNT } } : { tool: "find_staff", input: { name: "juno paxton" } };
+        /* Changed on purpose (live model verified 21 Nov 2026, QA2; #1199): with CARD_PERSON_THIS_REQUEST on in production, another person's card while one is open carries new_form_evidence, as the live model passes it; this message states no date, so the ownRequest rule does not cover it. */
+        return lastResult(view, "find_staff") ? { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-3", what_happened: ACCOUNT, new_form_evidence: evidenceFrom(view) } } : { tool: "find_staff", input: { name: "juno paxton" } };
       }));
       const thread = t.thread();
       await thread.say("can you create me a ca form for remy calder");

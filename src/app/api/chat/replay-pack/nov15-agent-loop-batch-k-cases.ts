@@ -1,7 +1,7 @@
 import { expect, vi } from "vitest";
 
 import { KEARNEY, STAFF, type ReplayCase, type ReplayContext } from "./cases";
-import { lastResult, loopStandIn, type LoopDecision, type LoopView } from "./loop-stand-in";
+import { evidenceFrom, lastResult, loopStandIn, type LoopDecision, type LoopView } from "./loop-stand-in";
 
 /**
  * ============================================================================
@@ -216,7 +216,8 @@ NOV15_AGENT_LOOP_BATCH_K_CASES.push({
       const juno = /juno paxton/i.test(said);
       if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: juno ? "Juno Paxton" : "Remy Calder" } };
       // The model's slip: the earlier account's date carried onto the next person's card.
-      if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: juno ? { template_key: "coaching", employee_id: "e-3", incident_date: "2026-10-16" } : { template_key: "coaching", employee_id: "e-2", what_happened: "On 10-16-26 the policy acknowledgement report showed Remy Calder did not complete her acknowledgements.", incident_date: "2026-10-16" } };
+      /* Changed on purpose (live model verified 21 Nov 2026, QA2; #1199): with CARD_PERSON_THIS_REQUEST on in production, another person's card while one is open carries new_form_evidence, as the live model passes it; this message states no date, so the ownRequest rule does not cover it. */
+      if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: juno ? { template_key: "coaching", employee_id: "e-3", incident_date: "2026-10-16", new_form_evidence: evidenceFrom(view) } : { template_key: "coaching", employee_id: "e-2", what_happened: "On 10-16-26 the policy acknowledgement report showed Remy Calder did not complete her acknowledgements.", incident_date: "2026-10-16" } };
       return { text: `Here's the Coaching Form for **${juno ? "Juno Paxton" : "Remy Calder"}**.` };
     });
     t.loopModel!(model);
