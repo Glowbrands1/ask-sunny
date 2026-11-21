@@ -89,8 +89,9 @@ export const NOV20_AGENT_LOOP_EXIT_CARD_FIELDS_CASES: ReplayCase[] = [
         t.loopModel!(model);
         await t.thread().say(said);
         const result = JSON.stringify(lastResult(model.views.at(-1)!, "propose_form"));
-        if (asks) expect(result, `no ask for the last day:\n${result}`).toMatch(/"exit_unset":\["last_day_worked"\]/);
-        else expect(result).not.toMatch(/exit_unset/);
+        // Changed on purpose (QA, #1158's live test, 20 Nov 2026): exit_unset may also ask the resignation type now.
+        if (asks) expect(result, `no ask for the last day:\n${result}`).toMatch(/"exit_unset":\[[^\]]*"last_day_worked"/);
+        else expect(result).not.toMatch(/"exit_unset":\[[^\]]*"last_day_worked"/);
       }
     },
   },
