@@ -1041,7 +1041,16 @@ export async function findStaff(context: ToolContext, input: { name?: unknown; p
     if (whole.length > 0) found = whole;
     else {
       const view = nameQuestionView(context, read.roster);
-      const settled = found.filter((person) => spellingKeysConfirmedFor(view, person.id).includes(personKey(typed)));
+      /*
+       * The model may type less than the manager did ("tamsin orwel" looked up while the manager typed "tamsin orwell"): a
+       * person whose full name is in the manager's own words (the person_evidence quote, or else any of their turns) is
+       * settled, as closeSpellingNotSettled settles a full name first.
+       */
+      const turns = identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId);
+      const quoted = verifyEvidence(input.person_evidence, turns);
+      const managerTexts = quoted.ok ? [String((input.person_evidence as { quote: string }).quote)] : turns.filter((turn) => turn.role === "user").map((turn) => withoutMessageIdTags(turn.content));
+      const namedInFull = (person: RosterEmployee) => managerTexts.some((text) => fullNamesOf(person).some((full) => holdsPhrase(text, full)));
+      const settled = found.filter((person) => namedInFull(person) || spellingKeysConfirmedFor(view, person.id).includes(personKey(typed)));
       if (settled.length === 1) found = settled;
       else {
         const names = found.slice(0, 5).map(displayName);
