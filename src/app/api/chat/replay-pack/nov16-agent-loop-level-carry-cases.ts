@@ -310,8 +310,13 @@ export const NOV16_LEVEL_CARRY_CASES: ReplayCase[] = [
       expect(levelOf(thread), "the same request's level was lost").toBe("verbal");
       // QA (20 Nov 2026, item 7's approval): the same request also keeps its account and date through the form change.
       expect(thread.proposal?.formDate, "the same request's date was lost").toBe("2026-11-14");
-      /* Changed on purpose (QA's live retest of #1147, 20 Nov 2026): the card's own account names the person, never a pronoun. */
-      expect(thread.proposal?.issue ?? "", "the same request's account was lost").toMatch(/late to Remy's shift on 11\/14/i);
+      /*
+       * Changed on purpose (QA's live retest of #1147, 20 Nov 2026): the card's own account names the person, never a pronoun.
+       * Changed on purpose again (QA, item 19, #1145): the same person's second mention in one sentence reads naturally,
+       * "Remy was late to the shift", never "late to Remy's shift"; still no pronoun, and the account and date are kept.
+       */
+      expect(thread.proposal?.issue ?? "", "the same request's account was lost").toMatch(/^Remy was late to the shift on 11\/14/i);
+      expect(thread.proposal?.issue ?? "", "a pronoun on the card's account").not.toMatch(/\b(?:she|her|he|him|his)\b/i);
     },
   },
 ];

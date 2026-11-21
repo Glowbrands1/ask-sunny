@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withoutTopicPrefix } from "@/lib/forms/coaching-topic-prefix";
 import { keptPlanSteps, withPlanSteps } from "@/lib/forms/stated-plan-steps";
 import { statedPlanStepsEnabled } from "@/lib/config/chat-quality-flags";
 import { READERS_LINE_HEADINGS } from "@/lib/forms/readers-line-headings";
@@ -222,6 +223,7 @@ import { attendanceActionPlan, isAttendancePlan, missedMeetingNotLateness } from
 import { absenceWriteUp } from "@/lib/forms/absence-write-up";
 import { withPayrollSentence } from "@/lib/forms/plan-payroll-sentence";
 import { managerTypedActionPlan } from "@/lib/forms/manager-action-plan";
+import { firstNameNotPronouns } from "@/lib/forms/first-name-write-up";
 import { withoutUnsaidPlace } from "@/lib/forms/unsaid-place";
 import { appConfig } from "@/lib/ai/agent-loop/app-config";
 import { accountPassage } from "@/lib/forms/account-passage";
@@ -710,18 +712,27 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       const managerLines = body.cardFromLoop === true ? (await import("@/lib/forms/draft-notes")).notesWithoutCardLines(notes) : notes;
       if (!addressTypedIn(exitDetails.permanentAddress, managerLines)) delete exitDetails.permanentAddress;
     }
+    /*
+     * Pau via QA (20 Nov 2026, item 15; Runner 2's c151): on a loop card's Create the Details lines name the employee by
+     * first name, never "she"/"her" ("Reason for resignation: she said her new job pays more").
+     */
+    const exitDetailsRead = (details: NonNullable<typeof exitDetails>) => {
+      const read = exitDetailValues(details);
+      if (body.cardFromLoop !== true) return read;
+      return { ...read, values: firstNameNotPronouns(read.values, loaded.instance.employeeName, new Set(Object.keys(read.values))).values };
+    };
     const exitStatedFacts = isExitForm && exitDetails
       ? formEditSingleWriterEnabled()
         ? await (await import("@/lib/forms/form-write")).statedWrite(
             id,
-            withoutStatedExit(exitDetailValues(exitDetails)),
+            withoutStatedExit(exitDetailsRead(exitDetails)),
             actor.id,
             exitStatedKeys(),
             { notes },
           )
         : await applyStatedFacts(
             id,
-            withoutStatedExit(exitDetailValues(exitDetails)),
+            withoutStatedExit(exitDetailsRead(exitDetails)),
             actor.id,
             // EXIT_INTAKE_FIX_ENABLED adds the Permanent Address the manager typed.
             exitStatedKeys(),
@@ -2982,6 +2993,25 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       const proseKeys = new Set(fields.filter((field) => !field.policyGrounded && !DERIVED_POLICY_FIELD_KEYS.has(field.key)).map((field) => field.key));
       const placed = withoutUnsaidPlace(draftedPayload.values, proseKeys, notes, appConfig().locationWord);
       if (placed.changed.length > 0) draftedPayload.values = placed.values;
+    }
+    /*
+     * Pau via QA (20 Nov 2026, item 15): a loop card's saved write-up calls the employee by first name, never a pronoun.
+     * The manual's quoted policy fields (and the two the server derives) are left exactly as the manual has them.
+     */
+    if (body.cardFromLoop === true) {
+      const proseKeys = new Set(fields.filter((field) => !field.policyGrounded && !DERIVED_POLICY_FIELD_KEYS.has(field.key)).map((field) => field.key));
+      const named = firstNameNotPronouns(draftedPayload.values, loaded.instance.employeeName, proseKeys);
+      if (named.changed.length > 0) draftedPayload.values = named.values;
+      /*
+       * QA's live test of #1144 (20 Nov 2026): a coaching card's Observed opened with its topic ("Greeting guests, she
+       * didn't greet 3 guests"). It starts with what was seen: the card's own topic prefix is dropped (`coaching-topic-prefix.ts`).
+       */
+      const topicKey = narrativeTargets[0];
+      const cardTopicWords = typeof body.cardTopic === "string" ? body.cardTopic.trim().slice(0, 120) : "";
+      if (isCoachingFamily && cardTopicWords && topicKey && !keeps(topicKey) && typeof draftedPayload.values[topicKey] === "string") {
+        const unprefixed = withoutTopicPrefix(draftedPayload.values[topicKey]!, cardTopicWords);
+        if (unprefixed !== draftedPayload.values[topicKey]) draftedPayload.values = { ...draftedPayload.values, [topicKey]: unprefixed };
+      }
     }
     const kept = draftMergeEnabled()
       ? retainFilledFields({
