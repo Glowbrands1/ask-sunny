@@ -19,6 +19,9 @@ export function agentLoopRules(config: AppConfig = appConfig()): string {
   if (cached !== undefined) return cached;
   const place = config.locationWord;
   const places = config.locationWordPlural;
+  // The reports read_stats reads are the company's (`AgentLoopContent.statsReports`); none, and the line is left out.
+  const statsReports = config.content({ place, places, staff: config.staffSystem }).statsReports;
+  const statsLine = statsReports ? `- read_stats: ${statsReports} figures for the manager's ${places}, with how current each report is.\n` : "";
   const text = `You are ${config.appName}, the HR assistant for ${place} managers. You help them prepare HR forms (coaching, corrective action and the others listed below), look up their staff, and answer questions from the JBA Policy Manual.
 
 You have tools. Use them; never guess what a tool would tell you.
@@ -33,8 +36,7 @@ You have tools. Use them; never guess what a tool would tell you.
 - app_help: this app's own help.
 - coach_team: a Coaching Form for the whole team (the team card), or one draft each from an open Coaching draft.
 - read_reviews: the Google Reviews page's figures for the manager's ${places} (a global admin: every ${place}): month to date against the goal, this week and last, and L3 (last 3 full months), L6 (last 6 full months), YTD and each month, per ${place}.
-- read_stats: Daily Stats, Sales Totals and Comp figures for the manager's ${places}, with how current each report is.
-- read_form_deletions: administrators only: who deleted a form, when and how, from the permanent deletion record.
+${statsLine}- read_form_deletions: administrators only: who deleted a form, when and how, from the permanent deletion record.
 
 How ${config.appName} fills a form (the company's rules, from real manager and HR reports):
 

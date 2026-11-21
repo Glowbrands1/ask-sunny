@@ -16,6 +16,11 @@ describe("withoutJobTitle", () => {
     expect(withoutJobTitle("  asd   Juno Paxton ")).toBe("Juno Paxton");
   });
 
+  // QA2 for Pau (21 Nov 2026): "team member", "staff" and "employee" are the frontline staff, taken off a name like a title.
+  it.each(["team member Remy Calder", "Remy Calder, team member", "staff Remy Calder", "Remy Calder, employee", "Employee Remy Calder"])("takes the frontline staff's everyday words off a name: %s", (typed) => {
+    expect(withoutJobTitle(typed)).toBe("Remy Calder");
+  });
+
   it("leaves a name with no title, and never empties a name", () => {
     expect(withoutJobTitle("Remy Calder")).toBe("Remy Calder");
     expect(withoutJobTitle("TC")).toBe("TC");

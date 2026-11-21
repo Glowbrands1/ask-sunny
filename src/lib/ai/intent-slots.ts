@@ -98,6 +98,7 @@ export const intentSlotSchema = z
     formType: z.string().nullable().optional(),
     formTurn: z.boolean().optional(),
     policyHeading: z.string().nullable().optional(),
+    planSteps: z.array(z.string()).nullable().optional(),
   })
   .transform((value) => ({
     employee: blank(value.employee),
@@ -110,6 +111,7 @@ export const intentSlotSchema = z
     formType: blank(value.formType),
     formTurn: value.formTurn ?? false,
     policyHeading: blank(value.policyHeading),
+    planSteps: (value.planSteps ?? []).filter((step) => step.trim() !== ""),
   }));
 
 export type IntentSlotReading = z.infer<typeof intentSlotSchema>;
@@ -149,6 +151,26 @@ export const INTENT_TOOL_INPUT_SCHEMA = {
     },
   },
 };
+
+/**
+ * The intent tool's input schema. STATED_PLAN_STEPS_ENABLED (Pau via QA, 20 Nov 2026, f062) adds the optional `planSteps`
+ * slot; off, the schema is exactly `INTENT_TOOL_INPUT_SCHEMA`, so the reader is shown the same tool as before.
+ */
+export function intentToolInputSchema(planSteps: boolean) {
+  if (!planSteps) return INTENT_TOOL_INPUT_SCHEMA;
+  return {
+    ...INTENT_TOOL_INPUT_SCHEMA,
+    properties: {
+      ...INTENT_TOOL_INPUT_SCHEMA.properties,
+      planSteps: {
+        type: ["array", "null"],
+        items: { type: "string" },
+        description:
+          "Corrective Action only: each next step the manager asked for in the Action Plan (\"review the opening procedures with <P> this week\"), in their own words, one per item. Null when they asked for none. Never a step they did not ask for.",
+      },
+    },
+  };
+}
 
 export const INTENT_TOOL_DESCRIPTION =
   "Record the slots the manager has stated in this conversation. Copy their words. Do not invent a name, a salon, a title, a date, an amount, or a policy.";
