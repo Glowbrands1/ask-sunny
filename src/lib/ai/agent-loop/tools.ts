@@ -3914,6 +3914,19 @@ export async function proposeForm(
       reason_code: attendanceCode, error: `This Corrective Action cites ${policyHeading}. Propose the card again with attendance (absence: a shift missed, as "did not come in", a no-show, a call-out; lateness: arrived late; left_early: left before the shift ended, as "left early", "left before close", "walked out mid-shift"; both: an absence and lateness) and attendance_evidence quoting the manager's own words from this request that describe it${askedAttendance && attendanceCheck && !attendanceCheck.ok ? ` (that quote was not found in this request's manager messages: ${attendanceCheck.reason})` : ""}.`,
     };
   }
+  /*
+   * Port from the sibling app (its QA's live re-test, 21 Nov 2026, A5): "create verbal ca for <name> for opening <place>
+   * late on 10-1-26. …" got the issue line "Opening <place> late on 10-1-26.", the request's for-clause with no one doing
+   * it. A Corrective Action's account whose first sentence has no subject (`card-account.ts`, grammar only) is handed back
+   * to be written again with the person as its subject, as the rules book asks. The offense the manager named as the
+   * account (`accountFromNamedOffense`) is their words, and stays.
+   */
+  if (template.key === appConfig().formKeys.corrective && whatHappened !== "" && accountFromNamedOffense === null && (await import("./card-account")).accountHasNoSubject(whatHappened)) {
+    const subject = employee.name ? replyNameFor(employee.name, read.kind === "read" ? read.roster : [], extractEmployeeNames(managerTurns(context)), employee.id ?? null) : "the employee";
+    return {
+      reason_code: "account_no_subject", error: `what_happened says what was done but not who did it. Write it again as a sentence with ${subject} as its subject, in the past tense ("${subject} <did what> on <date>."), keeping every word, date and detail the manager gave, and propose the card again.`,
+    };
+  }
   const incidentTime = typeof input.incident_time === "string" && input.incident_time.trim() ? input.incident_time.trim().slice(0, 40) : null;
 
   const typedSalon = typeof input.salon === "string" ? input.salon.trim() : "";
@@ -4120,6 +4133,14 @@ export async function proposeForm(
     if (named.replaced > 0) {
       card.issue = named.text;
       whatHappened = named.text;
+    }
+  }
+  /* Port from the sibling app (its QA's live re-test, 21 Nov 2026, A5): a dashed date on the card's account is written as the issue line writes dates ("10/1/26"). */
+  if (card.issue) {
+    const slashed = (await import("./card-account")).withSlashDates(card.issue);
+    if (slashed !== card.issue) {
+      card.issue = slashed;
+      whatHappened = slashed;
     }
   }
   card.employeeRole = employee.id ? await rosterTitle(context.actor.scope, employee.id) : null;

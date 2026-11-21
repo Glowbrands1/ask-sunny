@@ -59,6 +59,8 @@ const KNOWN = new Set([
   "dress_code_heading", "msb_not_said",
   // Added on purpose (QA's review of #1137, 20 Nov 2026): an Attendance CA card with no attendance record, or one not in the manager's words.
   "attendance_not_given", "attendance_evidence_not_found",
+  // Added on purpose (port from the sibling app, its QA's live re-test, 21 Nov 2026, A5): a Corrective Action account with no subject.
+  "account_no_subject",
 ]);
 
 /** A line that returns a refusal: `error:` followed by a string, a template or a named message (not `error: Boolean(...)`). */
