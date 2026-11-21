@@ -57,7 +57,7 @@ import type { SameChat } from "@/lib/forms/draft-same-chat";
 import { authorizeLocation } from "@/lib/forms/location-scope";
 import { TERMINATION_OPTION, statesTermination } from "@/lib/forms/termination-stated";
 import { saysTerminationWord } from "@/lib/forms/termination-word";
-import { EXIT_DETAIL_FIELDS, EXIT_OPTION, EXIT_TEMPLATE_KEY, EXIT_TYPE_GROUP } from "@/lib/forms/exit-library";
+import { EXIT_DETAIL_FIELDS, EXIT_NOTICE_GROUP, EXIT_OPTION, EXIT_TEMPLATE_KEY, EXIT_TYPE_GROUP } from "@/lib/forms/exit-library";
 import { exitReasonOnly } from "@/lib/forms/exit-reason-only";
 
 /** The resignation types a loop exit card may carry (never the involuntary box). */
@@ -448,7 +448,20 @@ export async function POST(request: Request) {
          * exit_how (never the involuntary box) is ticked as the manager's statement only when its quoted words are in this
          * chat's own manager turns, checked here, server-side.
          */
-        if (card.templateKey === EXIT_TEMPLATE_KEY && card.warningLevel !== "termination" && exitStated.checked[EXIT_TYPE_GROUP] === undefined) {
+        /*
+         * QA's re-run (22 Nov 2026, B6; port of Ask Bubbles #1011): the exit form's own reader ticking a box in EITHER
+         * Resignation Details group (one set of boxes, split for the page's layout) is the one decision of how the person
+         * left; the card's exit_how is then never added beside it ("Submitted & Fulfilled Notice" with "Did not fulfill …
+         * notice").
+         */
+        const readerTicks = card.templateKey === EXIT_TEMPLATE_KEY
+          ? (await (async () => {
+              const { readExitFacts, exitFactValues } = await import("@/lib/forms/exit-facts");
+              const checked = exitFactValues(readExitFacts(userTurns, new Date().toISOString().slice(0, 10))).checked;
+              return [EXIT_TYPE_GROUP, EXIT_NOTICE_GROUP].some((group) => (checked[group] ?? []).length > 0);
+            })())
+          : false;
+        if (card.templateKey === EXIT_TEMPLATE_KEY && card.warningLevel !== "termination" && exitStated.checked[EXIT_TYPE_GROUP] === undefined && !readerTicks) {
           const how = typeof card.exitHow === "string" && LOOP_EXIT_HOW.has(card.exitHow) ? card.exitHow : null;
           const flat = (text: string) => text.toLowerCase().replace(/[*_"“”]/g, "").replace(/\s+/g, " ").trim();
           const quote = typeof card.exitHowQuote === "string" ? flat(card.exitHowQuote) : "";
