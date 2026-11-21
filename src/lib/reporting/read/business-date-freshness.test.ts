@@ -1,5 +1,12 @@
 import { readFileSync } from "node:fs";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+/* Pau 15 Nov: both apps are Central. The app's default zone is now America/Chicago; this suite's fixtures are written
+ * against Eastern edges and test the MECHANISM, so it pins the zone to Eastern on purpose (the env var is how a
+ * deployment picks its zone). */
+vi.hoisted(() => {
+  process.env.NEXT_PUBLIC_BUSINESS_TIMEZONE = "America/New_York";
+});
 
 import { businessToday, daysBetween } from "@/lib/business-date";
 
