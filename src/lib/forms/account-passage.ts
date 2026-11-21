@@ -10,8 +10,10 @@ import { verbatimExcerpt } from "./policy-citation";
  * mini-skirt account saved Direct policy as the NAME TAGS paragraph. The section's wording was read from its heading on,
  * and the first thing under "All Locations Dress Code:" is "Name tags".
  *
- * The cited heading's text runs from the heading through the following chunks until the manual starts its next titled
- * section (a line ending in ":", as "Crunch Fitness Specific Dress Code:"). It is split into its blocks (a sub-heading and
+ * The cited heading's text: a heading printed as a list ("All Locations Dress Code:", ending in ":") runs from the heading
+ * through the following chunks of its sub-items until the manual starts its next titled section (a line ending in ":", as
+ * "Crunch Fitness Specific Dress Code:"). A plain heading ("Attendance") ends where the manual's next heading starts, in
+ * its chunk or the next (QA2, 21 Nov 2026: lateness under Attendance quoted the Late Opening paragraph, chunk 42). It is split into its blocks (a sub-heading and
  * its bullets), and the block that shares the most words with the card's account is quoted, verbatim. Shared words are
  * read from the two texts themselves (words of four letters or more, by their first five letters; the employee's name
  * is not counted): no word list. When no block shares a word, the manual's own general rule printed above the heading on
@@ -46,7 +48,20 @@ export function accountPassage(
   const heading = new RegExp(`${section.heading.trim().split(/\s+/).map(escaped).join("\\s+")}[ \\t]*:?[ \\t]*\\n?`, "i").exec(first.content);
   if (!heading) return null;
   const general = first.content.slice(0, heading.index);
-  const parts = [first.content.slice(heading.index + heading[0].length)];
+  const after = heading.index + heading[0].length;
+  /* A list heading ends in ":" as printed; only it runs on into the chunks of its sub-items. */
+  const list = heading[0].includes(":");
+  if (!list) {
+    const lower = first.content.toLowerCase();
+    const next = (first.sections ?? [])
+      .map((entry) => entry.heading.trim())
+      .filter((other) => other !== "" && other.toLowerCase() !== section.heading.trim().toLowerCase())
+      .map((other) => lower.indexOf(other.toLowerCase(), after))
+      .filter((index) => index >= after)
+      .reduce((min, index) => Math.min(min, index), first.content.length);
+    return pick([first.content.slice(after, next)], general, first, account, employeeName);
+  }
+  const parts = [first.content.slice(after)];
   for (const chunk of ordered.slice(at + 1, at + MAX_CHUNKS)) {
     const titled = TITLED_SECTION.exec(chunk.content);
     if (titled) {
@@ -55,6 +70,11 @@ export function accountPassage(
     }
     parts.push(chunk.content);
   }
+  return pick(parts, general, first, account, employeeName);
+}
+
+/** The block of `parts` that shares the most words with the account; else the general rule above the heading; else null. */
+function pick(parts: readonly string[], general: string, first: ManualChunk, account: string, employeeName?: string | null): string | null {
   const skip = stems(employeeName ?? "", new Set());
   const said = stems(account, skip);
   const blocks = parts

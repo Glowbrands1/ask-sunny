@@ -34,3 +34,20 @@ finalized a Direct policy that held only "Source: JBA Policy Manual — All Loca
   titled section.
 - Ask Bubbles has its own `sectionWording` and the same layout can occur there. **Port this part when the loop is
   ported, or earlier if QA asks.**
+
+## A plain heading ends at the next heading (QA2, 21 Nov 2026; a regression from #1146 on main 3b0038f4)
+
+A card citing Attendance p.14 for plain lateness ("she was 40 minutes late on 11/18 …") saved the Late Opening
+paragraph as Direct policy. `accountPassage` read the cited heading's text on into the next chunk, which is the
+manual's next heading (Late Opening, chunk 42), and picked that block.
+
+The fix:
+
+- Only a heading printed as a list ("All Locations Dress Code:", ending in ":") runs on into the chunks of its
+  sub-items.
+- A plain heading ("Attendance") ends where the manual's next heading starts, in its own chunk or the next.
+- So Late Opening is quoted only for a card that cites Late Opening.
+
+Ask Bubbles: if its loop port (#991, Coding-D) copied `account-passage.ts` from #1146, it needs the same change.
+That change is self-contained in that file: the `list` check and the `pick` split. This session cannot read the Ask
+Bubbles repository, so QA2 relays it to Coding-D.
