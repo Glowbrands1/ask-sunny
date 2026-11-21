@@ -696,6 +696,8 @@ const NEW_FLAGS = [
   "DEAD_END_SAYS_WHERE_ENABLED",
   // Coding-C: FORMS_ON_FILE_COUNTS (QA's f081 follow-up, 20 Nov 2026; default off).
   "FORMS_ON_FILE_COUNTS_ENABLED",
+  // coding B: CARD_PERSON_THIS_REQUEST (the outside audit's wrong-person risk, 21 Nov 2026; default off).
+  "CARD_PERSON_THIS_REQUEST_ENABLED",
 ] as const;
 
 const PROTECTED = [
