@@ -3965,7 +3965,19 @@ export async function proposeForm(
    */
   const EXIT_HOW = new Set(["immediate_voluntary_resignation", "notice_not_fulfilled", "no_call_no_show"]);
   const exitHowQuote = typeof (input.exit_how_evidence as { quote?: unknown } | null | undefined)?.quote === "string" ? String((input.exit_how_evidence as { quote: string }).quote).trim() : "";
-  const exitHow = template.key === appConfig().formKeys.exit && !exitTermination && typeof input.exit_how === "string" && EXIT_HOW.has(input.exit_how) && exitHowQuote !== "" && answerEvidence(context, input.exit_how_evidence, "request", evidencePerson, { requestTurnIds }).ok
+  /*
+   * QA2's live check of #1197 (21 Nov 2026): "<A> quit without notice" (the reader's Immediate Voluntary Resignation, said
+   * in the reply) with a later "I didn't come in, I'm actually going to resign" gave the card exit_how no_call_no_show, which
+   * Create would tick. One decision: when the exit form's own reader ticks a type for this request (as `exitCardTicks` and
+   * Create's draft read it), that is the card's type and exit_how is not carried.
+   */
+  const readerTypeTicked = template.key === appConfig().formKeys.exit && typeof input.exit_how === "string"
+    ? await (async () => {
+        const [{ readExitFacts, exitFactValues }, library] = await Promise.all([import("@/lib/forms/exit-facts"), import("@/lib/forms/exit-library")]);
+        return (exitFactValues(readExitFacts(requestWords, today)).checked[library.EXIT_TYPE_GROUP] ?? []).length > 0;
+      })()
+    : false;
+  const exitHow = template.key === appConfig().formKeys.exit && !exitTermination && !readerTypeTicked && typeof input.exit_how === "string" && EXIT_HOW.has(input.exit_how) && exitHowQuote !== "" && answerEvidence(context, input.exit_how_evidence, "request", evidencePerson, { requestTurnIds }).ok
     ? { option: input.exit_how, quote: exitHowQuote.slice(0, 300) }
     : null;
   let salonFromWoven: string | null = null;
