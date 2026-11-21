@@ -228,6 +228,11 @@ const FLIPPED_AFTER_FIXTURE: readonly string[] = [
   // Changed on purpose (10 Nov 2026): QA round 23 turned this on in production. A name-only coaching ask no longer offers Create
   // beside "what happened" (the card's text changes); the fixture predates it, so it is compared with it off.
   "WHAT_HAPPENED_NO_CREATE_ENABLED",
+  /*
+   * Changed on purpose (21 Nov 2026, QA2; Pau approved it on in production at 13:31Z): the intent reader's tool now
+   * carries the planSteps slot, so the reader's request body changes; the fixture predates it, so it is compared with it off.
+   */
+  "STATED_PLAN_STEPS_ENABLED",
 ];
 const PRODUCTION = [...PRODUCTION_FLAGS.on, ...PRODUCTION_FLAGS.assumedOn].filter((name) => name !== FLAG && !FLIPPED_AFTER_FIXTURE.includes(name));
 const TOUCHED = [...new Set([FLAG, "FORM_EDIT_SINGLE_WRITER_ENABLED", "FORM_EDIT_TOOL_IN_STREAM_ENABLED", ...PRODUCTION, ...PRODUCTION_FLAGS.off])];
