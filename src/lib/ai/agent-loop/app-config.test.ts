@@ -112,6 +112,11 @@ import { rulesBookText } from "./rules-book";
  * Re-taken on purpose on 20 Nov 2026 (QA's f081: forms-on-file lists miscounted): one Replies line was added: a list of
  * forms on file copies find_past_forms' counts, never adds rows itself, never puts one person's forms under another's name,
  * and says "(archived)" beside an archived form (archived drafts only when asked). It reads the same under every config; nothing else changed.
+ *
+ * Re-taken on purpose on 21 Nov 2026 (QA2, #1172's live test: a switched-from card never created was said to be in Form
+ * Monitoring): the after-a-switch line now says the created form is left as it is only when form_changed's earlier_created
+ * is true, and one Card replies line was added for form_changed with earlier_created false. No app, place, staff system or
+ * form key; nothing else changed.
  */
 
 const fixture = (name: string): string => readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), "utf8");
