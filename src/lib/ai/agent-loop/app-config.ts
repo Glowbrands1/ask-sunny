@@ -1,4 +1,4 @@
-import { SUNNY_METRICS, SUNNY_POLICY_GUARDS, sunnyLoopContent } from "@/config/company/agent-loop";
+import { SUNNY_LOOP_ROLE_WORDS, SUNNY_METRICS, SUNNY_POLICY_GUARDS, sunnyLoopContent } from "@/config/company/agent-loop";
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { ACTIVE_BRAND } from "@/lib/brand";
 import { readDirectoryFacts, readDirectoryRoster, readScopedRoster } from "@/lib/forms/employee-roster";
@@ -144,6 +144,11 @@ export interface AppConfig {
    */
   readonly jobTitles: readonly RegExp[];
   /**
+   * The company's everyday words for its frontline staff ("team member", "staff", "employee"): never a Position on a card
+   * nor part of a name (QA2 for Pau, 21 Nov 2026). Also taken off a typed name, with `jobTitles`.
+   */
+  readonly roleWords: RegExp;
+  /**
    * A roster job title that leads others (manager, director, lead, supervisor): someone with it who asks or tells the
    * card's person something speaks for the salon, so a pronoun in what they asked is the card person's (Pau's ruling,
    * QA 17 Nov 2026). Read from the roster's job title, never from the manager's words.
@@ -182,7 +187,8 @@ export const SUNNY_CONFIG: AppConfig = {
     readDirectory: (...args) => readDirectoryRoster(...args),
     readDirectoryFacts: (...args) => readDirectoryFacts(...args),
   },
-  jobTitles: JOB_TITLES.map((entry) => entry.pattern),
+  jobTitles: [...JOB_TITLES.map((entry) => entry.pattern), SUNNY_LOOP_ROLE_WORDS],
+  roleWords: SUNNY_LOOP_ROLE_WORDS,
   leadershipTitle: /\b(?:directors?|managers?|leads?|supervisors?)\b/i,
   content: sunnyLoopContent,
   policyGuards: SUNNY_POLICY_GUARDS,

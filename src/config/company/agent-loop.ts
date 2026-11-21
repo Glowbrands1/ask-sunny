@@ -76,6 +76,14 @@ export function sunnyLoopContent({ place, staff }: LoopWords): AgentLoopContent 
  * ruling (16 Nov 2026: "Other — Must See Behaviors" only when the manager says MSB or must see behaviors). The patterns
  * are the ones the code used, unchanged.
  */
+/*
+ * THE FRONTLINE STAFF'S EVERYDAY WORDS (QA2 for Pau, 21 Nov 2026): "team member", "staff" and "employee" mean the
+ * frontline staff, not a position. They are never written as someone's Position (a typed "she is a team member" leaves
+ * the Job Title as it was) and, typed beside a name ("team member Remy", "Remy Calder, employee"), they are taken off it
+ * like a title. The sibling app reads the same words the same way.
+ */
+export const SUNNY_LOOP_ROLE_WORDS: AppConfig["roleWords"] = /\b(?:team members?|staff(?: members?)?|employees?)\b/i;
+
 export const SUNNY_POLICY_GUARDS: PolicyGuards = {
   headings: { attendance: "Attendance", lateOpening: "Late Opening", conduct: "Standards of Conduct" },
   saidOnlyOther: {
