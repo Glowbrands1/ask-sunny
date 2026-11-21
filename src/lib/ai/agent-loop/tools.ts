@@ -127,6 +127,8 @@ export interface ToolContext {
   /** QA (16 Nov 2026; c158, c208): every card this chat's loop made, and every "who is it for?" it asked, oldest first. */
   readonly cardRecords?: readonly CardRecord[];
   readonly personAskedRecords?: readonly PersonAskedRecord[];
+  /** QA's code audit, coach_team C: the last reply asked the open Coaching draft's "create all?" (the server's record). */
+  readonly teamConfirmAsked?: boolean;
   /** QA (#1055's follow-up): the exit-form offer the last reply's tools made (its record), or null. Never read from the reply. */
   readonly exitOffered?: ExitOfferRecord | null;
   /** QA's review of #1062: each earlier loop turn's record (saved fields, a card), oldest first. */
@@ -732,6 +734,8 @@ export interface ToolEffects {
   nameLines?: Record<string, string>;
   /** Fix batch item 6: propose_form asked who this form is for (no person yet), for the record. */
   personAsked?: { templateKey: string };
+  /** coach_team asked "create all?" for this open Coaching draft this turn, for the record. */
+  teamConfirm?: { sourceInstanceId: string };
   /** QA (#1055's follow-up): this turn's tools offered the exit form for this person (the exit_offer record). */
   exitOffered?: { employeeId: string | null; name: string };
   /** find_staff ran this turn: a person was named, so a card without one is not "nobody named" (item 6). */
@@ -2333,14 +2337,15 @@ async function editAskedFormsOnFile(context: ToolContext, effects: ToolEffects, 
  * QA item 7 (20 Nov 2026): the form this person's open card is locked to: the card shown in the last reply for them (the
  * server's card record, by roster id or, off the roster, by the name's key), else the draft open on screen for them.
  */
-async function lockedForm(context: ToolContext, employee: { name: string; id?: string }): Promise<{ templateKey: string; templateName: string } | null> {
+/** `created`: false for the last reply's card (never created, so no draft of it exists), true for the draft open on screen. */
+async function lockedForm(context: ToolContext, employee: { name: string; id?: string }): Promise<{ templateKey: string; templateName: string; created: boolean } | null> {
   const shown = context.cardOnScreen;
   if (shown && (employee.id ? shown.employeeKey === personKey(employee.id) : !shown.employeeKey && shown.nameKey === personKey(employee.name))) {
-    return { templateKey: shown.templateKey, templateName: shown.templateName ?? "card" };
+    return { templateKey: shown.templateKey, templateName: shown.templateName ?? "card", created: false };
   }
   if (!context.openFormId) return null;
   const open = await authorizeInstance(context.request, context.openFormId, "view").then(({ loaded }) => loaded.instance).catch(() => null);
-  return open && open.status === "draft" && samePerson(open.employeeName, employee.name) ? { templateKey: open.templateKey, templateName: open.templateName } : null;
+  return open && open.status === "draft" && samePerson(open.employeeName, employee.name) ? { templateKey: open.templateKey, templateName: open.templateName, created: true } : null;
 }
 
 /**
@@ -3028,9 +3033,20 @@ export async function proposeForm(
    * (this card made a different form, the same request: "make it a CA"), or exit_evidence asking for the exit form. The
    * rules book's continuity line said so; only name_answer_keeps_form enforced it. Read from the server's card record.
    */
+  /*
+   * QA2 (21 Nov 2026, #1172's live test): T1 "ca for <P>, late on 11/18" (a card, Create never pressed), T2 "make it a
+   * coaching form": the reply said the earlier Corrective Action card "is left unused unless you'd like it deleted from
+   * Form Monitoring", though nothing was ever created. The card says which form it was switched from and whether that one
+   * was created (a draft exists only for the draft open on screen), so the reply mentions Form Monitoring only when it was.
+   */
+  let switchedFrom: { templateName: string; created: boolean } | null = null;
   {
     const thisTurn = identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId);
     const changeAsked = verifyEvidence(input.form_change_evidence, thisTurn, { thisTurnOnly: true }).ok;
+    if (changeAsked) {
+      const before = await lockedForm(context, employee);
+      if (before && before.templateKey !== template.key) switchedFrom = { templateName: before.templateName, created: before.created };
+    }
     const exitAsked = template.key === appConfig().formKeys.exit && verifyEvidence(input.exit_evidence, thisTurn, { thisTurnOnly: true }).ok;
     if (!asksNewForm && !changeAsked && !exitAsked) {
       const locked = await lockedForm(context, employee);
@@ -3926,6 +3942,22 @@ export async function proposeForm(
       whatHappened = unplaced;
     }
   }
+  /*
+   * THE CARD'S ACCOUNT NAMES THE PERSON TOO (QA's live retest of #1147, 20 Nov 2026, conv_mwp5inao2y4s849): the card's
+   * issue read "Her shift lead, <L>, told her to clock out early and she refused." The reply's pronoun pass
+   * (`reply-pronouns.ts`) runs on the card's account with the card's own reply name, as on the reply's account line.
+   */
+  if (card.issue && card.employeeName) {
+    const { withoutPersonPronouns } = await import("./reply-pronouns");
+    const name = replyNameFor(card.employeeName, read.kind === "read" ? read.roster : [], extractEmployeeNames(managerTurns(context)), employee.id ?? null);
+    const others = await otherPeopleNamed(context, card.issue, name).catch(() => [] as string[]);
+    const reporters = await trustedReporters(context).catch(() => [] as string[]);
+    const named = withoutPersonPronouns(card.issue, name, others, managerTurns(context), reporters);
+    if (named.replaced > 0) {
+      card.issue = named.text;
+      whatHappened = named.text;
+    }
+  }
   card.employeeRole = employee.id ? await rosterTitle(context.actor.scope, employee.id) : null;
   /*
    * A TITLE THE MANAGER TYPED (batch H4/H6: JOB_TITLE_FROM_WORDS, JOB_TITLE_APPOSITION, TITLE_SPELLED_OUT, JOB_TITLE_CASE):
@@ -4044,6 +4076,7 @@ export async function proposeForm(
   const facts = {
     /* fix-name, live s10: the card's name changed from → to, so the reply can say so (the person may be another roster person, by exact match). */
     ...(nameCorrectedFrom !== null ? { name_corrected: { from: nameCorrectedFrom, to: employee.name } } : {}),
+    ...(switchedFrom ? { form_changed: { from: switchedFrom.templateName, earlier_created: switchedFrom.created } } : {}),
     ...(earlierKept ? { earlier_card: { kept: true, ...(earlierRow ? { employee: displayName(earlierRow) } : {}), form: earlier!.templateName ?? earlier!.templateKey } } : {}),
     ...(otherNamed.length > 0 ? { account_names_other_person: { named: otherNamed, card_person: employee.name } } : {}),
     ...(unset.length > 0 && !answerUnclear ? { unset } : {}),
@@ -4299,11 +4332,14 @@ function isShownCardId(context: ToolContext, effects: ToolEffects, id: string): 
  */
 export async function coachTeam(context: ToolContext, effects: ToolEffects): Promise<ToolResult> {
   if (context.openFormId) {
-    const { coachingForEveryoneTurn } = await import("@/lib/forms/coaching-for-everyone");
-    const turn = await coachingForEveryoneTurn({ request: context.request, question: context.question, history: context.history as ChatMessage[], activeInstanceId: context.openFormId, onCreated: () => {
+    const { coachingForEveryone } = await import("@/lib/forms/coaching-for-everyone");
+    const turn = await coachingForEveryone({ request: context.request, question: context.question, history: context.history as ChatMessage[], activeInstanceId: context.openFormId, confirmationAsked: context.teamConfirmAsked === true, onCreated: () => {
       effects.draftsCreated = (effects.draftsCreated ?? 0) + 1;
     } });
-    if (turn) return { app_reply: untrusted(turn.content), note: "Say app_reply to the manager as given, every line: it holds the people, the counts and the exact words the next step reads." };
+    if (turn) {
+      if (turn.askedConfirmation) effects.teamConfirm = { sourceInstanceId: context.openFormId };
+      return { app_reply: untrusted(turn.response.content), note: "Say app_reply to the manager as given, every line: it holds the people, the counts and the exact words the next step reads." };
+    }
   }
   const { wholeTeamRequest } = await import("@/lib/forms/whole-team-coaching");
   /*

@@ -170,3 +170,17 @@ describe("withoutPersonPronouns: the person told by someone else (f059)", () => 
       .toBe("Tamsin told Tamsin's manager Tamsin was sick.");
   });
 });
+
+/*
+ * QA's live retest of #1147 (20 Nov 2026, conv_mwp5inao2y4s849, masked): the lead was named in T1 and is not on the roster,
+ * so on T2 ("a corrective action") no other name was known, and "Test's shift lead, <L>, told her …" read Test as the
+ * teller. The teller is the subject before the verb, known or not; a possessive never tells. <L> is invented (Dana Fairweather).
+ */
+describe("withoutPersonPronouns: the teller need not be a known name (f059 retest)", () => {
+  it("\"Test's shift lead, Dana Fairweather, told her …\" and \"Her shift lead, …\" name Test, with no other name known", () => {
+    expect(withoutPersonPronouns("**Observation of Offense:** Test's shift lead, Dana Fairweather, told her to clock out early and she refused.", "Test", []).text)
+      .toBe("**Observation of Offense:** Test's shift lead, Dana Fairweather, told Test to clock out early and Test refused.");
+    expect(withoutPersonPronouns("**Observation of Offense:** Her shift lead, Dana Fairweather, told her to clock out early and she refused.", "Test", []).text)
+      .toBe("**Observation of Offense:** Test's shift lead, Dana Fairweather, told Test to clock out early and Test refused.");
+  });
+});

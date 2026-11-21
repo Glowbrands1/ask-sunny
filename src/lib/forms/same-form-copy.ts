@@ -14,6 +14,7 @@ import type { AskResponse } from "@/lib/ai/types";
 import { copyOwnSalonEnabled, formEditSingleWriterEnabled } from "@/lib/config/chat-quality-flags";
 import { displayName, rosterNameNamedIn, type RosterEmployee } from "@/lib/forms/employee-match";
 import { isBareNameTurn } from "@/lib/chat/cross-chat-guard";
+import { isTeamSubject } from "@/lib/forms/team-subject";
 import {
   draftableCheckboxGroups,
   draftableFields,
@@ -195,6 +196,11 @@ export function swapName(text: string, from: string, to: string): string {
   const toWords = to.trim().split(/\s+/).filter(Boolean);
   if (fromWords.length === 0 || toWords.length === 0) return text;
   let out = text.replace(new RegExp(`\\b${escaped(fromWords.join(" "))}\\b`, "gi"), toWords.join(" "));
+  /*
+   * THE TEAM CARD'S "All team members" IS A PLACEHOLDER, NOT A NAME (QA's code audit, coach_team A, 20 Nov 2026): only the
+   * whole phrase is swapped. Its words alone are ordinary words ("All guests must be greeted…"), never a first or last name.
+   */
+  if (isTeamSubject(from)) return out;
   const alone = (word: string, replacement: string) => {
     if (NAME_WORDS.has(word.toLowerCase())) return;
     const capitalised = word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
