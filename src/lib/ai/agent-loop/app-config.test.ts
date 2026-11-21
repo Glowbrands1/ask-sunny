@@ -39,6 +39,10 @@ import { rulesBookText } from "./rules-book";
  * follow_up_on_create (say the follow-up date Create sets; never deny a follow-up the form will have). It reads the same
  * under every config; nothing else changed.
  *
+ * Re-taken on purpose on 21 Nov 2026 (port from the sibling app, its QA's live re-test A5): the what_happened line says
+ * the account is a sentence with the person as its subject and names account_no_subject. It reads the same under every
+ * config; nothing else changed.
+ *
  * Re-taken on purpose on 19 Nov 2026 (the Google Reviews page's L3, L6 and YTD): read_reviews's line in the prompt now
  * names L3, L6, YTD and each month, and the Business data rule says L3 / L6 are full months and come from read_reviews.
  * Both use the config's place word; nothing else changed.

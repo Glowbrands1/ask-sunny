@@ -128,7 +128,8 @@ export const NOV16_AGENT_LOOP_EDIT_ASKS_WHICH_FORM_CASES: ReplayCase[] = [
         const staff = lastResult(view, "find_staff") as Out;
         if (!staff) return { tool: "find_staff", input: { name: "Tamsin Orwell", person_evidence: evidenceFrom(view, "Tamsin Orwell", 1) } };
         // Changed on purpose (QA item 7, 20 Nov 2026, the form lock): a different form for the card's person needs this turn's words asking for it (form_change_evidence).
-        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: staff.matches?.[0]?.employee_id, what_happened: "Not greeting guests at the front desk.", incident_date: "2026-11-14", form_change_evidence: evidenceFrom(view, "make it a CA") } };
+        // Changed on purpose (the issue-line port, 6f27926, account_no_subject): the CA account has the person as its subject, as the live model is taught; the expectation is unchanged.
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: staff.matches?.[0]?.employee_id, what_happened: `Tamsin was not greeting guests at the front desk.`, incident_date: "2026-11-14", form_change_evidence: evidenceFrom(view, "make it a CA") } };
         return { text: "Here's the Corrective Action Form for **Tamsin**." };
       }));
       const switched = await thread.say("make it a CA");
