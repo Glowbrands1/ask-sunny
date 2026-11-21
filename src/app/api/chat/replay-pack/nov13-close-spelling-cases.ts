@@ -140,7 +140,7 @@ function manualChunk(index: number, page: number, heading: string, body: string)
 export const NOV13_CLOSE_SPELLING_PROOF_CASES: ReplayCase[] = [
   {
     id: "nov13-close-spelling-policy-two-headings-asks-which",
-    title: `"… violating the key holdr policy …", with Key Holder Guidelines and Key Holder Requirements — "Did you mean A or B?"`,
+    title: `MECHANISM TEST, TWO INVENTED HEADINGS ADDED FOR THE TEST (not in the live manual): "… violating the key holdr policy …" with "Key Holder Guidelines" and "Key Holder Requirements" — "Did you mean A or B?"`,
     report: `${REPORT}; QA's proof: one letter off from two headings`,
     // Changed on purpose (13 Nov 2026): fixed in production by CLOSE_SPELLING_MATCH_ENABLED, QA round 38c. Was OPEN.
     status: "fixed",
@@ -228,6 +228,32 @@ export const NOV13_CLOSE_SPELLING_CLEANING_CASES: ReplayCase[] = [
       expect(reply, `Other is gone:\n${reply}`).toMatch(/\*\*Policy:\*\* Other — cleaning duties left undone/);
       expect(reply, `no "Did you mean":\n${reply}`).toMatch(new RegExp(`Did you mean \\*\\*${CARE}\\*\\* \\(page \\d+\\)\\?`));
       expect(reply, `cited without asking:\n${reply}`).not.toMatch(new RegExp(`\\*\\*Policy:\\*\\* ${CARE}, as you said`));
+    },
+  },
+];
+
+/*
+ * QA's live check in the sibling app (17s, 13 Nov 2026): "ca for <A> for violating the key holdr policy" gave no "Did you mean …?".
+ * Read from this app's live manual too (JBA Policy Manual Edited 5.2025, read-only, headings only): it has no key-holder heading at all —
+ * "key" is only in body text (Shoes, Driver Safety Rules, Return of Property). The two-headings case above adds two
+ * INVENTED key-holder headings to test the mechanism; against the real manual, which this pack's fixture matches here,
+ * nothing is close, so nothing is cited and nothing is offered, with the flag or without. A guard, so a later change
+ * never invents a suggestion the manual does not have.
+ */
+export const NOV13_CLOSE_SPELLING_LIVE_MANUAL_GUARDS: ReplayCase[] = [
+  {
+    id: "nov13-close-spelling-policy-key-holdr-no-heading-in-manual",
+    title: `"… violating the key holdr policy …" against the real manual (no key-holder heading) — nothing cited, nothing offered`,
+    report: `${REPORT}; QA's live check: the live manual has no key-holder heading`,
+    status: "fixed",
+    async run(t: ReplayContext) {
+      const thread = start(t);
+      const reply = (
+        await thread.say("create a verbal ca for juno paxton for violating the key holdr policy, she left the back door unlocked last night")
+      ).content;
+      expect(reply, `offered a heading the manual does not have:\n${reply}`).not.toMatch(/Did you mean/);
+      expect(reply, `cited a section for "key holdr":\n${reply}`).not.toMatch(/\*\*Policy:\*\* Key Holder/);
+      expect(reply, `the card no longer says no section was found:\n${reply}`).toMatch(/see a section of the current policy manual for "key holdr"/);
     },
   },
 ];
