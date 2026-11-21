@@ -2650,7 +2650,9 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         await applyStatedFacts(id, { values: { [fixedPlan.key]: typed }, checked: {} }, actor.id, new Set([fixedPlan.key]));
       }
     }
-    const loopCardAbsence = body.cardFromLoop === true && body.cardAttendance === "absence";
+    /* f082: leaving early is not lateness either; it keeps the general plan as an absence does. */
+    const loopCardNotLateness = body.cardFromLoop === true && (body.cardAttendance === "absence" || body.cardAttendance === "left_early") ? body.cardAttendance : null;
+    const loopCardAbsence = loopCardNotLateness !== null;
     const planText = (input: ActionPlanInput) =>
       // PLAN_PAYROLL_SENTENCE_ENABLED: the deduction the manager stated is said in the plan.
       // TERMINATION_STATED_TICKS_ENABLED: on a termination, the plan ends with the termination sentence.
@@ -2915,7 +2917,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      */
     if (loopCardAbsence) {
       const cardAccount = /^What happened:\s*(.+)$/im.exec(notes)?.[1]?.trim() ?? null;
-      const absence = absenceWriteUp(draftedPayload.values, narrativeTargets.filter((key) => !keeps(key)), { employeeName: loaded.instance.employeeName, cardAccount });
+      const absence = absenceWriteUp(draftedPayload.values, narrativeTargets.filter((key) => !keeps(key)), { employeeName: loaded.instance.employeeName, cardAccount, kind: loopCardNotLateness ?? "absence" });
       if (absence.changed) draftedPayload.values = absence.values;
     }
     /*

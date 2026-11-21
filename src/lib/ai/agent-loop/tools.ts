@@ -3741,7 +3741,7 @@ export async function proposeForm(
    * attendance_evidence from a manager message of this request. A record, never a word list over the manager's messages:
    * Create sends it, and the draft route writes an absence as an absence (`lib/forms/absence-write-up.ts`).
    */
-  const askedAttendance = template.key === appConfig().formKeys.corrective && (input.attendance === "absence" || input.attendance === "lateness" || input.attendance === "both") ? input.attendance : null;
+  const askedAttendance = template.key === appConfig().formKeys.corrective && (input.attendance === "absence" || input.attendance === "lateness" || input.attendance === "left_early" || input.attendance === "both") ? input.attendance : null;
   const attendanceCheck = askedAttendance ? answerEvidence(context, input.attendance_evidence, "request", evidencePerson, { requestTurnIds }) : null;
   const attendanceKind = askedAttendance && attendanceCheck?.ok ? askedAttendance : null;
   /*
@@ -3754,7 +3754,7 @@ export async function proposeForm(
   if (attendanceCard && !attendanceKind) {
     const attendanceCode = askedAttendance ? "attendance_evidence_not_found" : "attendance_not_given";
     return {
-      reason_code: attendanceCode, error: `This Corrective Action cites ${policyHeading}. Propose the card again with attendance (absence: a shift missed, as "did not come in", a no-show, a call-out; lateness: late, or left early; both: each) and attendance_evidence quoting the manager's own words from this request that describe it${askedAttendance && attendanceCheck && !attendanceCheck.ok ? ` (that quote was not found in this request's manager messages: ${attendanceCheck.reason})` : ""}.`,
+      reason_code: attendanceCode, error: `This Corrective Action cites ${policyHeading}. Propose the card again with attendance (absence: a shift missed, as "did not come in", a no-show, a call-out; lateness: arrived late; left_early: left before the shift ended, as "left early", "left before close", "walked out mid-shift"; both: an absence and lateness) and attendance_evidence quoting the manager's own words from this request that describe it${askedAttendance && attendanceCheck && !attendanceCheck.ok ? ` (that quote was not found in this request's manager messages: ${attendanceCheck.reason})` : ""}.`,
     };
   }
   const incidentTime = typeof input.incident_time === "string" && input.incident_time.trim() ? input.incident_time.trim().slice(0, 40) : null;

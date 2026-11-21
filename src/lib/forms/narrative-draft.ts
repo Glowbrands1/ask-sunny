@@ -182,6 +182,26 @@ const GROUNDED_SPECIFICS = [
   /\bHR\s+(?:will|must|requires?|has\s+been)\b/gi,
 ];
 
+/*
+ * A TELLING THE MANAGER NEVER DESCRIBED (f082, QA's live test, 20 Nov 2026, conv_mwpgp5pq29vc3jk). The manager wrote
+ * "we do not do extra cleaning after hours", a statement of the rule, and the saved Observation said "<A> was told that
+ * extra cleaning is not performed after hours". Who told whom, or when, is a fact: a sentence that asserts the employee
+ * was told, informed, reminded, warned or instructed survives only when the manager's own words describe a telling.
+ * The manager's wording varies ("I told her", "she knows", "we went over it"), so the grounding is any word of telling
+ * in their notes, never the drafted phrase itself.
+ */
+const TELLING_CLAIM =
+  /\b(?:was|were|has\s+been|had\s+been|have\s+been|been|being)\s+(?:previously\s+|already\s+|clearly\s+|verbally\s+)?(?:told|informed|reminded|advised|instructed|warned|notified|made\s+aware|coached|counsell?ed)\b|\b(?:told|informed|reminded|advised|instructed|warned|notified)\s+(?:her|him|them|the\s+employee)\b/i;
+const TELLING_SAID =
+  /\b(?:told|tell|telling|informed|inform|remind\w*|advis\w*|instruct\w*|warn\w*|notif\w*|aware|knows|knew|explain\w*|discuss\w*|talked|spoke|spoken|went\s+over|go\s+over|gone\s+over|review(?:ed)?\s+(?:it|this|that|the)|coach\w*|counsel\w*|verbal)\b/i;
+
+/** The telling claim in a drafted sentence the manager's notes give no ground for, or null. */
+export function ungroundedTelling(sentence: string, source: string): string | null {
+  const claim = TELLING_CLAIM.exec(sentence);
+  if (!claim) return null;
+  return TELLING_SAID.test(source ?? "") ? null : claim[0];
+}
+
 /** Sentence-ish spans, kept with their trailing punctuation. */
 function sentences(text: string): string[] {
   return text.split(/(?<=[.!?])\s+/);
@@ -213,6 +233,9 @@ export function ungroundedSpecifics(sentence: string, source: string): string[] 
       if (!haystack.includes(normalise(fragment))) missing.push(fragment);
     }
   }
+
+  const telling = ungroundedTelling(sentence, source);
+  if (telling) missing.push(telling);
 
   return missing;
 }

@@ -481,10 +481,10 @@ function buildAgentLoopTools(config: AppConfig) {
         topic_evidence: evidence("With topic: the manager message of this request and its words that name the topic."),
         attendance: {
           type: "string",
-          enum: ["absence", "lateness", "both"],
-          description: "Corrective Action card whose offense is attendance: what the manager described. absence: a shift missed (did not come in, no-show, no call no show, called out). lateness: late, or left early. both: each. With attendance_evidence.",
+          enum: ["absence", "lateness", "left_early", "both"],
+          description: "Corrective Action card whose offense is attendance: what the manager described. absence: a shift missed (did not come in, no-show, no call no show, called out). lateness: arrived late. left_early: left before the shift ended (left early, left before close, walked out mid-shift); never lateness. both: an absence and lateness. With attendance_evidence.",
         },
-        attendance_evidence: evidence("With attendance: the manager message of this request and its words that describe the absence or the lateness."),
+        attendance_evidence: evidence("With attendance: the manager message of this request and its words that describe the absence, the lateness or the early leaving."),
         incident_time: { type: "string", description: "The time of the incident if the manager gave one, as they said it." },
         salon: { type: "string", description: "The " + place + " the form is for, as the manager named it (\"kearney\", \"IA Altoona\"), when the card asks which " + place + " or the manager says one. Only the manager's own " + places + " are accepted." },
       },
