@@ -2954,13 +2954,23 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
     if (body.cardFromLoop === true && loaded.instance.employeeName) {
       const first = employeeFirstName(loaded.instance.employeeName);
       if (first) {
-        const { withShortName } = await import("@/lib/forms/short-name");
+        const { withCorrectedSpelling, withShortName } = await import("@/lib/forms/short-name");
+        /*
+         * Port from the sibling app (its QA's live re-test, 21 Nov 2026): the name corrected mid-chat moved the form's
+         * name, but this app drafts from the manager's own lines too, and they still held the first spelling ("My employee
+         * <First> <Lastx> …"). A close spelling the roster reads as this person alone becomes the form's name first.
+         */
+        const roster = await (await import("@/lib/forms/employee-roster")).loadScopedRoster(actor.scope).catch(() => []);
+        const { displayName, rosterSpellingOf } = await import("@/lib/forms/employee-match");
+        const own = roster.filter((row) => displayName(row).toLowerCase() === loaded.instance.employeeName.trim().toLowerCase());
+        const sameByRoster = own.length === 1 ? rosterSpellingOf(own[0]!.id, roster) : undefined;
         const prose = fields.filter((field) => !field.policyGrounded && !DERIVED_POLICY_FIELD_KEYS.has(field.key) && !keeps(field.key)).map((field) => field.key);
         for (const key of prose) {
           const value = draftedPayload.values[key];
           if (typeof value !== "string" || value.trim() === "") continue;
-          const named = withShortName(value, loaded.instance.employeeName, first);
-          if (named.replaced > 0) draftedPayload.values = { ...draftedPayload.values, [key]: named.text };
+          const corrected = sameByRoster ? withCorrectedSpelling(value, loaded.instance.employeeName, [], sameByRoster) : { text: value, replaced: 0 };
+          const named = withShortName(corrected.text, loaded.instance.employeeName, first);
+          if (named.replaced > 0 || corrected.replaced > 0) draftedPayload.values = { ...draftedPayload.values, [key]: named.text };
         }
       }
     }
