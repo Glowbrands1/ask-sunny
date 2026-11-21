@@ -694,6 +694,8 @@ const NEW_FLAGS = [
   "STARTER_FOLLOW_UP_EXAMPLE_ENABLED",
   // coding B: DEAD_END_SAYS_WHERE (QA item 25, 20 Nov 2026; default off).
   "DEAD_END_SAYS_WHERE_ENABLED",
+  // coding G: FORM_TOPIC_SEARCH (Pau, 21 Nov 2026; default off).
+  "FORM_TOPIC_SEARCH_ENABLED",
 ] as const;
 
 const PROTECTED = [

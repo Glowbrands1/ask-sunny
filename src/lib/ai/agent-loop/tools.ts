@@ -1407,8 +1407,92 @@ async function findFormsInPeriod(context: ToolContext, input: { form?: unknown; 
   }
 }
 
+/*
+ * ============================================================================
+ * FORMS ON FILE BY TOPIC (FORM_TOPIC_SEARCH_ENABLED; Pau, 21 Nov 2026)
+ * ============================================================================
+ *
+ * "Any forms about cash handling at my salons this month?", "who's been written up for dress code?". With a topic
+ * (about) and no employee, every form this manager may see in Form Monitoring is read (the same read and visibility
+ * filter as a period list: chatFormsActor, instanceListFilterFor, visibleInstances; an assistant salon director sees
+ * only their own forms, as there), narrowed by the period and kind of form when given, and kept when its SAVED TEXT
+ * holds every word of the topic (`forms/form-topic-search.ts`). Only when the manager asked about forms on file
+ * (forms_on_file_evidence). Counts come from code; the list is capped and says "N of M".
+ */
+const TOPIC_LIST_LIMIT = 25;
+
+async function findFormsByTopic(context: ToolContext, input: { form?: unknown; date_from?: unknown; date_to?: unknown; about?: unknown; forms_on_file_evidence?: unknown; include_archived?: unknown }): Promise<ToolResult> {
+  const asked = formsOnFileAsked(context, input.forms_on_file_evidence);
+  if (!asked.ok) return privacyRefusal(asked.reason, undefined, context);
+  const search = await import("@/lib/forms/form-topic-search");
+  const topic = search.topicWords(String(input.about ?? ""));
+  if (topic.length === 0) return { reason_code: "missing_input", error: "Give the topic in the manager's words (\"cash handling\", \"dress code\"), or the employee's name." };
+  const today = context.today || businessToday();
+  const range = formDateRangeFromInput(input.date_from, input.date_to, today);
+  const kind = typeof input.form === "string" ? formKindFromText(input.form) : null;
+  const actor = await chatFormsActor(context.actor).catch(() => undefined);
+  if (actor === undefined) return { reason_code: "read_failed", error: "Form Monitoring could not be read just now. Say so; do not say there are no forms." };
+  if (actor === null) return { reason_code: "scope", error: "This manager's role cannot view Form Monitoring, so past forms cannot be searched." };
+  try {
+    const read = await listInstances("all", PERIOD_READ_LIMIT, {
+      ...instanceListFilterFor(actor),
+      ...(range ? { formDateFrom: range.from, formDateTo: range.to } : {}),
+      ...(kind ? { templateNameWords: kind.templateNameWords } : {}),
+    });
+    /* Exactly the forms this manager may see in Form Monitoring: never wider (the saved text is read for these ids only). */
+    const visible = ofKind(visibleInstances(actor, read), kind).filter(onFileKept(input));
+    const saved = await search.readFormTopicText(visible.map((row) => row.id));
+    const matched = visible
+      .filter((row) => search.matchesTopic(saved.get(row.id)?.text ?? "", topic))
+      .sort((a, b) => (b.formDate ?? "").localeCompare(a.formDate ?? "") || a.employeeName.localeCompare(b.employeeName));
+    const listed = matched.slice(0, TOPIC_LIST_LIMIT);
+    const complete = read.length < PERIOD_READ_LIMIT;
+    /* Counts by code, over every matching form (never only the listed ones); a person is their name as filed. */
+    const tally = (keys: string[]) => Object.fromEntries([...keys.reduce((map, key) => map.set(key, (map.get(key) ?? 0) + 1), new Map<string, number>())].sort(([a], [b]) => a.localeCompare(b)));
+    const counts = {
+      total: matched.length,
+      people: new Set(matched.map((row) => words(row.employeeName).join(" "))).size,
+      by_form: tally(matched.map((row) => row.templateName)),
+    };
+    return {
+      topic: topic.join(" "),
+      period: range ? { from: range.from, to: range.to } : null,
+      form_kind: kind?.label ?? null,
+      searched: visible.length,
+      forms: listed.map((row) => {
+        const text = saved.get(row.id);
+        return {
+          instance_id: row.id,
+          form: row.templateName,
+          employee: search.firstNameOf(row.employeeName),
+          form_date: row.formDate,
+          status: row.status,
+          salon: salonLabel(row.locationId, row.locationName) ?? `no ${locationWord()}`,
+          policy: text?.policy ?? (text?.offense.length ? text.offense.join(", ") : null),
+          level: text?.level ?? null,
+          ...(row.archivedAt ? { archived: true } : {}),
+        };
+      }),
+      counts,
+      listed: listed.length,
+      of: matched.length,
+      complete,
+      note: `${matched.length === 0 ? `No form this manager can see mentions ${topic.join(" ")} in what it says${range ? " in that period" : ""}. Say so plainly.` : `Forms whose saved text mentions ${topic.join(" ")}, newest first.`} Numbers come only from counts (total, people, by_form): copy them, never count rows yourself.${matched.length > listed.length ? ` Showing ${listed.length} of ${matched.length}: say so, and that Form Monitoring has the rest.` : ""}${complete ? "" : ` More than ${PERIOD_READ_LIMIT} forms were in range: only the newest ${PERIOD_READ_LIMIT} were searched. Say so.`} Name each person by first name only. A draft is not on file.`,
+    };
+  } catch {
+    return { reason_code: "read_failed", error: "Form Monitoring could not be read just now. Say so; do not say there are no forms." };
+  }
+}
+
 export async function findPastForms(context: ToolContext, input: { employee_name?: unknown; form?: unknown; date?: unknown; date_from?: unknown; date_to?: unknown; about?: unknown; forms_on_file_evidence?: unknown; open?: unknown; include_archived?: unknown }, effects?: ToolEffects): Promise<ToolResult> {
   const typed = typeof input.employee_name === "string" ? input.employee_name.trim() : "";
+  /* FORM_TOPIC_SEARCH_ENABLED (Pau, 21 Nov 2026): a topic with no employee searches every visible form's saved text. */
+  const topicAsked = typed === "" && input.open !== true && typeof input.about === "string" && input.about.trim() !== "";
+  if (topicAsked) {
+    const { formTopicSearchEnabled } = await import("@/lib/config/chat-quality-flags");
+    if (formTopicSearchEnabled()) return findFormsByTopic(context, input);
+    if (!(input.date_from || input.date_to || input.form)) return { reason_code: "topic_search_off", error: "Searching forms on file by topic is not available yet. Say so in one line, and that Form Monitoring lists forms by person, kind and date." };
+  }
   if (typed === "" && input.open !== true && (input.date_from || input.date_to || input.form)) return findFormsInPeriod(context, input);
   if (typed === "") return { reason_code: "missing_input", error: "Give the employee's name." };
   const asked = await formsOnFileAskedFor(context, input.forms_on_file_evidence, typed);
