@@ -47,11 +47,16 @@ const context = {
 const input = { date_from: "11/01/2026", date_to: "11/30/2026", forms_on_file_evidence: { message_id: "m1", quote: SAID } };
 
 describe("a period list's completeness (item 29)", () => {
-  it("a read that came back full (100 rows) is never complete, however many rows the visibility filter leaves", async () => {
-    read.rows = 100;
-    read.visible = 60;
-    const result = (await findPastForms(context, input)) as { forms?: unknown[]; complete?: boolean };
-    expect(result.forms, JSON.stringify(result).slice(0, 300)).toHaveLength(60);
+  /*
+   * Changed on purpose (QA's f081, 20 Nov 2026): the period is now read up to 1000 rows (it was 100) and up to 100 are
+   * listed, so "full" is a read of 1000. The rule is the same: a full read is never complete, whatever the filter leaves.
+   */
+  it("a read that came back full (1000 rows) is never complete, however many rows the visibility filter leaves", async () => {
+    read.rows = 1000;
+    read.visible = 600;
+    const result = (await findPastForms(context, input)) as { forms?: unknown[]; complete?: boolean; counts?: { total?: number } };
+    expect(result.forms, JSON.stringify(result).slice(0, 300)).toHaveLength(100);
+    expect(result.counts?.total).toBe(600);
     expect(result.complete).toBe(false);
   });
 

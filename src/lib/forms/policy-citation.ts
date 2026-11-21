@@ -128,7 +128,18 @@ export function sectionWording(chunks: readonly ManualChunk[], section: ManualSe
     .map((h) => lower.indexOf(h.toLowerCase(), start))
     .filter((i) => i > start)
     .reduce((min, i) => Math.min(min, i), content.length);
-  return verbatimExcerpt(content.slice(start, next).replace(/^[\s:–—-]+/, ""));
+  const own = verbatimExcerpt(content.slice(start, next).replace(/^[\s:–—-]+/, ""));
+  if (own !== "" || next < content.length) return own;
+  /*
+   * QA's production audit (20 Nov 2026, item 18): "I need the JBA policy for dress code enclosed" finalized a Direct policy
+   * holding only "Source: … All Locations Dress Code, p. 15". A heading printed as the last line of its chunk has its
+   * wording in the next chunk: it is read there, up to the manual's next titled section ("Crunch Fitness Specific Dress
+   * Code:"). Verbatim; nothing changes for a heading with wording in its own chunk.
+   */
+  const following = [...chunks].filter((c) => c.chunkIndex > chunk.chunkIndex).sort((a, b) => a.chunkIndex - b.chunkIndex)[0];
+  if (!following) return own;
+  const titled = /^[^\n:]{3,80}:\s*$/m.exec(following.content);
+  return verbatimExcerpt((titled && titled.index > 0 ? following.content.slice(0, titled.index) : following.content).trim());
 }
 
 /** The pinned manual's sections as grounded policies: wording, title, section, printed page. */
