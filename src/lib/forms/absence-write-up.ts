@@ -30,7 +30,27 @@ function sectionOf(heading: string): Section {
   return "observed";
 }
 
-function rewriteText(text: string, section: Section, first: string): string {
+/** The offense a loop card recorded that is not lateness (f082: leaving early is not lateness either). */
+export type NotLatenessKind = "absence" | "left_early";
+
+/** The Expectation and Going Forward sentences for each offense, in place of the drafter's lateness ones. */
+const STANDARD: Record<NotLatenessKind, { expectation: (first: string) => string; goingForward: (first: string) => string }> = {
+  absence: {
+    expectation: (first) => `${first} is expected to come in for every scheduled shift.`,
+    goingForward: (first) => `${first} will come in for every scheduled shift.`,
+  },
+  /*
+   * f082 (QA's live test, 20 Nov 2026, conv_mwpgp5pq29vc3jk): "ca for <A>, we do not do extra cleaning after hours,
+   * she left early 11/18" was written up as lateness ("arrive on time … Continued lateness will result in …"). Leaving
+   * before the shift ends is about staying, never about arriving.
+   */
+  left_early: {
+    expectation: (first) => `${first} is expected to stay for the full scheduled shift.`,
+    goingForward: (first) => `${first} will stay for the full scheduled shift.`,
+  },
+};
+
+function rewriteText(text: string, section: Section, first: string, kind: NotLatenessKind = "absence"): string {
   const sentences = text.split(/(?<=[.!?])\s+/).filter((sentence) => sentence.trim() !== "");
   let replaced = false;
   const kept = sentences.flatMap((sentence) => {
@@ -38,18 +58,18 @@ function rewriteText(text: string, section: Section, first: string): string {
     if (section === "expectation" || section === "going forward") {
       if (replaced) return [];
       replaced = true;
-      return [section === "expectation" ? `${first} is expected to come in for every scheduled shift.` : `${first} will come in for every scheduled shift.`];
+      return [section === "expectation" ? STANDARD[kind].expectation(first) : STANDARD[kind].goingForward(first)];
     }
     return [];
   });
   return kept.join(" ");
 }
 
-/** The write-up of a card whose offense is an absence, with no sentence calling it lateness. */
+/** The write-up of a card whose offense is an absence or leaving early (`kind`, absence by default), with no sentence calling it lateness. */
 export function absenceWriteUp(
   values: Readonly<Record<string, string>>,
   keys: readonly string[],
-  options: { employeeName: string | null; cardAccount: string | null },
+  options: { employeeName: string | null; cardAccount: string | null; kind?: NotLatenessKind },
 ): { values: Record<string, string>; changed: boolean } {
   const first = employeeFirstName(options.employeeName ?? "") ?? "The employee";
   const out: Record<string, string> = { ...values };
@@ -63,9 +83,9 @@ export function absenceWriteUp(
       if (heading) {
         section = sectionOf(heading[1]!);
         const rest = heading[2]!.trim();
-        return rest === "" ? line : `${line.slice(0, line.indexOf(":") + 1)} ${rewriteText(rest, section, first)}`.trimEnd();
+        return rest === "" ? line : `${line.slice(0, line.indexOf(":") + 1)} ${rewriteText(rest, section, first, options.kind)}`.trimEnd();
       }
-      return line.trim() === "" ? line : rewriteText(line, section, first);
+      return line.trim() === "" ? line : rewriteText(line, section, first, options.kind);
     });
     /* A section left with no sentence: Observed is the card's own account; any other heading goes with it. */
     const filled: string[] = [];

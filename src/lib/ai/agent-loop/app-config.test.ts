@@ -26,6 +26,10 @@ import { rulesBookText } from "./rules-book";
  * asks for exit_evidence's kind, and one line was added for a resignation told with no ask. Both read the same under
  * every config; nothing else changed.
  *
+ * Re-taken on purpose on 20 Nov 2026 (f082, QA's live test): the Attendance line now names left_early (left before the
+ * shift ended: "left early", "left before close", "walked out mid-shift") apart from lateness. It reads the same under
+ * every config; nothing else changed.
+ *
  * Re-taken on purpose on 20 Nov 2026 (board f066, the form deletion record): the tool list gained read_form_deletions
  * and the Business data rules one line for it (administrators only). Neither names the app, place, staff system or form
  * key; nothing else changed.
@@ -93,6 +97,10 @@ import { rulesBookText } from "./rules-book";
  * payroll_amount_missing (ask the amount in one question), and the stated line adds ", as you said" only for
  * stated_this_turn. No app, place, staff system or form key.
  *
+ * Re-taken on purpose on 20 Nov 2026 (QA's live retest of #1147: a story with no ask was restated word for word, "told
+ * her … she refused"): the not-a-request line says what it is in Sunny's own words with the person's first name, never
+ * the manager's text typed back or a pronoun. It reads the same under every config; nothing else changed.
+ *
  * Re-taken on purpose on 20 Nov 2026 (QA: "show me forms for Tes" opened another person's draft): the find_past_forms
  * close-spelling line now says did_you_mean (end with ask_exactly, open nothing) in place of close_spelling_of ("Opening
  * **<on_file>**'s form."). It reads the same under every config; nothing else changed.
@@ -104,6 +112,10 @@ import { rulesBookText } from "./rules-book";
  * Updated on purpose on 20 Nov 2026 (Pau's ruling via QA, c091): a Corrective Action may cite two headings when the
  * manager describes two offenses ("<heading>; <heading>", never more than two); the clock-out line no longer says "a card
  * cites one heading" (closing early is part of the same Attendance offense). No app, place, staff system or form key.
+ *
+ * Re-taken on purpose on 20 Nov 2026 (QA's code audit of coach_team, item C: "yes please", "go ahead and make them"
+ * went to wrong_tool): the coach_team line now sends any answer to its confirmation to coach_team, with four example
+ * answers. It names no app, place, staff system or form key; nothing else changed.
  *
  * Re-taken on purpose on 20 Nov 2026 (QA's f081: forms-on-file lists miscounted): one Replies line was added: a list of
  * forms on file copies find_past_forms' counts, never adds rows itself, never puts one person's forms under another's name,

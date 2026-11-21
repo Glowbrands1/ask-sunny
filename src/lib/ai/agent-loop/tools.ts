@@ -1,6 +1,7 @@
 import "server-only";
 
 import { keptPlanSteps } from "@/lib/forms/stated-plan-steps";
+import { withReadersLineBox } from "@/lib/forms/readers-line-headings";
 import { saysAmountUnknown } from "@/lib/ai/amount-unknown-ack";
 
 import { randomUUID } from "node:crypto";
@@ -128,6 +129,8 @@ export interface ToolContext {
   /** QA (16 Nov 2026; c158, c208): every card this chat's loop made, and every "who is it for?" it asked, oldest first. */
   readonly cardRecords?: readonly CardRecord[];
   readonly personAskedRecords?: readonly PersonAskedRecord[];
+  /** QA's code audit, coach_team C: the last reply asked the open Coaching draft's "create all?" (the server's record). */
+  readonly teamConfirmAsked?: boolean;
   /** QA (#1055's follow-up): the exit-form offer the last reply's tools made (its record), or null. Never read from the reply. */
   readonly exitOffered?: ExitOfferRecord | null;
   /** QA's review of #1062: each earlier loop turn's record (saved fields, a card), oldest first. */
@@ -733,6 +736,8 @@ export interface ToolEffects {
   nameLines?: Record<string, string>;
   /** Fix batch item 6: propose_form asked who this form is for (no person yet), for the record. */
   personAsked?: { templateKey: string };
+  /** coach_team asked "create all?" for this open Coaching draft this turn, for the record. */
+  teamConfirm?: { sourceInstanceId: string };
   /** QA (#1055's follow-up): this turn's tools offered the exit form for this person (the exit_offer record). */
   exitOffered?: { employeeId: string | null; name: string };
   /** find_staff ran this turn: a person was named, so a card without one is not "nobody named" (item 6). */
@@ -1345,6 +1350,25 @@ const PERIOD_LIST_LIMIT = 100;
 const PERIOD_READ_LIMIT = 1000;
 
 /*
+ * QA2, 21 Nov 2026 ("list ca for the month": "100 of 121 shown" over 102 rows): the 100-row cut fell inside 11/03 (37 of
+ * its 39 listed) and the model wrote that day from counts.by_date, all 39. The list now stops at the end of the last
+ * whole day that fits, so "N shown" is always the rows listed; the days after it are given as counts only. A single day
+ * larger than the cap is still cut at the cap (nothing else could be listed).
+ */
+function wholeDays<T extends { formDate: string | null }>(sorted: readonly T[], limit: number): T[] {
+  if (sorted.length <= limit) return [...sorted];
+  const cutDay = sorted[limit].formDate;
+  let end = limit;
+  while (end > 0 && sorted[end - 1].formDate === cutDay) end -= 1;
+  return sorted.slice(0, end > 0 ? end : limit);
+}
+function notListedDays(rest: readonly { formDate: string | null }[]): { date: string | null; count: number }[] {
+  const days = new Map<string | null, number>();
+  for (const row of rest) days.set(row.formDate, (days.get(row.formDate) ?? 0) + 1);
+  return [...days].map(([date, count]) => ({ date, count }));
+}
+
+/*
  * QA's f081 (20 Nov 2026, from production's data: every archived form with a real name is finalized; archived drafts are
  * test drafts): a finalized form counts and is listed whether or not it is archived (marked archived), as "who got a CA"
  * asks what was filed; an archived DRAFT is left out unless the manager asks for archived forms (include_archived).
@@ -1379,7 +1403,9 @@ async function findFormsInPeriod(context: ToolContext, input: { form?: unknown; 
     /* QA's code audit (item 28): a Coaching kind never keeps a Follow-Up Coaching Form (`ofKind`). */
     const visible = ofKind(visibleInstances(actor, read), kind).filter(onFileKept(input));
     /* f081: listed by form date (newest first), then employee; counted over every visible row, never only the listed ones. */
-    const rows = [...visible].sort((a, b) => (b.formDate ?? "").localeCompare(a.formDate ?? "") || a.employeeName.localeCompare(b.employeeName)).slice(0, PERIOD_LIST_LIMIT);
+    const sorted = [...visible].sort((a, b) => (b.formDate ?? "").localeCompare(a.formDate ?? "") || a.employeeName.localeCompare(b.employeeName));
+    const rows = wholeDays(sorted, PERIOD_LIST_LIMIT);
+    const notListed = notListedDays(sorted.slice(rows.length));
     /*
      * QA's code audit (item 29): complete only when the DATABASE returned fewer rows than it was asked for. Counting the
      * rows left after the visibility filter called a cut-off list complete (100 read, 60 visible, "every such form").
@@ -1401,8 +1427,8 @@ async function findFormsInPeriod(context: ToolContext, input: { form?: unknown; 
       complete,
       counts,
       archived: input.include_archived === true ? "every archived form included, each marked archived" : ARCHIVED_NOTE,
-      ...(visible.length > rows.length ? { listed: rows.length, of: visible.length } : {}),
-      note: `${complete ? "Every such form this manager can see, read by form date: never say the list is capped or that some may be missing." : `More than ${PERIOD_READ_LIMIT} forms match: the counts are of the first ${PERIOD_READ_LIMIT} read. Say so, and that Form Monitoring has the full list.`} Numbers come only from counts (total, by_person, by_form, by_date): copy them, never count or add rows yourself, and never put one person's forms under another's name.${visible.length > rows.length ? ` ${rows.length} of ${visible.length} forms are listed; say how many are not shown.` : ""} A draft is not on file.`,
+      ...(visible.length > rows.length ? { listed: rows.length, of: visible.length, not_listed_days: notListed } : {}),
+      note: `${complete ? "Every such form this manager can see, read by form date: never say the list is capped or that some may be missing." : `More than ${PERIOD_READ_LIMIT} forms match: the counts are of the first ${PERIOD_READ_LIMIT} read. Say so, and that Form Monitoring has the full list.`} Numbers come only from counts (total, by_person, by_form, by_date): copy them, never count or add rows yourself, and never put one person's forms under another's name.${visible.length > rows.length ? ` ${rows.length} of ${visible.length} forms are listed; say how many are not shown. The list stops at the end of a day: the days in not_listed_days are given as counts only, so never write rows for them, and the number you say is shown is ${rows.length}.` : ""} A draft is not on file.`,
     };
   } catch {
     return { reason_code: "read_failed", error: "Form Monitoring could not be read just now. Say so; do not say there are no forms." };
@@ -3403,8 +3429,9 @@ export async function proposeForm(
    * The card cites the policy the model chose (batch B, code-check #22: the cleaning rule is a fact and a rules-book
    * line, no longer an override). "Other" carries the model's short topic.
    */
-  let policyLine: string | null = policyHeading ? formatManualCitation(policyHeading, page) : null;
-  if (policyLine && secondHeading && manual) policyLine = `${policyLine}; ${formatManualCitation(secondHeading, findManualSection(manual.chunks, [secondHeading])?.page ?? null)}`;
+  /* c259 (QA2, 21 Nov 2026, option (a)): a heading with no Type of Offense box of its own names the box it is saved under. */
+  let policyLine: string | null = policyHeading ? withReadersLineBox(formatManualCitation(policyHeading, page), policyHeading) : null;
+  if (policyLine && secondHeading && manual) policyLine = `${policyLine}; ${withReadersLineBox(formatManualCitation(secondHeading, findManualSection(manual.chunks, [secondHeading])?.page ?? null), secondHeading)}`;
   /* Batch G (G7a, the tester's exit sweep): an exit cites no policy; it is not an incident. */
   if (template.key === appConfig().formKeys.exit) policyLine = null;
   /*
@@ -3731,7 +3758,7 @@ export async function proposeForm(
    * attendance_evidence from a manager message of this request. A record, never a word list over the manager's messages:
    * Create sends it, and the draft route writes an absence as an absence (`lib/forms/absence-write-up.ts`).
    */
-  const askedAttendance = template.key === appConfig().formKeys.corrective && (input.attendance === "absence" || input.attendance === "lateness" || input.attendance === "both") ? input.attendance : null;
+  const askedAttendance = template.key === appConfig().formKeys.corrective && (input.attendance === "absence" || input.attendance === "lateness" || input.attendance === "left_early" || input.attendance === "both") ? input.attendance : null;
   const attendanceCheck = askedAttendance ? answerEvidence(context, input.attendance_evidence, "request", evidencePerson, { requestTurnIds }) : null;
   const attendanceKind = askedAttendance && attendanceCheck?.ok ? askedAttendance : null;
   /*
@@ -3744,7 +3771,7 @@ export async function proposeForm(
   if (attendanceCard && !attendanceKind) {
     const attendanceCode = askedAttendance ? "attendance_evidence_not_found" : "attendance_not_given";
     return {
-      reason_code: attendanceCode, error: `This Corrective Action cites ${policyHeading}. Propose the card again with attendance (absence: a shift missed, as "did not come in", a no-show, a call-out; lateness: late, or left early; both: each) and attendance_evidence quoting the manager's own words from this request that describe it${askedAttendance && attendanceCheck && !attendanceCheck.ok ? ` (that quote was not found in this request's manager messages: ${attendanceCheck.reason})` : ""}.`,
+      reason_code: attendanceCode, error: `This Corrective Action cites ${policyHeading}. Propose the card again with attendance (absence: a shift missed, as "did not come in", a no-show, a call-out; lateness: arrived late; left_early: left before the shift ended, as "left early", "left before close", "walked out mid-shift"; both: an absence and lateness) and attendance_evidence quoting the manager's own words from this request that describe it${askedAttendance && attendanceCheck && !attendanceCheck.ok ? ` (that quote was not found in this request's manager messages: ${attendanceCheck.reason})` : ""}.`,
     };
   }
   const incidentTime = typeof input.incident_time === "string" && input.incident_time.trim() ? input.incident_time.trim().slice(0, 40) : null;
@@ -3911,6 +3938,22 @@ export async function proposeForm(
     if (unplaced !== card.issue && unplaced !== "") {
       card.issue = unplaced;
       whatHappened = unplaced;
+    }
+  }
+  /*
+   * THE CARD'S ACCOUNT NAMES THE PERSON TOO (QA's live retest of #1147, 20 Nov 2026, conv_mwp5inao2y4s849): the card's
+   * issue read "Her shift lead, <L>, told her to clock out early and she refused." The reply's pronoun pass
+   * (`reply-pronouns.ts`) runs on the card's account with the card's own reply name, as on the reply's account line.
+   */
+  if (card.issue && card.employeeName) {
+    const { withoutPersonPronouns } = await import("./reply-pronouns");
+    const name = replyNameFor(card.employeeName, read.kind === "read" ? read.roster : [], extractEmployeeNames(managerTurns(context)), employee.id ?? null);
+    const others = await otherPeopleNamed(context, card.issue, name).catch(() => [] as string[]);
+    const reporters = await trustedReporters(context).catch(() => [] as string[]);
+    const named = withoutPersonPronouns(card.issue, name, others, managerTurns(context), reporters);
+    if (named.replaced > 0) {
+      card.issue = named.text;
+      whatHappened = named.text;
     }
   }
   card.employeeRole = employee.id ? await rosterTitle(context.actor.scope, employee.id) : null;
@@ -4286,11 +4329,14 @@ function isShownCardId(context: ToolContext, effects: ToolEffects, id: string): 
  */
 export async function coachTeam(context: ToolContext, effects: ToolEffects): Promise<ToolResult> {
   if (context.openFormId) {
-    const { coachingForEveryoneTurn } = await import("@/lib/forms/coaching-for-everyone");
-    const turn = await coachingForEveryoneTurn({ request: context.request, question: context.question, history: context.history as ChatMessage[], activeInstanceId: context.openFormId, onCreated: () => {
+    const { coachingForEveryone } = await import("@/lib/forms/coaching-for-everyone");
+    const turn = await coachingForEveryone({ request: context.request, question: context.question, history: context.history as ChatMessage[], activeInstanceId: context.openFormId, confirmationAsked: context.teamConfirmAsked === true, onCreated: () => {
       effects.draftsCreated = (effects.draftsCreated ?? 0) + 1;
     } });
-    if (turn) return { app_reply: untrusted(turn.content), note: "Say app_reply to the manager as given, every line: it holds the people, the counts and the exact words the next step reads." };
+    if (turn) {
+      if (turn.askedConfirmation) effects.teamConfirm = { sourceInstanceId: context.openFormId };
+      return { app_reply: untrusted(turn.response.content), note: "Say app_reply to the manager as given, every line: it holds the people, the counts and the exact words the next step reads." };
+    }
   }
   const { wholeTeamRequest } = await import("@/lib/forms/whole-team-coaching");
   /*
