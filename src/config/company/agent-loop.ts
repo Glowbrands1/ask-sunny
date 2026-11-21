@@ -39,7 +39,7 @@ export function sunnyLoopContent({ place, staff }: LoopWords): AgentLoopContent 
       "The Standards of Conduct: assigned work or training not finished by its deadline (" + staff + " training, acknowledgements, assigned courses); leaving the front desk, register or work area unattended during the shift (never Attendance); a sale rung up wrong (wrong items or prices); a short drawer or register (never Handling Theft unless the manager says theft).",
     ],
     attendanceRules: [
-      "Attendance (QA, 20 Nov 2026): a Corrective Action citing Attendance always takes attendance (absence: a shift missed, as \"did not come in\", a no-show, a call-out; lateness: late, or left early; both: each) with attendance_evidence, the manager's words from this request that describe it, exactly as typed. A missed shift is an absence, never lateness. attendance_not_given or attendance_evidence_not_found means propose the card again with it.",
+      "Attendance (QA, 20 Nov 2026): a Corrective Action citing Attendance always takes attendance (absence: a shift missed, as \"did not come in\", a no-show, a call-out; lateness: arrived late; left_early: left before the shift ended, as \"left early\", \"left before close\", \"walked out mid-shift\"; both: an absence and lateness) with attendance_evidence, the manager's words from this request that describe it, exactly as typed. A missed shift is an absence, and leaving early is left_early: neither is ever lateness. attendance_not_given or attendance_evidence_not_found means propose the card again with it.",
     ],
     underPerformanceReplies: [
       "under_performance: \"Under Performance isn't on the CA form. Sales performance CAs use the Standards of Conduct.\"",

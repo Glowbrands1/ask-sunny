@@ -139,18 +139,31 @@ export const NOV20_AGENT_LOOP_FORMS_ON_FILE_COUNTS_CASES: ReplayCase[] = [
     expect(archived.map((form) => [form.form_date, form.status]), "the archived finalized CA is listed, marked").toEqual([["2026-11-10", "finalized"]]);
     expect(month?.note ?? "").not.toMatch(/stops at 100/);
   }),
-  fixed("nov20-f081-c-month-list-over-100", "(c) \"list ca for the month\" with 121 CAs on file this month: all 121 are counted (complete), 100 are listed and the result says 100 of 121, never a silent \"stops at 100\"", async (t) => {
+  /*
+   * Changed on purpose (QA2, 21 Nov 2026, production "list ca for the month": "100 of 121 shown" over 102 rows). This case
+   * listed exactly 100 with the cut inside a day; the model then wrote that day from counts.by_date and listed more than
+   * it said. Now the 121 are laid out as production's were (the cut falls inside the oldest day) and the list stops at the
+   * last whole day: "N of 121" is the rows listed, and the cut day is given as a count only.
+   */
+  fixed("nov20-f081-c-month-list-over-100", "(c) \"list ca for the month\" with 121 CAs on file this month and the 100th row inside 11/03: all 121 are counted (complete), the list stops at the end of 11/05 (69 of 121) and 11/03's 52 are given as a count only, so the number said to be shown is the rows listed", async (t) => {
     const forms = t.forms() as unknown as Row[];
     const base = forms.find((row) => row.employee_name === "Avery Avebury" && !row.archived_at)!;
-    for (let k = 0; k < 112; k += 1) forms.push({ ...base, id: `f081-more-${k}`, form_date: "2026-11-15", created_at: `2026-11-15T${String(k % 24).padStart(2, "0")}:00:00Z` });
+    const more = (date: string, count: number) => {
+      for (let k = 0; k < count; k += 1) forms.push({ ...base, id: `f081-more-${date}-${k}`, form_date: date, created_at: `${date}T${String(k % 24).padStart(2, "0")}:00:00Z` });
+    };
+    more("2026-11-13", 60);
+    more("2026-11-03", 52);
     const seen: Out[] = [];
     const said = "list ca for the month";
     t.loopModel!(liveModel([{ form: "CA", ...MONTH }], said, seen));
     await t.thread().say(said);
-    const month = seen[0] as Out & { listed?: number; of?: number };
+    const month = seen[0] as Omit<Out, "forms"> & { listed?: number; of?: number; not_listed_days?: { date: string; count: number }[]; forms?: { form_date?: string }[] };
     expect(month?.counts?.total, JSON.stringify({ listed: month?.listed, of: month?.of })).toBe(121);
-    expect(month?.forms?.length).toBe(100);
-    expect([month?.listed, month?.of]).toEqual([100, 121]);
     expect(month?.complete).toBe(true);
+    expect([month?.listed, month?.of], "the list stops at the last whole day").toEqual([69, 121]);
+    expect(month?.forms?.length).toBe(month?.listed);
+    expect((month?.forms ?? []).some((form) => form.form_date === "2026-11-03"), "a day cut part-way was listed").toBe(false);
+    expect(month?.not_listed_days).toEqual([{ date: "2026-11-03", count: 52 }]);
+    expect(month?.note ?? "").toContain("the number you say is shown is 69");
   }),
 ];

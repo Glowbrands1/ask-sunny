@@ -1,5 +1,6 @@
 import "server-only";
 
+import { withReadersLineBox } from "@/lib/forms/readers-line-headings";
 import { saysAmountUnknown } from "@/lib/ai/amount-unknown-ack";
 
 import { randomUUID } from "node:crypto";
@@ -1343,6 +1344,25 @@ const PERIOD_LIST_LIMIT = 100;
 const PERIOD_READ_LIMIT = 1000;
 
 /*
+ * QA2, 21 Nov 2026 ("list ca for the month": "100 of 121 shown" over 102 rows): the 100-row cut fell inside 11/03 (37 of
+ * its 39 listed) and the model wrote that day from counts.by_date, all 39. The list now stops at the end of the last
+ * whole day that fits, so "N shown" is always the rows listed; the days after it are given as counts only. A single day
+ * larger than the cap is still cut at the cap (nothing else could be listed).
+ */
+function wholeDays<T extends { formDate: string | null }>(sorted: readonly T[], limit: number): T[] {
+  if (sorted.length <= limit) return [...sorted];
+  const cutDay = sorted[limit].formDate;
+  let end = limit;
+  while (end > 0 && sorted[end - 1].formDate === cutDay) end -= 1;
+  return sorted.slice(0, end > 0 ? end : limit);
+}
+function notListedDays(rest: readonly { formDate: string | null }[]): { date: string | null; count: number }[] {
+  const days = new Map<string | null, number>();
+  for (const row of rest) days.set(row.formDate, (days.get(row.formDate) ?? 0) + 1);
+  return [...days].map(([date, count]) => ({ date, count }));
+}
+
+/*
  * QA's f081 (20 Nov 2026, from production's data: every archived form with a real name is finalized; archived drafts are
  * test drafts): a finalized form counts and is listed whether or not it is archived (marked archived), as "who got a CA"
  * asks what was filed; an archived DRAFT is left out unless the manager asks for archived forms (include_archived).
@@ -1377,7 +1397,9 @@ async function findFormsInPeriod(context: ToolContext, input: { form?: unknown; 
     /* QA's code audit (item 28): a Coaching kind never keeps a Follow-Up Coaching Form (`ofKind`). */
     const visible = ofKind(visibleInstances(actor, read), kind).filter(onFileKept(input));
     /* f081: listed by form date (newest first), then employee; counted over every visible row, never only the listed ones. */
-    const rows = [...visible].sort((a, b) => (b.formDate ?? "").localeCompare(a.formDate ?? "") || a.employeeName.localeCompare(b.employeeName)).slice(0, PERIOD_LIST_LIMIT);
+    const sorted = [...visible].sort((a, b) => (b.formDate ?? "").localeCompare(a.formDate ?? "") || a.employeeName.localeCompare(b.employeeName));
+    const rows = wholeDays(sorted, PERIOD_LIST_LIMIT);
+    const notListed = notListedDays(sorted.slice(rows.length));
     /*
      * QA's code audit (item 29): complete only when the DATABASE returned fewer rows than it was asked for. Counting the
      * rows left after the visibility filter called a cut-off list complete (100 read, 60 visible, "every such form").
@@ -1399,8 +1421,8 @@ async function findFormsInPeriod(context: ToolContext, input: { form?: unknown; 
       complete,
       counts,
       archived: input.include_archived === true ? "every archived form included, each marked archived" : ARCHIVED_NOTE,
-      ...(visible.length > rows.length ? { listed: rows.length, of: visible.length } : {}),
-      note: `${complete ? "Every such form this manager can see, read by form date: never say the list is capped or that some may be missing." : `More than ${PERIOD_READ_LIMIT} forms match: the counts are of the first ${PERIOD_READ_LIMIT} read. Say so, and that ${appConfig().formsPageName} has the full list.`} Numbers come only from counts (total, by_person, by_form, by_date): copy them, never count or add rows yourself, and never put one person's forms under another's name.${visible.length > rows.length ? ` ${rows.length} of ${visible.length} forms are listed; say how many are not shown.` : ""} A draft is not on file.`,
+      ...(visible.length > rows.length ? { listed: rows.length, of: visible.length, not_listed_days: notListed } : {}),
+      note: `${complete ? "Every such form this manager can see, read by form date: never say the list is capped or that some may be missing." : `More than ${PERIOD_READ_LIMIT} forms match: the counts are of the first ${PERIOD_READ_LIMIT} read. Say so, and that ${appConfig().formsPageName} has the full list.`} Numbers come only from counts (total, by_person, by_form, by_date): copy them, never count or add rows yourself, and never put one person's forms under another's name.${visible.length > rows.length ? ` ${rows.length} of ${visible.length} forms are listed; say how many are not shown. The list stops at the end of a day: the days in not_listed_days are given as counts only, so never write rows for them, and the number you say is shown is ${rows.length}.` : ""} A draft is not on file.`,
     };
   } catch {
     return { reason_code: "read_failed", error: `${appConfig().formsPageName} could not be read just now. Say so; do not say there are no forms.` };
@@ -3268,7 +3290,14 @@ export async function proposeForm(
   if (headingParts.length > 2) {
     return { reason_code: "too_many_headings", error: `A Corrective Action cites one heading, or two when the manager describes two offenses that two headings cover, never ${headingParts.length}. Propose the card again with the one or two headings that fit what happened.` };
   }
-  const askedPolicy = headingParts.length > 0 ? headingParts[0]! : askedOther && askedPolicyWhole.includes(";") ? askedPolicyWhole.split(";")[0]!.trim() : askedPolicyWhole;
+  /*
+   * QA's f074 (20 Nov 2026, live on 29270d58): "actually make it a coaching form" after a CA citing two headings made no
+   * card: the coaching card's "<heading>; <heading>" went to the manual whole and was not_a_heading. Two headings are the
+   * Corrective Action's only (Pau's ruling); any other form cites the first, and the second is left off (not_on_card).
+   */
+  const otherFormParts = !twoHeadingsAllowed && !askedOther ? askedPolicyWhole.split(";").map((part) => part.trim()).filter(Boolean) : [];
+  const secondLeftOff = otherFormParts.length > 1 ? otherFormParts.slice(1).join("; ") : null;
+  const askedPolicy = headingParts.length > 0 ? headingParts[0]! : otherFormParts.length > 1 ? otherFormParts[0]! : askedOther && askedPolicyWhole.includes(";") ? askedPolicyWhole.split(";")[0]!.trim() : askedPolicyWhole;
   const askedSecond = headingParts.length === 2 ? headingParts[1]! : null;
   let policyHeading: string | null = null;
   let secondHeading: string | null = null;
@@ -3396,8 +3425,9 @@ export async function proposeForm(
    * The card cites the policy the model chose (batch B, code-check #22: the cleaning rule is a fact and a rules-book
    * line, no longer an override). "Other" carries the model's short topic.
    */
-  let policyLine: string | null = policyHeading ? formatManualCitation(policyHeading, page) : null;
-  if (policyLine && secondHeading && manual) policyLine = `${policyLine}; ${formatManualCitation(secondHeading, findManualSection(manual.chunks, [secondHeading])?.page ?? null)}`;
+  /* c259 (QA2, 21 Nov 2026, option (a)): a heading with no Type of Offense box of its own names the box it is saved under. */
+  let policyLine: string | null = policyHeading ? withReadersLineBox(formatManualCitation(policyHeading, page), policyHeading) : null;
+  if (policyLine && secondHeading && manual) policyLine = `${policyLine}; ${withReadersLineBox(formatManualCitation(secondHeading, findManualSection(manual.chunks, [secondHeading])?.page ?? null), secondHeading)}`;
   /* Batch G (G7a, the tester's exit sweep): an exit cites no policy; it is not an incident. */
   if (template.key === appConfig().formKeys.exit) policyLine = null;
   /*
@@ -3715,7 +3745,7 @@ export async function proposeForm(
    * attendance_evidence from a manager message of this request. A record, never a word list over the manager's messages:
    * Create sends it, and the draft route writes an absence as an absence (`lib/forms/absence-write-up.ts`).
    */
-  const askedAttendance = template.key === appConfig().formKeys.corrective && (input.attendance === "absence" || input.attendance === "lateness" || input.attendance === "both") ? input.attendance : null;
+  const askedAttendance = template.key === appConfig().formKeys.corrective && (input.attendance === "absence" || input.attendance === "lateness" || input.attendance === "left_early" || input.attendance === "both") ? input.attendance : null;
   const attendanceCheck = askedAttendance ? answerEvidence(context, input.attendance_evidence, "request", evidencePerson, { requestTurnIds }) : null;
   const attendanceKind = askedAttendance && attendanceCheck?.ok ? askedAttendance : null;
   /*
@@ -3728,7 +3758,7 @@ export async function proposeForm(
   if (attendanceCard && !attendanceKind) {
     const attendanceCode = askedAttendance ? "attendance_evidence_not_found" : "attendance_not_given";
     return {
-      reason_code: attendanceCode, error: `This Corrective Action cites ${policyHeading}. Propose the card again with attendance (absence: a shift missed, as "did not come in", a no-show, a call-out; lateness: late, or left early; both: each) and attendance_evidence quoting the manager's own words from this request that describe it${askedAttendance && attendanceCheck && !attendanceCheck.ok ? ` (that quote was not found in this request's manager messages: ${attendanceCheck.reason})` : ""}.`,
+      reason_code: attendanceCode, error: `This Corrective Action cites ${policyHeading}. Propose the card again with attendance (absence: a shift missed, as "did not come in", a no-show, a call-out; lateness: arrived late; left_early: left before the shift ended, as "left early", "left before close", "walked out mid-shift"; both: an absence and lateness) and attendance_evidence quoting the manager's own words from this request that describe it${askedAttendance && attendanceCheck && !attendanceCheck.ok ? ` (that quote was not found in this request's manager messages: ${attendanceCheck.reason})` : ""}.`,
     };
   }
   const incidentTime = typeof input.incident_time === "string" && input.incident_time.trim() ? input.incident_time.trim().slice(0, 40) : null;
@@ -4136,6 +4166,8 @@ export async function proposeForm(
   const notOnCard: { field: string; reason_code: string }[] = [
     ...(dateFromAnotherRequest ? [{ field: "incident_date", reason_code: "date_from_another_request" }] : []),
     ...(policyNotForThisCard ? [{ field: "policy", reason_code: "policy_not_for_this_card" }] : []),
+    /* QA's f074: a second heading on a form that cites one (Pau's two headings are the Corrective Action's only). */
+    ...(secondLeftOff ? [{ field: "policy_second_heading", reason_code: "not_on_this_form" }] : []),
     ...((modelLevel && level !== modelLevel) ? [{ field: "warning_level", reason_code: caOnlyFields ? "level_not_stated" : "not_on_this_form" }] : []),
     ...((askedTermination && !loopTermination) ? [{ field: "warning_level", reason_code: "termination_not_stated" }] : []),
     ...((askedPayroll && !payroll) ? [{ field: "payroll_deduct", reason_code: payrollFields ? "payroll_not_stated" : "not_on_this_form" }] : []),

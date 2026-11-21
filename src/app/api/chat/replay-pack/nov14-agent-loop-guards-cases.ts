@@ -1048,7 +1048,8 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
         const name = /marchetti/i.test(said) ? "Ysolde Marchetti" : /grand island/i.test(said) ? "Grand Island" : "Perpetua Vandersloot";
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name } };
         if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_name: name, what_happened: `${name} was late on 11/12.` } };
-        return { text: "Here's the card." };
+        // Changed on purpose (QA's f074, 20 Nov 2026): with no card made, the model never says "Here's the card" (the honesty review hands it back).
+        return { text: (lastResult(view, "propose_form") as { card?: unknown }).card ? "Here's the card." : "That isn't a person on your staff list. Who is this form for?" };
       });
       t.loopModel!(typed);
       // Changed on purpose (Pau 14 Nov: fewer questions; card + not-on-Woven line).
