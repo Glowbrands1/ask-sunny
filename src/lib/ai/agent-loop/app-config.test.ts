@@ -39,6 +39,10 @@ import { rulesBookText } from "./rules-book";
  * follow_up_on_create (say the follow-up date Create sets; never deny a follow-up the form will have). It reads the same
  * under every config; nothing else changed.
  *
+ * Re-taken on purpose on 22 Nov 2026 (port from Ask Bubbles 1b34db2, A11): one Forms on file line was added after
+ * which_form_question: an answer that gives changes is not a pick; open_form and edit_form need choice_evidence; ask
+ * again. It reads the same under every config; nothing else changed.
+ *
  * Re-taken on purpose on 21 Nov 2026 (port from the sibling app, its QA's live re-test A5): the what_happened line says
  * the account is a sentence with the person as its subject and names account_no_subject. It reads the same under every
  * config; nothing else changed.
