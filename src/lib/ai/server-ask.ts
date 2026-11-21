@@ -80,7 +80,7 @@ import {
 import { detectTemplateIntent } from "@/lib/forms/template-intent";
 import { buildFormInventory, publishedEntries } from "@/lib/forms/inventory";
 import { listTemplateSummaries, type TemplateSummary } from "@/lib/forms/repository";
-import { isFormRangeQuestion, isFormRecordsQuestion, loadFormRecords } from "@/lib/forms/chat-form-records";
+import { isFormListQuestion, isFormRangeQuestion, isFormRecordsQuestion, loadFormRecords } from "@/lib/forms/chat-form-records";
 import { namesAPerson } from "@/lib/forms/names-a-person";
 import { withRosterOnlyNames } from "@/lib/forms/roster-only-names";
 import { priorFormsReadingForChat } from "@/lib/forms/prior-forms";
@@ -573,7 +573,9 @@ async function answerQuestionUntraced(
    */
   // LIST_POLICY_IS_EDIT_ENABLED: "please list the policy" with only a card open is a card turn, never a question.
   const listPolicyCard = listPolicyOnCard(request);
-  const askedQuestion = !listPolicyCard && questionNotFormEnabled() && isQuestionNotForm(request.question, request.history);
+  /* FORMS_ON_FILE_COUNTS_ENABLED (QA's f081): "list ca for the month" lists forms on file; it never starts a new form. */
+  const listsForms = isFormListQuestion(request.question, request.context.todayIso);
+  const askedQuestion = listsForms || (!listPolicyCard && questionNotFormEnabled() && isQuestionNotForm(request.question, request.history));
   let intentForm = false;
   /*
    * CHAT_PARALLEL_REWRITE_ENABLED (QA, 9 Nov 2026): the message normalizer (`normalizeForChat`, below) starts now, from
@@ -1424,6 +1426,7 @@ async function answerQuestionUntraced(
    * coaching jba manual 11-1-26"), and each row says who created it.
    */
   const readsFormRecords =
+    listsForms ||
     pastFormsFirst ||
     ((isFormRecordsQuestion(request.question) ||
       (formsOnFileDateRangeEnabled() && isFormRangeQuestion(request.question, request.context.todayIso))) &&
@@ -1435,7 +1438,7 @@ async function answerQuestionUntraced(
         previousQuestion: previousManagerTurn(request),
         today: request.context.todayIso,
         ...(crossChatGuard ? { markCreator: true } : {}),
-        ...(formsOnFileDateRangeEnabled() ? { narrowFromQuestion: true } : {}),
+        ...(formsOnFileDateRangeEnabled() || listsForms ? { narrowFromQuestion: true } : {}),
       })
     : Promise.resolve(null);
 
