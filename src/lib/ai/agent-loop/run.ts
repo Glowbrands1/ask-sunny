@@ -104,7 +104,9 @@ import { fieldLabel, readableValue } from "./saved-diff";
 const CLAIMS_A_FORM_MADE = /\b(?:I(?:'ve| have)?\s+(?:made|created|drafted|started|put together|set up|built)|here(?:'s| is)\s+(?:the|your))\b[^.\n]{0,60}?\b(?:form|card|CA|C\/A|coaching|corrective action)\b/i;
 const PROMISES_LATER_WORK = /\b(?:in a follow-?up|follow-?up (?:message|reply)|resend|re-send|on my end|an issue on (?:my|our) end|a lookup problem|try (?:it )?again|I(?:'ll| will) (?:send (?:it|that|this) (?:again|later|over)|get back to you|follow up))\b/i;
 /** QA2 (21 Nov 2026): the reply speaks of an earlier card's draft (Form Monitoring, deleting it, keeping it unused). */
-const SPEAKS_OF_EARLIER_DRAFT = /\bForm Monitoring\b|\bdelet(?:e|ed|ing)\b|\bleft unused\b/i;
+/* The page name comes from the app config (the loop port: "Form Monitoring" here, the sibling app's own page there). */
+const speaksOfEarlierDraft = (text: string): boolean =>
+  new RegExp(`\\b${appConfig().formsPageName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b|\\bdelet(?:e|ed|ing)\\b|\\bleft unused\\b`, "i").test(text);
 
 export { LOOP_FAILED_REPLY, STEP_LIMIT_REPLY };
 
@@ -117,7 +119,7 @@ export function doneThisTurn(effects: Pick<ToolEffects, "proposal" | "formUpdate
   const done: string[] = [];
   /* QA's audit (item 14b): coach_team's "create all" saves drafts in Form Monitoring; a later failure never says nothing was saved. */
   if (effects.draftsCreated && effects.draftsCreated > 0) {
-    done.push(`I created ${effects.draftsCreated} draft Coaching Form${effects.draftsCreated === 1 ? "" : "s"} in Form Monitoring.`);
+    done.push(`I created ${effects.draftsCreated} draft Coaching Form${effects.draftsCreated === 1 ? "" : "s"} in ${appConfig().formsPageName}.`);
   }
   if (effects.proposal) {
     const who = effects.proposal.employeeName ? ` for **${effects.proposal.employeeName}**` : "";
@@ -396,6 +398,7 @@ export function agentLoopTools(config: AppConfig = appConfig()) {
 function buildAgentLoopTools(config: AppConfig) {
   const place = config.locationWord;
   const places = config.locationWordPlural;
+  const examples = config.content({ place, places, staff: config.staffSystem }).toolExamples;
   return [
   {
     name: "find_staff",
@@ -404,14 +407,14 @@ function buildAgentLoopTools(config: AppConfig) {
   },
   {
     name: "find_past_forms",
-    description: "List the forms on file (Form Monitoring) for one employee, or, with no employee_name, every form of a kind or period (\"who got a CA this month?\": form and date_from/date_to). Only when the manager asks about forms on file or history; never otherwise.",
+    description: "List the forms on file (" + config.formsPageName + ") for one employee, or, with no employee_name, every form of a kind or period (\"who got a CA this month?\": form and date_from/date_to). Only when the manager asks about forms on file or history; never otherwise.",
     input_schema: object({
       employee_name: { type: "string", description: "The employee the manager named. Leave it out for a list of every form of a kind or period." },
       form: { type: "string", description: "The form the manager named (\"coaching\", \"CA\"), if any." },
       date: { type: "string", description: "The form's date as the manager gave it (\"10/31\"), if any." },
       date_from: { type: "string", description: "First form date of a period the manager asked about (\"this month\": the 1st), YYYY-MM-DD, if any." },
       date_to: { type: "string", description: "Last form date of that period (\"this month\": today), YYYY-MM-DD, if any." },
-      about: { type: "string", description: "Words the manager used about the form (\"getting rooms ready between guests\"), if any." },
+      about: { type: "string", description: "Words the manager used about the form (\"" + examples.formAbout + "\"), if any." },
       forms_on_file_evidence: FORMS_ON_FILE_EVIDENCE,
       open: { type: "boolean", description: "true when the manager asks to open, edit or see one form on file (not a list of what is on file)." },
       include_archived: { type: "boolean", description: "true only when the manager asks for archived forms. Finalized forms are listed archived or not; this adds archived drafts." },
@@ -425,7 +428,7 @@ function buildAgentLoopTools(config: AppConfig) {
   {
     name: "list_staff",
     description: "The staff of one of the signed-in manager's own " + places + ", by name and position. For \"who's on my staff\" and for a form asked for a whole staff (never one card for everyone). With several " + places + " and none named, it gives the question to ask.",
-    input_schema: object({ salon: { type: "string", description: "The " + place + " the manager named, if any." }, position: { type: "string", description: "One position the manager asked about (\"tanning consultants\"), if any." } }, []),
+    input_schema: object({ salon: { type: "string", description: "The " + place + " the manager named, if any." }, position: { type: "string", description: "One position the manager asked about (\"" + examples.position + "\"), if any." } }, []),
   },
   {
     name: "search_knowledge",
@@ -489,7 +492,7 @@ function buildAgentLoopTools(config: AppConfig) {
         },
         attendance_evidence: evidence("With attendance: the manager message of this request and its words that describe the absence, the lateness or the early leaving."),
         incident_time: { type: "string", description: "The time of the incident if the manager gave one, as they said it." },
-        salon: { type: "string", description: "The " + place + " the form is for, as the manager named it (\"kearney\", \"IA Altoona\"), when the card asks which " + place + " or the manager says one. Only the manager's own " + places + " are accepted." },
+        salon: { type: "string", description: "The " + place + " the form is for, as the manager named it (" + examples.placesNamed + "), when the card asks which " + place + " or the manager says one. Only the manager's own " + places + " are accepted." },
       },
       ["template_key"],
     ),
@@ -1249,11 +1252,11 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
          * QA2 (21 Nov 2026, #1172's live test): a card switched from one that was never created, and the reply said the
          * earlier card "is left unused unless you'd like it deleted from Form Monitoring". No draft of it exists.
          */
-        const earlierDraft = (reply: string) => Boolean(effects.proposal && switchedFromNotCreated) && SPEAKS_OF_EARLIER_DRAFT.test(reply);
+        const earlierDraft = (reply: string) => Boolean(effects.proposal && switchedFromNotCreated) && speaksOfEarlierDraft(reply);
         if (claimsMade(text) || promises(text) || earlierDraft(text)) {
           const note = [
             ...(claimsMade(text) ? [`[app check] Your reply says a form was made, but propose_form made no card this turn (${proposeNoCard.join(", ")}). Nothing is on the manager's screen for it. Fix what propose_form said and propose again, or say plainly the card was not made and what is needed.`] : []),
-            ...(earlierDraft(text) ? [`[app check] Your reply speaks of the earlier ${switchedFromNotCreated} card being kept, deleted or in Form Monitoring, but it was never created (form_changed: earlier_created false): there is no draft of it and nothing in Form Monitoring. Say nothing about it, or at most "The ${switchedFromNotCreated} card was not created."`] : []),
+            ...(earlierDraft(text) ? [`[app check] Your reply speaks of the earlier ${switchedFromNotCreated} card being kept, deleted or in ${appConfig().formsPageName}, but it was never created (form_changed: earlier_created false): there is no draft of it and nothing in ${appConfig().formsPageName}. Say nothing about it, or at most "The ${switchedFromNotCreated} card was not created."`] : []),
             ...(promises(text) ? ["[app check] Your reply promises later work (a follow-up, a resend) or blames an issue on your end. You cannot send anything after this reply, and a refusal is never a lookup problem, an issue on your end, or a reason to ask the manager to try again: act on what the tool said now, or say in one line what you need from them."] : []),
             "Then write your reply to the manager again.",
           ].join("\n");
@@ -1263,7 +1266,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
           if (claimsMade(text)) text = "That card wasn't made, so nothing new is on your screen for it. Tell me the policy, form or person it should have, and I'll make it.";
           else {
             if (promises(text)) text = text.split(/(?<=[.!?])\s+/).filter((sentence) => !PROMISES_LATER_WORK.test(sentence)).join(" ").trim();
-            if (earlierDraft(text)) text = text.split(/(?<=[.!?])\s+/).filter((sentence) => !SPEAKS_OF_EARLIER_DRAFT.test(sentence)).join(" ").trim();
+            if (earlierDraft(text)) text = text.split(/(?<=[.!?])\s+/).filter((sentence) => !speaksOfEarlierDraft(sentence)).join(" ").trim();
           }
         }
       }
