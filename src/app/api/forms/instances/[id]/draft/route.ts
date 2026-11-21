@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { loopWriteUpSections } from "@/lib/forms/loop-write-up-sections";
 import { withAccountFactsKept } from "@/lib/forms/account-facts-kept";
 import { TERMINATION_OPTION, withTerminationPlan } from "@/lib/forms/termination-stated";
 import { salesResultsOffenseLine, withCaChosenRule } from "@/lib/ai/ca-sales-prompt-lines";
@@ -2904,6 +2905,17 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       const cardAccount = /^What happened:\s*(.+)$/im.exec(notes)?.[1]?.trim() ?? null;
       const absence = absenceWriteUp(draftedPayload.values, narrativeTargets.filter((key) => !keeps(key)), { employeeName: loaded.instance.employeeName, cardAccount });
       if (absence.changed) draftedPayload.values = absence.values;
+    }
+    /*
+     * QA's live test of #1154 (20 Nov 2026, f075): a loop card citing two headings saved an empty Expectation, its sentence
+     * under Going Forward, and the full name after the first. The loop card's write-up keeps the first name throughout and
+     * a filled Expectation (`loop-write-up-sections.ts`); the app's own drafted text only.
+     */
+    const sectionsKey = narrativeTargets[0];
+    if (body.cardFromLoop === true && sectionsKey && !keeps(sectionsKey) && typeof draftedPayload.values[sectionsKey] === "string") {
+      const { body: account, line: citation } = splitAppCitationLine(draftedPayload.values[sectionsKey]!);
+      const laid = loopWriteUpSections(account, loaded.instance.employeeName);
+      if (laid.changed) draftedPayload.values = { ...draftedPayload.values, [sectionsKey]: citation ? `${laid.text}\n\n${citation}` : laid.text };
     }
     const kept = draftMergeEnabled()
       ? retainFilledFields({

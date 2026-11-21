@@ -93,6 +93,10 @@ import { rulesBookText } from "./rules-book";
  * payroll_amount_missing (ask the amount in one question), and the stated line adds ", as you said" only for
  * stated_this_turn. No app, place, staff system or form key.
  *
+ * Re-taken on purpose on 20 Nov 2026 (QA: "show me forms for Tes" opened another person's draft): the find_past_forms
+ * close-spelling line now says did_you_mean (end with ask_exactly, open nothing) in place of close_spelling_of ("Opening
+ * **<on_file>**'s form."). It reads the same under every config; nothing else changed.
+ *
  * Re-taken on purpose on 20 Nov 2026 (Pau's live chat: a refused find_past_forms told as "a lookup issue on my end"): one
  * Replies line was added: a tool's refusal is never told to the manager as a lookup problem or "try again". It reads the
  * same under every config; nothing else changed.
@@ -104,6 +108,10 @@ import { rulesBookText } from "./rules-book";
  * Re-taken on purpose on 20 Nov 2026 (QA's code audit of coach_team, item C: "yes please", "go ahead and make them"
  * went to wrong_tool): the coach_team line now sends any answer to its confirmation to coach_team, with four example
  * answers. It names no app, place, staff system or form key; nothing else changed.
+ *
+ * Re-taken on purpose on 20 Nov 2026 (QA's f081: forms-on-file lists miscounted): one Replies line was added: a list of
+ * forms on file copies find_past_forms' counts, never adds rows itself, never puts one person's forms under another's name,
+ * and says "(archived)" beside an archived form (archived drafts only when asked). It reads the same under every config; nothing else changed.
  */
 
 const fixture = (name: string): string => readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), "utf8");
