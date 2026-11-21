@@ -13,8 +13,9 @@ import { isoDate, monthDayToIso, readDates, sameDate, withoutDates } from "./dat
 import { candidateNameWords, chatFormsActor, formDateRangeFromInput, formKindFromText, ofKind } from "@/lib/forms/chat-form-records";
 import { CURRENT_MESSAGE_ID, holdsPhrase, identifiedTurns, verifyEvidence, withoutMessageIdTags, type IdentifiedTurn } from "./evidence";
 import { personNamedInRequest, requestStart } from "./person-in-request";
+import { keptFormDate } from "./kept-form-date";
 import { answeredNameQuestions, answerNamesSomeoneElse, everKeptOrUsedTyped, isConfirmedSpelling, latestTurnAnswersFor, latestTurnConfirms, latestTurnKeepsOrUsesTyped, latestTurnKeepsTyped, spellingKeysConfirmedFor, spellingKeysConfirmedForName, type NameQuestionView } from "./confirmed-spelling";
-import { AFFIRMATIVE, displayName, editDistance, matchEmployeeName, nameConfirmationQuestion, readNameConfirmation, type RosterEmployee } from "@/lib/forms/employee-match";
+import { AFFIRMATIVE, displayName, editDistance, matchEmployeeName, nameConfirmationQuestion, readNameConfirmation, rosterSpellingOf, type RosterEmployee } from "@/lib/forms/employee-match";
 import { offRosterTyped } from "@/lib/forms/roster-only-names";
 import { parseFormDocument } from "@/lib/forms/document";
 import { draftableCheckboxGroups, draftableFields } from "@/lib/forms/responsibility";
@@ -3231,6 +3232,13 @@ export async function proposeForm(
    * turn's "Wren Halloway left …, Wren also …" read against the first card's "Wren left …" was taken as a rewording.
    */
   if (whatHappened && employee.name) {
+    /*
+     * Port from the sibling app (its QA's live re-test, 21 Nov 2026): the name corrected mid-chat ("<First> <Lastx>" →
+     * "<First> <Lasty>") moved the card's name, but the account the model copied from the first message kept the old
+     * spelling. Every spelling of this person (the card's earlier name; a close spelling the roster reads as this person
+     * alone) becomes the card's name first.
+     */
+    whatHappened = (await import("@/lib/forms/short-name")).withCorrectedSpelling(whatHappened, employee.name, nameCorrectedFrom !== null ? [nameCorrectedFrom] : [], rosterSpellingOf(employee.id ?? null, read.kind === "read" ? read.roster : [])).text;
     const short = replyNameFor(employee.name, read.kind === "read" ? read.roster : [], extractEmployeeNames(managerTurns(context)), employee.id ?? null);
     whatHappened = (await import("@/lib/forms/short-name")).withShortName(whatHappened, employee.name, short).text;
   }
@@ -3724,6 +3732,15 @@ export async function proposeForm(
   const fromAnotherRequest = (iso: string | null | undefined) => Boolean(iso && otherRequestsDates.includes(iso));
   const dateFromAnotherRequest = fromAnotherRequest(date);
   if (dateFromAnotherRequest) date = null;
+  /*
+   * ONCE SET, THE DATE STAYS (port from the sibling app: its QA's live re-test, 21 Nov 2026; QA2's Sunny R3): a later turn
+   * rebuilt the card with no date (the model left incident_date out) and Create saved today, or the reply asked "Which
+   * date goes on the form?" for a date the card had. This person's latest card (the server's record, any form) keeps its
+   * date (`kept-form-date.ts`).
+   */
+  const ownCard = [context.cardOnScreen, context.earlierCard].find((record) => Boolean(record?.incidentDate) && (employee.id ? record!.employeeKey === personKey(employee.id) : !record!.employeeKey && record!.nameKey === personKey(employee.name)));
+  const dateKept = keptFormDate({ accountForm: ACCOUNT_FORMS.has(template.key), date, asksNewForm, latestDates, datesGiven, today, ownCardDate: ownCard?.incidentDate });
+  if (dateKept) date = dateKept;
   const datesAsked = datesGiven.length > 1 && !date ? datesGiven : [];
   /* Batch C (code-check #32): a date after today is a fact with today's date; the rules book says to ask. */
   /* Batch G (G6): only an incident form's date is never after today; an exit's last day or effective date may be. */
@@ -3937,6 +3954,19 @@ export async function proposeForm(
     const attendanceCode = askedAttendance ? "attendance_evidence_not_found" : "attendance_not_given";
     return {
       reason_code: attendanceCode, error: `This Corrective Action cites ${policyHeading}. Propose the card again with attendance (absence: a shift missed, as "did not come in", a no-show, a call-out; lateness: arrived late; left_early: left before the shift ended, as "left early", "left before close", "walked out mid-shift"; both: an absence and lateness) and attendance_evidence quoting the manager's own words from this request that describe it${askedAttendance && attendanceCheck && !attendanceCheck.ok ? ` (that quote was not found in this request's manager messages: ${attendanceCheck.reason})` : ""}.`,
+    };
+  }
+  /*
+   * Port from the sibling app (its QA's live re-test, 21 Nov 2026, A5): "create verbal ca for <name> for opening <place>
+   * late on 10-1-26. …" got the issue line "Opening <place> late on 10-1-26.", the request's for-clause with no one doing
+   * it. A Corrective Action's account whose first sentence has no subject (`card-account.ts`, grammar only) is handed back
+   * to be written again with the person as its subject, as the rules book asks. The offense the manager named as the
+   * account (`accountFromNamedOffense`) is their words, and stays.
+   */
+  if (template.key === appConfig().formKeys.corrective && whatHappened !== "" && accountFromNamedOffense === null && (await import("./card-account")).accountHasNoSubject(whatHappened)) {
+    const subject = employee.name ? replyNameFor(employee.name, read.kind === "read" ? read.roster : [], extractEmployeeNames(managerTurns(context)), employee.id ?? null) : "the employee";
+    return {
+      reason_code: "account_no_subject", error: `what_happened says what was done but not who did it. Write it again as a sentence with ${subject} as its subject, in the past tense ("${subject} <did what> on <date>."), keeping every word, date and detail the manager gave, and propose the card again.`,
     };
   }
   const incidentTime = typeof input.incident_time === "string" && input.incident_time.trim() ? input.incident_time.trim().slice(0, 40) : null;
@@ -4157,6 +4187,14 @@ export async function proposeForm(
     if (named.replaced > 0) {
       card.issue = named.text;
       whatHappened = named.text;
+    }
+  }
+  /* Port from the sibling app (its QA's live re-test, 21 Nov 2026, A5): a dashed date on the card's account is written as the issue line writes dates ("10/1/26"). */
+  if (card.issue) {
+    const slashed = (await import("./card-account")).withSlashDates(card.issue);
+    if (slashed !== card.issue) {
+      card.issue = slashed;
+      whatHappened = slashed;
     }
   }
   card.employeeRole = employee.id ? await rosterTitle(context.actor.scope, employee.id) : null;
@@ -4401,7 +4439,7 @@ export async function proposeForm(
    * reply never claims it. (Was the fact not_kept: names only.) Values are never in it.
    */
   const notOnCard: { field: string; reason_code: string }[] = [
-    ...(dateFromAnotherRequest ? [{ field: "incident_date", reason_code: "date_from_another_request" }] : []),
+    ...(dateFromAnotherRequest && !dateKept ? [{ field: "incident_date", reason_code: "date_from_another_request" }] : []),
     ...(policyNotForThisCard ? [{ field: "policy", reason_code: "policy_not_for_this_card" }] : []),
     /* QA's f074: a second heading on a form that cites one (Pau's two headings are the Corrective Action's only). */
     ...(secondLeftOff ? [{ field: "policy_second_heading", reason_code: "not_on_this_form" }] : []),

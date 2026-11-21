@@ -103,7 +103,13 @@ export const NOV15_AGENT_LOOP_BATCH_F_CASES: ReplayCase[] = [
       expect(reply.content, "the step limit said it couldn't finish over a ready card").not.toBe(STEP_LIMIT_REPLY);
       expect(reply.content).toMatch(/Here is the \*\*.+\*\* for \*\*Remy Calder\*\* for you to review\./);
       // Changed on purpose (QA's live finding, 16 Nov 2026): the code-written step-limit reply states only what the records show.
-      expect(reply.content).toMatch(/Nothing else was saved yet\. Please send the change you still need again, and I'll make it\.$/);
+      /*
+       * Changed on purpose again (port from the sibling app, its QA's live re-test, 21 Nov 2026): with a card made this
+       * turn, the step-limit reply confirms the card's person and salon from the card's own result and never asks for the
+       * change again (`stepLimitReply`, `nov21-agent-loop-step-limit-says-change-cases.ts`).
+       */
+      expect(reply.content).toMatch(/The card is for Remy Calder at NE Kearney\. Tell me if anything else on the card should change\.$/);
+      expect(reply.content).not.toMatch(/send the change you still need again/);
       expect(reply.formProposal?.employeeName).toBe("Remy Calder");
     },
   },

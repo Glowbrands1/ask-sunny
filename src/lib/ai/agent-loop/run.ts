@@ -158,9 +158,50 @@ export function partialReply(done: string, stopped: "timeout" | "error"): string
  * the form really holds changed, from saved), or that nothing else was saved yet; then it asks the manager to send the
  * change again. It never reads the manager's message and never guesses what is "left".
  */
-export function stepLimitReply(done: string | null, saved = false): string {
+export function stepLimitReply(done: string | null, saved = false, card: CardMade | null = null): string {
   if (!done) return STEP_LIMIT_REPLY;
+  /*
+   * Port from the sibling app (its QA's live re-test, 21 Nov 2026): "Create the coaching form with the information given.
+   * Her name is <First> <Lasty> …" and the next turn's place answer each hit the step limit after the card was made, and
+   * the reply was "Here is the **Coaching Form** for **<name>** … Please send the change you still need again". The card
+   * already held the change. With a card made this turn, the reply says what the card's own result records (the form it
+   * changed from, the name it corrected, its person and salon), and never asks for the change again.
+   */
+  if (card) return `${done} ${cardMadeLine(card)} Tell me if anything else on the card should change.`;
   return `${done} ${saved ? "" : "Nothing else was saved yet. "}Please send the change you still need again, and I'll make it.`;
+}
+
+/** What propose_form's latest card this turn recorded: its form, person and salon, and what changed from the earlier card. */
+export interface CardMade {
+  readonly form: string | null;
+  readonly employee: string | null;
+  readonly salon: string | null;
+  /** facts.form_changed.from: the earlier card's form. */
+  readonly formFrom: string | null;
+  /** facts.name_corrected: the earlier card's name, and the card's name now. */
+  readonly nameFrom: string | null;
+}
+
+/**
+ * The form the card switched from, when its result has no form_changed (no form_change_evidence this turn): the chat's
+ * latest card before this turn (the server's card record) was THIS person's on another form, or its name was corrected.
+ */
+function withEarlierForm(card: CardMade, earlier: CardRecord | null, effects: Pick<ToolEffects, "proposal" | "proposalEmployeeId">): CardMade {
+  if (card.formFrom || !earlier || !effects.proposal || earlier.templateKey === effects.proposal.templateKey || !earlier.templateName) return card;
+  const samePerson = effects.proposalEmployeeId ? earlier.employeeKey === personKey(effects.proposalEmployeeId) : Boolean(effects.proposal.employeeName && !earlier.employeeKey && earlier.nameKey === personKey(effects.proposal.employeeName));
+  return samePerson || card.nameFrom ? { ...card, formFrom: earlier.templateName } : card;
+}
+
+/** Port from the sibling app (its QA's live re-test, 21 Nov 2026): the change line, from the card's own result, never the manager's words. */
+export function cardMadeLine(card: CardMade): string {
+  const changes = [
+    ...(card.formFrom && card.form && card.formFrom !== card.form ? [`the form from the ${card.formFrom} to the ${card.form}`] : []),
+    ...(card.nameFrom && card.employee && card.nameFrom.toLowerCase() !== card.employee.toLowerCase() ? [`the name from ${card.nameFrom} to ${card.employee}`] : []),
+  ];
+  const changed = changes.length > 0 ? `I changed ${changes.join(", and ")}. ` : "";
+  const who = card.employee ? ` for ${card.employee}` : "";
+  const where = card.salon ? ` at ${card.salon}` : "";
+  return `${changed}The card is${who}${where}.`.replace(/^The card is\.$/, "").trim();
 }
 
 export interface AgentLoopStep {
@@ -768,6 +809,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   const proposeNoCard: string[] = [];
   /* The form a card this turn was switched from when that form was never created (propose_form's form_changed fact). */
   let switchedFromNotCreated: string | null = null;
+  let cardMade: CardMade | null = null;
   const refusalCounts = new Map<string, number>();
   const refusalSteps = new Map<string, Set<number>>();
   const stoppedTools = new Map<string, { reason_code: string; ask_exactly?: string }>();
@@ -825,6 +867,12 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
       if (name === "propose_form") {
         const changed = (result as { facts?: { form_changed?: { from?: unknown; earlier_created?: unknown } } }).facts?.form_changed;
         if ((result as { card?: unknown }).card) switchedFromNotCreated = changed && changed.earlier_created === false ? String(changed.from ?? "earlier") : null;
+        /* Port from the sibling app (its QA's live re-test, 21 Nov 2026): the latest card's own record of what it is and what changed, for a step-limit reply. */
+        const made = result as { card?: { form?: unknown; employee?: unknown; salon?: unknown }; facts?: { name_corrected?: { from?: unknown } } };
+        if (made.card) {
+          const text = (value: unknown) => (typeof value === "string" && value.trim() !== "" ? value.trim() : null);
+          cardMade = { form: text(made.card.form), employee: text(made.card.employee), salon: text(made.card.salon), formFrom: text(changed?.from), nameFrom: text(made.facts?.name_corrected?.from) };
+        }
       }
       if (name === "propose_form" && !(result as { card?: unknown }).card) proposeNoCard.push(typeof (result as { reason_code?: unknown }).reason_code === "string" ? String((result as { reason_code: string }).reason_code) : "no_card");
       const refusal = result as { reason_code?: unknown; error?: unknown; ask_exactly?: unknown; not_on_roster?: unknown };
@@ -1409,7 +1457,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
    * backs and policy line are facts on propose_form's result, worded by the rules book's Card replies.
    */
   let content = (
-    stoppedAt === "timeout" || stoppedAt === "error" ? partialReply(done!, stoppedAt) : stoppedAt === "step_limit" ? stepLimitReply(done, Boolean(effects.formUpdate && effects.formUpdate.updated.length > 0)) : text
+    stoppedAt === "timeout" || stoppedAt === "error" ? partialReply(done!, stoppedAt) : stoppedAt === "step_limit" ? stepLimitReply(done, Boolean(effects.formUpdate && effects.formUpdate.updated.length > 0), effects.proposal && cardMade ? withEarlierForm(cardMade, records.at(-1) ?? null, effects) : null) : text
   ).trim();
   if (content === "") content = done ?? STEP_LIMIT_REPLY;
   /*

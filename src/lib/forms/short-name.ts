@@ -86,3 +86,52 @@ export function replyWithShortName(reply: string, fullName: string, short: strin
     .join("\n");
   return { text, replaced };
 }
+
+/**
+ * ============================================================================
+ * A CORRECTED NAME REPLACES THE OLD SPELLING EVERYWHERE (port from the sibling app: its QA's live re-test, 21 Nov 2026)
+ * ============================================================================
+ *
+ * The manager typed "<First> <Lastx>", later corrected it to "<First> <Lasty>": the card's name followed the correction,
+ * but its account (and the saved write-up) still said "<First> <Lastx>", copied from the first message. Every mention of
+ * another spelling of THIS person becomes `fullName` (the short-name pass then shortens it, as for any other mention).
+ * Which spellings are this person is the caller's: `spellings` (the card's earlier name, from its record), and
+ * `sameByRoster` for any two-word name in the text sharing a word with the person's name (the roster reads it as this
+ * person alone: a close spelling). Text in quotes is left exactly as written; the full name itself is never touched.
+ */
+export function withCorrectedSpelling(
+  text: string,
+  fullName: string,
+  spellings: readonly string[],
+  sameByRoster?: (name: string) => boolean,
+): { text: string; replaced: number } {
+  const full = fullName.trim().replace(/\s+/g, " ");
+  if (!text || full.split(" ").length < 2) return { text, replaced: 0 };
+  const same = (a: string, b: string) => a.trim().replace(/\s+/g, " ").toLowerCase() === b.trim().replace(/\s+/g, " ").toLowerCase();
+  const own = new Set(full.toLowerCase().split(" "));
+  const found = new Set<string>(spellings.map((spelling) => spelling.trim().replace(/\s+/g, " ")).filter((spelling) => spelling.split(" ").length >= 2 && !same(spelling, full)));
+  if (sameByRoster) {
+    const tokens = [...text.matchAll(/\p{L}[\p{L}'’-]*/gu)];
+    for (let at = 0; at + 1 < tokens.length; at += 1) {
+      const first = tokens[at]!;
+      const second = tokens[at + 1]!;
+      if (!/^\s+$/.test(text.slice(first.index! + first[0].length, second.index!))) continue;
+      const pair = `${first[0]} ${second[0].replace(/['’]s$/i, "")}`;
+      if (same(pair, full) || !pair.toLowerCase().split(" ").some((word) => own.has(word))) continue;
+      if (sameByRoster(pair)) found.add(pair);
+    }
+  }
+  let replaced = 0;
+  let out = text;
+  for (const spelling of found) {
+    const pattern = namePattern(spelling);
+    if (!pattern) continue;
+    out = outsideQuotes(out, (piece) =>
+      piece.replace(pattern, (_whole, open: string | undefined, close: string | undefined) => {
+        replaced += 1;
+        return `${open ?? ""}${full}${close ?? ""}`;
+      }),
+    );
+  }
+  return { text: out, replaced };
+}

@@ -26,6 +26,14 @@ const PAIRS_KEPT = 0.5;
  * nobody was at the desk" already holds "a customer said they won't come back because nobody was at the desk").
  */
 const ONE_SENTENCE_KEPT = 0.6;
+/**
+ * …or (QA2's Sunny live R3, 21 Nov 2026) it lists two or more dates, each stated in a written sentence that shares one of
+ * its other words, and at most this many of its other words are nowhere in the write-up. "<First> was late on the last
+ * two shifts, 11/17 and 11/18" is held by "<First> was late to work on November 17, 2026. <First> was late to work on
+ * November 18, 2026."; a reason the drafter left out ("because his car broke down") is more words than this, and added.
+ */
+const DATE_LIST_UNHELD = 2;
+const MONTH_DAY = /^\d{1,2}\/\d{1,2}$/;
 /** Words this far apart (or nearer) in one sentence make a pair. */
 const PAIR_WINDOW = 3;
 const NEXT_HEADING = /^\s*(?:expectations?|going forward|action plan)\s*:/im;
@@ -35,7 +43,14 @@ const MONTHS = ["january", "february", "march", "april", "may", "june", "july", 
 function sameDates(text: string): string {
   return text
     .replace(new RegExp(`\\b(${MONTHS.map((month) => `${month.slice(0, 3)}(?:${month.slice(3)})?\\.?`).join("|")})\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+\\d{4})?\\b`, "gi"), (_match, month: string, day: string) => `${MONTHS.findIndex((name) => name.startsWith(month.toLowerCase().slice(0, 3))) + 1}/${Number(day)}`)
-    .replace(/\b(\d{1,2})\/(\d{1,2})\/\d{2,4}\b/g, (_match, month: string, day: string) => `${Number(month)}/${Number(day)}`);
+    .replace(/\b(\d{1,2})\/(\d{1,2})\/\d{2,4}\b/g, (_match, month: string, day: string) => `${Number(month)}/${Number(day)}`)
+    /*
+     * Port from the sibling app (its QA's live re-test of the loop, 21 Nov 2026, A2–A5): the manager's dashed "10-20-26"
+     * is the drafter's "October 20, 2026" too. Unread, every sentence holding one looked missing and was added again in
+     * the manager's words ("… on October 20, 2026. … on 10-20-26."), and a clause that is only a date was tacked on alone
+     * ("On 10-20-26."). With its year only: a bare "10-12" is more often a range ("10-12 hours").
+     */
+    .replace(/(?<![\d/-])(\d{1,2})-(\d{1,2})-(?:\d{4}|\d{2})(?![\d-])/g, (_match, month: string, day: string) => `${Number(month)}/${Number(day)}`);
 }
 
 /** Content words: numbers and times as typed, and 4+ letter words cut to 5 letters ("customers" → "custo"). */
@@ -90,12 +105,19 @@ export function missingAccountFacts(writeUp: string, account: string, employeeNa
   const keptWords = new Set(contentWords(writeUp, skip));
   const keptPairs = new Set(sentencesOf(writeUp).flatMap((sentence) => pairsOf(contentWords(sentence, skip))));
   const writtenSentences = sentencesOf(writeUp).map((sentence) => new Set(contentWords(sentence, skip)));
+  const datesStatedOneByOne = (words: readonly string[]) => {
+    const dates = [...new Set(words.filter((word) => MONTH_DAY.test(word)))];
+    const others = words.filter((word) => !MONTH_DAY.test(word));
+    if (dates.length < 2 || others.length === 0) return false;
+    return dates.every((date) => writtenSentences.some((written) => written.has(date) && others.some((word) => written.has(word)))) && others.filter((word) => !keptWords.has(word)).length <= DATE_LIST_UNHELD;
+  };
   const holds = (text: string) => {
     const words = contentWords(text, skip);
     return (
       share(words, keptWords) >= WORDS_KEPT ||
       share(pairsOf(words), keptPairs) >= PAIRS_KEPT ||
-      writtenSentences.some((written) => share(words, written) >= ONE_SENTENCE_KEPT)
+      writtenSentences.some((written) => share(words, written) >= ONE_SENTENCE_KEPT) ||
+      datesStatedOneByOne(words)
     );
   };
   const first = (employeeName ?? "").trim().split(/\s+/)[0] || null;
