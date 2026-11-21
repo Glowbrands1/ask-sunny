@@ -80,6 +80,8 @@ const state = vi.hoisted(() => ({
   slotReading: "none" as "none" | "ca" | "copy",
   /** Chunks the pinned manual also has, when a case sets them (`manualAlsoHas`); none by default. */
   manualExtra: [] as Record<string, unknown>[],
+  /** `manualAlsoHas(…, { inPlace: true })`: the added chunks replace the pinned ones with the same chunk numbers. */
+  manualExtraInPlace: false,
   /** FULL_MANUAL_KEEPS_RETRIEVAL: what the knowledge search returns (`knowledgeHas`), the normalizer's label, the full manual. */
   knowledgeRows: [] as Record<string, unknown>[],
   /** POLICY_CARRY_RETRIEVAL (#248 rebuilt, 12 Nov 2026): every knowledge search's query, in order (`searches`). */
@@ -525,7 +527,12 @@ vi.mock("@/lib/knowledge/providers/supabase", () => ({
         documentCategory: "policies_compliance",
         matchedBy: "tag",
         // REPLAY_FULL_POLICY_MANUAL=1 (QA, 20 Nov 2026): shadow and saved-form runs read the manual production reads.
-        chunks: [...(replayReadsFullPolicyManual() ? fullPolicyManualChunks() : JBA_MANUAL_CA_CHUNKS), ...state.manualExtra],
+        chunks: [
+          ...(replayReadsFullPolicyManual() ? fullPolicyManualChunks() : JBA_MANUAL_CA_CHUNKS).filter(
+            (chunk) => !state.manualExtraInPlace || !state.manualExtra.some((extra) => extra.chunkIndex === (chunk as { chunkIndex?: unknown }).chunkIndex),
+          ),
+          ...state.manualExtra,
+        ],
       };
     }
   },
@@ -923,6 +930,7 @@ beforeEach(async () => {
   // A case that pinned extra manual passages leaves the heading index with them; the next case starts without.
   if (state.manualExtra.length > 0) forgetManualIndexForTests();
   state.manualExtra = [];
+  state.manualExtraInPlace = false;
   state.knowledgeRows = [];
   state.knowledgeQueries = [];
   state.normalizerIntent = null;
@@ -1129,8 +1137,9 @@ function context(): ReplayContext {
     reviewsOnFile: () => {
       state.reviewsOnFile = true;
     },
-    manualAlsoHas: (chunks) => {
+    manualAlsoHas: (chunks, options = {}) => {
       state.manualExtra = [...chunks];
+      state.manualExtraInPlace = options.inPlace === true;
       // The slot reader's heading index is cached per scope: an earlier case's index would not have these passages.
       forgetManualIndexForTests();
     },
