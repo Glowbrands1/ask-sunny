@@ -102,6 +102,8 @@ import { fieldLabel, readableValue } from "./saved-diff";
  */
 const CLAIMS_A_FORM_MADE = /\b(?:I(?:'ve| have)?\s+(?:made|created|drafted|started|put together|set up|built)|here(?:'s| is)\s+(?:the|your))\b[^.\n]{0,60}?\b(?:form|card|CA|C\/A|coaching|corrective action)\b/i;
 const PROMISES_LATER_WORK = /\b(?:in a follow-?up|follow-?up (?:message|reply)|resend|re-send|on my end|an issue on (?:my|our) end|a lookup problem|try (?:it )?again|I(?:'ll| will) (?:send (?:it|that|this) (?:again|later|over)|get back to you|follow up))\b/i;
+/** QA2 (21 Nov 2026): the reply speaks of an earlier card's draft (Form Monitoring, deleting it, keeping it unused). */
+const SPEAKS_OF_EARLIER_DRAFT = /\bForm Monitoring\b|\bdelet(?:e|ed|ing)\b|\bleft unused\b/i;
 
 export { LOOP_FAILED_REPLY, STEP_LIMIT_REPLY };
 
@@ -758,6 +760,8 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
    */
   /* QA's f074: this turn's propose_form calls that made no card, by reason code (the reply's honesty check reads it). */
   const proposeNoCard: string[] = [];
+  /* The form a card this turn was switched from when that form was never created (propose_form's form_changed fact). */
+  let switchedFromNotCreated: string | null = null;
   const refusalCounts = new Map<string, number>();
   const refusalSteps = new Map<string, Set<number>>();
   const stoppedTools = new Map<string, { reason_code: string; ask_exactly?: string }>();
@@ -812,6 +816,10 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
        * A refusal: a reason_code with an error, or with a question to ask (find_staff's use-<name> offer has no error).
        * Keyed on (reason_code, the person) when it names one (not_on_roster), else on (tool, reason_code).
        */
+      if (name === "propose_form") {
+        const changed = (result as { facts?: { form_changed?: { from?: unknown; earlier_created?: unknown } } }).facts?.form_changed;
+        if ((result as { card?: unknown }).card) switchedFromNotCreated = changed && changed.earlier_created === false ? String(changed.from ?? "earlier") : null;
+      }
       if (name === "propose_form" && !(result as { card?: unknown }).card) proposeNoCard.push(typeof (result as { reason_code?: unknown }).reason_code === "string" ? String((result as { reason_code: string }).reason_code) : "no_card");
       const refusal = result as { reason_code?: unknown; error?: unknown; ask_exactly?: unknown; not_on_roster?: unknown };
       if (typeof refusal.reason_code === "string" && (typeof refusal.error === "string" || typeof refusal.ask_exactly === "string")) {
@@ -943,7 +951,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   let draftReview: { claimed: boolean; fixed: boolean } | null = null;
   let levelReview: { claimed: string | null; nothing_changed: boolean; saved: string | null; fixed: boolean } | null = null;
   /* QA's f074: a reply that claimed a form with no card, or promised later work, and whether the hand-back fixed it. */
-  let honestyReview: { claimed_made: boolean; promised: boolean; fixed: boolean } | null = null;
+  let honestyReview: { claimed_made: boolean; promised: boolean; earlier_draft?: boolean; fixed: boolean } | null = null;
   let streamError: unknown = null;
   try {
     /*
@@ -1254,17 +1262,26 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
         const noCard = !effects.proposal && proposeNoCard.length > 0;
         const claimsMade = (reply: string) => noCard && CLAIMS_A_FORM_MADE.test(reply);
         const promises = (reply: string) => PROMISES_LATER_WORK.test(reply);
-        if (claimsMade(text) || promises(text)) {
+        /*
+         * QA2 (21 Nov 2026, #1172's live test): a card switched from one that was never created, and the reply said the
+         * earlier card "is left unused unless you'd like it deleted from Form Monitoring". No draft of it exists.
+         */
+        const earlierDraft = (reply: string) => Boolean(effects.proposal && switchedFromNotCreated) && SPEAKS_OF_EARLIER_DRAFT.test(reply);
+        if (claimsMade(text) || promises(text) || earlierDraft(text)) {
           const note = [
             ...(claimsMade(text) ? [`[app check] Your reply says a form was made, but propose_form made no card this turn (${proposeNoCard.join(", ")}). Nothing is on the manager's screen for it. Fix what propose_form said and propose again, or say plainly the card was not made and what is needed.`] : []),
+            ...(earlierDraft(text) ? [`[app check] Your reply speaks of the earlier ${switchedFromNotCreated} card being kept, deleted or in Form Monitoring, but it was never created (form_changed: earlier_created false): there is no draft of it and nothing in Form Monitoring. Say nothing about it, or at most "The ${switchedFromNotCreated} card was not created."`] : []),
             ...(promises(text) ? ["[app check] Your reply promises later work (a follow-up, a resend) or blames an issue on your end. You cannot send anything after this reply, and a refusal is never a lookup problem, an issue on your end, or a reason to ask the manager to try again: act on what the tool said now, or say in one line what you need from them."] : []),
             "Then write your reply to the manager again.",
           ].join("\n");
           const again = await handBack(note);
           if (again) text = again;
-          honestyReview = { claimed_made: claimsMade(text), promised: promises(text), fixed: !claimsMade(text) && !promises(text) };
+          honestyReview = { claimed_made: claimsMade(text), promised: promises(text), ...(switchedFromNotCreated ? { earlier_draft: earlierDraft(text) } : {}), fixed: !claimsMade(text) && !promises(text) && !earlierDraft(text) };
           if (claimsMade(text)) text = "That card wasn't made, so nothing new is on your screen for it. Tell me the policy, form or person it should have, and I'll make it.";
-          else if (promises(text)) text = text.split(/(?<=[.!?])\s+/).filter((sentence) => !PROMISES_LATER_WORK.test(sentence)).join(" ").trim();
+          else {
+            if (promises(text)) text = text.split(/(?<=[.!?])\s+/).filter((sentence) => !PROMISES_LATER_WORK.test(sentence)).join(" ").trim();
+            if (earlierDraft(text)) text = text.split(/(?<=[.!?])\s+/).filter((sentence) => !SPEAKS_OF_EARLIER_DRAFT.test(sentence)).join(" ").trim();
+          }
         }
       }
     });
