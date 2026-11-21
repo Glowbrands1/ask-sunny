@@ -26,6 +26,14 @@ const PAIRS_KEPT = 0.5;
  * nobody was at the desk" already holds "a customer said they won't come back because nobody was at the desk").
  */
 const ONE_SENTENCE_KEPT = 0.6;
+/**
+ * …or (QA2's Sunny live R3, 21 Nov 2026) it lists two or more dates, each stated in a written sentence that shares one of
+ * its other words, and at most this many of its other words are nowhere in the write-up. "<First> was late on the last
+ * two shifts, 11/17 and 11/18" is held by "<First> was late to work on November 17, 2026. <First> was late to work on
+ * November 18, 2026."; a reason the drafter left out ("because his car broke down") is more words than this, and added.
+ */
+const DATE_LIST_UNHELD = 2;
+const MONTH_DAY = /^\d{1,2}\/\d{1,2}$/;
 /** Words this far apart (or nearer) in one sentence make a pair. */
 const PAIR_WINDOW = 3;
 const NEXT_HEADING = /^\s*(?:expectations?|going forward|action plan)\s*:/im;
@@ -97,12 +105,19 @@ export function missingAccountFacts(writeUp: string, account: string, employeeNa
   const keptWords = new Set(contentWords(writeUp, skip));
   const keptPairs = new Set(sentencesOf(writeUp).flatMap((sentence) => pairsOf(contentWords(sentence, skip))));
   const writtenSentences = sentencesOf(writeUp).map((sentence) => new Set(contentWords(sentence, skip)));
+  const datesStatedOneByOne = (words: readonly string[]) => {
+    const dates = [...new Set(words.filter((word) => MONTH_DAY.test(word)))];
+    const others = words.filter((word) => !MONTH_DAY.test(word));
+    if (dates.length < 2 || others.length === 0) return false;
+    return dates.every((date) => writtenSentences.some((written) => written.has(date) && others.some((word) => written.has(word)))) && others.filter((word) => !keptWords.has(word)).length <= DATE_LIST_UNHELD;
+  };
   const holds = (text: string) => {
     const words = contentWords(text, skip);
     return (
       share(words, keptWords) >= WORDS_KEPT ||
       share(pairsOf(words), keptPairs) >= PAIRS_KEPT ||
-      writtenSentences.some((written) => share(words, written) >= ONE_SENTENCE_KEPT)
+      writtenSentences.some((written) => share(words, written) >= ONE_SENTENCE_KEPT) ||
+      datesStatedOneByOne(words)
     );
   };
   const first = (employeeName ?? "").trim().split(/\s+/)[0] || null;
