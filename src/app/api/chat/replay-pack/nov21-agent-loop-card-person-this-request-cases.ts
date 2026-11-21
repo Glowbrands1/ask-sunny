@@ -15,8 +15,8 @@ import { evidenceFrom, lastResult, loopStandIn, type LoopDecision, type LoopView
  * chat's last card, after the last turn that named a different roster person, or after a who-is-this-for question.
  * Invented people from the pack's roster: Remy Calder, Juno Paxton.
  *
- * The flag is off in production (`production-flags.json`), so the wrong-person cases are `open` there and pass with the
- * flag on; the f059 story-then-ask flow and the plain cases hold either way.
+ * The flag is on in production since 21 Nov 2026 (Pau via QA2; `production-flags.json`), so every case is `fixed`; the
+ * f059 story-then-ask flow and the plain cases hold either way.
  */
 
 const FLAG = "AGENT_LOOP_ENABLED";
@@ -45,7 +45,8 @@ const open = (id: string, title: string, run: (t: ReplayContext) => Promise<void
   id,
   title,
   report: REPORT,
-  status: { open: "the card is made for a person the manager did not name in this request" },
+  /* Changed on purpose (QA2, 21 Nov 2026): Pau approved CARD_PERSON_THIS_REQUEST_ENABLED on in Sunny production (13:31Z), so these cases hold with production's flags. */
+  status: "fixed",
   fixFlags: [FLAG, NEW_FLAG],
   async run(t) {
     if (!t.loopOn?.() || !offline) return;
