@@ -35,7 +35,14 @@ const MONTHS = ["january", "february", "march", "april", "may", "june", "july", 
 function sameDates(text: string): string {
   return text
     .replace(new RegExp(`\\b(${MONTHS.map((month) => `${month.slice(0, 3)}(?:${month.slice(3)})?\\.?`).join("|")})\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+\\d{4})?\\b`, "gi"), (_match, month: string, day: string) => `${MONTHS.findIndex((name) => name.startsWith(month.toLowerCase().slice(0, 3))) + 1}/${Number(day)}`)
-    .replace(/\b(\d{1,2})\/(\d{1,2})\/\d{2,4}\b/g, (_match, month: string, day: string) => `${Number(month)}/${Number(day)}`);
+    .replace(/\b(\d{1,2})\/(\d{1,2})\/\d{2,4}\b/g, (_match, month: string, day: string) => `${Number(month)}/${Number(day)}`)
+    /*
+     * Port from the sibling app (its QA's live re-test of the loop, 21 Nov 2026, A2–A5): the manager's dashed "10-20-26"
+     * is the drafter's "October 20, 2026" too. Unread, every sentence holding one looked missing and was added again in
+     * the manager's words ("… on October 20, 2026. … on 10-20-26."), and a clause that is only a date was tacked on alone
+     * ("On 10-20-26."). With its year only: a bare "10-12" is more often a range ("10-12 hours").
+     */
+    .replace(/(?<![\d/-])(\d{1,2})-(\d{1,2})-(?:\d{4}|\d{2})(?![\d-])/g, (_match, month: string, day: string) => `${Number(month)}/${Number(day)}`);
 }
 
 /** Content words: numbers and times as typed, and 4+ letter words cut to 5 letters ("customers" → "custo"). */

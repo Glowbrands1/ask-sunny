@@ -91,3 +91,31 @@ describe("account facts kept: a whole clause is never turned into a phrase", () 
     ]);
   });
 });
+
+/*
+ * Port from the sibling app (its QA's live re-test of the loop, 21 Nov 2026, A2–A5; Remy Calder is the pack's invented
+ * person): every saved CA's Observation stated the offense twice, "<P> did not attend the monthly meeting on October 20,
+ * 2026. <P> did not attend the monthly meeting on 10-20-26.", and A3 also tacked on "...by the 10-15-26 deadline. On
+ * 10-20-26." The manager's dashed dates were not read as the dates the drafter wrote out, so each sentence holding one
+ * looked missing.
+ */
+describe("account facts kept: a dashed date is the same date written out (sibling's QA live re-test, A2–A5)", () => {
+  it("\"create verbal ca for <name> for not attending the monthly meeting on 10-20-26\": the reworded sentence holds it, nothing is added", () => {
+    const drafted = "Observed:\nRemy did not attend the monthly meeting on October 20, 2026.\n\nExpectation:\nRemy is expected to attend every monthly meeting.";
+    const { text, added } = withAccountFactsKept(drafted, "Remy did not attend the monthly meeting on 10-20-26.", "Remy Calder");
+    expect(added).toEqual([]);
+    expect(text).toBe(drafted);
+  });
+
+  it("A3: the drafter wrote both dates out; no \"This was due by the 10-15-26 deadline.\" and no dangling \"On 10-20-26.\" is tacked on", () => {
+    const account = "On 10-20-26, Remy had still not completed the tanning safety training, which was due by the 10-15-26 deadline.";
+    const drafted = "Observed:\nAs of October 20, 2026, Remy had still not completed the tanning safety training, which was due by the October 15, 2026 deadline.";
+    expect(missingAccountFacts(drafted, account, "Remy Calder")).toEqual([]);
+  });
+
+  it("control: a fact the drafter really dropped is still added, dashed date and all", () => {
+    expect(missingAccountFacts("Observed:\nRemy did not attend the monthly meeting on October 20, 2026.", "Remy did not attend the monthly meeting on 10-20-26. She also missed the 10-27-26 meeting.", "Remy Calder")).toEqual([
+      "Remy also missed the 10-27-26 meeting.",
+    ]);
+  });
+});
