@@ -58,6 +58,9 @@ import { authorizeLocation } from "@/lib/forms/location-scope";
 import { TERMINATION_OPTION, statesTermination } from "@/lib/forms/termination-stated";
 import { saysTerminationWord } from "@/lib/forms/termination-word";
 import { EXIT_DETAIL_FIELDS, EXIT_OPTION, EXIT_TEMPLATE_KEY, EXIT_TYPE_GROUP } from "@/lib/forms/exit-library";
+
+/** The resignation types a loop exit card may carry (never the involuntary box). */
+const LOOP_EXIT_HOW = new Set<string>([EXIT_OPTION.immediateVoluntary, EXIT_OPTION.noticeNotFulfilled, EXIT_OPTION.noCallNoShow]);
 /** The exit form's Additional Details line (`exit-library.ts`). */
 const EXIT_ADDITIONAL_DETAILS_KEY = "details";
 /** QA item 17: the exit form's own payroll question (`exit-library.ts`, EXIT_YES_NO_QUESTIONS). */
@@ -194,6 +197,9 @@ export async function POST(request: Request) {
       fromAgentLoop?: unknown;
       /** QA item 17: the loop termination's account (the exit form's reason line). */
       loopAccount?: unknown;
+      /** The loop's exit card: how the person left (a resignation_type option) and the manager's words for it. */
+      exitHow?: unknown;
+      exitHowQuote?: unknown;
       /** The chat the proposal came from, for `checkProposalIsCurrent`. Ask Sunny only. */
       conversation?: unknown;
       /** Optional stable id for this chat. The first message id is used when this is absent. */
@@ -441,6 +447,17 @@ export async function POST(request: Request) {
            * in it) is the form's Additional Details, as their statement (the draft never replaces it).
            */
           exitStated.values[EXIT_ADDITIONAL_DETAILS_KEY] = account;
+        }
+        /*
+         * A real manager's exit form (20 Nov 2026): "immideate volunatary termination" ticked no type. The loop card's
+         * exit_how (never the involuntary box) is ticked as the manager's statement only when its quoted words are in this
+         * chat's own manager turns, checked here, server-side.
+         */
+        if (card.templateKey === EXIT_TEMPLATE_KEY && card.warningLevel !== "termination" && exitStated.checked[EXIT_TYPE_GROUP] === undefined) {
+          const how = typeof card.exitHow === "string" && LOOP_EXIT_HOW.has(card.exitHow) ? card.exitHow : null;
+          const flat = (text: string) => text.toLowerCase().replace(/[*_"“”]/g, "").replace(/\s+/g, " ").trim();
+          const quote = typeof card.exitHowQuote === "string" ? flat(card.exitHowQuote) : "";
+          if (how && quote !== "" && flat(userTurns).includes(quote)) exitStated.checked[EXIT_TYPE_GROUP] = [how];
         }
         if (Object.keys(exitStated.checked).length > 0 || Object.keys(exitStated.values).length > 0) {
           await applyStatedFacts(instanceId, exitStated, actor.id, new Set([EXIT_PAYROLL_KEY, EXIT_TYPE_GROUP, EXIT_DETAIL_FIELDS.resignationReason, EXIT_ADDITIONAL_DETAILS_KEY]));

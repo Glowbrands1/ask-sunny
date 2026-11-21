@@ -2447,7 +2447,7 @@ async function personNotNamed(context: ToolContext, template: { key: string; nam
  * none, the card asks how the person left (exit_unset resignation_type), never saying "Filed as" what will not be ticked;
  * and it asks a missing last day worked, as before. Never a date or a reason the manager did not give.
  */
-async function exitCardTicks(isExit: boolean, termination: boolean, requestWords: string, today: string): Promise<{ exit_ticks?: string[]; exit_unset?: string[] }> {
+async function exitCardTicks(isExit: boolean, termination: boolean, requestWords: string, today: string, exitHow: string | null = null): Promise<{ exit_ticks?: string[]; exit_unset?: string[] }> {
   if (!isExit) return {};
   const [{ readExitFacts, exitFactValues }, library] = await Promise.all([import("@/lib/forms/exit-facts"), import("@/lib/forms/exit-library")]);
   const facts = readExitFacts(requestWords, today);
@@ -2459,7 +2459,9 @@ async function exitCardTicks(isExit: boolean, termination: boolean, requestWords
     [library.EXIT_OPTION.noCallNoShow]: "No Call No Show",
   };
   const checked = exitFactValues(facts).checked;
-  const keys = termination ? [library.EXIT_OPTION.immediateInvoluntary] : [...(checked[library.EXIT_NOTICE_GROUP] ?? []), ...(checked[library.EXIT_TYPE_GROUP] ?? [])];
+  /* A real manager's exit form (20 Nov 2026): the card's exit_how (the model's reading, kept on her words) when the reader ticked no type. */
+  const typeTicks = checked[library.EXIT_TYPE_GROUP] ?? [];
+  const keys = termination ? [library.EXIT_OPTION.immediateInvoluntary] : [...(checked[library.EXIT_NOTICE_GROUP] ?? []), ...(typeTicks.length === 0 && exitHow ? [exitHow] : typeTicks)];
   const ticks = keys.map((key) => labels[key] ?? key);
   const unset = [...(!termination && !facts.lastDayWorked ? ["last_day_worked"] : []), ...(ticks.length === 0 ? ["resignation_type"] : [])];
   return { ...(ticks.length > 0 ? { exit_ticks: ticks } : {}), ...(unset.length > 0 ? { exit_unset: unset } : {}) };
@@ -2879,6 +2881,8 @@ export async function proposeForm(
     incident_date?: unknown;
     warning_level?: unknown;
     exit_type?: unknown;
+    exit_how?: unknown;
+    exit_how_evidence?: unknown;
     effective_date?: unknown;
     payroll_deduct?: unknown;
     payroll_amount?: unknown;
@@ -3953,6 +3957,17 @@ export async function proposeForm(
         return { date: effective ?? lastDay ?? today, dated_today: !effective && !lastDay };
       })()
     : null;
+  /*
+   * A real manager's exit form (20 Nov 2026): "Make me an exit form for immideate volunatary termination for <P>" ticked no
+   * resignation type (the exit form's reader does not read the misspelling). The MODEL reads how the person left (exit_how)
+   * and quotes the manager's words (exit_how_evidence); kept only on that evidence, from this request, on a resignation
+   * (never the involuntary box, which only a locked termination ticks). A record, never a word list over her messages.
+   */
+  const EXIT_HOW = new Set(["immediate_voluntary_resignation", "notice_not_fulfilled", "no_call_no_show"]);
+  const exitHowQuote = typeof (input.exit_how_evidence as { quote?: unknown } | null | undefined)?.quote === "string" ? String((input.exit_how_evidence as { quote: string }).quote).trim() : "";
+  const exitHow = template.key === appConfig().formKeys.exit && !exitTermination && typeof input.exit_how === "string" && EXIT_HOW.has(input.exit_how) && exitHowQuote !== "" && answerEvidence(context, input.exit_how_evidence, "request", evidencePerson, { requestTurnIds }).ok
+    ? { option: input.exit_how, quote: exitHowQuote.slice(0, 300) }
+    : null;
   let salonFromWoven: string | null = null;
   if (!typedSalon && employee.id && proposal.status === "needs_location") {
     const primary = await rosterPrimarySalon(context.actor.scope, employee.id);
@@ -4018,6 +4033,7 @@ export async function proposeForm(
     ...(whatHappened ? { issue: whatHappened } : {}),
     ...(payroll ? { payrollDeduct: payroll } : {}),
     ...(payroll === "yes" && amount ? { payrollDeductAmount: amount } : {}),
+    ...(exitHow ? { exitHow: exitHow.option, exitHowQuote: exitHow.quote } : {}),
     ...(priorActions ? { priorActions } : {}),
     ...(coachingTopic ? { coachingTopic } : {}),
     ...(planSteps.length > 0 ? { planSteps } : {}),
@@ -4309,7 +4325,7 @@ export async function proposeForm(
      * QA item 17 (20 Nov 2026): the exit form's required last day worked, asked on the card when the manager has not said
      * it, as the Corrective Action asks its level (the rules book's exit_unset line). A termination's effective date is it.
      */
-    ...(await exitCardTicks(template.key === appConfig().formKeys.exit, Boolean(exitTermination), requestWords, today)),
+    ...(await exitCardTicks(template.key === appConfig().formKeys.exit, Boolean(exitTermination), requestWords, today, exitHow?.option ?? null)),
     ...(exitTermination ? { exit_termination: { form_label: "Immediate involuntary separation", effective: exitTermination.date, ...(exitTermination.dated_today ? { dated_today: true } : {}) } } : {}),
     ...(jobTitleTyped ? { job_title_from_your_words: card.employeeRole } : {}),
     ...(whichSalon ? { which_salon: true } : {}),
