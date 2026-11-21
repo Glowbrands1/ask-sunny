@@ -218,7 +218,17 @@ export function withoutPersonPronouns(
     const again = mentionedBefore(at);
     // Only after a place or time preposition ("into her scheduled shift"): "Remy said her car broke down" keeps the owner.
     const afterPreposition = /\b(?:into|for|to|on|at|during|from|before|after|in)[ \t]+$/i.test(reply.slice(Math.max(0, at - 10), at));
-    if (again && owns && word !== "hers" && afterPreposition) {
+    /*
+     * QA2's live R3 (21 Nov 2026): "Test came into the salon to show her team her new puppy" was replied as "to show Test's
+     * team Test's new puppy", while the saved write-up read "to show the team the new puppy". Outside reported speech
+     * (no reporting verb in the clause before it), a possessive of the person already named in the sentence is "the", as
+     * the saved write-up writes it (`nameInsteadOfPronouns`). "Remy said her car broke down" keeps its owner, as before.
+     */
+    const clauseBefore = sentenceBefore(reply, at).split(/[,;:]/).at(-1) ?? "";
+    const notReported = !REPORTING.test(clauseBefore.toLowerCase());
+    /* Only an object ("show her team", "team her new puppy"): never one opening a clause ("and her shift …") or after "with"/"of". */
+    const opensClause = clauseBefore.trim() === "" || /\b(?:and|but|or|so|then|with|of)[ \t]+$/i.test(clauseBefore);
+    if (again && owns && word !== "hers" && (afterPreposition || (notReported && !opensClause))) {
       edits.push({ from: at, to: end, text: match[0][0] === match[0][0]!.toUpperCase() ? "The" : "the" });
       continue;
     }
