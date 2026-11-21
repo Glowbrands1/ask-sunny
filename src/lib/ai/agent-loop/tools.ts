@@ -1343,6 +1343,25 @@ const PERIOD_LIST_LIMIT = 100;
 const PERIOD_READ_LIMIT = 1000;
 
 /*
+ * QA2, 21 Nov 2026 ("list ca for the month": "100 of 121 shown" over 102 rows): the 100-row cut fell inside 11/03 (37 of
+ * its 39 listed) and the model wrote that day from counts.by_date, all 39. The list now stops at the end of the last
+ * whole day that fits, so "N shown" is always the rows listed; the days after it are given as counts only. A single day
+ * larger than the cap is still cut at the cap (nothing else could be listed).
+ */
+function wholeDays<T extends { formDate: string | null }>(sorted: readonly T[], limit: number): T[] {
+  if (sorted.length <= limit) return [...sorted];
+  const cutDay = sorted[limit].formDate;
+  let end = limit;
+  while (end > 0 && sorted[end - 1].formDate === cutDay) end -= 1;
+  return sorted.slice(0, end > 0 ? end : limit);
+}
+function notListedDays(rest: readonly { formDate: string | null }[]): { date: string | null; count: number }[] {
+  const days = new Map<string | null, number>();
+  for (const row of rest) days.set(row.formDate, (days.get(row.formDate) ?? 0) + 1);
+  return [...days].map(([date, count]) => ({ date, count }));
+}
+
+/*
  * QA's f081 (20 Nov 2026, from production's data: every archived form with a real name is finalized; archived drafts are
  * test drafts): a finalized form counts and is listed whether or not it is archived (marked archived), as "who got a CA"
  * asks what was filed; an archived DRAFT is left out unless the manager asks for archived forms (include_archived).
@@ -1377,7 +1396,9 @@ async function findFormsInPeriod(context: ToolContext, input: { form?: unknown; 
     /* QA's code audit (item 28): a Coaching kind never keeps a Follow-Up Coaching Form (`ofKind`). */
     const visible = ofKind(visibleInstances(actor, read), kind).filter(onFileKept(input));
     /* f081: listed by form date (newest first), then employee; counted over every visible row, never only the listed ones. */
-    const rows = [...visible].sort((a, b) => (b.formDate ?? "").localeCompare(a.formDate ?? "") || a.employeeName.localeCompare(b.employeeName)).slice(0, PERIOD_LIST_LIMIT);
+    const sorted = [...visible].sort((a, b) => (b.formDate ?? "").localeCompare(a.formDate ?? "") || a.employeeName.localeCompare(b.employeeName));
+    const rows = wholeDays(sorted, PERIOD_LIST_LIMIT);
+    const notListed = notListedDays(sorted.slice(rows.length));
     /*
      * QA's code audit (item 29): complete only when the DATABASE returned fewer rows than it was asked for. Counting the
      * rows left after the visibility filter called a cut-off list complete (100 read, 60 visible, "every such form").
@@ -1399,8 +1420,8 @@ async function findFormsInPeriod(context: ToolContext, input: { form?: unknown; 
       complete,
       counts,
       archived: input.include_archived === true ? "every archived form included, each marked archived" : ARCHIVED_NOTE,
-      ...(visible.length > rows.length ? { listed: rows.length, of: visible.length } : {}),
-      note: `${complete ? "Every such form this manager can see, read by form date: never say the list is capped or that some may be missing." : `More than ${PERIOD_READ_LIMIT} forms match: the counts are of the first ${PERIOD_READ_LIMIT} read. Say so, and that Form Monitoring has the full list.`} Numbers come only from counts (total, by_person, by_form, by_date): copy them, never count or add rows yourself, and never put one person's forms under another's name.${visible.length > rows.length ? ` ${rows.length} of ${visible.length} forms are listed; say how many are not shown.` : ""} A draft is not on file.`,
+      ...(visible.length > rows.length ? { listed: rows.length, of: visible.length, not_listed_days: notListed } : {}),
+      note: `${complete ? "Every such form this manager can see, read by form date: never say the list is capped or that some may be missing." : `More than ${PERIOD_READ_LIMIT} forms match: the counts are of the first ${PERIOD_READ_LIMIT} read. Say so, and that Form Monitoring has the full list.`} Numbers come only from counts (total, by_person, by_form, by_date): copy them, never count or add rows yourself, and never put one person's forms under another's name.${visible.length > rows.length ? ` ${rows.length} of ${visible.length} forms are listed; say how many are not shown. The list stops at the end of a day: the days in not_listed_days are given as counts only, so never write rows for them, and the number you say is shown is ${rows.length}.` : ""} A draft is not on file.`,
     };
   } catch {
     return { reason_code: "read_failed", error: "Form Monitoring could not be read just now. Say so; do not say there are no forms." };
