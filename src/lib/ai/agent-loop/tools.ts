@@ -3100,7 +3100,28 @@ export async function proposeForm(
     const shownIsOther = Boolean(shown && (shown.employeeKey && employee.id ? shown.employeeKey !== personKey(employee.id) : shown.nameKey ? shown.nameKey !== personKey(employee.name) : false));
     const draft = context.openFormId ? await authorizeInstance(context.request, context.openFormId, "view").then(({ loaded }) => loaded.instance).catch(() => null) : null;
     const draftIsOther = Boolean(draft && draft.status === "draft" && draft.employeeName && !samePerson(draft.employeeName, employee.name));
-    if (shownIsOther || draftIsOther) {
+    /*
+     * QA2 (21 Nov 2026, #1199; belt-and-braces beside the live model's new_form_evidence): "the same for juno paxton, she
+     * was late on 11/10/26" is <B>'s own request. By the records: this message names this card's person (the roster), names
+     * NOT the open card's or draft's person, and states its own date. A person named inside an account about the open
+     * card's person ("Salon Director, <B>, messaged <A> …") names <A> too, so it is still refused.
+     */
+    const ownRequest = (() => {
+      const said = withoutMessageIdTags(context.question);
+      const rosterRows = read.kind === "read" ? read.roster : [];
+      const rosterNames = rosterRows.map((row) => displayName(row));
+      if (!mentionsPerson(said, employee.name, rosterNames)) return false;
+      /* The open card's or draft's person by any of their names, the first name alone included ("messaged Remy asking …"). */
+      const namedBy = (names: readonly (string | null | undefined)[]) => names.some((name) => {
+        const own = (name ?? "").trim();
+        return own !== "" && new RegExp(`(?<![\\p{L}'-])${own.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+")}(?![\\p{L}-])`, "iu").test(said);
+      });
+      const shownRow = rosterRows.find((row) => (shown?.employeeKey ? shown.employeeKey === personKey(row.id ?? "") : shown?.nameKey ? shown.nameKey === personKey(displayName(row)) : false));
+      const namesShown = Boolean(shownRow && namedBy([displayName(shownRow), ...fullNamesOf(shownRow), shownRow.firstName, shownRow.preferredFirstName]));
+      const namesDraft = Boolean(draftIsOther && draft?.employeeName && namedBy([draft.employeeName, draft.employeeName.split(/\s+/)[0]]));
+      return !namesShown && !namesDraft && readDates(said).length > 0;
+    })();
+    if ((shownIsOther || draftIsOther) && !ownRequest) {
       return {
         reason_code: "person_change_not_asked", error: `A card or draft for another person is open, and the manager did not ask for another form or say the form is for ${employee.name}. A person named inside an account (who told, who messaged, who reported) is not the form's person. Keep the open card or draft for its person and put what the manager said on it with edit_form; make a card for ${employee.name} only if the manager asks for another form for them (new_form_evidence).`,
       };
