@@ -189,11 +189,23 @@ export function formsOnFileAsked(context: Pick<ToolContext, "question" | "histor
  * names someone names this person ("has she had a ca before?"); or, only when the cited turn names nobody, the person
  * is the one on the form open on screen or on the card the last reply showed (QA's re-review, fix 1). "write a new form for Remy Calder" never opens Juno Paxton's forms.
  */
+/**
+ * QA's 266-chat shadow re-run, S1 (22 Nov 2026): "open <First>s ca", a possessive typed with no apostrophe, was read as
+ * a name of its own ("<First>s"), so the person guard kept <First>'s forms closed as someone else's, turn after turn. A
+ * word that is a roster person's first, preferred or last name followed by a bare "s", and is not itself a roster name,
+ * is that name's possessive ("<First>'s"). Read from the roster's own names, never a word list.
+ */
+export function withRosterPossessives(text: string, roster: readonly Pick<RosterEmployee, "firstName" | "lastName" | "preferredFirstName">[]): string {
+  const names = new Set(roster.flatMap((row) => [row.firstName, row.preferredFirstName ?? "", row.lastName]).map((name) => name.trim().toLowerCase()).filter((name) => /^[\p{L}'-]+$/u.test(name)));
+  return text.replace(/(?<![\p{L}'-])([\p{L}'-]+?)s(?![\p{L}'-])/gu, (word, stem: string) => (names.has(stem.toLowerCase()) && !names.has(word.toLowerCase()) ? `${stem}'s` : word));
+}
+
 async function formsOnFileAskedFor(context: ToolContext, evidence: unknown, person: string): Promise<{ ok: true } | { ok: false; reason: string; reasonCode: string }> {
-  const asked = formsOnFileAsked(context, evidence);
-  if (!asked.ok) return { ok: false, reason: asked.reason, reasonCode: "privacy_not_asked" };
+  const checked = formsOnFileAsked(context, evidence);
+  if (!checked.ok) return { ok: false, reason: checked.reason, reasonCode: "privacy_not_asked" };
   const read = await rosterFor(context.actor.scope);
   const roster = read.kind === "read" ? read.roster : [];
+  const asked = { ...checked, said: withRosterPossessives(checked.said, roster), before: checked.before.map((turn) => withRosterPossessives(turn, roster)) };
   const rosterNames = [...new Set(roster.flatMap((row) => [displayName(row), ...fullNamesOf(row)]))];
   const holders = roster.filter((row) => fullNamesOf(row).some((full) => samePerson(full, person)));
   const names = [person, ...(holders.length === 1 ? fullNamesOf(holders[0]!) : [])];
