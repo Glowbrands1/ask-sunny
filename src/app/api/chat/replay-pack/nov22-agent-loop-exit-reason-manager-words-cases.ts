@@ -90,4 +90,36 @@ export const NOV22_AGENT_LOOP_EXIT_REASON_MANAGER_WORDS_CASES: ReplayCase[] = [
       expect(reply.content.match(/Filed as/g) ?? [], reply.content).toHaveLength(1);
     },
   },
+  {
+    id: "nov22-l6-exit-termination-details-are-card-account",
+    title: `L6: "${SAID}": Additional Details are the card's account (the manager's words), never the drafter's "The departure was recorded effective …"`,
+    report: "QA's live L6 on prod 14fed8c (22 Nov 2026): Additional Details held only \"The departure was recorded effective 2026-11-21.\"",
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-22T18:00:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", KEARNEY);
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        if (lastResult(view, "propose_form")) return { text: "Here's the Resignation/Exit Form for **Rowan Kestrel**." };
+        return {
+          tool: "propose_form",
+          input: {
+            template_key: "stc-exit", employee_id: "e-4", exit_type: "termination",
+            exit_evidence: { ...evidenceFrom(view, "exit form for Rowan Kestrel"), kind: "asks_for_exit_form" },
+            what_happened: "terminated for job abandonment",
+          },
+        };
+      }));
+      t.draftWrites({ details: "The departure was recorded effective 2026-11-22." });
+      const thread = t.thread();
+      await thread.say(SAID);
+      const issue = String((thread.proposal as { issue?: string } | undefined)?.issue ?? "").trim();
+      const id = await thread.create();
+      const values = t.values(id);
+      expect(values.details ?? "", JSON.stringify(values)).not.toMatch(/departure was recorded/i);
+      expect(values.details ?? "", JSON.stringify(values)).toBe(issue);
+    },
+  },
 ];
