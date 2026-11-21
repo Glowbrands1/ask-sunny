@@ -218,6 +218,9 @@ import { attendanceActionPlan, isAttendancePlan, missedMeetingNotLateness } from
 import { absenceWriteUp } from "@/lib/forms/absence-write-up";
 import { withPayrollSentence } from "@/lib/forms/plan-payroll-sentence";
 import { managerTypedActionPlan } from "@/lib/forms/manager-action-plan";
+import { withoutUnsaidPlace } from "@/lib/forms/unsaid-place";
+import { appConfig } from "@/lib/ai/agent-loop/app-config";
+import { accountPassage } from "@/lib/forms/account-passage";
 import { loopCoachingWriteUp } from "@/lib/forms/loop-coaching-write-up";
 import { cardNotesPayrollAmount } from "@/lib/forms/card-payroll-amount";
 import {
@@ -2379,6 +2382,19 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       manual.ok ? manual.chunks : [],
     );
 
+    /*
+     * QA's live check (20 Nov 2026, item 16): on a loop card's Create, each cited section is quoted at the passage of its
+     * heading that fits the card's account, not the first thing under the heading. See `account-passage.ts`.
+     */
+    const cardAccount = body.cardFromLoop === true ? (/^What happened:\s*(.+)$/im.exec(notes)?.[1]?.trim() ?? "") : "";
+    const cardGroundedPolicies = <P extends { sectionTitle: string | null; policyText: string }>(policies: P[]): P[] =>
+      cardAccount === "" || !manual.ok
+        ? policies
+        : policies.map((policy) => {
+            const section = manualSections.find((entry) => entry.heading === policy.sectionTitle);
+            const passage = section ? accountPassage(manual.chunks, section, cardAccount, loaded.instance.employeeName) : null;
+            return passage ? { ...policy, policyText: passage } : policy;
+          });
     const derivedPolicy = applyDerivedPolicyFields({
       document,
       variantKey,
@@ -2403,7 +2419,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       manualReference:
         manual.ok && manualSections.length > 0
           ? policyFieldValue(
-              withConductLineWording(manualGroundedPolicies(manual, manualSections), `${body.topic ?? ""} ${notes}`, manual.chunks),
+              withConductLineWording(cardGroundedPolicies(manualGroundedPolicies(manual, manualSections)), `${body.topic ?? ""} ${notes}`, manual.chunks),
             )
           : null,
       manualAmbiguous: !manual.ok && manual.problem === "ambiguous",
@@ -2472,7 +2488,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
                 sections: manualSections,
               }),
               /* The structured citation the value was rendered from. */
-              citation: manualGroundedPolicies(manual, manualSections),
+              citation: cardGroundedPolicies(manualGroundedPolicies(manual, manualSections)),
             },
           }
         : {}),
@@ -2916,6 +2932,15 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       const { body: account, line: citation } = splitAppCitationLine(draftedPayload.values[sectionsKey]!);
       const laid = loopWriteUpSections(account, loaded.instance.employeeName);
       if (laid.changed) draftedPayload.values = { ...draftedPayload.values, [sectionsKey]: citation ? `${laid.text}\n\n${citation}` : laid.text };
+    }
+    /*
+     * QA's live check (20 Nov 2026, item 17): a loop card's saved write-up never adds "at the <salon>" the manager did
+     * not say. The manual's quoted policy fields are left as they are. See `unsaid-place.ts`.
+     */
+    if (body.cardFromLoop === true) {
+      const proseKeys = new Set(fields.filter((field) => !field.policyGrounded && !DERIVED_POLICY_FIELD_KEYS.has(field.key)).map((field) => field.key));
+      const placed = withoutUnsaidPlace(draftedPayload.values, proseKeys, notes, appConfig().locationWord);
+      if (placed.changed.length > 0) draftedPayload.values = placed.values;
     }
     const kept = draftMergeEnabled()
       ? retainFilledFields({
