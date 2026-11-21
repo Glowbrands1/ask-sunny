@@ -48,9 +48,8 @@ The fix:
 - A plain heading ("Attendance") ends where the manual's next heading starts, in its own chunk or the next.
 - So Late Opening is quoted only for a card that cites Late Opening.
 
-Ask Bubbles: if its loop port (#991, Coding-D) copied `account-passage.ts` from #1146, it needs the same change.
-That change is self-contained in that file: the `list` check and the `pick` split. This session cannot read the Ask
-Bubbles repository, so QA2 relays it to Coding-D.
+Ask Bubbles: Coding-D confirmed (via QA2, 21 Nov 2026) that Ask Bubbles has no `account-passage.ts`. #1146 was never
+ported, so its loop port #991 needs nothing now. #1146 and this fix are to be ported to Ask Bubbles together, later.
 
 ## A fit is a shared content word; a long list quotes its item (QA2's second #1146 case, 21 Nov 2026)
 
@@ -65,4 +64,4 @@ block "o Lack of sales performance o Indecent or immoral behavior …". It share
 - With no fit, the section's opening wording stands.
 
 The replay pack's `manualAlsoHas(rows, { inPlace: true })` lets a case read production's own layout of those sections.
-The same Bubbles relay applies: the whole change is in `account-passage.ts`.
+Ask Bubbles: as above, nothing to port now; it goes over with #1146 later.
