@@ -19,16 +19,30 @@
 
 /** A sentence or clause is kept when the write-up holds this share of its content words… */
 const WORDS_KEPT = 0.85;
-/** …or this share of its nearby word pairs. */
+/** …or this share of its nearby word pairs… */
 const PAIRS_KEPT = 0.5;
+/**
+ * …or one written sentence holds this share of its content words (QA, f083: "A customer stated they would not return because
+ * nobody was at the desk" already holds "a customer said they won't come back because nobody was at the desk").
+ */
+const ONE_SENTENCE_KEPT = 0.6;
 /** Words this far apart (or nearer) in one sentence make a pair. */
 const PAIR_WINDOW = 3;
 const NEXT_HEADING = /^\s*(?:expectations?|going forward|action plan)\s*:/im;
 
+const MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+/** "November 18, 2026", "Nov 18" and "11/18/2026" all read as "11/18", so a date written out is the same date. */
+function sameDates(text: string): string {
+  return text
+    .replace(new RegExp(`\\b(${MONTHS.map((month) => `${month.slice(0, 3)}(?:${month.slice(3)})?\\.?`).join("|")})\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+\\d{4})?\\b`, "gi"), (_match, month: string, day: string) => `${MONTHS.findIndex((name) => name.startsWith(month.toLowerCase().slice(0, 3))) + 1}/${Number(day)}`)
+    .replace(/\b(\d{1,2})\/(\d{1,2})\/\d{2,4}\b/g, (_match, month: string, day: string) => `${Number(month)}/${Number(day)}`);
+}
+
 /** Content words: numbers and times as typed, and 4+ letter words cut to 5 letters ("customers" → "custo"). */
 function contentWords(text: string, skip: ReadonlySet<string>): string[] {
-  const words = text.toLowerCase().match(/\d+(?:[:/.]\d+)*|[a-z][a-z'’-]{3,}/g) ?? [];
-  return words.map((word) => (/^\d/.test(word) ? word : word.replace(/['’].*$/, "").slice(0, 5))).filter((word) => word.length > 0 && !skip.has(word));
+  const words = sameDates(text).toLowerCase().match(/\d+(?:[:/.]\d+)*|[a-z][a-z'’-]{3,}/g) ?? [];
+  /* A contraction's stem under four letters ("won't" → "won") is no content word, like any short word. */
+  return words.map((word) => (/^\d/.test(word) ? word : word.replace(/['’].*$/, "").slice(0, 5))).filter((word) => (/^\d/.test(word) || word.length >= 4) && !skip.has(word));
 }
 
 function share(items: readonly string[], kept: ReadonlySet<string>): number {
@@ -47,8 +61,12 @@ function pairsOf(words: readonly string[]): string[] {
 }
 
 const sentencesOf = (text: string) => text.split(/(?<=[.!?])\s+(?=[A-Z0-9"“])/).map((sentence) => sentence.trim()).filter(Boolean);
-const asSentence = (clause: string) => {
-  const trimmed = clause.trim().replace(/[,;]+$/, "");
+/*
+ * QA (f083): a clause that opens with the manager's pronoun opens with the person's first name, in the form's voice
+ * ("She left early …" → "<First> left early …"). Only the clause's first word; the rest is the card's words.
+ */
+const asSentence = (clause: string, first: string | null = null) => {
+  const trimmed = clause.trim().replace(/[,;]+$/, "").replace(/^(?:she|he)\b/i, (pronoun) => first ?? pronoun);
   const capital = trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
   return /[.!?]$/.test(capital) ? capital : `${capital}.`;
 };
@@ -58,20 +76,30 @@ export function missingAccountFacts(writeUp: string, account: string, employeeNa
   const skip = new Set(contentWords(employeeName ?? "", new Set()));
   const keptWords = new Set(contentWords(writeUp, skip));
   const keptPairs = new Set(sentencesOf(writeUp).flatMap((sentence) => pairsOf(contentWords(sentence, skip))));
+  const writtenSentences = sentencesOf(writeUp).map((sentence) => new Set(contentWords(sentence, skip)));
   const holds = (text: string) => {
     const words = contentWords(text, skip);
-    return share(words, keptWords) >= WORDS_KEPT || share(pairsOf(words), keptPairs) >= PAIRS_KEPT;
+    return (
+      share(words, keptWords) >= WORDS_KEPT ||
+      share(pairsOf(words), keptPairs) >= PAIRS_KEPT ||
+      writtenSentences.some((written) => share(words, written) >= ONE_SENTENCE_KEPT)
+    );
   };
+  const first = (employeeName ?? "").trim().split(/\s+/)[0] || null;
   const missing: string[] = [];
   for (const sentence of sentencesOf(account)) {
     if (contentWords(sentence, skip).length < 3) continue;
     /* A sentence of several clauses is checked clause by clause: most of it kept does not keep its last fact. */
-    const clauses = sentence.split(/,\s+and\s+|;\s+/).filter((clause) => contentWords(clause, skip).length >= 3);
+    /*
+     * Clauses: at ", and" and ";", and (QA, f083) at a comma that starts a new clause ("…late on 11/18, this is the third
+     * time in two months"): only the missing clause is added, never the sentence around it again.
+     */
+    const clauses = sentence.split(/,\s+and\s+|;\s+|,\s+(?=(?:this|that|it|she|he|they|there|i|we)\b)/i).filter((clause) => contentWords(clause, skip).length >= 3);
     if (clauses.length < 2) {
-      if (!holds(sentence)) missing.push(asSentence(sentence));
+      if (!holds(sentence)) missing.push(asSentence(sentence, first));
       continue;
     }
-    for (const clause of clauses) if (!holds(clause)) missing.push(asSentence(clause));
+    for (const clause of clauses) if (!holds(clause)) missing.push(asSentence(clause, first));
   }
   return missing;
 }

@@ -97,6 +97,10 @@ import { rulesBookText } from "./rules-book";
  * her … she refused"): the not-a-request line says what it is in Sunny's own words with the person's first name, never
  * the manager's text typed back or a pronoun. It reads the same under every config; nothing else changed.
  *
+ * Re-taken on purpose on 20 Nov 2026 (QA: "show me forms for Tes" opened another person's draft): the find_past_forms
+ * close-spelling line now says did_you_mean (end with ask_exactly, open nothing) in place of close_spelling_of ("Opening
+ * **<on_file>**'s form."). It reads the same under every config; nothing else changed.
+ *
  * Re-taken on purpose on 20 Nov 2026 (Pau's live chat: a refused find_past_forms told as "a lookup issue on my end"): one
  * Replies line was added: a tool's refusal is never told to the manager as a lookup problem or "try again". It reads the
  * same under every config; nothing else changed.
@@ -104,6 +108,10 @@ import { rulesBookText } from "./rules-book";
  * Updated on purpose on 20 Nov 2026 (Pau's ruling via QA, c091): a Corrective Action may cite two headings when the
  * manager describes two offenses ("<heading>; <heading>", never more than two); the clock-out line no longer says "a card
  * cites one heading" (closing early is part of the same Attendance offense). No app, place, staff system or form key.
+ *
+ * Re-taken on purpose on 20 Nov 2026 (QA's f081: forms-on-file lists miscounted): one Replies line was added: a list of
+ * forms on file copies find_past_forms' counts, never adds rows itself, never puts one person's forms under another's name,
+ * and says "(archived)" beside an archived form (archived drafts only when asked). It reads the same under every config; nothing else changed.
  */
 
 const fixture = (name: string): string => readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), "utf8");
