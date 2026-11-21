@@ -13,6 +13,7 @@ import { isoDate, monthDayToIso, readDates, sameDate, withoutDates } from "./dat
 import { candidateNameWords, chatFormsActor, formDateRangeFromInput, formKindFromText, ofKind } from "@/lib/forms/chat-form-records";
 import { CURRENT_MESSAGE_ID, holdsPhrase, identifiedTurns, verifyEvidence, withoutMessageIdTags, type IdentifiedTurn } from "./evidence";
 import { personNamedInRequest, requestStart } from "./person-in-request";
+import { keptFormDate } from "./kept-form-date";
 import { answeredNameQuestions, answerNamesSomeoneElse, everKeptOrUsedTyped, isConfirmedSpelling, latestTurnAnswersFor, latestTurnConfirms, latestTurnKeepsOrUsesTyped, latestTurnKeepsTyped, spellingKeysConfirmedFor, spellingKeysConfirmedForName, type NameQuestionView } from "./confirmed-spelling";
 import { AFFIRMATIVE, displayName, editDistance, matchEmployeeName, nameConfirmationQuestion, readNameConfirmation, rosterSpellingOf, type RosterEmployee } from "@/lib/forms/employee-match";
 import { offRosterTyped } from "@/lib/forms/roster-only-names";
@@ -3689,6 +3690,15 @@ export async function proposeForm(
   const fromAnotherRequest = (iso: string | null | undefined) => Boolean(iso && otherRequestsDates.includes(iso));
   const dateFromAnotherRequest = fromAnotherRequest(date);
   if (dateFromAnotherRequest) date = null;
+  /*
+   * ONCE SET, THE DATE STAYS (port from the sibling app: its QA's live re-test, 21 Nov 2026; QA2's Sunny R3): a later turn
+   * rebuilt the card with no date (the model left incident_date out) and Create saved today, or the reply asked "Which
+   * date goes on the form?" for a date the card had. This person's latest card (the server's record, any form) keeps its
+   * date (`kept-form-date.ts`).
+   */
+  const ownCard = [context.cardOnScreen, context.earlierCard].find((record) => Boolean(record?.incidentDate) && (employee.id ? record!.employeeKey === personKey(employee.id) : !record!.employeeKey && record!.nameKey === personKey(employee.name)));
+  const dateKept = keptFormDate({ accountForm: ACCOUNT_FORMS.has(template.key), date, asksNewForm, latestDates, datesGiven, today, ownCardDate: ownCard?.incidentDate });
+  if (dateKept) date = dateKept;
   const datesAsked = datesGiven.length > 1 && !date ? datesGiven : [];
   /* Batch C (code-check #32): a date after today is a fact with today's date; the rules book says to ask. */
   /* Batch G (G6): only an incident form's date is never after today; an exit's last day or effective date may be. */
@@ -4354,7 +4364,7 @@ export async function proposeForm(
    * reply never claims it. (Was the fact not_kept: names only.) Values are never in it.
    */
   const notOnCard: { field: string; reason_code: string }[] = [
-    ...(dateFromAnotherRequest ? [{ field: "incident_date", reason_code: "date_from_another_request" }] : []),
+    ...(dateFromAnotherRequest && !dateKept ? [{ field: "incident_date", reason_code: "date_from_another_request" }] : []),
     ...(policyNotForThisCard ? [{ field: "policy", reason_code: "policy_not_for_this_card" }] : []),
     /* QA's f074: a second heading on a form that cites one (Pau's two headings are the Corrective Action's only). */
     ...(secondLeftOff ? [{ field: "policy_second_heading", reason_code: "not_on_this_form" }] : []),
