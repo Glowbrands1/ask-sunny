@@ -34,3 +34,34 @@ finalized a Direct policy that held only "Source: JBA Policy Manual — All Loca
   titled section.
 - Ask Bubbles has its own `sectionWording` and the same layout can occur there. **Port this part when the loop is
   ported, or earlier if QA asks.**
+
+## A plain heading ends at the next heading (QA2, 21 Nov 2026; a regression from #1146 on main 3b0038f4)
+
+A card citing Attendance p.14 for plain lateness ("she was 40 minutes late on 11/18 …") saved the Late Opening
+paragraph as Direct policy. `accountPassage` read the cited heading's text on into the next chunk, which is the
+manual's next heading (Late Opening, chunk 42), and picked that block.
+
+The fix:
+
+- Only a heading printed as a list ("All Locations Dress Code:", ending in ":") runs on into the chunks of its
+  sub-items.
+- A plain heading ("Attendance") ends where the manual's next heading starts, in its own chunk or the next.
+- So Late Opening is quoted only for a card that cites Late Opening.
+
+Ask Bubbles: Coding-D confirmed (via QA2, 21 Nov 2026) that Ask Bubbles has no `account-passage.ts`. #1146 was never
+ported, so its loop port #991 needs nothing now. #1146 and this fix are to be ported to Ask Bubbles together, later.
+
+## A fit is a shared content word; a long list quotes its item (QA2's second #1146 case, 21 Nov 2026)
+
+"ca for <P>, on the phone while a guest waited, 11/18", with the card citing Standards of Conduct p.12, saved the list
+block "o Lack of sales performance o Indecent or immoral behavior …". It shared only the word "while" with the account.
+
+- Grammar words never make a block fit.
+- A plain heading runs on through its continuation chunks (no heading of their own: Standards of Conduct's list, chunks
+  37–39) and stops at the next heading.
+- A list block longer than an excerpt is narrowed to the item that fits. For example, "o Insubordination -the refusal to
+  follow the directions of the manager."
+- With no fit, the section's opening wording stands.
+
+The replay pack's `manualAlsoHas(rows, { inPlace: true })` lets a case read production's own layout of those sections.
+Ask Bubbles: as above, nothing to port now; it goes over with #1146 later.

@@ -302,7 +302,8 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       await thread.say("she also left her station early that day");
       const earlier = model.views.at(-1)!.turns.filter((turn) => turn.role === "assistant").map((turn) => turn.text).join("\n");
       expect(earlier, "the model was not told the earlier card was real").toContain("[app note: this reply showed a card built with propose_form]");
-      expect(thread.proposal?.issue ?? "").toMatch(/left her station early/);
+      /* Changed on purpose (QA's live retest of #1147, 20 Nov 2026): the card's own account names the person, never a pronoun. */
+      expect(thread.proposal?.issue ?? "").toMatch(/left Tamsin's station early/);
     },
   },
   {
