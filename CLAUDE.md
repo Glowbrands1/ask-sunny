@@ -1,5 +1,9 @@
 # Ask Sunny — rules for every session
 
+**Start here (agent loop work):** read `docs/agent-loop/HANDOFF.md` (who does what, the merge queue, production
+state, the pilot checklist), then `docs/agent-loop/rebuild-plan.md`. Session starters: `docs/agent-loop/SESSION_STARTERS.md`;
+the new QA's first message: `docs/agent-loop/NEW_QA_START.md`.
+
 Ask Sunny (JB & Associates / Sun Tan City) has a sibling app, **Ask Bubbles**
 (`Glowbrands1/Ask-bubbles`, Buff City Soap). Bubbles is a port of this app:
 the chat, the forms intake, the Corrective Action engine, policy citation,
