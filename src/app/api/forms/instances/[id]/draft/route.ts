@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { withoutTopicPrefix } from "@/lib/forms/coaching-topic-prefix";
+import { READERS_LINE_HEADINGS } from "@/lib/forms/readers-line-headings";
 import { loopWriteUpSections } from "@/lib/forms/loop-write-up-sections";
 import { withAccountFactsKept } from "@/lib/forms/account-facts-kept";
 import { TERMINATION_OPTION, withTerminationPlan } from "@/lib/forms/termination-stated";
@@ -403,12 +404,7 @@ async function readOfficialPolicyManual(
 
 /** SPEND_GUARD_ALL_CALLS_ENABLED: this route's Claude calls are counted (`ai/spend-meter.ts`). Off, as before. */
 
-/**
- * QA f071 (20 Nov 2026): manual headings whose saved Policy Violated keeps the readers' "<box> — <section>" line in place
- * of a loop card's own policy line. Time Records stays "Standards of Conduct — Time Records", as Pau was last told (QA).
- * The app's own manual headings, lower-case; never the manager's words. Remove an entry to give it the card's line.
- */
-const READERS_LINE_HEADINGS: ReadonlySet<string> = new Set(["time records"]);
+/* QA f071 / c259: the headings whose saved Policy Violated keeps "<box> — <section>" are `READERS_LINE_HEADINGS` (forms/readers-line-headings.ts). */
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   return withSpendMeter("forms_draft", () => postFormsDraft(request, context));
@@ -2665,7 +2661,9 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         await applyStatedFacts(id, { values: { [fixedPlan.key]: typed }, checked: {} }, actor.id, new Set([fixedPlan.key]));
       }
     }
-    const loopCardAbsence = body.cardFromLoop === true && body.cardAttendance === "absence";
+    /* f082: leaving early is not lateness either; it keeps the general plan as an absence does. */
+    const loopCardNotLateness = body.cardFromLoop === true && (body.cardAttendance === "absence" || body.cardAttendance === "left_early") ? body.cardAttendance : null;
+    const loopCardAbsence = loopCardNotLateness !== null;
     const planText = (input: ActionPlanInput) =>
       // PLAN_PAYROLL_SENTENCE_ENABLED: the deduction the manager stated is said in the plan.
       // TERMINATION_STATED_TICKS_ENABLED: on a termination, the plan ends with the termination sentence.
@@ -2930,7 +2928,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      */
     if (loopCardAbsence) {
       const cardAccount = /^What happened:\s*(.+)$/im.exec(notes)?.[1]?.trim() ?? null;
-      const absence = absenceWriteUp(draftedPayload.values, narrativeTargets.filter((key) => !keeps(key)), { employeeName: loaded.instance.employeeName, cardAccount });
+      const absence = absenceWriteUp(draftedPayload.values, narrativeTargets.filter((key) => !keeps(key)), { employeeName: loaded.instance.employeeName, cardAccount, kind: loopCardNotLateness ?? "absence" });
       if (absence.changed) draftedPayload.values = absence.values;
     }
     /*

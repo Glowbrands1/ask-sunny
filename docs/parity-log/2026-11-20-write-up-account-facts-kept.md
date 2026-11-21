@@ -32,3 +32,18 @@ is the third time in two months" was missing. Now:
   saved write-ups and runs after this pass.
 
 Still loop-only (`cardFromLoop`); not needed in Ask Bubbles yet.
+
+## A missing appositive clause alone (QA2, #1180 live, 21 Nov 2026)
+
+The live card set the missing fact after a comma as a noun phrase: "She was 40 minutes late on 11/18, the third time in
+two months." The pass added that whole sentence, so the lateness was stated twice.
+
+- A sentence now splits at any comma with a fact (three content words) on each side.
+- A missing noun phrase after such a comma, with no finite verb of its own, is added as its own short sentence: "This is
+  the third time in two months."
+- A missing "which …" clause is added as "This …".
+- A whole clause such as "the doors were not unlocked" stays as written.
+
+Ask Bubbles: the keep-the-facts pass does not exist there. It runs only on Create from a loop card (#1152); Ask Bubbles
+has no agent loop, and #1152 was not ported. Nothing to port until its loop exists. This session cannot read the Ask
+Bubbles repository, so this is from #1152's own parity entry and its mechanism.

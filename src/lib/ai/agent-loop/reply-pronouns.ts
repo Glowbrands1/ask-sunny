@@ -174,16 +174,23 @@ export function withoutPersonPronouns(
     const at = match.index! + match[0].length - match[1]!.length;
     if (quoted.some(([from, to]) => at >= from && at < to)) continue;
     const before = sentenceBefore(reply, match.index!).toLowerCase();
-    // The card's person telling someone else ("Tamsin told her to …") is not this.
-    const named = knownKeys.flatMap((key) => [...before.matchAll(nameRe(key, "gu"))].map((hit) => ({ key, at: hit.index! })));
-    const teller = named.sort((a, b) => b.at - a.at)[0]?.key;
-    if (!teller || teller === display.toLowerCase()) continue;
+    /*
+     * The teller is the subject right before the verb, an appositive between commas set aside ("<A>'s shift lead, <L>,
+     * told her"). It need not be a known name: QA's live retest (conv_mwp5inao2y4s849) named the lead in an earlier turn,
+     * off the roster, and "Test's shift lead" was read as Test telling. The card's person telling someone else ("Tamsin
+     * told her to …") and a pronoun telling ("She told her to …") are not this; a possessive ("Test's") never tells.
+     */
+    const subject = before.replace(/[\s*_]+$/, "").replace(/,[^,]*,$/, "").replace(/[\s*_:]+$/, "");
+    // The card's person as the subject: their reply name, alone or with a surname after it ("Test told", "Test Testy told").
+    const own = display.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const ownTells = new RegExp(`(?:^|[^\\p{L}'-])${own}(?:\\s+\\p{L}+)?$`, "u").test(subject);
+    if (!subject || ownTells || /(?:^|[^\p{L}'-])(?:he|she|they|i|you|we)$/u.test(subject)) continue;
     told.add(at);
-    const subject = { him: "he", her: "she", them: "they" }[match[1]!.toLowerCase() as "him" | "her" | "them"];
+    const listener = { him: "he", her: "she", them: "they" }[match[1]!.toLowerCase() as "him" | "her" | "them"];
     const rest = reply.slice(at + match[1]!.length);
     const end = rest.search(/[.?!](?!\d)|\n/);
     const sentence = end === -1 ? rest : rest.slice(0, end);
-    for (const joined of sentence.matchAll(new RegExp(`\\b(?:and|but|so|then)\\s+(${subject})\\b`, "gi"))) told.add(at + match[1]!.length + joined.index! + joined[0].length - joined[1]!.length);
+    for (const joined of sentence.matchAll(new RegExp(`\\b(?:and|but|so|then)\\s+(${listener})\\b`, "gi"))) told.add(at + match[1]!.length + joined.index! + joined[0].length - joined[1]!.length);
   }
   const inQuote = (at: number) => quoted.some(([from, to]) => at >= from && at < to) || (!told.has(at) && keepsOwn(at));
   const edits: Array<{ from: number; to: number; text: string }> = [];

@@ -38,6 +38,13 @@ const F083_ACCOUNT = "She was 40 minutes late on 11/18, this is the third time i
 const F083_DRAFT =
   "Observed:\nRemy was 40 minutes late to work on November 18, 2026. A customer stated they would not return because nobody was at the desk.\n\nExpectation:\nRemy is expected to arrive on time for every scheduled shift.";
 
+/*
+ * QA2 (21 Nov 2026): #1180 live on main 37c2ad82 was PARTIAL. The live card's account set the missing fact after a comma
+ * as a noun phrase ("She was 40 minutes late on 11/18, the third time in two months."), and the pass added that whole
+ * sentence: "<P> was 40 minutes late on 11/18, the third time in two months." The lateness was stated twice.
+ */
+const F083_LIVE_ACCOUNT = "She was 40 minutes late on 11/18, the third time in two months. A customer said they won't come back because nobody was at the desk.";
+
 const fixed = (id: string, title: string, run: (t: ReplayContext) => Promise<void>): ReplayCase => ({
   id,
   title,
@@ -116,5 +123,19 @@ export const NOV20_WRITE_UP_ACCOUNT_FACTS_KEPT_CASES: ReplayCase[] = [
       "Remy was 40 minutes late to work on November 18, 2026. A customer stated they would not return because nobody was at the desk. This is the third time in two months.",
     );
     expect(observed, "a pronoun about Remy").not.toMatch(/\b(?:she|her|he|him|his)\b/i);
+  }),
+  fixed("nov21-f083-live-appositive-clause-only", `f083 follow-up (QA2, #1180 live PARTIAL): "${F083_SAID}", the card's account "${F083_LIVE_ACCOUNT}": the saved Observed adds only "This is the third time in two months.", never the lateness again`, async (t) => {
+    t.loopModel!(loopStandIn((view): LoopDecision => lastResult(view, "propose_form")
+      ? { text: "Here's the Corrective Action Form for **Remy**." }
+      : { tool: "propose_form", input: { template_key: "dpoa", employee_name: "Remy Calder", person_evidence: evidenceFrom(view, "Remy Calder"), what_happened: F083_LIVE_ACCOUNT, policy: "Attendance", incident_date: "2026-11-18", prior_actions: "Verbal (2), dates not given" } }));
+    t.draftWrites({ observation: F083_DRAFT });
+    const thread = t.thread();
+    await thread.say(F083_SAID);
+    const id = await thread.create();
+    const observation = t.values(id).observation ?? "";
+    const observed = (/Observed:\s*\n?([\s\S]*?)(?=\n\s*Expectation:|$)/i.exec(observation)?.[1] ?? "").trim();
+    expect(observed, `the lateness is stated twice, or the missing fact is not alone:\n${observation}`).toBe(
+      "Remy was 40 minutes late to work on November 18, 2026. A customer stated they would not return because nobody was at the desk. This is the third time in two months.",
+    );
   }),
 ];

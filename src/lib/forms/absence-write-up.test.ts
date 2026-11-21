@@ -30,3 +30,22 @@ describe("absenceWriteUp", () => {
     expect(absenceWriteUp({ observation: plain, other: "Remy arrived late." }, ["observation"], OPTIONS)).toEqual({ values: { observation: plain, other: "Remy arrived late." }, changed: false });
   });
 });
+
+/*
+ * f082 (QA's live test, 20 Nov 2026, conv_mwpgp5pq29vc3jk): "ca for Test Testy, we do not do extra cleaning after hours,
+ * she left early 11/18" was written up as lateness. Leaving early is its own kind: the write-up speaks of staying for the
+ * full shift, never of arriving on time.
+ */
+describe("absenceWriteUp, left early", () => {
+  const LEFT_EARLY =
+    "Observed:\nTest left her shift early on 11/18. Test was late to finish her duties.\n\nExpectation:\nTest is expected to arrive on time for all scheduled shifts.\n\nGoing Forward:\nTest will arrive on time and remain for every scheduled shift.";
+  const OPTIONS_LEFT = { employeeName: "Test Testy", cardAccount: "Test left early on 11/18.", kind: "left_early" as const };
+
+  it("speaks of staying for the full shift in Expectation and Going Forward, and drops lateness from Observed", () => {
+    const { values, changed } = absenceWriteUp({ observation: LEFT_EARLY }, ["observation"], OPTIONS_LEFT);
+    expect(changed).toBe(true);
+    expect(values.observation).toBe(
+      "Observed:\nTest left her shift early on 11/18.\n\nExpectation:\nTest is expected to stay for the full scheduled shift.\n\nGoing Forward:\nTest will stay for the full scheduled shift.",
+    );
+  });
+});
