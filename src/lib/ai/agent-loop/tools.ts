@@ -2528,7 +2528,12 @@ async function personNotNamed(context: ToolContext, template: { key: string; nam
  * and it asks a missing last day worked, as before. Never a date or a reason the manager did not give.
  */
 async function exitCardTicks(isExit: boolean, termination: boolean, requestWords: string, today: string, exitHow: string | null = null): Promise<{ exit_ticks?: string[]; exit_unset?: string[] }> {
-  if (!isExit) return {};
+  /*
+   * QA's live L6 (22 Nov 2026): a termination's reply said "Filed as" twice: exit_termination already gives its tick
+   * (Immediate involuntary separation) with the rules book's line for it, and exit_ticks gave the same tick again with its
+   * own "Filed as:" line. A termination's tick is given once, by exit_termination.
+   */
+  if (!isExit || termination) return {};
   const [{ readExitFacts, exitFactValues }, library] = await Promise.all([import("@/lib/forms/exit-facts"), import("@/lib/forms/exit-library")]);
   const facts = readExitFacts(requestWords, today);
   const labels: Record<string, string> = {
@@ -3507,6 +3512,15 @@ export async function proposeForm(
    * gave, the Employee Exit Form's too. Code compares formats only (`accountMissing`); the model writes the account.
    */
   const exitForm = template.key === appConfig().formKeys.exit;
+  /*
+   * QA's live L6 (22 Nov 2026): "…, terminated for job abandonment, not eligible for rehire" got the account "job abandonment"
+   * from the model, so the card and the saved reason lost "terminated for". An exit account that is part of one clause the
+   * manager typed in this request is that whole clause, as typed (`own-clause.ts`; never a list of words).
+   */
+  if (exitForm && whatHappened) {
+    const own = (await import("@/lib/forms/own-clause")).ownClauseHolding(whatHappened, requestWords);
+    if (own) whatHappened = own;
+  }
   if (exitForm && whatHappened) accountLost = accountMissing(withoutPayrollClauses(requestWords), whatHappened, null);
   if (whatHappened && ACCOUNT_FORMS.has(template.key)) {
     /* A message that is only a level or payroll answer (the model's evidence quotes the whole message) is not the incident's account. */
