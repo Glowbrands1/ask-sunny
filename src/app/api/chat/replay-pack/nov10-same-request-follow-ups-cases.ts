@@ -31,10 +31,12 @@ const person = (id: string, firstName: string, lastName: string): DirectoryRow =
 });
 const RORY = person("e-sr-rory-vance", "Rory", "Vance");
 const MARA = person("e-sr-mara-quell", "Mara", "Quell");
+const ODALYS = person("e-sr-odalys-frewen", "Odalys", "Frewen");
+const PERRIN = person("e-sr-perrin-haldane", "Perrin", "Haldane");
 
 /** The invented people of this file (a function: the registry reads exported arrays as cases). */
 export function sameRequestFollowUpPeople(): readonly DirectoryRow[] {
-  return [RORY, MARA];
+  return [RORY, MARA, ODALYS, PERRIN];
 }
 
 const FIRST = "create a corrective action for Rory Vance, she was late on 11/3/26";
@@ -120,6 +122,28 @@ export const NOV10_SAME_REQUEST_FOLLOW_UP_CASES: ReplayCase[] = [
       expect(t.values(id).employee_name, "<A>'s form is not <A>'s").toBe("Rory Vance");
       const mara = await thread.createCard!("Mara Quell");
       expect(t.values(mara).employee_name).toBe("Mara Quell");
+    },
+  },
+  {
+    // Port from Ask Bubbles' #696 gate (QA, group 4, Gate-Bubbles 961ab16c): a negative. The overnight scan's sf-s11 gives
+    // no account, only a name, a level and a topic, so "the same thing" carries none: with SAME_REQUEST_CARRIES_ACCOUNT on
+    // (production) the Observation was "Perrin Haldane Written Warning. Under Performance".
+    id: "nov12-same-request-carries-no-level-or-topic",
+    title: `sf-s11, "Odalys Frewen. Verbal Warning. Under Performance." → "Can you do the same thing for Perrin Haldane but switch it to a written": no level or bare topic as <B>'s Observation`,
+    report: `QA, group 4 (12 Nov 2026), Ask Bubbles #696 NO-GO: sf-s11 carried "Perrin Haldane Written Warning. Under Performance"`,
+    status: { open: "<B>'s card's Observation is the level and the topic (\"Perrin Haldane Written Warning. Under Performance\")" },
+    fixFlags: ["SAME_REQUEST_REAL_ACCOUNT_ONLY_ENABLED"],
+    async run(t) {
+      vi.setSystemTime(new Date("2026-11-04T09:00:00Z"));
+      t.directory([...STAFF, ODALYS, PERRIN]);
+      t.as("salon_director", KEARNEY);
+      const thread = t.thread();
+      await thread.say("what information do you need for a corrective action for an employee");
+      await thread.say("Odalys Frewen. Verbal Warning. Under Performance.");
+      const reply = await thread.say("Can you do the same thing for Perrin Haldane but switch it to a written");
+      const line = observation(reply);
+      expect(line, `<B>'s card's Observation is a level:\n${reply.content}`).not.toMatch(/\bwarning\b/i);
+      expect(line, `<B>'s card's Observation is a bare topic:\n${reply.content}`).not.toMatch(/^Perrin Haldane\b[^a-z]*(?:under performance)?\.?$/i);
     },
   },
 ];
