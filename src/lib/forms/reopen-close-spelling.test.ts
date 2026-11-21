@@ -18,4 +18,9 @@ describe("closelySpelledEmployee", () => {
     expect(closelySpelledEmployee("Edit Thessaly Brandt CA", ["Thessaly Brandt"])).toBeNull();
     expect(closelySpelledEmployee("Edit Marisol Brant CA", ["Thessaly Brandt"])).toBeNull();
   });
+
+  it("QA 20 Nov (live: \"show me forms for Tes\" opened \"Test Te\"): one typed word never stands for two name words", () => {
+    expect(closelySpelledEmployee("show me forms for Row", ["Rowe Ro"])).toBeNull();
+    expect(closelySpelledEmployee("show me forms for Rowa Ro", ["Rowe Ro"])).toBe("Rowe Ro");
+  });
 });

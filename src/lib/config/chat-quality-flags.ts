@@ -5002,6 +5002,20 @@ export function formsOnFileDateRangeEnabled(): boolean {
 }
 
 /**
+ * FORMS_ON_FILE_COUNTS_ENABLED (QA's f081 follow-up, 20 Nov 2026; default off). The chat's FORMS ON FILE block
+ * (`forms/chat-form-records.ts`) lists rows and the model counted them: "11/18 — <A> (×2)" where there were 3, a
+ * different person's form folded into <A>'s, totals that did not add up. With the flag, the block carries counts built
+ * by code (per person as filed, per form, per date with statuses, and a total; `forms/forms-on-file-counts.ts`) for the
+ * model to copy; a period is read up to 1000 rows and counted over all of them, with up to 100 listed; and an archived
+ * DRAFT is left out unless the question asks for archived forms (finalized forms count archived or not, marked
+ * archived: QA's ruling on production's data). The agent loop's find_past_forms does the same without this flag. Off,
+ * as before.
+ */
+export function formsOnFileCountsEnabled(): boolean {
+  return envFlag("FORMS_ON_FILE_COUNTS_ENABLED");
+}
+
+/**
  * CARD_PERSON_THIS_REQUEST_ENABLED (the outside audit's wrong-person risk, approved by Pau, 21 Nov 2026; default off). The
  * agent loop seated a card's or form's person when ANY manager turn in the chat held their name, or any earlier card was
  * theirs: a name from an unrelated turn four turns back could put a form on the wrong person (Ask Bubbles, 18 Nov 2026).

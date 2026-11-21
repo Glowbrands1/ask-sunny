@@ -1471,15 +1471,23 @@ export async function findPastForms(context: ToolContext, input: { employee_name
      * Batch G (G4, REOPEN_CLOSE_SPELLING, parity gap #43): no form under the typed name, so the forms this manager may
      * open are read for an employee whose name it closely spells. One person: theirs. Two or more: ask which.
      */
-    let closeSpelling: string | null = null;
     if (rows.length === 0) {
       const { closelySpelledEmployee } = await import("@/lib/forms/reopen-close-spelling");
       const visible = visibleInstances(actor, await listInstances("all", 200, instanceListFilterFor(actor)));
       const fits = [...new Set(visible.map((row) => row.employeeName))].filter((name) => closelySpelledEmployee(typed, [name]) === name);
       if (fits.length > 1) return { forms: [], close_names: fits.slice(0, 5), note: "Several people on file have a name close to that spelling. Ask which one, by name." };
+      /*
+       * QA (20 Nov 2026, live after #1131: "show me forms for Tes" opened "Test Te"'s draft): a close spelling is only ever
+       * asked about (Pau's ruling A), never a list or an open. No form is given and nothing is best_match; when the manager
+       * says yes, the full name finds the forms exactly.
+       */
       if (fits.length === 1) {
-        closeSpelling = fits[0]!;
-        rows = visible.filter((row) => row.employeeName === closeSpelling);
+        return {
+          forms: [],
+          did_you_mean: fits[0]!,
+          ask_exactly: `Did you mean **${fits[0]!}**? Say yes and I'll show their forms on file.`,
+          note: "No form on file is under the name as typed. End your reply with ask_exactly, exactly. Open nothing until the manager says yes; then look up the forms under that full name.",
+        };
       }
     }
     /* Batch G (G4): the form, date and words the manager described, to choose one ("the 10/31 one about getting rooms ready"). */
@@ -1610,9 +1618,8 @@ export async function findPastForms(context: ToolContext, input: { employee_name
       /* Never a silent cut ("why capped at 20", 18 Nov 2026): more than the 20 listed are on file for this person. */
       ...(rows.length > forms.length ? { more_on_file: rows.length - forms.length, more_note: `${rows.length - forms.length} more forms are on file for this person than listed; say so, or narrow by form or dates.` } : {}),
       ...(withdrawn ? { card_withdrawn: `The ${withdrawn} card proposed earlier this turn was withdrawn: the manager asked to open a form on file, not to make one.` } : {}),
-      ...(closeSpelling ? { close_spelling_of: { typed: untrusted(typed), on_file: closeSpelling } } : {}),
       ...(onScreenChoice ?? {}),
-      ...(!onScreenChoice && forms.length === 1 && (described || closeSpelling) ? { best_match: forms[0]!.instance_id, note: "One form fits what the manager described. If they asked to open, edit or see it, open it now with open_form." } : {}),
+      ...(!onScreenChoice && forms.length === 1 && described ? { best_match: forms[0]!.instance_id, note: "One form fits what the manager described. If they asked to open, edit or see it, open it now with open_form." } : {}),
       /*
        * G4 follow-up (QA, 15 Nov 2026; the model decides, code only informs): several forms fit an open request, so the
        * model is told to compare them with the manager's description ("the one with no salon", "the draft") and to open
@@ -3344,7 +3351,14 @@ export async function proposeForm(
   if (headingParts.length > 2) {
     return { reason_code: "too_many_headings", error: `A Corrective Action cites one heading, or two when the manager describes two offenses that two headings cover, never ${headingParts.length}. Propose the card again with the one or two headings that fit what happened.` };
   }
-  const askedPolicy = headingParts.length > 0 ? headingParts[0]! : askedOther && askedPolicyWhole.includes(";") ? askedPolicyWhole.split(";")[0]!.trim() : askedPolicyWhole;
+  /*
+   * QA's f074 (20 Nov 2026, live on 29270d58): "actually make it a coaching form" after a CA citing two headings made no
+   * card: the coaching card's "<heading>; <heading>" went to the manual whole and was not_a_heading. Two headings are the
+   * Corrective Action's only (Pau's ruling); any other form cites the first, and the second is left off (not_on_card).
+   */
+  const otherFormParts = !twoHeadingsAllowed && !askedOther ? askedPolicyWhole.split(";").map((part) => part.trim()).filter(Boolean) : [];
+  const secondLeftOff = otherFormParts.length > 1 ? otherFormParts.slice(1).join("; ") : null;
+  const askedPolicy = headingParts.length > 0 ? headingParts[0]! : otherFormParts.length > 1 ? otherFormParts[0]! : askedOther && askedPolicyWhole.includes(";") ? askedPolicyWhole.split(";")[0]!.trim() : askedPolicyWhole;
   const askedSecond = headingParts.length === 2 ? headingParts[1]! : null;
   let policyHeading: string | null = null;
   let secondHeading: string | null = null;
@@ -4209,6 +4223,8 @@ export async function proposeForm(
   const notOnCard: { field: string; reason_code: string }[] = [
     ...(dateFromAnotherRequest ? [{ field: "incident_date", reason_code: "date_from_another_request" }] : []),
     ...(policyNotForThisCard ? [{ field: "policy", reason_code: "policy_not_for_this_card" }] : []),
+    /* QA's f074: a second heading on a form that cites one (Pau's two headings are the Corrective Action's only). */
+    ...(secondLeftOff ? [{ field: "policy_second_heading", reason_code: "not_on_this_form" }] : []),
     ...((modelLevel && level !== modelLevel) ? [{ field: "warning_level", reason_code: caOnlyFields ? "level_not_stated" : "not_on_this_form" }] : []),
     ...((askedTermination && !loopTermination) ? [{ field: "warning_level", reason_code: "termination_not_stated" }] : []),
     ...((askedPayroll && !payroll) ? [{ field: "payroll_deduct", reason_code: payrollFields ? "payroll_not_stated" : "not_on_this_form" }] : []),
