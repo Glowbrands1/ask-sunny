@@ -3,7 +3,9 @@ import type { Metadata } from "next";
 import { readOrExplain, viewerIsAdmin } from "@/features/ai-training/data.server";
 import { LessonScreen } from "@/features/ai-training/lesson-screen";
 import { requirePagePermission } from "@/lib/auth/page";
-import { getLessonBySlug, listMySubmissions } from "@/lib/ai-training/repository";
+import { lessonNav } from "@/lib/ai-training/catalog";
+import { lessonDisplayTitle } from "@/lib/ai-training/lesson-layout";
+import { getLessonBySlug, listMySubmissions, loadCatalog } from "@/lib/ai-training/repository";
 
 export const metadata: Metadata = {
   title: "AI Training",
@@ -18,9 +20,10 @@ export default async function AiTrainingLessonPage({ params }: { params: Promise
   const isAdmin = viewerIsAdmin(identity);
 
   const loaded = await readOrExplain(async () => {
-    const view = await getLessonBySlug(track, slug, isAdmin);
+    const [view, catalog] = await Promise.all([getLessonBySlug(track, slug, isAdmin), loadCatalog(isAdmin)]);
     const mine = view && identity ? (await listMySubmissions(identity.subject)).filter((s) => s.lessonId === view.lesson.id) : [];
-    return { view, mine };
+    const nav = view ? lessonNav(catalog, track, view.lesson.id, lessonDisplayTitle) : null;
+    return { view, mine, nav };
   });
 
   return (
@@ -28,6 +31,7 @@ export default async function AiTrainingLessonPage({ params }: { params: Promise
       problem={loaded.problem}
       view={loaded.data?.view ?? null}
       mine={loaded.data?.mine ?? []}
+      nav={loaded.data?.nav ?? null}
       isAdmin={isAdmin}
     />
   );

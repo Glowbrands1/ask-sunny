@@ -1285,6 +1285,11 @@ describe("new flags default off and wrappers are inert", () => {
           ":(exclude)src/components/shell/navigation.test.ts",
           ":(exclude)src/app/(app)/ai-training",
           ":(exclude)src/features/ai-training",
+          // AI Training submission bell (requested by Paulyne, 20 Nov 2026, Ask Sunny only for now): a new
+          // bell component and its mark-read action. It renders only for someone on AI_TRAINING_NOTIFY_EMAILS
+          // or with a notification; its mount line is in app-shell.tsx and its read in layout.tsx, both
+          // excluded above. No chat or form behaviour changes.
+          ":(exclude)src/features/notifications",
           // Times shown in the business zone (CT) (Pau via QA, 15 Nov 2026: "The whole app and chat should be in CT"):
           // display formatting only, on purpose and not behind a flag; the stored values stay UTC.
           ":(exclude)src/features/admin/analytics/feedback-queue.tsx",

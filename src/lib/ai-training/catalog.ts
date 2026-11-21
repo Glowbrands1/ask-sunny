@@ -88,3 +88,44 @@ export function slugify(title: string): string {
       .slice(0, 120) || "lesson"
   );
 }
+
+export interface LessonNavLink {
+  href: string;
+  /** "Lesson 3: Make It Prove It". */
+  label: string;
+}
+
+export interface LessonNav {
+  /** Where this lesson sits in its track: "Lesson 4 of 16". */
+  position: number;
+  total: number;
+  prev: LessonNavLink | null;
+  next: LessonNavLink | null;
+}
+
+/**
+ * A lesson's place in its track, for the lesson page's "Lesson 4 of 16" pill
+ * and its Previous / Next links. The track's published lessons in landing-page
+ * order, archive (admin-only) modules left out. Null for a lesson outside that
+ * run (a draft, an archived lesson).
+ */
+export function lessonNav(
+  catalog: TrainingCatalog,
+  trackSlug: string,
+  lessonId: string,
+  displayTitle: (title: string) => string,
+): LessonNav | null {
+  const track = catalog.tracks.find((t) => t.slug === trackSlug);
+  if (!track) return null;
+  const run = groupTrackLessons(catalog, track.id)
+    .filter((g) => !g.module?.adminOnly)
+    .flatMap((g) => g.lessons)
+    .filter((l) => l.status === "published");
+  const at = run.findIndex((l) => l.id === lessonId);
+  if (at < 0) return null;
+  const link = (i: number): LessonNavLink | null =>
+    run[i]
+      ? { href: `/ai-training/${track.slug}/${run[i].slug}`, label: `Lesson ${i + 1}: ${displayTitle(run[i].title)}` }
+      : null;
+  return { position: at + 1, total: run.length, prev: link(at - 1), next: link(at + 1) };
+}

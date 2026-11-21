@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 /** Editing the program: the named AI Training editors only (see `@/lib/ai-training/editors`). */
-export default async function ManageAiTrainingPage() {
+export default async function ManageAiTrainingPage({ searchParams }: { searchParams: Promise<{ tab?: string | string[] }> }) {
   const identity = await requirePagePermission("view_ai_training");
   ensureAiTrainingEditor(identity);
 
@@ -26,5 +26,8 @@ export default async function ManageAiTrainingPage() {
     return { catalog, pages, submissions };
   });
 
-  return <ManageScreen problem={loaded.problem} data={loaded.data} otherAppName={syncConfig()?.otherAppName ?? null} />;
+  // The bell's link opens the Submissions tab: /ai-training/manage?tab=submissions.
+  const { tab } = await searchParams;
+
+  return <ManageScreen problem={loaded.problem} data={loaded.data} otherAppName={syncConfig()?.otherAppName ?? null} initialTab={typeof tab === "string" ? tab : undefined} />;
 }

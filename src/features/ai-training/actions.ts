@@ -24,6 +24,8 @@ import type { LessonStatus, SubmissionStatus } from "@/lib/ai-training/types";
 import { authorizeRequest } from "@/lib/auth/server";
 import type { AuthenticatedIdentity } from "@/lib/auth/types";
 import { canEditAiTraining } from "@/lib/ai-training/editors";
+import { aiTrainingNotifyEmails, submissionNotifications } from "@/lib/ai-training/notify";
+import { createNotifications } from "@/lib/notifications/repository";
 import { cleanNewModuleTitle } from "@/lib/ai-training/module-name";
 import { publishAfterSave, syncConfig } from "@/lib/ai-training/sync";
 
@@ -133,9 +135,30 @@ export async function submitLessonResponse(input: {
       body,
       linkUrl,
     });
+    await notifyReviewers(identity, found.title);
     refresh();
     return undefined;
   });
+}
+
+/**
+ * The bell for the people on `AI_TRAINING_NOTIFY_EMAILS`. The submission is
+ * already saved: a failed notification is logged, never reported to the person
+ * submitting as a failed submission.
+ */
+async function notifyReviewers(identity: AuthenticatedIdentity, lessonTitle: string): Promise<void> {
+  try {
+    await createNotifications(
+      submissionNotifications({
+        recipients: aiTrainingNotifyEmails(),
+        submitterName: identity.displayName,
+        submitterEmail: identity.email,
+        lessonTitle,
+      }),
+    );
+  } catch (error) {
+    console.error("[ai-training] submission saved, but the reviewers' notification was not:", error);
+  }
 }
 
 export async function editMySubmission(input: {

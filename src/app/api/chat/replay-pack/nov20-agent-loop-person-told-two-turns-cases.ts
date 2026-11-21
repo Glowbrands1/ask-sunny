@@ -62,13 +62,14 @@ export const NOV20_AGENT_LOOP_PERSON_TOLD_TWO_TURNS_CASES: ReplayCase[] = [
     expect(reply.content, `the reply kept a pronoun for the card's person:\n${reply.content}`).toContain("told Test to clock out early and Test refused");
     expect(reply.content).not.toMatch(/\btold her\b|\bshe refused\b/);
   }),
-  fixed("nov20-person-told-two-turns-card", "The same two turns: the card's own account names Test (\"Test's shift lead, Dana Fairweather, told Test to clock out early and Test refused.\"), never her/she", async (t) => {
+  fixed("nov20-person-told-two-turns-card", "The same two turns: the card's own account names Test (\"The shift lead, Dana Fairweather, told Test to clock out early and Test refused.\"), never her/she", async (t) => {
     t.loopModel!(live());
     const thread = t.thread();
     await thread.say(T1);
     await thread.say(T2);
     const issue = thread.proposal?.issue ?? "";
-    expect(issue, `the card's account kept a pronoun:\n${issue}`).toBe("Test's shift lead, Dana Fairweather, told Test to clock out early and Test refused.");
+    // Changed on purpose (QA2, 21 Nov 2026, live R3, #1168's case): the opening "Her" is the plain "The" when the told listener is named later in the sentence.
+    expect(issue, `the card's account kept a pronoun:\n${issue}`).toBe("The shift lead, Dana Fairweather, told Test to clock out early and Test refused.");
   }),
   fixed("nov20-person-told-two-turns-t1-rule", "T1 (a story with no ask): the rules book says the one line is in Sunny's own words with the person's first name, never the manager's text typed back or a pronoun", async (t) => {
     const model = live();
