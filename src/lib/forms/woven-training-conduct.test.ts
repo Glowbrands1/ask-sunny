@@ -18,7 +18,11 @@ afterEach(() => vi.unstubAllEnvs());
 
 describe("WOVEN_TRAINING_CONDUCT_ENABLED off: what this app says for the sibling app's three live wordings", () => {
   // The flag is set off here, so a run with it on in the environment (QA's flag-on gate) still checks the off side.
-  beforeEach(() => vi.stubEnv("WOVEN_TRAINING_CONDUCT_ENABLED", ""));
+  beforeEach(() => {
+    vi.stubEnv("WOVEN_TRAINING_CONDUCT_ENABLED", "");
+    // POLICY_NOT_FOUND_PLAIN_WORDING (13 Nov 2026) rewords this line for every phrase; pinned off so the old line is still checked.
+    vi.stubEnv("POLICY_NOT_FOUND_PLAIN_WORDING_ENABLED", "");
+  });
 
   it("\"not signing the woven policies\" reads as no policy: the card has no Policy line", () => {
     expect(readCaPolicy(NOT_SIGNING).suggestion).toBeNull();
@@ -42,6 +46,9 @@ describe("WOVEN_TRAINING_CONDUCT_ENABLED off: what this app says for the sibling
 });
 
 describe("WOVEN_TRAINING_CONDUCT_ENABLED off: the card line for a section the manual lacks is today's, byte for byte", () => {
+  // POLICY_NOT_FOUND_PLAIN_WORDING (13 Nov 2026) rewords this line for every phrase; pinned off so the old line is still checked.
+  beforeEach(() => vi.stubEnv("POLICY_NOT_FOUND_PLAIN_WORDING_ENABLED", ""));
+
   it("pins the old string", () => {
     expect(caPolicyProposalLine(readCaPolicy("ca for rowan kestrel for violating visitors at work policy"), { phrase: "visitors at work", lookup: "missing" })).toBe(
       '**Policy:** Woven does not see a section of the current policy manual for "visitors at work" in the knowledge base, so I won\'t cite one. Tell me the policy as the manual names it, or tick Type of Offense and complete Direct policy on the form.',
@@ -93,6 +100,8 @@ describe("WOVEN_TRAINING_CONDUCT_ENABLED on", () => {
 
   it("a Woven phrase the manual lacks is said in the app's own voice; any other phrase keeps the fail-closed line", () => {
     on();
+    // POLICY_NOT_FOUND_PLAIN_WORDING (13 Nov 2026) rewords this line for every phrase; pinned off so the old line is still checked.
+    vi.stubEnv("POLICY_NOT_FOUND_PLAIN_WORDING_ENABLED", "");
     const woven = caPolicyProposalLine(readCaPolicy("ca for rowan kestrel for violating the woven policy"), {
       phrase: "the woven",
       lookup: "missing",
