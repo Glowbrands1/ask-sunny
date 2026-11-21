@@ -195,7 +195,8 @@ NOV15_AGENT_LOOP_BATCH_K_CASES.push(
       const fact = (model.views.flatMap((view) => view.results).find((result) => result.tool === "propose_form")!.output as { facts?: { account_names_other_person?: { named: { name: { untrusted_text: string }; sentence: { untrusted_text: string } }[] } } }).facts?.account_names_other_person;
       expect(fact?.named.map((entry) => entry.name.untrusted_text)).toEqual(["Juno Paxton"]);
       expect(fact?.named[0]!.sentence.untrusted_text).toMatch(/Juno Paxton saw it/);
-      expect(reply.content).toBe("Here's the Coaching Form for **Remy Calder**.");
+      /* Changed on purpose (QA, 20 Nov 2026; #1184): the card's account and the reply call the person by the reply name (the first name, Pau's rule), not the full name the stand-in model wrote. */
+      expect(reply.content).toBe("Here's the Coaching Form for **Remy**.");
     },
   },
 
