@@ -97,6 +97,13 @@ export const TOOL_SETTLE_MS = 5_000;
 import { LOOP_FAILED_REPLY, STEP_LIMIT_REPLY } from "./replies";
 import { fieldLabel, readableValue } from "./saved-diff";
 
+/*
+ * QA's f074 (20 Nov 2026): the MODEL's reply says a form or card was made ("I made the coaching form", "I've created the
+ * CA", "here's the Coaching Form"), read only when propose_form made no card this turn; and later work the app cannot send.
+ */
+const CLAIMS_A_FORM_MADE = /\b(?:I(?:'ve| have)?\s+(?:made|created|drafted|started|put together|set up|built)|here(?:'s| is)\s+(?:the|your))\b[^.\n]{0,60}?\b(?:form|card|CA|C\/A|coaching|corrective action)\b/i;
+const PROMISES_LATER_WORK = /\b(?:in a follow-?up|follow-?up (?:message|reply)|resend|re-send|on my end|an issue on (?:my|our) end|a lookup problem|try (?:it )?again|I(?:'ll| will) (?:send (?:it|that|this) (?:again|later|over)|get back to you|follow up))\b/i;
+
 export { LOOP_FAILED_REPLY, STEP_LIMIT_REPLY };
 
 /**
@@ -405,6 +412,7 @@ function buildAgentLoopTools(config: AppConfig) {
       about: { type: "string", description: "Words the manager used about the form (\"getting rooms ready between guests\"), if any." },
       forms_on_file_evidence: FORMS_ON_FILE_EVIDENCE,
       open: { type: "boolean", description: "true when the manager asks to open, edit or see one form on file (not a list of what is on file)." },
+      include_archived: { type: "boolean", description: "true only when the manager asks for archived forms. Finalized forms are listed archived or not; this adds archived drafts." },
     }, ["forms_on_file_evidence"]),
   },
   {
@@ -728,6 +736,8 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
    * stop_retrying {reason_code, ask_exactly?}; any later call for that person, or of that tool, in the turn is refused
    * without running it (the count goes in the trace). Code never writes the reply.
    */
+  /* QA's f074: this turn's propose_form calls that made no card, by reason code (the reply's honesty check reads it). */
+  const proposeNoCard: string[] = [];
   const refusalCounts = new Map<string, number>();
   const refusalSteps = new Map<string, Set<number>>();
   const stoppedTools = new Map<string, { reason_code: string; ask_exactly?: string }>();
@@ -782,6 +792,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
        * A refusal: a reason_code with an error, or with a question to ask (find_staff's use-<name> offer has no error).
        * Keyed on (reason_code, the person) when it names one (not_on_roster), else on (tool, reason_code).
        */
+      if (name === "propose_form" && !(result as { card?: unknown }).card) proposeNoCard.push(typeof (result as { reason_code?: unknown }).reason_code === "string" ? String((result as { reason_code: string }).reason_code) : "no_card");
       const refusal = result as { reason_code?: unknown; error?: unknown; ask_exactly?: unknown; not_on_roster?: unknown };
       if (typeof refusal.reason_code === "string" && (typeof refusal.error === "string" || typeof refusal.ask_exactly === "string")) {
         const person = typeof refusal.not_on_roster === "string" && refusal.not_on_roster.trim() ? personKey(refusal.not_on_roster.trim().replace(/^use\s+/i, "")) : null;
@@ -911,6 +922,8 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   let selfReview: { mismatched: string[]; fixed: boolean } | null = null;
   let draftReview: { claimed: boolean; fixed: boolean } | null = null;
   let levelReview: { claimed: string | null; nothing_changed: boolean; saved: string | null; fixed: boolean } | null = null;
+  /* QA's f074: a reply that claimed a form with no card, or promised later work, and whether the hand-back fixed it. */
+  let honestyReview: { claimed_made: boolean; promised: boolean; fixed: boolean } | null = null;
   let streamError: unknown = null;
   try {
     /*
@@ -1209,6 +1222,31 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
           }
         }
       }
+      /*
+       * QA's f074 (20 Nov 2026, live on 29270d58): with no card, the reply said "I made the coaching form for **<P>**, but
+       * the policy field kept getting rejected on my end — I'll fix that and resend it in a follow-up". Reads the MODEL's
+       * reply, never the manager's words. A reply that says a form or card was made when propose_form returned no card this
+       * turn, or that promises later work the app cannot send (a follow-up, a resend, "on my end"), goes back to the model
+       * once with the facts; still wrong, the claim is replaced by the plain fact that no card was made, and the promise
+       * sentences are taken out.
+       */
+      if (stoppedAt === "reply" && text) {
+        const noCard = !effects.proposal && proposeNoCard.length > 0;
+        const claimsMade = (reply: string) => noCard && CLAIMS_A_FORM_MADE.test(reply);
+        const promises = (reply: string) => PROMISES_LATER_WORK.test(reply);
+        if (claimsMade(text) || promises(text)) {
+          const note = [
+            ...(claimsMade(text) ? [`[app check] Your reply says a form was made, but propose_form made no card this turn (${proposeNoCard.join(", ")}). Nothing is on the manager's screen for it. Fix what propose_form said and propose again, or say plainly the card was not made and what is needed.`] : []),
+            ...(promises(text) ? ["[app check] Your reply promises later work (a follow-up, a resend) or blames an issue on your end. You cannot send anything after this reply, and a refusal is never a lookup problem, an issue on your end, or a reason to ask the manager to try again: act on what the tool said now, or say in one line what you need from them."] : []),
+            "Then write your reply to the manager again.",
+          ].join("\n");
+          const again = await handBack(note);
+          if (again) text = again;
+          honestyReview = { claimed_made: claimsMade(text), promised: promises(text), fixed: !claimsMade(text) && !promises(text) };
+          if (claimsMade(text)) text = "That card wasn't made, so nothing new is on your screen for it. Tell me the policy, form or person it should have, and I'll make it.";
+          else if (promises(text)) text = text.split(/(?<=[.!?])\s+/).filter((sentence) => !PROMISES_LATER_WORK.test(sentence)).join(" ").trim();
+        }
+      }
     });
   } catch (error) {
     if (error instanceof MissingConfigurationError) throw new AiError("not_configured", error.message, 503, error.missing);
@@ -1308,7 +1346,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     trace.firstTokenMs = firstTokenMs;
     trace.slots = {
       ...(trace.slots ?? {}),
-      agent_loop: { question_key: personKey(input.question), ...(cardSlot ? { card: cardSlot } : {}), ...(nameQuestionSlot ? { name_question: nameQuestionSlot } : {}), ...(personAskedSlot ? { person_asked: personAskedSlot } : {}), ...(exitOfferSlot ? { exit_offer: exitOfferSlot } : {}), steps, model_steps: modelSteps, model_calls: modelCalls, ...(turn.manualRead ? { manual_read: turn.manualRead } : {}), step_limit: limit, steps_used: stepNumber - 1 + hiddenCalls, ...(toolModelCalls > 0 ? { tool_model_calls: toolModelCalls } : {}), stopped: stoppedAt, ms: latencyMs, first_token_ms: firstTokenMs, ...(selfReview ? { self_review: selfReview } : {}), ...(draftReview ? { draft_review: draftReview } : {}), ...(levelReview ? { level_review: levelReview } : {}), ...(replyUnwrapped ? { reply_unwrapped: true } : {}), ...(retriesBlocked > 0 ? { stop_retrying: retriesBlocked } : {}), ...(repeatsReused > 0 ? { repeat_calls_reused: repeatsReused } : {}), ...(pronounsReplaced > 0 ? { pronouns_replaced: pronounsReplaced } : {}), ...(fullNamesShortened > 0 ? { full_names_shortened: fullNamesShortened } : {}) },
+      agent_loop: { question_key: personKey(input.question), ...(cardSlot ? { card: cardSlot } : {}), ...(nameQuestionSlot ? { name_question: nameQuestionSlot } : {}), ...(personAskedSlot ? { person_asked: personAskedSlot } : {}), ...(exitOfferSlot ? { exit_offer: exitOfferSlot } : {}), steps, model_steps: modelSteps, model_calls: modelCalls, ...(turn.manualRead ? { manual_read: turn.manualRead } : {}), step_limit: limit, steps_used: stepNumber - 1 + hiddenCalls, ...(toolModelCalls > 0 ? { tool_model_calls: toolModelCalls } : {}), stopped: stoppedAt, ms: latencyMs, first_token_ms: firstTokenMs, ...(selfReview ? { self_review: selfReview } : {}), ...(draftReview ? { draft_review: draftReview } : {}), ...(levelReview ? { level_review: levelReview } : {}), ...(honestyReview ? { honesty_review: honestyReview } : {}), ...(replyUnwrapped ? { reply_unwrapped: true } : {}), ...(retriesBlocked > 0 ? { stop_retrying: retriesBlocked } : {}), ...(repeatsReused > 0 ? { repeat_calls_reused: repeatsReused } : {}), ...(pronounsReplaced > 0 ? { pronouns_replaced: pronounsReplaced } : {}), ...(fullNamesShortened > 0 ? { full_names_shortened: fullNamesShortened } : {}) },
     };
   }
 
