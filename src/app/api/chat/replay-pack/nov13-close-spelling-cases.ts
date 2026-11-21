@@ -231,3 +231,33 @@ export const NOV13_CLOSE_SPELLING_CLEANING_CASES: ReplayCase[] = [
     },
   },
 ];
+
+/*
+ * HEADING_DISTINCTIVE_WORDS (QA, 13 Nov 2026, from the sibling app's 17s live check; ported): "ca for <A> for violating the retaliaton policy"
+ * gave "Woven does not see a section … for "retaliaton"", and "retaliation" spelled right did the same: "Retaliation is
+ * Prohibited" (in the live manual and this pack's fixture) wanted "is prohibited" said too. With the flag, a heading is
+ * named by its distinctive words; with CLOSE_SPELLING_MATCH "retaliaton" is one letter off. Invented
+ * people.
+ */
+const DISTINCTIVE = "HEADING_DISTINCTIVE_WORDS_ENABLED";
+
+export const NOV13_HEADING_DISTINCTIVE_WORDS_CASES: ReplayCase[] = (
+  [
+    { key: "retaliation", said: "retaliation" },
+    { key: "retaliaton", said: "retaliaton" },
+  ] as const
+).map((wording) => ({
+  id: `nov13-heading-distinctive-words-${wording.key}-policy`,
+  title: `"… violating the ${wording.said} policy …" — the Policy line cites Retaliation is Prohibited`,
+  report: `QA, 13 Nov 2026 (HEADING_DISTINCTIVE_WORDS; 17s live check: "retaliaton"); invented people`,
+  status: { open: `"${wording.said}" names no section: the card says none was found` },
+  fixFlags: [DISTINCTIVE],
+  async run(t: ReplayContext) {
+    const thread = start(t);
+    const reply = (
+      await thread.say(`create a verbal ca for juno paxton for violating the ${wording.said} policy, she cut a coworker's hours after he reported her`)
+    ).content;
+    expect(reply, `the Policy line:\n${reply}`).toMatch(/\*\*Policy:\*\* Retaliation is Prohibited, as you said — the policy manual's section on page \d+/);
+    expect(reply, `the card still says no section was found:\n${reply}`).not.toMatch(/see a section of the current policy manual for/);
+  },
+}));
