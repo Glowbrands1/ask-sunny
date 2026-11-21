@@ -54,6 +54,7 @@ const KNOWN = new Set([
   "form_locked",
   // QA item 8 (20 Nov 2026): a roster person nobody named, picked or confirmed in this chat.
   "person_not_named",
+  "person_change_not_asked",
   // QA (16 Nov 2026, the 266 audit on train 4): c261/c263 dress code cited as another heading; c207 Must See Behaviors with no MSB said.
   "dress_code_heading", "msb_not_said",
   // Added on purpose (QA's review of #1137, 20 Nov 2026): an Attendance CA card with no attendance record, or one not in the manager's words.
