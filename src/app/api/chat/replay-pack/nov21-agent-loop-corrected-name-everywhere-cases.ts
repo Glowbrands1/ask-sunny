@@ -17,10 +17,10 @@ import { evidenceFrom, lastResult, loopStandIn, type LoopDecision, type LoopView
 
 const FLAG = "AGENT_LOOP_ENABLED";
 const REPORT = "Port from the sibling app (its QA's live re-test, 21 Nov 2026, agent loop on): the name corrected mid-chat kept the old spelling in the account and the saved write-up";
-const T1 = "My employee Remy Caldr has was 10 minutes late on her last two shifts. On the first shift I verbally coached her on our policy and expectations. Then she was late again. Please create a CA form so I can document. She was late on 10/5 and 10/15";
-const T2 = "Create the coaching form with the information given. Her name is Remy Calder";
+export const T1 = "My employee Remy Caldr has was 10 minutes late on her last two shifts. On the first shift I verbally coached her on our policy and expectations. Then she was late again. Please create a CA form so I can document. She was late on 10/5 and 10/15";
+export const T2 = "Create the coaching form with the information given. Her name is Remy Calder";
 /** The live model's account: the manager's T1, the misspelt name and all. */
-const ACCOUNT = "Remy Caldr was 10 minutes late on her last two shifts. On the first shift she was verbally coached on policy and expectations. Then she was late again on 10/15.";
+export const ACCOUNT = "Remy Caldr was 10 minutes late on her last two shifts. On the first shift she was verbally coached on policy and expectations. Then she was late again on 10/15.";
 /** The old spelling, never the corrected one. */
 const OLD_SPELLING = /\bCaldr\b/i;
 
