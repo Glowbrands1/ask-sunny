@@ -8,3 +8,9 @@ new_form_evidence. `agent-loop/tools.ts` now treats a message as <B>'s own reque
 card's person (the roster), names NOT the open card's or draft's person (any of their names, first name included), and
 states its own date. "Salon Director, <B>, messaged <A> …" names <A>, so it is still refused. Replay:
 `nov21-agent-loop-new-person-own-account-cases.ts`.
+
+**Also (#1199, QA2's item B fix, same day):** with CARD_PERSON_THIS_REQUEST on, the manager's one-word "yes" to the app's
+own next-person offer ("Want me to make the … for <B> next?", after "write CAs for <A> and <B>") was refused
+(`person_not_named`, then `person_change_not_asked`). That accepted offer now counts as <B>'s request in
+`personNamedOrPicked` and in the guard's `ownRequest`, reading Sunny's own reply (`offeredNextFirst`), never the manager's
+words. Replay: `nov16-several-people-one-card-then-yes`, unchanged. Port with the above.

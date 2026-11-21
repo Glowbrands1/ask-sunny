@@ -922,7 +922,8 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
         const said = view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "";
         const corbin = /corbin/i.test(said);
         if (!lastResult(view, "propose_form")) {
-          return { tool: "propose_form", input: { level_evidence: evidenceFrom(view), template_key: "dpoa", employee_id: corbin ? CORBIN.id : TAMSIN.id, what_happened: `${corbin ? "Corbin Ashdown" : "Tamsin Orwell"} was late on 11/3/26.`, ...(corbin ? { warning_level: "written" } : {}) } };
+          /* Changed on purpose (live model verified 21 Nov 2026, QA2; #1199): with CARD_PERSON_THIS_REQUEST on in production, another person's card while one is open carries new_form_evidence, as the live model passes it; this message states no date, so the ownRequest rule does not cover it. */
+          return { tool: "propose_form", input: { level_evidence: evidenceFrom(view), template_key: "dpoa", employee_id: corbin ? CORBIN.id : TAMSIN.id, what_happened: `${corbin ? "Corbin Ashdown" : "Tamsin Orwell"} was late on 11/3/26.`, ...(corbin ? { warning_level: "written", new_form_evidence: evidenceFrom(view) } : {}) } };
         }
         /* Changed on purpose (Pau 14 Nov: code may refuse or inform, never rewrite): the card reply is the model's, in the rules book's Card replies words. */
         return { text: `Here's the Corrective Action Form for **${corbin ? "Corbin Ashdown" : "Tamsin Orwell"}**.\n\n**Observation of Offense:** Late on 11/3/26.` };
@@ -1026,7 +1027,8 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       // Multi-person (QA, 14 Nov 2026): another person always gets their own card, the draft open or not.
       const corbin = loopStandIn((view) => {
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "corbin ashdown" } };
-        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: CORBIN.id, what_happened: "Corbin Ashdown was on his phone at the front desk." } };
+        /* Changed on purpose (live model verified 21 Nov 2026, QA2; #1199): with CARD_PERSON_THIS_REQUEST on in production, another person's card while one is open carries new_form_evidence, as the live model passes it; this message states no date, so the ownRequest rule does not cover it. */
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: CORBIN.id, what_happened: "Corbin Ashdown was on his phone at the front desk.", new_form_evidence: evidenceFrom(view) } };
         return { text: "Here is Corbin Ashdown's card." };
       });
       t.loopModel!(corbin);
@@ -1300,7 +1302,8 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
         const said = view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "";
         const two = /varga two/i.test(said);
         if (!lastResult(view, "propose_form")) {
-          return { tool: "propose_form", input: { template_key: "dpoa", employee_id: two ? ISOLDE_TWO.id : ISOLDE.id, what_happened: two ? "Isolde Varga Two was late on 10-20-26." : "Isolde Varga was late opening the salon on Monday." } };
+          /* Changed on purpose (live model verified 21 Nov 2026, QA2; #1199): with CARD_PERSON_THIS_REQUEST on in production, another person's card while one is open carries new_form_evidence, as the live model passes it; this message states a date, but the open card's person ("Isolde Varga") is named inside the new person's name ("Isolde Varga Two"), so the ownRequest rule does not cover it. */
+          return { tool: "propose_form", input: { template_key: "dpoa", employee_id: two ? ISOLDE_TWO.id : ISOLDE.id, what_happened: two ? "Isolde Varga Two was late on 10-20-26." : "Isolde Varga was late opening the salon on Monday.", ...(two ? { new_form_evidence: evidenceFrom(view) } : {}) } };
         }
         return { text: "Here is the card." };
       });

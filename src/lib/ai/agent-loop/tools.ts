@@ -333,6 +333,12 @@ function answersNextPersonOffer(context: ToolContext): boolean {
   return Boolean(lastReply && NEXT_PERSON_OFFER.test(String(lastReply.content ?? "").trim()) && oneWord(withoutMessageIdTags(context.question)));
 }
 
+/** The first name the app's own next-person offer named, when the reply before this message ended with one. */
+function offeredNextFirst(context: ToolContext): string | null {
+  const lastReply = [...(context.history as ChatMessage[])].reverse().find((turn) => turn.role === "assistant");
+  return /Want me to make the [^\n?]+ for ([^\n?]+) next\?\s*$/.exec(String(lastReply?.content ?? "").trim())?.[1]?.trim() ?? null;
+}
+
 /**
  * An answer whose quote is the whole one-word reply to the next-person offer is refused (`answersNextPersonOffer`). QA
  * (16 Nov 2026; Runner 2's c163 T4): so is one that answers this chat's recorded name question ("Did you mean <A>?"): the
@@ -2422,6 +2428,18 @@ async function personNamedOrPicked(context: ToolContext, row: RosterEmployee, ro
   const key = personKey(row.id);
   if (thisRequestOnly) {
     if (personNamedInThisRequest(context, row, roster, names)) return true;
+    /*
+     * QA2 (21 Nov 2026, #1199; QA's live re-test item B, nov16-several-people-one-card-then-yes): "write CAs for <A> and
+     * <B>, …" made <A>'s card and the app's own reply offered <B>'s ("Want me to make the … for <B> next?"); the manager's
+     * "yes" names nobody, and <B> was named before <A>'s card. The app's own offer, accepted by the one-word answer to it,
+     * is <B>'s request: this person counts when the offer names their first name and the manager named them in this chat.
+     * Reads Sunny's own reply (`answersNextPersonOffer`), never a word list over the manager's messages.
+     */
+    if (answersNextPersonOffer(context) && offeredNextFirst(context) !== null) {
+      const offered = offeredNextFirst(context)!.toLowerCase();
+      const firsts = [row.firstName, row.preferredFirstName].map((first) => (first ?? "").trim().toLowerCase()).filter(Boolean);
+      if (firsts.includes(offered) && said.some((text) => names.some((name) => holdsPhrase(text, name)))) return true;
+    }
   } else if (said.some((text) => names.some((name) => holdsPhrase(text, name)))) return true;
   const view = nameQuestionView(context, roster);
   if (spellingKeysConfirmedFor(view, row.id).length > 0) return true;
@@ -3107,6 +3125,9 @@ export async function proposeForm(
      * card's person ("Salon Director, <B>, messaged <A> …") names <A> too, so it is still refused.
      */
     const ownRequest = (() => {
+      /* QA2 (#1199, item B): the manager's "yes" to the app's own offer of this person's form ("… for <B> next?") is <B>'s request. */
+      const offered = answersNextPersonOffer(context) ? offeredNextFirst(context) : null;
+      if (offered && employee.name.split(/\s+/)[0]?.toLowerCase() === offered.toLowerCase()) return true;
       const said = withoutMessageIdTags(context.question);
       const rosterRows = read.kind === "read" ? read.roster : [];
       const rosterNames = rosterRows.map((row) => displayName(row));

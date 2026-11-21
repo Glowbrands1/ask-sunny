@@ -181,7 +181,8 @@ export const NOV14_LIVE_R5_CASES: ReplayCase[] = [
         const tries = view.results.filter((result) => result.tool === "propose_form").length;
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: forB ? "oriel fenwick" : "lissa tormane" } };
         const input = forB
-          ? { template_key: "coaching", employee_id: ORIEL.id, what_happened: account("Oriel Fenwick") }
+          ? /* Changed on purpose (live model verified 21 Nov 2026, QA2; #1199): with CARD_PERSON_THIS_REQUEST on in production, another person's card while one is open carries new_form_evidence, as the live model passes it; this message states no date, so the ownRequest rule does not cover it. */
+            { template_key: "coaching", employee_id: ORIEL.id, what_happened: account("Oriel Fenwick"), new_form_evidence: evidenceFrom(view) }
           : { template_key: "coaching", employee_id: LISSA.id, what_happened: account("Lissa Tormane") };
         if (tries === 0) return { tool: "propose_form", input };
         if (forB && tries === 1 && facts(view).employee_salon) return { tool: "propose_form", input: { ...input, salon: facts(view).employee_salon } };

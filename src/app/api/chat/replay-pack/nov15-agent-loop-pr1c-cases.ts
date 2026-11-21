@@ -181,6 +181,8 @@ export const NOV15_AGENT_LOOP_PR1C_CASES: ReplayCase[] = [
             input: {
               template_key: "dpoa", employee_id: id, what_happened: `${who === "juno paxton" ? "Juno Paxton" : "Remy Calder"} was late on 11/12.`, incident_date: "2026-11-12",
               ...(answered ? { payroll_deduct: "yes", payroll_evidence: evidenceFrom(view, /^yes/i.test(said) ? "yes" : "yes", /^yes/i.test(said) ? 0 : 1) } : {}),
+              /* Changed on purpose (live model verified 21 Nov 2026, QA2; #1199): with CARD_PERSON_THIS_REQUEST on in production, another person's card while one is open carries new_form_evidence, as the live model passes it; this message states no date, so the ownRequest rule does not cover it. */
+              ...(who === "juno paxton" ? { new_form_evidence: evidenceFrom(view) } : {}),
             },
           };
         }
@@ -222,6 +224,8 @@ export const NOV15_AGENT_LOOP_PR1C_CASES: ReplayCase[] = [
               warning_level: "verbal",
               // Juno's card quotes the manager message before it, which is about Remy.
               level_evidence: evidenceFrom(view, "verbal for remy calder", juno ? 1 : 0),
+              /* Changed on purpose (live model verified 21 Nov 2026, QA2; #1199): with CARD_PERSON_THIS_REQUEST on in production, another person's card while one is open carries new_form_evidence, as the live model passes it; this message states no date, so the ownRequest rule does not cover it. */
+              ...(juno ? { new_form_evidence: evidenceFrom(view) } : {}),
             },
           };
         }
