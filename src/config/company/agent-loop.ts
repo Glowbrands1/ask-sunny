@@ -1,4 +1,4 @@
-import type { AgentLoopContent, LoopWords, PolicyGuards } from "@/lib/ai/agent-loop/app-config";
+import type { AgentLoopContent, AppConfig, LoopWords, PolicyGuards } from "@/lib/ai/agent-loop/app-config";
 
 /**
  * ============================================================================
@@ -16,7 +16,6 @@ import type { AgentLoopContent, LoopWords, PolicyGuards } from "@/lib/ai/agent-l
  */
 export function sunnyLoopContent({ place, staff }: LoopWords): AgentLoopContent {
   return {
-    formsPageName: "Form Monitoring",
     notPeopleExamples: "\"Under Performance\", \"Club Close\", \"MSB\" (must see behaviors) and other metrics",
     otherTopics: "Must See Behaviors, a cleaning duty left undone",
     statsReports: "Daily Stats, Sales Totals and Comp",
@@ -81,4 +80,10 @@ export const SUNNY_POLICY_GUARDS: PolicyGuards = {
     said: /\bmsbs?\b|must[\s-]*see\s+behaviou?rs?/i,
     named: /\bmsb\b|must see behaviou?rs?/i,
   },
+};
+
+/** Sunny's sales metrics as managers write them (the loop's ACCOUNT_METRIC, unchanged), and MSB spelled out. */
+export const SUNNY_METRICS: AppConfig["metrics"] = {
+  account: /\b(?:PPTA|LPSVA|UPTA|MSB|CC\s?%|Spa\s?%|Club\s+Close\s?%|Club\s+Average|Average\s+Club)(?=\W|$)/gi,
+  spelledOut: [{ short: "msb", long: /must see behaviou?rs?/ }],
 };

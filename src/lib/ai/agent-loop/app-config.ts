@@ -1,4 +1,4 @@
-import { SUNNY_POLICY_GUARDS, sunnyLoopContent } from "@/config/company/agent-loop";
+import { SUNNY_METRICS, SUNNY_POLICY_GUARDS, sunnyLoopContent } from "@/config/company/agent-loop";
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { ACTIVE_BRAND } from "@/lib/brand";
 import { readDirectoryFacts, readDirectoryRoster, readScopedRoster } from "@/lib/forms/employee-roster";
@@ -34,8 +34,6 @@ export interface LoopWords {
  * keeps its own in `src/config/company/agent-loop.ts`; a rule another app has no use for is null and left out.
  */
 export interface AgentLoopContent {
-  /** The page that lists the forms ("Form Monitoring"). */
-  readonly formsPageName: string;
   /** Company words that are never people, said in the "a name only if" rule. */
   readonly notPeopleExamples: string;
   /** What "Other — <topic>" is for, besides an incident no section covers. */
@@ -149,6 +147,17 @@ export interface AppConfig {
   readonly content: (words: LoopWords) => AgentLoopContent;
   /** The manual headings the policy guards check, by role. */
   readonly policyGuards: PolicyGuards;
+  /** The page that lists the forms ("Form Monitoring"), in tool messages and the rules book. */
+  readonly formsPageName: string;
+  /**
+   * This company's sales metrics as a manager writes them (Sunny: PPTA, Club Close % …; global, as `matchAll` reads
+   * it), kept word for word in the account and never read as people, and the short ones a manager may spell out
+   * ("MSB" said as "must see behaviors").
+   */
+  readonly metrics: {
+    readonly account: RegExp;
+    readonly spelledOut: readonly { readonly short: string; readonly long: RegExp }[];
+  };
 }
 
 /** Ask Sunny: the brand's names and place words, plus the staff system and form keys of this app. */
@@ -171,6 +180,8 @@ export const SUNNY_CONFIG: AppConfig = {
   leadershipTitle: /\b(?:directors?|managers?|leads?|supervisors?)\b/i,
   content: sunnyLoopContent,
   policyGuards: SUNNY_POLICY_GUARDS,
+  formsPageName: "Form Monitoring",
+  metrics: SUNNY_METRICS,
 };
 
 let active: AppConfig = SUNNY_CONFIG;

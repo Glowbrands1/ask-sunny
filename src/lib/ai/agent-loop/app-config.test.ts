@@ -182,7 +182,6 @@ describe("app config: another app's words", () => {
 
 /** A made-up company's rules-book content (Phase 1 of the loop port, QA 21 Nov 2026): none of it is Sunny's. */
 const FAKE_CONTENT: AppConfig["content"] = ({ place }) => ({
-  formsPageName: "Forms Ledger",
   notPeopleExamples: "\"Basket Size\" and other metrics",
   otherTopics: "a kiosk wipe-down left undone",
   statsReports: null,
@@ -224,7 +223,7 @@ describe("app config: another company's content in the rules book (Phase 1 of th
   ];
 
   it("takes every one of Sunny's content words from the content, and leaves out a rule the company has no use for", () => {
-    const fake: AppConfig = { ...FAKE, content: FAKE_CONTENT };
+    const fake: AppConfig = { ...FAKE, content: FAKE_CONTENT, formsPageName: "Forms Ledger" };
     const text = rulesBookText(fake);
     for (const word of SUNNY_CONTENT_WORDS) expect(text, `"${word}" is still in the rules book`).not.toContain(word);
     expect(text).toContain("Forms Ledger");
@@ -266,6 +265,27 @@ describe("app config: the policy guards' headings (Phase 1 of the loop port)", (
       const code = strip(readFileSync(new URL(`./${file}`, import.meta.url), "utf8"));
       expect(code, file).not.toMatch(/["'`]Late Opening["'`]|["'`]Attendance["'`]|["'`]Standards of Conduct["'`]/);
       expect(code, file).not.toMatch(/standards of conduct\/i/);
+    }
+  });
+});
+
+describe("app config: metrics and the forms page (Phase 1 of the loop port)", () => {
+  it("Sunny's metrics and page name are the ones the code used", () => {
+    expect(SUNNY_CONFIG.formsPageName).toBe("Form Monitoring");
+    expect(SUNNY_CONFIG.metrics.account.flags).toBe("gi");
+    expect("Below in PPTA, Club Close % and Spa%".match(SUNNY_CONFIG.metrics.account)).toEqual(["PPTA", "Club Close %", "Spa%"]);
+  });
+
+  it("another company's page name reaches the tool descriptions, and no tool code names Sunny's metrics or page", () => {
+    setAppConfigForTests({ ...FAKE, formsPageName: "Forms Ledger" });
+    const described = JSON.stringify(agentLoopTools().map((tool) => tool.description));
+    expect(described).toContain("Forms Ledger");
+    expect(described).not.toContain("Form Monitoring");
+    const strip = (source: string): string => source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    for (const file of ["tools.ts", "run.ts", "data-tools.ts", "rules-book.ts"]) {
+      const code = strip(readFileSync(new URL(`./${file}`, import.meta.url), "utf8"));
+      expect(code, file).not.toContain("Form Monitoring");
+      expect(code, file).not.toMatch(/PPTA|LPSVA|Club\\s\+Close/);
     }
   });
 });

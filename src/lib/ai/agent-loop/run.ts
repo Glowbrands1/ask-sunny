@@ -107,7 +107,7 @@ export function doneThisTurn(effects: Pick<ToolEffects, "proposal" | "formUpdate
   const done: string[] = [];
   /* QA's audit (item 14b): coach_team's "create all" saves drafts in Form Monitoring; a later failure never says nothing was saved. */
   if (effects.draftsCreated && effects.draftsCreated > 0) {
-    done.push(`I created ${effects.draftsCreated} draft Coaching Form${effects.draftsCreated === 1 ? "" : "s"} in Form Monitoring.`);
+    done.push(`I created ${effects.draftsCreated} draft Coaching Form${effects.draftsCreated === 1 ? "" : "s"} in ${appConfig().formsPageName}.`);
   }
   if (effects.proposal) {
     const who = effects.proposal.employeeName ? ` for **${effects.proposal.employeeName}**` : "";
@@ -394,7 +394,7 @@ function buildAgentLoopTools(config: AppConfig) {
   },
   {
     name: "find_past_forms",
-    description: "List the forms on file (Form Monitoring) for one employee, or, with no employee_name, every form of a kind or period (\"who got a CA this month?\": form and date_from/date_to). Only when the manager asks about forms on file or history; never otherwise.",
+    description: "List the forms on file (" + config.formsPageName + ") for one employee, or, with no employee_name, every form of a kind or period (\"who got a CA this month?\": form and date_from/date_to). Only when the manager asks about forms on file or history; never otherwise.",
     input_schema: object({
       employee_name: { type: "string", description: "The employee the manager named. Leave it out for a list of every form of a kind or period." },
       form: { type: "string", description: "The form the manager named (\"coaching\", \"CA\"), if any." },

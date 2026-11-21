@@ -1366,8 +1366,8 @@ async function findFormsInPeriod(context: ToolContext, input: { form?: unknown; 
   const kind = typeof input.form === "string" ? formKindFromText(input.form) : null;
   if (!range && !kind) return { reason_code: "missing_input", error: "Give the employee's name, or the period (date_from, date_to) or kind of form asked about." };
   const actor = await chatFormsActor(context.actor).catch(() => undefined);
-  if (actor === undefined) return { reason_code: "read_failed", error: "Form Monitoring could not be read just now. Say so; do not say there are no forms." };
-  if (actor === null) return { reason_code: "scope", error: "This manager's role cannot view Form Monitoring, so past forms cannot be listed." };
+  if (actor === undefined) return { reason_code: "read_failed", error: `${appConfig().formsPageName} could not be read just now. Say so; do not say there are no forms.` };
+  if (actor === null) return { reason_code: "scope", error: `This manager's role cannot view ${appConfig().formsPageName}, so past forms cannot be listed.` };
   try {
     const read = await listInstances("all", PERIOD_READ_LIMIT, {
       ...instanceListFilterFor(actor),
@@ -1400,10 +1400,10 @@ async function findFormsInPeriod(context: ToolContext, input: { form?: unknown; 
       counts,
       archived: input.include_archived === true ? "every archived form included, each marked archived" : ARCHIVED_NOTE,
       ...(visible.length > rows.length ? { listed: rows.length, of: visible.length } : {}),
-      note: `${complete ? "Every such form this manager can see, read by form date: never say the list is capped or that some may be missing." : `More than ${PERIOD_READ_LIMIT} forms match: the counts are of the first ${PERIOD_READ_LIMIT} read. Say so, and that Form Monitoring has the full list.`} Numbers come only from counts (total, by_person, by_form, by_date): copy them, never count or add rows yourself, and never put one person's forms under another's name.${visible.length > rows.length ? ` ${rows.length} of ${visible.length} forms are listed; say how many are not shown.` : ""} A draft is not on file.`,
+      note: `${complete ? "Every such form this manager can see, read by form date: never say the list is capped or that some may be missing." : `More than ${PERIOD_READ_LIMIT} forms match: the counts are of the first ${PERIOD_READ_LIMIT} read. Say so, and that ${appConfig().formsPageName} has the full list.`} Numbers come only from counts (total, by_person, by_form, by_date): copy them, never count or add rows yourself, and never put one person's forms under another's name.${visible.length > rows.length ? ` ${rows.length} of ${visible.length} forms are listed; say how many are not shown.` : ""} A draft is not on file.`,
     };
   } catch {
-    return { reason_code: "read_failed", error: "Form Monitoring could not be read just now. Say so; do not say there are no forms." };
+    return { reason_code: "read_failed", error: `${appConfig().formsPageName} could not be read just now. Say so; do not say there are no forms.` };
   }
 }
 
@@ -1431,8 +1431,8 @@ export async function findPastForms(context: ToolContext, input: { employee_name
     if (typedClose) return typedClose;
   }
   const actor = await chatFormsActor(context.actor).catch(() => undefined);
-  if (actor === undefined) return { reason_code: "read_failed", error: "Form Monitoring could not be read just now. Say so; do not say there are no forms." };
-  if (actor === null) return { reason_code: "scope", error: "This manager's role cannot view Form Monitoring, so past forms cannot be listed." };
+  if (actor === undefined) return { reason_code: "read_failed", error: `${appConfig().formsPageName} could not be read just now. Say so; do not say there are no forms.` };
+  if (actor === null) return { reason_code: "scope", error: `This manager's role cannot view ${appConfig().formsPageName}, so past forms cannot be listed.` };
   /*
    * Batch G (QA's addition 2): the typed name is one roster person's preferred or legal name, so forms under the other
    * one are theirs too ("Jo Quill" finds the forms filed as "Josephine Quill"). Never another roster person's.
@@ -1620,7 +1620,7 @@ export async function findPastForms(context: ToolContext, input: { employee_name
       ...(!onScreenChoice && forms.length > 1 && input.open === true ? { which_form_question: WHICH_FORM_QUESTION, single_out: singleOutNote() } : {}),
     };
   } catch {
-    return { reason_code: "read_failed", error: "Form Monitoring could not be read just now. Say so; do not say there are no forms." };
+    return { reason_code: "read_failed", error: `${appConfig().formsPageName} could not be read just now. Say so; do not say there are no forms.` };
   }
 }
 
@@ -2516,7 +2516,8 @@ export function sameRosterPerson(a: string, b: string, roster: readonly Pick<Ros
  * manager gave about this person must still be in what_happened. Empty is allowed (Create waits for the account).
  */
 /** Performance metrics managers name ("PPTA, LPSVA, Club Average, Club Close %, and Spa %"). */
-const ACCOUNT_METRIC = /\b(?:PPTA|LPSVA|UPTA|MSB|CC\s?%|Spa\s?%|Club\s+Close\s?%|Club\s+Average|Average\s+Club)(?=\W|$)/gi;
+/** This company's sales metrics (`appConfig().metrics.account`, global): kept word for word, never people. */
+const accountMetric = (): RegExp => appConfig().metrics.account;
 
 /**
  * Whole numbers of two or more digits that are not part of a date, a time or an amount, and not a year ("146 tans",
@@ -2553,7 +2554,7 @@ export function accountWordKind(word: string): string {
   ACCOUNT_TIME.lastIndex = 0;
   if (new RegExp(ACCOUNT_TIME.source, "i").test(word)) return "time";
   if (/\$\s?\d/.test(word)) return "amount";
-  if (new RegExp(ACCOUNT_METRIC.source, "i").test(word)) return "metric";
+  if (new RegExp(accountMetric().source, "i").test(word)) return "metric";
   if (/^\d+$/.test(word.trim())) return "figure";
   if (new RegExp(ACCOUNT_WHEN.source, "i").test(word)) return "when";
   if (/^at\s/i.test(word)) return "place";
@@ -2588,9 +2589,9 @@ export function accountMissing(managerWords: string, account: string, priorActio
     }
   }
   /* Metrics and figures exactly as written (QA, the MSB family): "PPTA", "Club Close %", "146 tans", "237". */
-  for (const match of managerWords.matchAll(ACCOUNT_METRIC)) {
+  for (const match of managerWords.matchAll(accountMetric())) {
     const metric = match[0].toLowerCase().replace(/\s+/g, " ");
-    const kept = said.replace(/\s+/g, " ").includes(metric) || (/^msb$/.test(metric) && /must see behaviou?rs?/.test(said));
+    const kept = said.replace(/\s+/g, " ").includes(metric) || appConfig().metrics.spelledOut.some((alias) => alias.short === metric && alias.long.test(said));
     if (!kept) missing.push(match[0]);
   }
   const accountFigures = new Set(standaloneFigures(account));
@@ -3313,7 +3314,7 @@ export async function proposeForm(
     const { saidOnlyOther, headings: { conduct: conductRole } } = appConfig().policyGuards;
     if (saidOnlyOther && citesMustSee(askedPolicyWhole) && !saysMustSee(requestWords)) {
       const conduct = conductRole ? manual.headings.find((heading) => headingKey(heading) === headingKey(conductRole)) : undefined;
-      const performance = /\bunder[- ]?perform(?:ance|ing)\b|\bperform[a-z]*\b|\bnumbers\b|\bgoals?\b|\bsales\b/i.test(requestWords) || new RegExp(ACCOUNT_METRIC.source, "i").test(requestWords);
+      const performance = /\bunder[- ]?perform(?:ance|ing)\b|\bperform[a-z]*\b|\bnumbers\b|\bgoals?\b|\bsales\b/i.test(requestWords) || new RegExp(accountMetric().source, "i").test(requestWords);
       const fits = topicHeadings(requestWords) ?? (performance && conduct ? [conduct] : null);
       return { reason_code: "msb_not_said", error: `"Other — ${saidOnlyOther.label}" is cited only when the manager says ${saidOnlyOther.saidAs}, and these words do not.${fits ? ` Propose the card again with policy "${fits[0]}"${performance ? ` (sales or performance below target is the ${conductRole})` : ""}.` : " Propose the card again with the heading that fits what happened."}`, ...(fits ? { fits_headings: fits } : {}) };
     }
@@ -3953,8 +3954,8 @@ export async function proposeForm(
    * code no longer writes or appends any of it.
    */
   const conductHeading = appConfig().policyGuards.headings.conduct;
-  const underPerformance = Boolean(policyHeading && conductHeading && policyHeading.toLowerCase().includes(conductHeading.toLowerCase()) && (/\bunder[- ]?perform(?:ance|ing)\b|must see behaviou?rs?|\bperform[a-z]*\b/i.test(managerWords) || ACCOUNT_METRIC.test(managerWords)));
-  ACCOUNT_METRIC.lastIndex = 0;
+  const underPerformance = Boolean(policyHeading && conductHeading && policyHeading.toLowerCase().includes(conductHeading.toLowerCase()) && (/\bunder[- ]?perform(?:ance|ing)\b|must see behaviou?rs?|\bperform[a-z]*\b/i.test(managerWords) || accountMetric().test(managerWords)));
+  accountMetric().lastIndex = 0;
   const corrective = template.key === appConfig().formKeys.corrective;
   /*
    * TERMINATION_STATED_TICKS (batch H12; Pau's P15 ruling): a termination the manager stated is the level, ticked at

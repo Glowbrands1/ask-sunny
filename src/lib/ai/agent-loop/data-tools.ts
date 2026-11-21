@@ -455,7 +455,9 @@ export const FORM_DELETIONS_SINCE = "Nov 20, 2026";
 const DELETIONS_MAX = 20;
 
 const DELETED_VIA: Record<string, string> = {
-  route: "Form Monitoring",
+  get route() {
+    return appConfig().formsPageName;
+  },
   chat: "in chat",
   agent_loop: "by the assistant, removing an empty revision draft after an edit it refused",
   demo_sweep: "the demo records clean-up",
@@ -533,7 +535,7 @@ export function dataToolSpecs(config: AppConfig) {
   {
     name: "read_form_deletions",
     description:
-      "Administrators only: who deleted a form, when and how (Form Monitoring, chat, or outside the app), from the permanent deletion record, newest first. Pass employee_name for one employee's forms (\"who deleted <name>'s form?\"). A manager is refused.",
+      "Administrators only: who deleted a form, when and how (" + appConfig().formsPageName + ", chat, or outside the app), from the permanent deletion record, newest first. Pass employee_name for one employee's forms (\"who deleted <name>'s form?\"). A manager is refused.",
     input_schema: {
       type: "object",
       properties: {
