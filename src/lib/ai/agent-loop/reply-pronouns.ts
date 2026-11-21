@@ -245,6 +245,20 @@ export function withoutPersonPronouns(
       edits.push({ from: at, to: end + (/^[ \t]/.test(reply.slice(end)) ? 1 : 0), text: "" });
       continue;
     }
+    /*
+     * QA2's live R3 (21 Nov 2026, #1168's case): "Her shift lead told her to go home and she refused" read "Test's shift
+     * lead, <J>, told Test to go home and Test refused". The told listener later in this sentence is named (f059), so a
+     * possessive before it, at the sentence's first mention, is the plain article: "The shift lead … told Remy …".
+     */
+    if (owns && word !== "hers" && !again) {
+      const rest = reply.slice(end);
+      const stop = rest.search(/[.?!](?!\d)|\n/);
+      const sentenceEnd = end + (stop === -1 ? rest.length : stop);
+      if ([...told].some((listener) => listener > at && listener < sentenceEnd)) {
+        edits.push({ from: at, to: end, text: match[0][0] === match[0][0]!.toUpperCase() ? "The" : "the" });
+        continue;
+      }
+    }
     // "her shift", "her 146 tans", "her own" own something; "for her.", "with her and", "talked to her" do not.
     const text = owns ? possessive(display) : display;
     edits.push({ from: at, to: end, text });

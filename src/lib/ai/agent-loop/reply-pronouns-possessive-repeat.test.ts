@@ -19,4 +19,14 @@ describe("the person's possessive, once they are named in the sentence", () => {
     expect(withoutPersonPronouns("Her phone was out on the floor.", "Remy").text).toBe("Remy's phone was out on the floor.");
     expect(withoutPersonPronouns("She said her car broke down.", "Remy").text).toBe("Remy said Remy's car broke down.");
   });
+
+  /*
+   * QA2's live R3 (#1168's case): "Her shift lead told her to go home and she refused" read "Test's shift lead, <J>, told
+   * Test to go home and Test refused". The listener of the lead's instruction is named (#1147's f059: never a pronoun, never
+   * dropped), so the possessive that opens the sentence is the plain "The shift lead".
+   */
+  it("QA2's R3 (#1168): the opening possessive is plain when the listener is named later in the sentence", () => {
+    expect(withoutPersonPronouns("Her shift lead, Corin, told her to go home and she refused.", "Remy", ["Corin"]).text).toBe("The shift lead, Corin, told Remy to go home and Remy refused.");
+    expect(withoutPersonPronouns("Her shift lead told her to go home and she refused.", "Remy").text).toBe("The shift lead told Remy to go home and Remy refused.");
+  });
 });
