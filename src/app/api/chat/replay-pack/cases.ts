@@ -85,7 +85,8 @@ export interface ReplayContext {
   /** The FORMS ON FILE block the answering model was last given (empty when none): FORMS_ON_FILE_DATE_RANGE, 18 Nov 2026. */
   lastFormRecords?(): string;
   /** What the revision model writes on the next revision. */
-  revisionWrites(values: Record<string, string>): void;
+  /** `checked`: boxes the revision ticks too, e.g. `{ offense_type: ["standards_of_conduct"] }` (Coding-2, 14 Nov 2026). */
+  revisionWrites(values: Record<string, string>, checked?: Record<string, string[]>): void;
   /** What the answering model says on its next turns (null: the default answer). */
   modelSays(text: string | null): void;
   /**
