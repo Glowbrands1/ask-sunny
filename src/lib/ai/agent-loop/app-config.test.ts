@@ -93,6 +93,10 @@ import { rulesBookText } from "./rules-book";
  * payroll_amount_missing (ask the amount in one question), and the stated line adds ", as you said" only for
  * stated_this_turn. No app, place, staff system or form key.
  *
+ * Re-taken on purpose on 20 Nov 2026 (QA: "show me forms for Tes" opened another person's draft): the find_past_forms
+ * close-spelling line now says did_you_mean (end with ask_exactly, open nothing) in place of close_spelling_of ("Opening
+ * **<on_file>**'s form."). It reads the same under every config; nothing else changed.
+ *
  * Re-taken on purpose on 20 Nov 2026 (Pau's live chat: a refused find_past_forms told as "a lookup issue on my end"): one
  * Replies line was added: a tool's refusal is never told to the manager as a lookup problem or "try again". It reads the
  * same under every config; nothing else changed.

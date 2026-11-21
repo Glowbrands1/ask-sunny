@@ -25,6 +25,21 @@ function close(typed: string, word: string): boolean {
   return editDistance(typed, word) <= (word.length >= 6 ? 2 : 1);
 }
 
+/**
+ * QA (20 Nov 2026, live after #1131: "show me forms for Tes" opened "Test Te"'s draft): each word of the name needs ITS
+ * OWN typed word that spells it closely. One typed word ("tes") one letter from two name words ("test" and "te") is never
+ * a two-word name. Assigned in order of the name's words, each typed word used once.
+ */
+function eachWordOwnTyped(words: readonly string[], typed: readonly string[]): boolean {
+  const used = new Set<number>();
+  return words.every((word) => {
+    const at = typed.findIndex((said, index) => !used.has(index) && close(said, word));
+    if (at === -1) return false;
+    used.add(at);
+    return true;
+  });
+}
+
 /** The one employee on these forms whose name the request spells closely, or null. Exact names are not this reader's. */
 export function closelySpelledEmployee(question: string, employeeNames: readonly string[]): string | null {
   const typed = candidateNameWords(question);
@@ -32,7 +47,7 @@ export function closelySpelledEmployee(question: string, employeeNames: readonly
     const words = wordsOf(name);
     if (words.length < 2) return false;
     if (words.every((word) => typed.includes(word))) return false;
-    return words.every((word) => typed.some((said) => close(said, word)));
+    return eachWordOwnTyped(words, typed);
   });
   return fits.length === 1 ? fits[0]! : null;
 }
