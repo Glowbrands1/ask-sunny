@@ -53,4 +53,41 @@ export const NOV22_AGENT_LOOP_EXIT_REASON_MANAGER_WORDS_CASES: ReplayCase[] = [
       expect(checked.eligible_for_rehire ?? [], saved).toEqual(["no"]);
     },
   },
+  {
+    id: "nov22-l6-exit-termination-filed-as-once",
+    title: `L6: "${SAID}": the card's facts give the termination's tick once (exit_termination), so a reply that says "Filed as" for each fact says it once`,
+    report: "QA's live L6 on prod 14fed8c (22 Nov 2026): the reply said \"Filed as\" twice",
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      vi.setSystemTime(new Date("2026-11-22T18:00:00Z"));
+      t.directory([...STAFF]);
+      t.as("salon_director", KEARNEY);
+      type Facts = { exit_ticks?: string[]; exit_termination?: { form_label?: string } };
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        const result = lastResult(view, "propose_form") as { facts?: Facts } | null;
+        if (result) {
+          /* The live model follows the rules book's two lines: exit_termination's "Filed as an …", and exit_ticks' "Filed as: …". */
+          const facts = result.facts ?? {};
+          const lines = [
+            ...(facts.exit_termination ? [`Filed as an **${facts.exit_termination.form_label}** (a termination), as you said.`] : []),
+            ...((facts.exit_ticks ?? []).length > 0 ? [`Filed as: ${facts.exit_ticks!.join(", ")}.`] : []),
+          ];
+          return { text: `Here's the Resignation/Exit Form for **Rowan**. ${lines.join(" ")}` };
+        }
+        return {
+          tool: "propose_form",
+          input: {
+            template_key: "stc-exit", employee_id: "e-4", exit_type: "termination",
+            exit_evidence: { ...evidenceFrom(view, "exit form for Rowan Kestrel"), kind: "asks_for_exit_form" },
+            what_happened: "terminated for job abandonment",
+          },
+        };
+      }));
+      const reply = await t.thread().say(SAID);
+      expect(reply.content, "the termination is not said at all (the case proves nothing)").toMatch(/Immediate involuntary separation/);
+      expect(reply.content.match(/Filed as/g) ?? [], reply.content).toHaveLength(1);
+    },
+  },
 ];

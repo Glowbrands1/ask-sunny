@@ -2466,7 +2466,12 @@ async function personNotNamed(context: ToolContext, template: { key: string; nam
  * and it asks a missing last day worked, as before. Never a date or a reason the manager did not give.
  */
 async function exitCardTicks(isExit: boolean, termination: boolean, requestWords: string, today: string, exitHow: string | null = null): Promise<{ exit_ticks?: string[]; exit_unset?: string[] }> {
-  if (!isExit) return {};
+  /*
+   * QA's live L6 (22 Nov 2026): a termination's reply said "Filed as" twice: exit_termination already gives its tick
+   * (Immediate involuntary separation) with the rules book's line for it, and exit_ticks gave the same tick again with its
+   * own "Filed as:" line. A termination's tick is given once, by exit_termination.
+   */
+  if (!isExit || termination) return {};
   const [{ readExitFacts, exitFactValues }, library] = await Promise.all([import("@/lib/forms/exit-facts"), import("@/lib/forms/exit-library")]);
   const facts = readExitFacts(requestWords, today);
   const labels: Record<string, string> = {
