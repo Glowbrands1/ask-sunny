@@ -2847,7 +2847,16 @@ export async function proposeForm(
     const lastCard = [...context.history].reverse().find((message) => message.role === "assistant" && (message.formProposal || /\*\*Observation of Offense:\*\*/.test(String(message.content))));
     const onScreen = lastCard?.formProposal?.issue ?? /\*\*Observation of Offense:\*\*\s*(.+)/.exec(String(lastCard?.content ?? ""))?.[1]?.trim() ?? "";
     const next = typeof input.what_happened === "string" ? input.what_happened : "";
-    if (!onScreen.trim() || !next.trim() || addPlacement(onScreen, next).changed.length > 0) return { reword_paused: true, note: REWORD_PAUSED.note };
+    /*
+     * QA (20 Nov 2026; #1184): the card on screen names its person by the short name ("Wren left …"); the model's account
+     * may still say the full name ("Wren Halloway left …"). That is the same sentence, not a rewording.
+     */
+    const roster = await rosterFor(context.actor.scope);
+    const row = typeof input.employee_id === "string" && roster.kind === "read" ? roster.roster.find((candidate) => candidate.id === input.employee_id) : undefined;
+    const names = [lastCard?.formProposal?.employeeName, typeof input.employee_name === "string" ? input.employee_name : null, ...(row ? fullNamesOf(row) : [])].map((name) => name?.trim() ?? "").filter(Boolean);
+    const { withShortName } = await import("@/lib/forms/short-name");
+    const nextShort = names.reduce((text, name) => withShortName(text, name, name.split(/\s+/)[0]!).text, next);
+    if (!onScreen.trim() || !next.trim() || (addPlacement(onScreen, next).changed.length > 0 && addPlacement(onScreen, nextShort).changed.length > 0)) return { reword_paused: true, note: REWORD_PAUSED.note };
   }
   /* HARD GUARD (STAFF_PICKER): a form asked for a whole staff is never one card for everyone. */
   if ((await import("@/lib/forms/staff-picker")).isBareWholeStaff(context.question) || (await import("@/lib/forms/staff-picker")).asksForWholeStaff(context.question)) {
@@ -3083,6 +3092,15 @@ export async function proposeForm(
    */
   const addressRead = (await import("@/lib/forms/exit-details")).withoutUntypedAddresses(accountRead.text, managerText);
   let whatHappened = addressRead.text.trim().slice(0, 2_000);
+  /*
+   * QA (20 Nov 2026; #1184): the person's full name in the model's account becomes the reply name as it comes in, so
+   * every check below compares it with the earlier card's account (already shortened) on the same terms. A second
+   * turn's "Wren Halloway left …, Wren also …" read against the first card's "Wren left …" was taken as a rewording.
+   */
+  if (whatHappened && employee.name) {
+    const short = replyNameFor(employee.name, read.kind === "read" ? read.roster : [], extractEmployeeNames(managerTurns(context)), employee.id ?? null);
+    whatHappened = (await import("@/lib/forms/short-name")).withShortName(whatHappened, employee.name, short).text;
+  }
   /* The incident's own words (this person's turns, read below) are checked against the account once they are known. */
   const asked = managerContext(context.history as ChatMessage[], { id: context.questionMessageId, content: context.question });
   /* THIS request's turns (QA, 14 Nov 2026; THIS_PERSONS_TURNS behaviour): an earlier incident in the chat never feeds this card. */
@@ -3918,6 +3936,20 @@ export async function proposeForm(
     ...(incidentTime ? { incidentTime } : {}),
     ...(awaiting ? { awaitingIncident: true as const, supportsInlineDraft: false } : {}),
   };
+  /*
+   * THE CARD'S ACCOUNT CALLS THE PERSON BY THE SHORT NAME (QA, 20 Nov 2026; live on main b06e51be): "ca for Test Testy,
+   * late 11/18" got the account "Test Testy was late on 11/18.", and the drafter carried the full name into Observed.
+   * The card's own full name in its account becomes the reply name (`replyNameFor`: the first name, or the full name
+   * when someone else shares it; `short-name.ts`). The card's name field keeps the full name.
+   */
+  if (card.issue && card.employeeName) {
+    const short = replyNameFor(card.employeeName, read.kind === "read" ? read.roster : [], extractEmployeeNames(managerTurns(context)), employee.id ?? null);
+    const named = (await import("@/lib/forms/short-name")).withShortName(card.issue, card.employeeName, short);
+    if (named.replaced > 0) {
+      card.issue = named.text;
+      whatHappened = named.text;
+    }
+  }
   /*
    * THE JOB TITLE IS THIS PERSON'S (TITLE_OF_THE_EMPLOYEE, TITLE_NOT_SPEAKERS_MANAGER, EXIT_OTHER_PERSON_NOT_SUBJECT;
    * parity gaps #33, #34, #39): from the roster row's Woven title, never read off the whole chat, where it can be the

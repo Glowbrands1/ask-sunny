@@ -337,7 +337,8 @@ export const NOV14_LIVE_R5_CASES: ReplayCase[] = [
       const reply = await t.thread().say("ca for remy calder for violating the key holdr policy, she left the back door unlocked last night");
       const policyLine = (reply.formProposal as { policyLine?: string | null } | undefined)?.policyLine ?? "";
       expect(policyLine, "the card cites no section").toMatch(/^Security Policy/);
-      expect(reply.content, `the reply does not say what is on the card:\n${reply.content}`).toMatch(/Remy Calder/);
+      /* Changed on purpose (QA, 20 Nov 2026; #1184): the card's account and the reply call the person by the reply name (the first name, Pau's rule), not the full name the stand-in model wrote. */
+      expect(reply.content, `the reply does not say what is on the card:\n${reply.content}`).toMatch(/Corrective Action Form for \*\*Remy\*\*/);
       expect(reply.content.trim(), "the whole reply is the still-open line").not.toMatch(/^The card above is still open[^\n]*$/);
       const said = /^\s*\*\*Policy:?\*\*:?\s*(.+)$/im.exec(reply.content)?.[1]?.trim() ?? "";
       expect(said.toLowerCase().replace(/[^a-z0-9]+/g, ""), `no whole Policy line:\n${reply.content}`).toBe(policyLine.toLowerCase().replace(/[^a-z0-9]+/g, ""));
