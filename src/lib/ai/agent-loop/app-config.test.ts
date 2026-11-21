@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 import { appConfig, setAppConfigForTests, SUNNY_CONFIG, type AppConfig } from "./app-config";
+import { citesMustSee, namesMustSee, saysMustSee } from "./policy-fit";
 import { agentLoopRules, agentLoopSystem } from "./prompt";
 import { agentLoopTools } from "./run";
 import { rulesBookText } from "./rules-book";
@@ -239,6 +240,33 @@ describe("app config: another company's content in the rules book (Phase 1 of th
   it("Sunny's own content holds every one of those words (so the check above is not vacuous)", () => {
     const text = rulesBookText();
     for (const word of SUNNY_CONTENT_WORDS) expect(text, `"${word}" is not in Sunny's rules book`).toContain(word);
+  });
+});
+
+describe("app config: the policy guards' headings (Phase 1 of the loop port)", () => {
+  it("Sunny's guards check the headings and the Must See Behaviors ruling the code used", () => {
+    expect(SUNNY_CONFIG.policyGuards.headings).toEqual({ attendance: "Attendance", lateOpening: "Late Opening", conduct: "Standards of Conduct" });
+    expect(citesMustSee("Other — Must See Behaviors")).toBe(true);
+    expect(citesMustSee("Other — MSB")).toBe(true);
+    expect(saysMustSee("verbal for her MSBs")).toBe(true);
+    expect(namesMustSee("must see behaviors were missed")).toBe(true);
+    expect(saysMustSee("she was late")).toBe(false);
+  });
+
+  it("a company with no said-only Other topic switches those guards off", () => {
+    setAppConfigForTests({ ...FAKE, policyGuards: { headings: { attendance: null, lateOpening: null, conduct: null }, saidOnlyOther: null } });
+    expect(citesMustSee("Other — Must See Behaviors")).toBe(false);
+    expect(saysMustSee("MSB")).toBe(false);
+    expect(namesMustSee("must see behaviors")).toBe(false);
+  });
+
+  it("tools.ts and policy-fit.ts name no manual heading in their code: the guards take them from the config", () => {
+    const strip = (source: string): string => source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    for (const file of ["tools.ts", "policy-fit.ts"]) {
+      const code = strip(readFileSync(new URL(`./${file}`, import.meta.url), "utf8"));
+      expect(code, file).not.toMatch(/["'`]Late Opening["'`]|["'`]Attendance["'`]|["'`]Standards of Conduct["'`]/);
+      expect(code, file).not.toMatch(/standards of conduct\/i/);
+    }
   });
 });
 

@@ -1,4 +1,4 @@
-import type { AgentLoopContent, LoopWords } from "@/lib/ai/agent-loop/app-config";
+import type { AgentLoopContent, LoopWords, PolicyGuards } from "@/lib/ai/agent-loop/app-config";
 
 /**
  * ============================================================================
@@ -66,3 +66,19 @@ export function sunnyLoopContent({ place, staff }: LoopWords): AgentLoopContent 
     },
   };
 }
+
+/**
+ * The JBA Policy Manual headings Sunny's policy guards check (`tools.ts`, `policy-fit.ts`), and Pau's Must See Behaviors
+ * ruling (16 Nov 2026: "Other — Must See Behaviors" only when the manager says MSB or must see behaviors). The patterns
+ * are the ones the code used, unchanged.
+ */
+export const SUNNY_POLICY_GUARDS: PolicyGuards = {
+  headings: { attendance: "Attendance", lateOpening: "Late Opening", conduct: "Standards of Conduct" },
+  saidOnlyOther: {
+    label: "Must See Behaviors",
+    saidAs: "MSB or must see behaviors",
+    cited: /\bmsb\b|must[\s-]*see\s+behaviou?rs?/i,
+    said: /\bmsbs?\b|must[\s-]*see\s+behaviou?rs?/i,
+    named: /\bmsb\b|must see behaviou?rs?/i,
+  },
+};

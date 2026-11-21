@@ -37,7 +37,7 @@ import { sectionWording } from "@/lib/forms/policy-citation";
 import { buildProposal, extractEmployeeNames, extractJobTitle, isJobTitlePhrase, JOB_TITLES, managerContext, samePerson, tidyTypedName } from "@/lib/forms/proposal";
 import { foldName } from "@/lib/forms/fold-name";
 import { cleaningUndonePhrase, namesCareAndCleaning, readCaPolicy } from "@/lib/forms/ca-policy";
-import { citesMustSee, dressCodeFit, saysMustSee } from "./policy-fit";
+import { citesMustSee, dressCodeFit, namesMustSee, saysMustSee } from "./policy-fit";
 import { fieldStates, mergeSaved, refusedFields, savedDiff, type SavedChange } from "@/lib/ai/agent-loop/saved-diff";
 import { turnsFromThisPersonsRequest } from "@/lib/forms/this-persons-turns";
 import { closeHeadingReading, closePolicyQuestion, namedPolicies, namesHeading } from "@/lib/forms/named-policy-section";
@@ -2961,7 +2961,8 @@ export async function proposeForm(
    * sf-s21 5d (the batch H live run): "I need the CA for the Must see behaviors and not the standard of conduct" reads
    * as a new request, but it is about the policy of the draft on screen (`template-outline.ts`): the guard holds.
    */
-  const mustSeeNotConduct = (await import("@/lib/forms/template-outline")).asksMustSeeNotConduct(context.question);
+  const guards = appConfig().policyGuards;
+  const mustSeeNotConduct = guards.saidOnlyOther !== null && guards.headings.conduct !== null && (await import("@/lib/forms/template-outline")).asksMustSeeNotConduct(context.question);
   /*
    * The rebuild plan, PR 1: the "another / new / second" list, startsNewForm and NEW_REQUEST_WITH_INCIDENT (word lists
    * over this message) are gone. A new form while a draft is open, or a new request after an earlier card, is the
@@ -2974,7 +2975,7 @@ export async function proposeForm(
       return {
         reason_code: "draft_open", error: `The ${open.templateName} draft for ${open.employeeName} is open on screen: put this on that draft with edit_form (instance_id ${open.id}). Propose a new card only if the manager asks for another or a new one.`,
         /* Pau's ruling (16 Nov 2026): MSB / must see behaviors is Other — Must See Behaviors, not the Standards of Conduct. */
-        ...(mustSeeNotConduct ? { must_see_behaviors: "Must See Behaviors is recorded as \"Other — Must See Behaviors\", not the Standards of Conduct (Pau's ruling, 16 Nov 2026): put that policy on the draft with edit_form." } : {}),
+        ...(mustSeeNotConduct ? { must_see_behaviors: `${guards.saidOnlyOther!.label} is recorded as "Other — ${guards.saidOnlyOther!.label}", not the ${guards.headings.conduct} (Pau's ruling, 16 Nov 2026): put that policy on the draft with edit_form.` } : {}),
       };
     }
   }
@@ -3273,10 +3274,11 @@ export async function proposeForm(
      * LATE_OPEN_DATE / FAILURE_TO_OPEN_IS_LATE_OPENING). Late for a shift stays Attendance (`describesAttendanceToo`).
      */
     const lateOpen = await import("@/lib/forms/late-open");
-    const lateOpening = manual.headings.find((heading) => headingKey(heading) === headingKey("Late Opening"));
+    const { lateOpening: lateOpeningRole, attendance: attendanceRole } = appConfig().policyGuards.headings;
+    const lateOpening = lateOpeningRole ? manual.headings.find((heading) => headingKey(heading) === headingKey(lateOpeningRole)) : undefined;
     const saysLateOpening = (lateOpen.lateOpenOn() && lateOpen.LATE_TO_OPEN.test(requestWords)) || lateOpen.saysFailureToOpen(requestWords);
-    if (lateOpening && saysLateOpening && headingKey(policyHeading) === headingKey("Attendance") && !lateOpen.describesAttendanceToo(requestWords)) {
-      return { reason_code: "wrong_heading", error: `The manager's words ("late to open", a failure to open) are the manual's ${lateOpening} section, not Attendance. Propose the card again with policy "${lateOpening}".` };
+    if (lateOpening && attendanceRole && saysLateOpening && headingKey(policyHeading) === headingKey(attendanceRole) && !lateOpen.describesAttendanceToo(requestWords)) {
+      return { reason_code: "wrong_heading", error: `The manager's words ("late to open", a failure to open) are the manual's ${lateOpening} section, not ${attendanceRole}. Propose the card again with policy "${lateOpening}".` };
     }
     if (askedSecond) {
       secondHeading = headingOf(manual.headings, askedSecond);
@@ -3308,11 +3310,12 @@ export async function proposeForm(
       const beside = policyHeading && !secondHeading ? ` If the manager also describes a second offense that ${policyHeading} covers, cite both: policy "${dressFits[0]}; ${policyHeading}${askedOther ? `; ${askedOther}` : ""}".` : "";
       return { reason_code: "dress_code_heading", error: `The manager's words describe a dress-code offense (dress code, or clothing worn on shift), which the manual's Dress Code section covers, not "${askedPolicyWhole}". Propose the card again with policy "${dressFits[0]}"${dressFits.length > 1 ? ` (or ${dressFits.slice(1).map((heading) => `"${heading}"`).join(", ")})` : ""}.${beside}`, fits_headings: dressFits };
     }
-    if (citesMustSee(askedPolicyWhole) && !saysMustSee(requestWords)) {
-      const conduct = manual.headings.find((heading) => headingKey(heading) === headingKey("Standards of Conduct"));
+    const { saidOnlyOther, headings: { conduct: conductRole } } = appConfig().policyGuards;
+    if (saidOnlyOther && citesMustSee(askedPolicyWhole) && !saysMustSee(requestWords)) {
+      const conduct = conductRole ? manual.headings.find((heading) => headingKey(heading) === headingKey(conductRole)) : undefined;
       const performance = /\bunder[- ]?perform(?:ance|ing)\b|\bperform[a-z]*\b|\bnumbers\b|\bgoals?\b|\bsales\b/i.test(requestWords) || new RegExp(ACCOUNT_METRIC.source, "i").test(requestWords);
       const fits = topicHeadings(requestWords) ?? (performance && conduct ? [conduct] : null);
-      return { reason_code: "msb_not_said", error: `"Other — Must See Behaviors" is cited only when the manager says MSB or must see behaviors, and these words do not.${fits ? ` Propose the card again with policy "${fits[0]}"${performance ? " (sales or performance below target is the Standards of Conduct)" : ""}.` : " Propose the card again with the heading that fits what happened."}`, ...(fits ? { fits_headings: fits } : {}) };
+      return { reason_code: "msb_not_said", error: `"Other — ${saidOnlyOther.label}" is cited only when the manager says ${saidOnlyOther.saidAs}, and these words do not.${fits ? ` Propose the card again with policy "${fits[0]}"${performance ? ` (sales or performance below target is the ${conductRole})` : ""}.` : " Propose the card again with the heading that fits what happened."}`, ...(fits ? { fits_headings: fits } : {}) };
     }
   }
   /*
@@ -3378,7 +3381,7 @@ export async function proposeForm(
    * the incident to a manual section gets the same fits_headings fact as a wrong heading: the model chooses again.
    */
   const otherAlone = !policyHeading && /^other\b/i.test(askedPolicyWhole);
-  const otherIsTheRule = /\bmsb\b|must see behaviou?rs?/i.test(requestWords) || Boolean(cleaning && !careAndCleaning);
+  const otherIsTheRule = namesMustSee(requestWords) || Boolean(cleaning && !careAndCleaning);
   const fitsHeadings = topicFits && !managerNamed && ((policyHeading && !cardHeadings.some((cited) => topicFits.some((heading) => headingKey(heading) === headingKey(cited)))) || (otherAlone && !otherIsTheRule)) ? topicFits : null;
   /* As today's card prints it (`formatManualCitation`): "Standards of Conduct Policy, JBA Policy Manual p.12". */
   /*
@@ -3826,7 +3829,7 @@ export async function proposeForm(
   /* No account yet: the card shows, and Create waits for what happened (as WHAT_HAPPENED_NO_CREATE does today). */
   const awaiting = whatHappened === "" && ACCOUNT_FORMS.has(template.key);
   /* NO_ACCOUNT_NO_APP_POLICY as a fact (batch B, code-check #21; r3 639: an MSB or topic request counts as naming it). */
-  const policyNamedByManager = namedPolicies(requestWords).length > 0 || typedHeading !== null || topicFits !== null || /\bmsb\b|must see behaviou?rs?/i.test(requestWords);
+  const policyNamedByManager = namedPolicies(requestWords).length > 0 || typedHeading !== null || topicFits !== null || namesMustSee(requestWords);
   /*
    * Act and state the assumption (Pau, 14 Nov 2026): no date in the manager's words, so the card is dated today, and
    * the reply says so in one line the manager can correct.
@@ -3949,7 +3952,8 @@ export async function proposeForm(
    * What is true about the card, for the model to say in its own reply as the rules book's "Card replies" lines teach;
    * code no longer writes or appends any of it.
    */
-  const underPerformance = Boolean(policyHeading && /standards of conduct/i.test(policyHeading) && (/\bunder[- ]?perform(?:ance|ing)\b|must see behaviou?rs?|\bperform[a-z]*\b/i.test(managerWords) || ACCOUNT_METRIC.test(managerWords)));
+  const conductHeading = appConfig().policyGuards.headings.conduct;
+  const underPerformance = Boolean(policyHeading && conductHeading && policyHeading.toLowerCase().includes(conductHeading.toLowerCase()) && (/\bunder[- ]?perform(?:ance|ing)\b|must see behaviou?rs?|\bperform[a-z]*\b/i.test(managerWords) || ACCOUNT_METRIC.test(managerWords)));
   ACCOUNT_METRIC.lastIndex = 0;
   const corrective = template.key === appConfig().formKeys.corrective;
   /*

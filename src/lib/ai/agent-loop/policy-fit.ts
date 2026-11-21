@@ -1,3 +1,5 @@
+import { appConfig } from "./app-config";
+
 /**
  * ============================================================================
  * THE POLICY FITS WHAT HAPPENED (QA, the 266 audit by Runner 2, train 4 on main 6d0b4ab1, 16 Nov 2026)
@@ -47,10 +49,15 @@ export function dressCodeFit(managerWords: string, headings: readonly string[]):
 
 /** Whether a policy the model gave is Must See Behaviors ("Other — Must See Behaviors", "Other — MSB"). */
 export function citesMustSee(policy: string): boolean {
-  return /\bmsb\b|must[\s-]*see\s+behaviou?rs?/i.test(policy);
+  return appConfig().policyGuards.saidOnlyOther?.cited.test(policy) ?? false;
 }
 
 /** Whether the manager's words say MSB or must see behaviors. */
 export function saysMustSee(managerWords: string): boolean {
-  return /\bmsbs?\b|must[\s-]*see\s+behaviou?rs?/i.test(managerWords);
+  return appConfig().policyGuards.saidOnlyOther?.said.test(managerWords) ?? false;
+}
+
+/** The looser naming the guards count as the manager naming it ("msb", "must see behaviors"). */
+export function namesMustSee(managerWords: string): boolean {
+  return appConfig().policyGuards.saidOnlyOther?.named.test(managerWords) ?? false;
 }

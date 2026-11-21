@@ -1,4 +1,4 @@
-import { sunnyLoopContent } from "@/config/company/agent-loop";
+import { SUNNY_POLICY_GUARDS, sunnyLoopContent } from "@/config/company/agent-loop";
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { ACTIVE_BRAND } from "@/lib/brand";
 import { readDirectoryFacts, readDirectoryRoster, readScopedRoster } from "@/lib/forms/employee-roster";
@@ -81,6 +81,34 @@ export interface AgentLoopContent {
   };
 }
 
+/**
+ * WHICH MANUAL HEADING THE CODE'S POLICY GUARDS CHECK, BY ROLE (Phase 1 of the loop port, QA 21 Nov 2026). The guards
+ * in `tools.ts` and `policy-fit.ts` are mechanism; the headings they name are one company's manual. A role the company's
+ * manual has no heading for is null, and its guard is off.
+ */
+export interface PolicyGuards {
+  readonly headings: {
+    /** Lateness and absence ("Attendance"). */
+    readonly attendance: string | null;
+    /** The location opening late ("Late Opening"): "late to open" is this, never attendance. */
+    readonly lateOpening: string | null;
+    /** Conduct, where sales or performance below target goes ("Standards of Conduct"). */
+    readonly conduct: string | null;
+  };
+  /**
+   * An "Other — <label>" topic cited only when the manager says it (Sunny: Must See Behaviors, Pau's ruling of
+   * 16 Nov 2026), with how a cited policy, the manager's words and a looser naming of it are recognised. Null: none.
+   */
+  readonly saidOnlyOther: {
+    readonly label: string;
+    /** How the rule says the manager names it ("MSB or must see behaviors"). */
+    readonly saidAs: string;
+    readonly cited: RegExp;
+    readonly said: RegExp;
+    readonly named: RegExp;
+  } | null;
+}
+
 export interface AppConfig {
   /** What the assistant is called in its own prompt and help ("Sunny"). */
   readonly appName: string;
@@ -119,6 +147,8 @@ export interface AppConfig {
   readonly leadershipTitle: RegExp;
   /** This company's content in the rules book, written with the config's own place and staff words. */
   readonly content: (words: LoopWords) => AgentLoopContent;
+  /** The manual headings the policy guards check, by role. */
+  readonly policyGuards: PolicyGuards;
 }
 
 /** Ask Sunny: the brand's names and place words, plus the staff system and form keys of this app. */
@@ -140,6 +170,7 @@ export const SUNNY_CONFIG: AppConfig = {
   jobTitles: JOB_TITLES.map((entry) => entry.pattern),
   leadershipTitle: /\b(?:directors?|managers?|leads?|supervisors?)\b/i,
   content: sunnyLoopContent,
+  policyGuards: SUNNY_POLICY_GUARDS,
 };
 
 let active: AppConfig = SUNNY_CONFIG;
