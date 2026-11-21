@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { READERS_LINE_HEADINGS } from "@/lib/forms/readers-line-headings";
 import { loopWriteUpSections } from "@/lib/forms/loop-write-up-sections";
 import { withAccountFactsKept } from "@/lib/forms/account-facts-kept";
 import { TERMINATION_OPTION, withTerminationPlan } from "@/lib/forms/termination-stated";
@@ -398,12 +399,7 @@ async function readOfficialPolicyManual(
 
 /** SPEND_GUARD_ALL_CALLS_ENABLED: this route's Claude calls are counted (`ai/spend-meter.ts`). Off, as before. */
 
-/**
- * QA f071 (20 Nov 2026): manual headings whose saved Policy Violated keeps the readers' "<box> — <section>" line in place
- * of a loop card's own policy line. Time Records stays "Standards of Conduct — Time Records", as Pau was last told (QA).
- * The app's own manual headings, lower-case; never the manager's words. Remove an entry to give it the card's line.
- */
-const READERS_LINE_HEADINGS: ReadonlySet<string> = new Set(["time records"]);
+/* QA f071 / c259: the headings whose saved Policy Violated keeps "<box> — <section>" are `READERS_LINE_HEADINGS` (forms/readers-line-headings.ts). */
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   return withSpendMeter("forms_draft", () => postFormsDraft(request, context));

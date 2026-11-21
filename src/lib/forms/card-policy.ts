@@ -1,3 +1,4 @@
+import { withoutReadersLineBox } from "./readers-line-headings";
 import type { ChatFormProposal, ChatMessage } from "@/types";
 
 /**
@@ -18,7 +19,8 @@ import type { ChatFormProposal, ChatMessage } from "@/types";
 export function cardPolicyHeading(content: string): string | null {
   const line = /\*\*Policy:\*\*\s*([^\n]+)/.exec(content)?.[1];
   if (!line) return null;
-  const first = line.split(/;|\s—\s/)[0]!;
+  // c259 (QA2, 21 Nov 2026): "Standards of Conduct — Time Records, …" reads back as Time Records (`readers-line-headings.ts`).
+  const first = withoutReadersLineBox(line).split(/;|\s—\s/)[0]!;
   const heading = first
     .replace(/,\s*JBA Policy Manual.*$/i, "")
     .replace(/,\s*as you said.*$/i, "")
