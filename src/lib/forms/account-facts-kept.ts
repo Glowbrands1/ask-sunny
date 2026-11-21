@@ -154,3 +154,24 @@ export function withAccountFactsKept(writeUp: string, account: string, employeeN
   const body = `${observed.trimEnd()} ${added.join(" ")}`;
   return { text: rest ? `${body}\n\n${rest.trimStart()}` : body, added };
 }
+
+/**
+ * ONE SOURCE OF TRUTH FOR THE ACCOUNT (QA's live L4/L5 on prod 14fed8c, 22 Nov 2026). The card showed "…to show the team the
+ * new puppy" and Create saved the drafting model's "…to show the team a new puppy"; "The shift lead <S1> told Test to go
+ * home and Test refused." saved as "Shift lead <S1> told Test to go home, and Test refused.". The Observed part of a loop
+ * card's write-up is now the card's own account, as the manager saw it: the drafted part's label line ("Observed:") and
+ * every later part (Expectation, Going Forward, Action Plan) stay as drafted. A shape check, never a list of wordings.
+ */
+export function withCardObserved(writeUp: string, account: string): { text: string; replaced: boolean } {
+  const card = account.trim();
+  if (writeUp.trim() === "" || card === "") return { text: writeUp, replaced: false };
+  const heading = NEXT_HEADING.exec(writeUp);
+  const observed = heading ? writeUp.slice(0, heading.index) : writeUp;
+  const rest = heading ? writeUp.slice(heading.index).trimStart() : "";
+  /* A label of its own at the start ("Observed:" then a line break, or "Observed: " before the text) is the form's, kept. */
+  const label = /^\s*([^\n:.!?]{1,40}):[ \t]*(\n|(?=\S))/.exec(observed);
+  const head = label ? `${label[1]!.trim()}:${label[2] === "\n" ? "\n" : " "}` : "";
+  const body = `${head}${card}`;
+  if (body.trim() === observed.trim()) return { text: writeUp, replaced: false };
+  return { text: rest ? `${body}\n\n${rest}` : body, replaced: true };
+}

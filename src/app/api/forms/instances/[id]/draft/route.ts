@@ -4,7 +4,7 @@ import { keptPlanSteps, withPlanSteps } from "@/lib/forms/stated-plan-steps";
 import { statedPlanStepsEnabled } from "@/lib/config/chat-quality-flags";
 import { READERS_LINE_HEADINGS } from "@/lib/forms/readers-line-headings";
 import { loopWriteUpSections } from "@/lib/forms/loop-write-up-sections";
-import { withAccountFactsKept } from "@/lib/forms/account-facts-kept";
+import { withAccountFactsKept, withCardObserved } from "@/lib/forms/account-facts-kept";
 import { TERMINATION_OPTION, withTerminationPlan } from "@/lib/forms/termination-stated";
 import { salesResultsOffenseLine, withCaChosenRule } from "@/lib/ai/ca-sales-prompt-lines";
 import { noteSpendUser } from "@/lib/ai/spend-meter";
@@ -2939,10 +2939,12 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
     if (body.cardFromLoop === true && typeof body.cardAccount === "string" && accountKey && !keeps(accountKey)) {
       const drafted = draftedPayload.values[accountKey] ?? "";
       if (drafted.trim() !== "") {
-        const { body: account, line: citation } = splitAppCitationLine(drafted);
+        const { body: draftedAccount, line: citation } = splitAppCitationLine(drafted);
+        /* QA's live L4/L5 (22 Nov 2026): the Observed part is the card's own account (one source of truth), not the drafter's rewording. */
+        const account = withCardObserved(draftedAccount, body.cardAccount.slice(0, 6_000)).text;
         const timed = withCardTimes(account, body.cardAccount.slice(0, 2_000));
         const facts = withAccountFactsKept(timed, body.cardAccount.trim().slice(0, 6_000), loaded.instance.employeeName);
-        if (facts.text !== account) draftedPayload.values = { ...draftedPayload.values, [accountKey]: citation ? `${facts.text}\n\n${citation}` : facts.text };
+        if (facts.text !== draftedAccount) draftedPayload.values = { ...draftedPayload.values, [accountKey]: citation ? `${facts.text}\n\n${citation}` : facts.text };
       }
     }
     /*
