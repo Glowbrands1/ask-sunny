@@ -11,7 +11,7 @@ import { businessToday, formatBusinessTime } from "@/lib/business-date";
 import { appConfig } from "./app-config";
 import { isoDate, monthDayToIso, readDates, sameDate, withoutDates } from "./dates";
 import { candidateNameWords, chatFormsActor, formDateRangeFromInput, formKindFromText, ofKind } from "@/lib/forms/chat-form-records";
-import { CURRENT_MESSAGE_ID, holdsPhrase, identifiedTurns, verifyEvidence, withoutMessageIdTags, type IdentifiedTurn } from "./evidence";
+import { CURRENT_MESSAGE_ID, holdsPhrase, identifiedTurns, readEvidence, verifyEvidence, withoutMessageIdTags, type IdentifiedTurn } from "./evidence";
 import { personNamedInRequest, requestStart } from "./person-in-request";
 import { keptFormDate } from "./kept-form-date";
 import { answeredNameQuestions, answerNamesSomeoneElse, everKeptOrUsedTyped, isConfirmedSpelling, latestTurnAnswersFor, latestTurnConfirms, latestTurnKeepsOrUsesTyped, latestTurnKeepsTyped, spellingKeysConfirmedFor, spellingKeysConfirmedForName, type NameQuestionView } from "./confirmed-spelling";
@@ -312,6 +312,20 @@ export function levelFormWords(formName: string): string[] {
   const words = formName.toLowerCase().match(/\p{L}+/gu)?.filter((word) => word !== "form") ?? [];
   const initials = words.length > 1 ? [words.map((word) => word[0]).join("")] : [];
   return [...words, ...initials, "form", "warning", "warnings"];
+}
+
+/**
+ * Board f108: whether `text` names this form, as whole words: its name ("Coaching Form"), its short name ("Corrective
+ * Action"), either without "Form", or the initials of a name of two or more words ("CA"). Hyphens read as spaces
+ * ("follow up coaching"). The form's own names, never a list of what words mean.
+ */
+export function quoteNamesForm(text: string, template: { readonly name: string; readonly shortName?: string | null }): boolean {
+  const spaced = (value: string) => value.replace(/[-‐-―]+/g, " ");
+  const names = [template.name, template.shortName ?? ""].map((name) => spaced(name).replace(/\s+form\s*$/i, "").trim()).filter(Boolean);
+  const initials = names.map((name) => name.split(/\s+/)).filter((parts) => parts.length > 1).map((parts) => parts.map((part) => part[0]).join(""));
+  /* Whole words, any case and spacing (holdsPhrase needs 3 characters, and "CA" is two). */
+  const said = ` ${foldName(withoutMessageIdTags(spaced(text))).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim()} `;
+  return [...new Set([...names, ...initials])].some((name) => said.includes(` ${foldName(name).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim()} `));
 }
 
 /** The question when no level option was named (Pau's ruling, fix batch item 2). */
@@ -3231,12 +3245,24 @@ export async function proposeForm(
       if (before && before.templateKey !== template.key) switchedFrom = { templateName: before.templateName, created: before.created };
     }
     const exitAsked = template.key === appConfig().formKeys.exit && verifyEvidence(input.exit_evidence, thisTurn, { thisTurnOnly: true }).ok;
-    if (!asksNewForm && !changeAsked && !exitAsked) {
+    /*
+     * BOARD f108 (QA handoff, 22 Nov 2026: the form lock trusts the AI's quote). A real quote of this turn was enough to
+     * switch the open card's form, whatever it said: "she said she'd be late again" made the CA a Coaching card. To leave
+     * the lock for another template, the quote must name that form (`quoteNamesForm`: its name, short name or initials),
+     * or this turn answers Sunny's own offer of it (the reply right before named it). Never reads what the words mean.
+     */
+    const lockLeft = (evidence: unknown) => {
+      const quote = readEvidence(evidence)?.quote ?? "";
+      if (quoteNamesForm(quote, template)) return true;
+      const reply = thisTurn.length >= 2 ? thisTurn[thisTurn.length - 2]! : null;
+      return reply?.role === "assistant" && quoteNamesForm(reply.content, template);
+    };
+    if (!(asksNewForm && lockLeft(input.new_form_evidence)) && !(changeAsked && lockLeft(input.form_change_evidence)) && !exitAsked) {
       const locked = await lockedForm(context, employee);
       if (locked && locked.templateKey !== template.key) {
         return {
           template_key: locked.templateKey,
-          reason_code: "form_locked", error: `The ${locked.templateName} for ${employee.name} is open on screen, and this message does not ask for another form. Put this on that card: propose the ${locked.templateName} again (template_key "${locked.templateKey}") with everything it already has, or edit the draft with edit_form. Pass new_form_evidence (another form) or form_change_evidence (make this card a different form) only with the manager's own words that ask.`,
+          reason_code: "form_locked", error: `The ${locked.templateName} for ${employee.name} is open on screen, and this message does not ask for another form. Put this on that card: propose the ${locked.templateName} again (template_key "${locked.templateKey}") with everything it already has, or edit the draft with edit_form. Pass new_form_evidence (another form) or form_change_evidence (make this card a different form) only with the manager's own words that ask for the ${template.name ?? "other form"} by name, or their answer to your offer of it; if they may want it, ask: "Do you want this to be a ${template.name ?? "different form"} instead of the ${locked.templateName}?"`,
         };
       }
     }
