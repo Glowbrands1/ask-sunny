@@ -598,8 +598,8 @@ function buildAgentLoopTools(config: AppConfig, planSteps = false) {
   ...dataToolSpecs(config),
   {
     name: "coach_team",
-    description: "A Coaching Form for the whole team: with no draft open, the team Coaching card (\"All team members\" at one " + place + "); with a Coaching draft open, \"this coaching for everyone on my team\" and its \"create all\" confirmation make one draft each with the same Details. No arguments: it reads the manager's message.",
-    input_schema: object({}, []),
+    description: "A Coaching Form for the whole team: with no draft open, the team Coaching card (\"All team members\" at one " + place + "); with a Coaching draft open, \"this coaching for everyone on my team\" and its \"create all\" confirmation make one draft each with the same Details. Pass team_evidence when the manager asks for a Coaching Form for a whole team or group.",
+    input_schema: object({ team_evidence: evidence("The manager's words in this message asking for a Coaching Form for the whole team or a whole group of the staff (\"my entire sales team\", \"all my front desk staff\"): their message id and words.") }, []),
   },
 ];
 }
@@ -799,7 +799,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     search_knowledge: (args) => searchKnowledge(context, effects, args),
     list_staff: (args) => listStaffTool(context, effects, args),
     app_help: (args) => appHelp(args),
-    coach_team: () => coachTeam(context, effects),
+    coach_team: (args) => coachTeam(context, effects, args),
     ...dataToolHandlers({ actor: context.actor, question: context.question, scopeId: context.scopeId, today: context.today }, effects),
   };
 

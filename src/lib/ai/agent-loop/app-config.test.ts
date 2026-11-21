@@ -43,6 +43,10 @@ import { rulesBookText } from "./rules-book";
  * which_form_question: an answer that gives changes is not a pick; open_form and edit_form need choice_evidence; ask
  * again. It reads the same under every config; nothing else changed.
  *
+ * Re-taken on purpose on 22 Nov 2026 (QA's shadow re-run S2): the whole-team Coaching line now says to call coach_team
+ * with team_evidence quoting the manager's words for the whole team or group ("my entire sales team"), whatever word
+ * they use. It reads the same under every config; nothing else changed.
+ *
  * Re-taken on purpose on 21 Nov 2026 (port from the sibling app, its QA's live re-test A5): the what_happened line says
  * the account is a sentence with the person as its subject and names account_no_subject. It reads the same under every
  * config; nothing else changed.
