@@ -674,6 +674,13 @@ export interface ChatFormProposal {
    * conversation's user turns carry that word again, checked server-side (`lib/forms/termination-word.ts`).
    */
   loopTermination?: true;
+  /**
+   * The agent loop's exit card (a real manager's exit form, 20 Nov 2026): how the person left (a resignation_type option,
+   * never the involuntary one), as the model read the manager's words, with the words it quoted. Create ticks it only
+   * when that quote is in the chat's manager turns, checked server-side.
+   */
+  exitHow?: string;
+  exitHowQuote?: string;
   /** The agent loop's card (QA's third review): Create never runs today's termination reader for it. */
   fromAgentLoop?: true;
   /** The agent loop's coaching card: the topic, in the manager's words, checked against their message (QA, 17 Nov 2026). */

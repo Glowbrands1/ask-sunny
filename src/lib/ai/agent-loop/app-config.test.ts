@@ -126,6 +126,10 @@ import { rulesBookText } from "./rules-book";
  * Monitoring): the after-a-switch line now says the created form is left as it is only when form_changed's earlier_created
  * is true, and one Card replies line was added for form_changed with earlier_created false. No app, place, staff system or
  * form key; nothing else changed.
+ *
+ * Re-taken on purpose on 21 Nov 2026 (QA2; a real manager's exit form, "immideate volunatary termination", ticked no
+ * type): the Exit line gained one sentence asking for exit_how with exit_how_evidence on a resignation. No app, place,
+ * staff system or form key; nothing else changed.
  */
 
 const fixture = (name: string): string => readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), "utf8");
