@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { withoutTopicPrefix } from "@/lib/forms/coaching-topic-prefix";
+import { keptPlanSteps, withPlanSteps } from "@/lib/forms/stated-plan-steps";
+import { statedPlanStepsEnabled } from "@/lib/config/chat-quality-flags";
 import { READERS_LINE_HEADINGS } from "@/lib/forms/readers-line-headings";
 import { loopWriteUpSections } from "@/lib/forms/loop-write-up-sections";
 import { withAccountFactsKept } from "@/lib/forms/account-facts-kept";
@@ -339,6 +341,8 @@ interface DraftBody {
   cardPolicyLine?: string;
   /** The coaching topic the agent loop's card carried (`coachingTopic`), for the form's Other topic (QA, 17 Nov 2026). */
   cardTopic?: string;
+  /** STATED_PLAN_STEPS_ENABLED (f062): the plan steps the card carried, re-checked against the notes before use. */
+  cardPlanSteps?: unknown;
   /** The agent loop card's attendance record ("absence" / "lateness" / "both"; QA's production audit, 20 Nov 2026, item 21). */
   cardAttendance?: string;
   /**
@@ -2675,7 +2679,16 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
     /* f082: leaving early is not lateness either; it keeps the general plan as an absence does. */
     const loopCardNotLateness = body.cardFromLoop === true && (body.cardAttendance === "absence" || body.cardAttendance === "left_early") ? body.cardAttendance : null;
     const loopCardAbsence = loopCardNotLateness !== null;
-    const planText = (input: ActionPlanInput) =>
+    /*
+     * STATED_PLAN_STEPS_ENABLED (Pau via QA, 20 Nov 2026, f062): the steps the manager stated are added before the plan's
+     * closing; the plan itself is unchanged. A loop card's steps were checked against the manager's quoted words when the
+     * card was made (its notes hold only the card's lines), so here they are only tidied and capped; the regular chat's
+     * are checked again against the notes, which are the manager's own turns (`keptPlanSteps`).
+     */
+    const cardSteps = Array.isArray(body.cardPlanSteps) ? body.cardPlanSteps.filter((step): step is string => typeof step === "string") : [];
+    const statedSteps = statedPlanStepsEnabled() ? keptPlanSteps(cardSteps, body.cardFromLoop === true ? cardSteps.join(" ") : notes) : [];
+    const planText = (input: ActionPlanInput) => withPlanSteps(planTextStandard(input), statedSteps, loaded.instance.employeeName);
+    const planTextStandard = (input: ActionPlanInput) =>
       // PLAN_PAYROLL_SENTENCE_ENABLED: the deduction the manager stated is said in the plan.
       // TERMINATION_STATED_TICKS_ENABLED: on a termination, the plan ends with the termination sentence.
       withTerminationPlan(withPayrollSentence(

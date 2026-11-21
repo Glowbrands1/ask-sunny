@@ -1,5 +1,6 @@
 import "server-only";
 
+import { keptPlanSteps } from "@/lib/forms/stated-plan-steps";
 import { withReadersLineBox } from "@/lib/forms/readers-line-headings";
 import { saysAmountUnknown } from "@/lib/ai/amount-unknown-ack";
 
@@ -23,6 +24,7 @@ import { authorizeInstance, InstanceNotVisibleError, instanceListFilterFor, visi
 import { applyAssistantRevision, deleteInstance, listInstances } from "@/lib/forms/instances";
 import { countFormsOnFile } from "@/lib/forms/forms-on-file-counts";
 import {
+  statedPlanStepsEnabled,
   currentManualScopeEnabled,
   formEditPlainWordsEnabled,
   formEditSingleWriterEnabled,
@@ -38,7 +40,7 @@ import { sectionWording } from "@/lib/forms/policy-citation";
 import { buildProposal, extractEmployeeNames, extractJobTitle, isJobTitlePhrase, JOB_TITLES, managerContext, samePerson, tidyTypedName } from "@/lib/forms/proposal";
 import { foldName } from "@/lib/forms/fold-name";
 import { cleaningUndonePhrase, namesCareAndCleaning, readCaPolicy } from "@/lib/forms/ca-policy";
-import { citesMustSee, dressCodeFit, saysMustSee } from "./policy-fit";
+import { citesMustSee, dressCodeFit, namesMustSee, saysMustSee } from "./policy-fit";
 import { fieldStates, mergeSaved, refusedFields, savedDiff, type SavedChange } from "@/lib/ai/agent-loop/saved-diff";
 import { turnsFromThisPersonsRequest } from "@/lib/forms/this-persons-turns";
 import { closeHeadingReading, closePolicyQuestion, namedPolicies, namesHeading } from "@/lib/forms/named-policy-section";
@@ -1390,8 +1392,8 @@ async function findFormsInPeriod(context: ToolContext, input: { form?: unknown; 
   const kind = typeof input.form === "string" ? formKindFromText(input.form) : null;
   if (!range && !kind) return { reason_code: "missing_input", error: "Give the employee's name, or the period (date_from, date_to) or kind of form asked about." };
   const actor = await chatFormsActor(context.actor).catch(() => undefined);
-  if (actor === undefined) return { reason_code: "read_failed", error: "Form Monitoring could not be read just now. Say so; do not say there are no forms." };
-  if (actor === null) return { reason_code: "scope", error: "This manager's role cannot view Form Monitoring, so past forms cannot be listed." };
+  if (actor === undefined) return { reason_code: "read_failed", error: `${appConfig().formsPageName} could not be read just now. Say so; do not say there are no forms.` };
+  if (actor === null) return { reason_code: "scope", error: `This manager's role cannot view ${appConfig().formsPageName}, so past forms cannot be listed.` };
   try {
     const read = await listInstances("all", PERIOD_READ_LIMIT, {
       ...instanceListFilterFor(actor),
@@ -1426,10 +1428,10 @@ async function findFormsInPeriod(context: ToolContext, input: { form?: unknown; 
       counts,
       archived: input.include_archived === true ? "every archived form included, each marked archived" : ARCHIVED_NOTE,
       ...(visible.length > rows.length ? { listed: rows.length, of: visible.length, not_listed_days: notListed } : {}),
-      note: `${complete ? "Every such form this manager can see, read by form date: never say the list is capped or that some may be missing." : `More than ${PERIOD_READ_LIMIT} forms match: the counts are of the first ${PERIOD_READ_LIMIT} read. Say so, and that Form Monitoring has the full list.`} Numbers come only from counts (total, by_person, by_form, by_date): copy them, never count or add rows yourself, and never put one person's forms under another's name.${visible.length > rows.length ? ` ${rows.length} of ${visible.length} forms are listed; say how many are not shown. The list stops at the end of a day: the days in not_listed_days are given as counts only, so never write rows for them, and the number you say is shown is ${rows.length}.` : ""} A draft is not on file.`,
+      note: `${complete ? "Every such form this manager can see, read by form date: never say the list is capped or that some may be missing." : `More than ${PERIOD_READ_LIMIT} forms match: the counts are of the first ${PERIOD_READ_LIMIT} read. Say so, and that ${appConfig().formsPageName} has the full list.`} Numbers come only from counts (total, by_person, by_form, by_date): copy them, never count or add rows yourself, and never put one person's forms under another's name.${visible.length > rows.length ? ` ${rows.length} of ${visible.length} forms are listed; say how many are not shown. The list stops at the end of a day: the days in not_listed_days are given as counts only, so never write rows for them, and the number you say is shown is ${rows.length}.` : ""} A draft is not on file.`,
     };
   } catch {
-    return { reason_code: "read_failed", error: "Form Monitoring could not be read just now. Say so; do not say there are no forms." };
+    return { reason_code: "read_failed", error: `${appConfig().formsPageName} could not be read just now. Say so; do not say there are no forms.` };
   }
 }
 
@@ -1457,8 +1459,8 @@ export async function findPastForms(context: ToolContext, input: { employee_name
     if (typedClose) return typedClose;
   }
   const actor = await chatFormsActor(context.actor).catch(() => undefined);
-  if (actor === undefined) return { reason_code: "read_failed", error: "Form Monitoring could not be read just now. Say so; do not say there are no forms." };
-  if (actor === null) return { reason_code: "scope", error: "This manager's role cannot view Form Monitoring, so past forms cannot be listed." };
+  if (actor === undefined) return { reason_code: "read_failed", error: `${appConfig().formsPageName} could not be read just now. Say so; do not say there are no forms.` };
+  if (actor === null) return { reason_code: "scope", error: `This manager's role cannot view ${appConfig().formsPageName}, so past forms cannot be listed.` };
   /*
    * Batch G (QA's addition 2): the typed name is one roster person's preferred or legal name, so forms under the other
    * one are theirs too ("Jo Quill" finds the forms filed as "Josephine Quill"). Never another roster person's.
@@ -1653,7 +1655,7 @@ export async function findPastForms(context: ToolContext, input: { employee_name
       ...(!onScreenChoice && forms.length > 1 && input.open === true ? { which_form_question: WHICH_FORM_QUESTION, single_out: singleOutNote() } : {}),
     };
   } catch {
-    return { reason_code: "read_failed", error: "Form Monitoring could not be read just now. Say so; do not say there are no forms." };
+    return { reason_code: "read_failed", error: `${appConfig().formsPageName} could not be read just now. Say so; do not say there are no forms.` };
   }
 }
 
@@ -2550,7 +2552,8 @@ export function sameRosterPerson(a: string, b: string, roster: readonly Pick<Ros
  * manager gave about this person must still be in what_happened. Empty is allowed (Create waits for the account).
  */
 /** Performance metrics managers name ("PPTA, LPSVA, Club Average, Club Close %, and Spa %"). */
-const ACCOUNT_METRIC = /\b(?:PPTA|LPSVA|UPTA|MSB|CC\s?%|Spa\s?%|Club\s+Close\s?%|Club\s+Average|Average\s+Club)(?=\W|$)/gi;
+/** This company's sales metrics (`appConfig().metrics.account`, global): kept word for word, never people. */
+const accountMetric = (): RegExp => appConfig().metrics.account;
 
 /**
  * Whole numbers of two or more digits that are not part of a date, a time or an amount, and not a year ("146 tans",
@@ -2587,7 +2590,7 @@ export function accountWordKind(word: string): string {
   ACCOUNT_TIME.lastIndex = 0;
   if (new RegExp(ACCOUNT_TIME.source, "i").test(word)) return "time";
   if (/\$\s?\d/.test(word)) return "amount";
-  if (new RegExp(ACCOUNT_METRIC.source, "i").test(word)) return "metric";
+  if (new RegExp(accountMetric().source, "i").test(word)) return "metric";
   if (/^\d+$/.test(word.trim())) return "figure";
   if (new RegExp(ACCOUNT_WHEN.source, "i").test(word)) return "when";
   if (/^at\s/i.test(word)) return "place";
@@ -2622,9 +2625,9 @@ export function accountMissing(managerWords: string, account: string, priorActio
     }
   }
   /* Metrics and figures exactly as written (QA, the MSB family): "PPTA", "Club Close %", "146 tans", "237". */
-  for (const match of managerWords.matchAll(ACCOUNT_METRIC)) {
+  for (const match of managerWords.matchAll(accountMetric())) {
     const metric = match[0].toLowerCase().replace(/\s+/g, " ");
-    const kept = said.replace(/\s+/g, " ").includes(metric) || (/^msb$/.test(metric) && /must see behaviou?rs?/.test(said));
+    const kept = said.replace(/\s+/g, " ").includes(metric) || appConfig().metrics.spelledOut.some((alias) => alias.short === metric && alias.long.test(said));
     if (!kept) missing.push(match[0]);
   }
   const accountFigures = new Set(standaloneFigures(account));
@@ -2818,6 +2821,8 @@ export async function proposeForm(
     prior_actions?: unknown;
     topic?: unknown;
     topic_evidence?: unknown;
+    plan_steps?: unknown;
+    plan_evidence?: unknown;
     attendance?: unknown;
     attendance_evidence?: unknown;
     incident_time?: unknown;
@@ -3004,7 +3009,8 @@ export async function proposeForm(
    * sf-s21 5d (the batch H live run): "I need the CA for the Must see behaviors and not the standard of conduct" reads
    * as a new request, but it is about the policy of the draft on screen (`template-outline.ts`): the guard holds.
    */
-  const mustSeeNotConduct = (await import("@/lib/forms/template-outline")).asksMustSeeNotConduct(context.question);
+  const guards = appConfig().policyGuards;
+  const mustSeeNotConduct = guards.saidOnlyOther !== null && guards.headings.conduct !== null && (await import("@/lib/forms/template-outline")).asksMustSeeNotConduct(context.question);
   /*
    * The rebuild plan, PR 1: the "another / new / second" list, startsNewForm and NEW_REQUEST_WITH_INCIDENT (word lists
    * over this message) are gone. A new form while a draft is open, or a new request after an earlier card, is the
@@ -3017,7 +3023,7 @@ export async function proposeForm(
       return {
         reason_code: "draft_open", error: `The ${open.templateName} draft for ${open.employeeName} is open on screen: put this on that draft with edit_form (instance_id ${open.id}). Propose a new card only if the manager asks for another or a new one.`,
         /* Pau's ruling (16 Nov 2026): MSB / must see behaviors is Other — Must See Behaviors, not the Standards of Conduct. */
-        ...(mustSeeNotConduct ? { must_see_behaviors: "Must See Behaviors is recorded as \"Other — Must See Behaviors\", not the Standards of Conduct (Pau's ruling, 16 Nov 2026): put that policy on the draft with edit_form." } : {}),
+        ...(mustSeeNotConduct ? { must_see_behaviors: `${guards.saidOnlyOther!.label} is recorded as "Other — ${guards.saidOnlyOther!.label}", not the ${guards.headings.conduct} (Pau's ruling, 16 Nov 2026): put that policy on the draft with edit_form.` } : {}),
       };
     }
   }
@@ -3343,10 +3349,11 @@ export async function proposeForm(
      * LATE_OPEN_DATE / FAILURE_TO_OPEN_IS_LATE_OPENING). Late for a shift stays Attendance (`describesAttendanceToo`).
      */
     const lateOpen = await import("@/lib/forms/late-open");
-    const lateOpening = manual.headings.find((heading) => headingKey(heading) === headingKey("Late Opening"));
+    const { lateOpening: lateOpeningRole, attendance: attendanceRole } = appConfig().policyGuards.headings;
+    const lateOpening = lateOpeningRole ? manual.headings.find((heading) => headingKey(heading) === headingKey(lateOpeningRole)) : undefined;
     const saysLateOpening = (lateOpen.lateOpenOn() && lateOpen.LATE_TO_OPEN.test(requestWords)) || lateOpen.saysFailureToOpen(requestWords);
-    if (lateOpening && saysLateOpening && headingKey(policyHeading) === headingKey("Attendance") && !lateOpen.describesAttendanceToo(requestWords)) {
-      return { reason_code: "wrong_heading", error: `The manager's words ("late to open", a failure to open) are the manual's ${lateOpening} section, not Attendance. Propose the card again with policy "${lateOpening}".` };
+    if (lateOpening && attendanceRole && saysLateOpening && headingKey(policyHeading) === headingKey(attendanceRole) && !lateOpen.describesAttendanceToo(requestWords)) {
+      return { reason_code: "wrong_heading", error: `The manager's words ("late to open", a failure to open) are the manual's ${lateOpening} section, not ${attendanceRole}. Propose the card again with policy "${lateOpening}".` };
     }
     if (askedSecond) {
       secondHeading = headingOf(manual.headings, askedSecond);
@@ -3378,11 +3385,12 @@ export async function proposeForm(
       const beside = policyHeading && !secondHeading ? ` If the manager also describes a second offense that ${policyHeading} covers, cite both: policy "${dressFits[0]}; ${policyHeading}${askedOther ? `; ${askedOther}` : ""}".` : "";
       return { reason_code: "dress_code_heading", error: `The manager's words describe a dress-code offense (dress code, or clothing worn on shift), which the manual's Dress Code section covers, not "${askedPolicyWhole}". Propose the card again with policy "${dressFits[0]}"${dressFits.length > 1 ? ` (or ${dressFits.slice(1).map((heading) => `"${heading}"`).join(", ")})` : ""}.${beside}`, fits_headings: dressFits };
     }
-    if (citesMustSee(askedPolicyWhole) && !saysMustSee(requestWords)) {
-      const conduct = manual.headings.find((heading) => headingKey(heading) === headingKey("Standards of Conduct"));
-      const performance = /\bunder[- ]?perform(?:ance|ing)\b|\bperform[a-z]*\b|\bnumbers\b|\bgoals?\b|\bsales\b/i.test(requestWords) || new RegExp(ACCOUNT_METRIC.source, "i").test(requestWords);
+    const { saidOnlyOther, headings: { conduct: conductRole } } = appConfig().policyGuards;
+    if (saidOnlyOther && citesMustSee(askedPolicyWhole) && !saysMustSee(requestWords)) {
+      const conduct = conductRole ? manual.headings.find((heading) => headingKey(heading) === headingKey(conductRole)) : undefined;
+      const performance = /\bunder[- ]?perform(?:ance|ing)\b|\bperform[a-z]*\b|\bnumbers\b|\bgoals?\b|\bsales\b/i.test(requestWords) || new RegExp(accountMetric().source, "i").test(requestWords);
       const fits = topicHeadings(requestWords) ?? (performance && conduct ? [conduct] : null);
-      return { reason_code: "msb_not_said", error: `"Other — Must See Behaviors" is cited only when the manager says MSB or must see behaviors, and these words do not.${fits ? ` Propose the card again with policy "${fits[0]}"${performance ? " (sales or performance below target is the Standards of Conduct)" : ""}.` : " Propose the card again with the heading that fits what happened."}`, ...(fits ? { fits_headings: fits } : {}) };
+      return { reason_code: "msb_not_said", error: `"Other — ${saidOnlyOther.label}" is cited only when the manager says ${saidOnlyOther.saidAs}, and these words do not.${fits ? ` Propose the card again with policy "${fits[0]}"${performance ? ` (sales or performance below target is the ${conductRole})` : ""}.` : " Propose the card again with the heading that fits what happened."}`, ...(fits ? { fits_headings: fits } : {}) };
     }
   }
   /*
@@ -3448,7 +3456,7 @@ export async function proposeForm(
    * the incident to a manual section gets the same fits_headings fact as a wrong heading: the model chooses again.
    */
   const otherAlone = !policyHeading && /^other\b/i.test(askedPolicyWhole);
-  const otherIsTheRule = /\bmsb\b|must see behaviou?rs?/i.test(requestWords) || Boolean(cleaning && !careAndCleaning);
+  const otherIsTheRule = namesMustSee(requestWords) || Boolean(cleaning && !careAndCleaning);
   const fitsHeadings = topicFits && !managerNamed && ((policyHeading && !cardHeadings.some((cited) => topicFits.some((heading) => headingKey(heading) === headingKey(cited)))) || (otherAlone && !otherIsTheRule)) ? topicFits : null;
   /* As today's card prints it (`formatManualCitation`): "Standards of Conduct Policy, JBA Policy Manual p.12". */
   /*
@@ -3769,6 +3777,15 @@ export async function proposeForm(
     answerEvidence(context, input.topic_evidence, "request", evidencePerson, { requestTurnIds }).ok;
   const coachingTopic = topicKept ? askedTopic.charAt(0).toUpperCase() + askedTopic.slice(1) : null;
   /*
+   * STATED_PLAN_STEPS_ENABLED (Pau via QA, 20 Nov 2026, f062): the Action Plan steps the manager asked for, as the model
+   * reads them, kept only on plan_evidence from a manager message of this request and only when each step's words are in
+   * that quote (`keptPlanSteps`). A record, never a word list over the manager's messages; Create adds them to the plan.
+   */
+  const askedPlanSteps = statedPlanStepsEnabled() && template.key === appConfig().formKeys.corrective && Array.isArray(input.plan_steps) && input.plan_steps.length > 0;
+  const planQuote = typeof (input.plan_evidence as { quote?: unknown } | null | undefined)?.quote === "string" ? String((input.plan_evidence as { quote: string }).quote) : "";
+  const planSteps = askedPlanSteps && answerEvidence(context, input.plan_evidence, "request", evidencePerson, { requestTurnIds }).ok ? keptPlanSteps(input.plan_steps, planQuote) : [];
+  const planStepsDropped = askedPlanSteps && planSteps.length < (input.plan_steps as unknown[]).length;
+  /*
    * QA's production audit (20 Nov 2026, item 21; a real finalized form): "did not come into her scheduled shift today at
    * 9:30" was written up as lateness ("expected to arrive on time", "Continued lateness will result …"). A Corrective
    * Action card carries what the manager described (absence, lateness or both) as the model reads it, kept only on
@@ -3897,7 +3914,7 @@ export async function proposeForm(
   /* No account yet: the card shows, and Create waits for what happened (as WHAT_HAPPENED_NO_CREATE does today). */
   const awaiting = whatHappened === "" && ACCOUNT_FORMS.has(template.key);
   /* NO_ACCOUNT_NO_APP_POLICY as a fact (batch B, code-check #21; r3 639: an MSB or topic request counts as naming it). */
-  const policyNamedByManager = namedPolicies(requestWords).length > 0 || typedHeading !== null || topicFits !== null || /\bmsb\b|must see behaviou?rs?/i.test(requestWords);
+  const policyNamedByManager = namedPolicies(requestWords).length > 0 || typedHeading !== null || topicFits !== null || namesMustSee(requestWords);
   /*
    * Act and state the assumption (Pau, 14 Nov 2026): no date in the manager's words, so the card is dated today, and
    * the reply says so in one line the manager can correct.
@@ -3918,6 +3935,7 @@ export async function proposeForm(
     ...(payroll === "yes" && amount ? { payrollDeductAmount: amount } : {}),
     ...(priorActions ? { priorActions } : {}),
     ...(coachingTopic ? { coachingTopic } : {}),
+    ...(planSteps.length > 0 ? { planSteps } : {}),
     ...(attendanceKind ? { attendanceKind } : {}),
     ...(incidentTime ? { incidentTime } : {}),
     ...(awaiting ? { awaitingIncident: true as const, supportsInlineDraft: false } : {}),
@@ -3997,7 +4015,9 @@ export async function proposeForm(
   if (!card.employeeRole && card.employeeName) {
     const words = await import("@/lib/ai/job-title-from-words");
     const typed = words.jobTitleFromWordsEnabled() ? words.typedJobTitle(asked.messages.filter((message) => requestIds.includes(message.id ?? "")).map((message) => String(message.content ?? "")), card.employeeName) : null;
-    if (typed) {
+    // QA2 for Pau (21 Nov 2026): "team member" / "staff member" is the frontline staff, never a Position on the card.
+    const roleWordsOnly = typed !== null && new RegExp(`^(?:${appConfig().roleWords.source})(?:\\s+(?:part|full)[- ]?time)?$`, "i").test(typed.trim());
+    if (typed && !roleWordsOnly) {
       card.employeeRole = words.spelledOutTitle(words.titleCaseIfLower(typed));
       jobTitleTyped = true;
     }
@@ -4050,8 +4070,9 @@ export async function proposeForm(
    * What is true about the card, for the model to say in its own reply as the rules book's "Card replies" lines teach;
    * code no longer writes or appends any of it.
    */
-  const underPerformance = Boolean(policyHeading && /standards of conduct/i.test(policyHeading) && (/\bunder[- ]?perform(?:ance|ing)\b|must see behaviou?rs?|\bperform[a-z]*\b/i.test(managerWords) || ACCOUNT_METRIC.test(managerWords)));
-  ACCOUNT_METRIC.lastIndex = 0;
+  const conductHeading = appConfig().policyGuards.headings.conduct;
+  const underPerformance = Boolean(policyHeading && conductHeading && policyHeading.toLowerCase().includes(conductHeading.toLowerCase()) && (/\bunder[- ]?perform(?:ance|ing)\b|must see behaviou?rs?|\bperform[a-z]*\b/i.test(managerWords) || accountMetric().test(managerWords)));
+  accountMetric().lastIndex = 0;
   const corrective = template.key === appConfig().formKeys.corrective;
   /*
    * TERMINATION_STATED_TICKS (batch H12; Pau's P15 ruling): a termination the manager stated is the level, ticked at
@@ -4150,6 +4171,7 @@ export async function proposeForm(
     ...(policyNotForThisCard ? { policy_copied: { heading: policyHeading, note: `${policyHeading} is the policy of another form's card in this chat, not chosen for this card. Propose the card again with the heading that fits THIS card's own account (the headings are listed in your instructions), never one copied from another form; "Other — <short topic>" when no section fits.` } } : {}),
     ...(accountGiven ? { request_words: untrusted(accountGiven) } : {}),
     /* The coaching topic was not kept: say none, or name it with evidence from the manager's message (see `coachingTopic`). */
+    ...(planStepsDropped ? { plan_steps_not_kept: { kept: planSteps.length, note: "A plan step is kept only when every word of it is the manager's own, quoted in plan_evidence from this request. Pass only the steps they asked for, in their words." } } : {}),
     ...(askedTopic && !topicKept ? { topic_not_kept: { note: "That topic is not the manager's words from this request (or holds the person's name), so it is not on the card. Pass topic only as the manager named it, with topic_evidence quoting it." } } : {}),
     /* c019: the account is the offense the manager named (see headingTypedIn); the reply says so, never "What happened?" about it. */
     ...(accountFromNamedOffense ? { account_from_named_offense: { account: untrusted(accountFromNamedOffense), note: "The manager named the offense, and their words for it are the card's account, exactly as shown. Say so in one short line of your reply (they can add more before Create); never ask what happened about it, and never write that line into what_happened." } } : {}),

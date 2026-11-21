@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 import { appConfig, setAppConfigForTests, SUNNY_CONFIG, type AppConfig } from "./app-config";
+import { citesMustSee, namesMustSee, saysMustSee } from "./policy-fit";
 import { agentLoopRules, agentLoopSystem } from "./prompt";
 import { agentLoopTools } from "./run";
 import { rulesBookText } from "./rules-book";
@@ -197,6 +198,135 @@ describe("app config: another app's words", () => {
     expect(agentLoopRules()).not.toBe(fixture("sunny-system-rules.txt"));
     setAppConfigForTests();
     expect(agentLoopRules()).toBe(fixture("sunny-system-rules.txt"));
+  });
+});
+
+/** A made-up company's rules-book content (Phase 1 of the loop port, QA 21 Nov 2026): none of it is Sunny's. */
+const FAKE_CONTENT: AppConfig["content"] = ({ place }) => ({
+  notPeopleExamples: "\"Basket Size\" and other metrics",
+  otherTopics: "a kiosk wipe-down left undone",
+  statsReports: null,
+  terminationApproval: "owner approval",
+  timeZone: { label: "Pacific time", short: "Pacific", abbrev: "PT" },
+  whoRules: [],
+  policyRulings: ["A spilled order at the " + place + " is the Food Safety section."],
+  sectionRulings: [],
+  attendanceRules: [],
+  underPerformanceReplies: [],
+  metricsRule: null,
+  volumeRule: null,
+  statsGuideRule: null,
+  examples: {
+    addedTopic: "weekly coaching on upsells",
+    addedTopicQuestion: "Who is this weekly upsell coaching for?",
+    namedPolicy: "cite the uniform policy",
+    misspelledPolicy: "ca for the unifrom policy",
+    formAbout: "the 10/31 one about the late delivery",
+    spellingFixes: "\"recieved\" → \"received\"",
+    becausePlace: "late because of traffic on Main",
+    ruleInOtherSection: "\"No phones at the till\" is in Workplace Conduct",
+    approvedTermination: "the owner approved her termination",
+    rewordNoLink: "\"dropped the tray and left\" is \"She dropped the tray. She left.\"",
+    policyLine: "Food Safety Policy, JBA Policy Manual p.3",
+    position: "who are my baristas",
+    howTo: "\"how do I close the till\"",
+    businessDocs: "the store handbook",
+  },
+  toolExamples: { formAbout: "the late delivery", position: "baristas", placesNamed: "\"north kiosk\"" },
+});
+
+describe("app config: another company's content in the rules book (Phase 1 of the loop port)", () => {
+  // Sunny's rulings, metrics, reports, time zone, approver, page name and example phrases (src/config/company/agent-loop.ts).
+  const SUNNY_CONTENT_WORDS = [
+    "Under Performance", "Club Close", "PPTA", "LPSVA", "tans", "Daily Stats", "Sales Totals", "Comp figures", "DM/HR",
+    "Central", "CT)", "Form Monitoring", "Must See", "sanitation", "EFT", "animals in the workplace", "key holdr",
+    "Dodge", "No tanning", "Employee Discounts", "tanning consultants", "beds between clients", "Attendance Policy",
+    "Late Opening", "Time Records", "Animals in the Workplace", "Handling Theft", "doctor's note", "the reviews SOP",
+  ];
+
+  it("takes every one of Sunny's content words from the content, and leaves out a rule the company has no use for", () => {
+    const fake: AppConfig = { ...FAKE, content: FAKE_CONTENT, formsPageName: "Forms Ledger" };
+    const text = rulesBookText(fake);
+    for (const word of SUNNY_CONTENT_WORDS) expect(text, `"${word}" is still in the rules book`).not.toContain(word);
+    expect(text).toContain("Forms Ledger");
+    expect(text).toContain("the owner approved her termination");
+    expect(text).toContain("Pacific time");
+    expect(text).toContain("A spilled order at the kiosk is the Food Safety section.");
+    // No stats reports and no stats guide: read_stats is never named, and no rule is left empty.
+    expect(text).not.toContain("read_stats");
+    expect(text).toContain("Google review figures come only from read_reviews. Give only the figures they return");
+    expect(text).not.toMatch(/^- (?:null|undefined)?$/m);
+  });
+
+  it("Sunny's own content holds every one of those words (so the check above is not vacuous)", () => {
+    const text = rulesBookText();
+    for (const word of SUNNY_CONTENT_WORDS) expect(text, `"${word}" is not in Sunny's rules book`).toContain(word);
+  });
+});
+
+describe("app config: the policy guards' headings (Phase 1 of the loop port)", () => {
+  it("Sunny's guards check the headings and the Must See Behaviors ruling the code used", () => {
+    expect(SUNNY_CONFIG.policyGuards.headings).toEqual({ attendance: "Attendance", lateOpening: "Late Opening", conduct: "Standards of Conduct" });
+    expect(citesMustSee("Other — Must See Behaviors")).toBe(true);
+    expect(citesMustSee("Other — MSB")).toBe(true);
+    expect(saysMustSee("verbal for her MSBs")).toBe(true);
+    expect(namesMustSee("must see behaviors were missed")).toBe(true);
+    expect(saysMustSee("she was late")).toBe(false);
+  });
+
+  it("a company with no said-only Other topic switches those guards off", () => {
+    setAppConfigForTests({ ...FAKE, policyGuards: { headings: { attendance: null, lateOpening: null, conduct: null }, saidOnlyOther: null } });
+    expect(citesMustSee("Other — Must See Behaviors")).toBe(false);
+    expect(saysMustSee("MSB")).toBe(false);
+    expect(namesMustSee("must see behaviors")).toBe(false);
+  });
+
+  it("tools.ts and policy-fit.ts name no manual heading in their code: the guards take them from the config", () => {
+    const strip = (source: string): string => source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    for (const file of ["tools.ts", "policy-fit.ts"]) {
+      const code = strip(readFileSync(new URL(`./${file}`, import.meta.url), "utf8"));
+      expect(code, file).not.toMatch(/["'`]Late Opening["'`]|["'`]Attendance["'`]|["'`]Standards of Conduct["'`]/);
+      expect(code, file).not.toMatch(/standards of conduct\/i/);
+    }
+  });
+});
+
+describe("app config: tool-description examples and the prompt's reports (Phase 1 of the loop port)", () => {
+  it("another company's examples reach the tool descriptions, and with no stats reports the prompt names no read_stats", () => {
+    setAppConfigForTests({ ...FAKE, content: FAKE_CONTENT });
+    const described = JSON.stringify(agentLoopTools().map((tool) => tool.input_schema));
+    for (const word of ["rooms ready between guests", "tanning consultants", "kearney", "Altoona"]) expect(described, word).not.toContain(word);
+    expect(described).toContain("the late delivery");
+    expect(described).toContain("baristas");
+    expect(agentLoopRules()).not.toContain("- read_stats:");
+    expect(agentLoopRules()).not.toContain("Daily Stats");
+  });
+
+  it("Sunny's own descriptions keep its examples and the read_stats line", () => {
+    const described = JSON.stringify(agentLoopTools().map((tool) => tool.input_schema));
+    expect(described).toContain("getting rooms ready between guests");
+    expect(agentLoopRules()).toContain("- read_stats: Daily Stats, Sales Totals and Comp figures for the manager's salons");
+  });
+});
+
+describe("app config: metrics and the forms page (Phase 1 of the loop port)", () => {
+  it("Sunny's metrics and page name are the ones the code used", () => {
+    expect(SUNNY_CONFIG.formsPageName).toBe("Form Monitoring");
+    expect(SUNNY_CONFIG.metrics.account.flags).toBe("gi");
+    expect("Below in PPTA, Club Close % and Spa%".match(SUNNY_CONFIG.metrics.account)).toEqual(["PPTA", "Club Close %", "Spa%"]);
+  });
+
+  it("another company's page name reaches the tool descriptions, and no tool code names Sunny's metrics or page", () => {
+    setAppConfigForTests({ ...FAKE, formsPageName: "Forms Ledger" });
+    const described = JSON.stringify(agentLoopTools().map((tool) => tool.description));
+    expect(described).toContain("Forms Ledger");
+    expect(described).not.toContain("Form Monitoring");
+    const strip = (source: string): string => source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    for (const file of ["tools.ts", "run.ts", "data-tools.ts", "rules-book.ts"]) {
+      const code = strip(readFileSync(new URL(`./${file}`, import.meta.url), "utf8"));
+      expect(code, file).not.toContain("Form Monitoring");
+      expect(code, file).not.toMatch(/PPTA|LPSVA|Club\\s\+Close/);
+    }
   });
 });
 
