@@ -180,7 +180,8 @@ describe("withoutPersonPronouns: the teller need not be a known name (f059 retes
   it("\"Test's shift lead, Dana Fairweather, told her …\" and \"Her shift lead, …\" name Test, with no other name known", () => {
     expect(withoutPersonPronouns("**Observation of Offense:** Test's shift lead, Dana Fairweather, told her to clock out early and she refused.", "Test", []).text)
       .toBe("**Observation of Offense:** Test's shift lead, Dana Fairweather, told Test to clock out early and Test refused.");
+    // Changed on purpose (QA2, 21 Nov 2026, live R3, #1168's case): the opening "Her" is the plain "The" when the told listener is named later in the sentence.
     expect(withoutPersonPronouns("**Observation of Offense:** Her shift lead, Dana Fairweather, told her to clock out early and she refused.", "Test", []).text)
-      .toBe("**Observation of Offense:** Test's shift lead, Dana Fairweather, told Test to clock out early and Test refused.");
+      .toBe("**Observation of Offense:** The shift lead, Dana Fairweather, told Test to clock out early and Test refused.");
   });
 });
