@@ -2,6 +2,7 @@ import "server-only";
 
 import { observationDateMismatch, withoutMisdatedRestatements } from "./observation-dates";
 import { withFullOffRosterName } from "./off-roster-line";
+import { speaksOfTheManager, withoutManagerReasoning } from "./reasoning-leak";
 import { salonsNamedNotSaid, withoutSalonGuess } from "./salon-guess";
 import type { WhichFormSlot } from "./which-form";
 import { cardTurns, personKey, readLoopRecords, replyTurns, type CardRecord, type CardSlot, type ExitOfferSlot, type NameQuestionSlot, type PersonAskedSlot, type TeamConfirmSlot } from "./card-record";
@@ -19,7 +20,7 @@ import { chatTraceDraft } from "../chat-trace-store";
 import { AiError } from "../errors";
 import { noteModelCall } from "../model-failure";
 import { activeSpendMeter } from "../spend-meter";
-import { AI_TIMEOUT_MESSAGE, isAiTimeLimitError, logAiFailure, msLeftForCleanup, withStreamTimeLimit, type StreamWatch } from "../time-limit";
+import { isAiTimeLimitError, logAiFailure, msLeftForCleanup, withStreamTimeLimit, type StreamWatch } from "../time-limit";
 import type { AskResponse } from "../types";
 import { withoutSensitiveDefaults } from "../sensitive-defaults";
 import { finalReplyWithoutMarkers, withoutSourceMarkers, withoutSourceNotes } from "../source-note";
@@ -151,6 +152,9 @@ export function doneThisTurn(effects: Pick<ToolEffects, "proposal" | "formUpdate
 }
 
 /** F1: an error or timeout after something was saved: what was, and that the rest did not finish. */
+/** A turn that ran out of time with nothing done (QA's call, 22 Nov 2026): one sentence, no promise about next time. */
+export const LOOP_TIMEOUT_REPLY = "I ran out of time before I could answer that, so nothing was changed.";
+
 export function partialReply(done: string, stopped: "timeout" | "error"): string {
   return `${done} ${stopped === "timeout" ? "I ran out of time before finishing the rest of that answer" : "Something went wrong before I could finish the rest of that answer"}, so please check it and send anything still missing again.`;
 }
@@ -532,7 +536,7 @@ function buildAgentLoopTools(config: AppConfig, planSteps = false) {
         payroll_evidence: evidence("With payroll_deduct: the manager message and the words from it that answer whether payroll deduct applies: the message being answered, or an answer that came right after your reply showing THIS person's card (never another person's answer)."),
         warning_level: { type: "string", enum: ["verbal", "written", "termination"], description: "Only when the manager stated it for this form. termination: only when the rules book's Termination lines say this form is one." },
         exit_type: { type: "string", enum: ["resignation", "termination"], description: "Employee Exit Form only: which the rules book's Exit lines say this exit is." },
-        exit_how: { type: "string", enum: ["immediate_voluntary_resignation", "notice_not_fulfilled", "no_call_no_show"], description: "Employee Exit Form resignation only: how the person left, when the manager said it (immediate_voluntary_resignation: left by choice with no notice, as \"immediate voluntary termination\", \"quit on the spot\"; notice_not_fulfilled: gave notice but did not work it; no_call_no_show). With exit_how_evidence. Never for a termination." },
+        exit_how: { type: "string", enum: ["submitted_fulfilled_notice", "immediate_voluntary_resignation", "notice_not_fulfilled", "no_call_no_show"], description: "Employee Exit Form resignation only: how the person left, when the manager said it (submitted_fulfilled_notice: gave notice and is working it or worked it; immediate_voluntary_resignation: left by choice with no notice, as \"immediate voluntary termination\", \"quit on the spot\"; notice_not_fulfilled: gave notice but did not work it; no_call_no_show). With exit_how_evidence. Never for a termination." },
         exit_how_evidence: evidence("With exit_how: the manager message of this request and its words that say how the person left."),
         effective_date: { type: "string", description: "Employee Exit Form termination only: the effective or termination date as the manager typed it (e.g. 11/28)." },
         payroll_deduct: { type: "string", enum: ["yes", "no"], description: "Only when the manager said whether payroll deduct applies." },
@@ -1352,6 +1356,18 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
           }
         }
         /*
+         * QA's re-run (22 Nov 2026, A13; port of Ask Bubbles #1007): the reply leaked the model's own reasoning ("The
+         * manager's request to add this is about the card on screen (the open draft), not an older form on file."). The reply
+         * is written TO the manager; "the manager" is the app's own name for them in tool results and notes
+         * (`speaksOfTheManager`). A reply sentence that speaks of them in the third person is reasoning, handed back once
+         * and then left out.
+         */
+        if (stoppedAt === "reply" && speaksOfTheManager(text)) {
+          const again = await handBack("[app check] Your reply speaks of \"the manager\" in the third person: that is your own reasoning, not an answer. The manager reads this reply: write to them as \"you\", say only what was done or what you need, and never explain your reasoning. Then write your reply to the manager again.");
+          if (again) text = again;
+          if (speaksOfTheManager(text)) text = withoutManagerReasoning(text) || text;
+        }
+        /*
          * QA's re-run (22 Nov 2026, A8; port of Ask Bubbles #1010): with a team card that has no salon yet, the reply named
          * salons nobody had named (a city's locations, read from a program's abbreviation). Read by the app's own salon
          * reader: a salon the reply names that the manager never named and the card does not hold goes back once; if it
@@ -1480,7 +1496,12 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
    * carries the card, the opened draft and the update, so the screen matches.
    */
   const done = doneThisTurn(effects);
-  if (stoppedAt === "timeout" && !done) throw new AiError("model_failed", AI_TIMEOUT_MESSAGE, 504);
+  /*
+   * QA's Bubbles re-run (22 Nov 2026, A1 follow-up; QA's call (b)): a turn that ran out of time with nothing done threw, so
+   * the manager saw an error that was never saved and the chat showed no reply for that turn on reload (managers saw blank
+   * replies). It is now a normal reply, saved with the chat, saying plainly in one sentence that nothing was changed.
+   */
+  const timedOutNothingDone = stoppedAt === "timeout" && !done;
   if (stoppedAt === "error" && !done) throw new AiError("model_failed", LOOP_FAILED_REPLY, 502);
 
   /*
@@ -1489,7 +1510,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
    * backs and policy line are facts on propose_form's result, worded by the rules book's Card replies.
    */
   let content = (
-    stoppedAt === "timeout" || stoppedAt === "error" ? partialReply(done!, stoppedAt) : stoppedAt === "step_limit" ? stepLimitReply(done, Boolean(effects.formUpdate && effects.formUpdate.updated.length > 0), effects.proposal && cardMade ? withEarlierForm(cardMade, records.at(-1) ?? null, effects) : null) : text
+    timedOutNothingDone ? LOOP_TIMEOUT_REPLY : stoppedAt === "timeout" || stoppedAt === "error" ? partialReply(done!, stoppedAt) : stoppedAt === "step_limit" ? stepLimitReply(done, Boolean(effects.formUpdate && effects.formUpdate.updated.length > 0), effects.proposal && cardMade ? withEarlierForm(cardMade, records.at(-1) ?? null, effects) : null) : text
   ).trim();
   if (content === "") content = done ?? STEP_LIMIT_REPLY;
   /*

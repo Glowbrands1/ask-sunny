@@ -152,6 +152,7 @@ import {
   officialManualProvenance,
   type ManualSection,
   unconfirmedManualNotice,
+  offenseKeyForManualHeading,
 } from "@/lib/forms/official-policy-manual";
 import { manualGroundedPolicies, policyFieldValue } from "@/lib/forms/policy-citation";
 import { cardPolicyHeading, cardPolicyPhrase } from "@/lib/forms/card-policy";
@@ -198,6 +199,7 @@ import {
   SPECIFIC_SECTION_BOXES,
   describedManualChoices,
   describedManualSection,
+  manualSectionNamedBy,
   namedManualSection,
 } from "@/lib/forms/named-policy-section";
 import { OTHER_WRITE_IN_INSTRUCTION, specificTopic, withConductLinePage, withConductLineWording, withoutPrimedTopic } from "@/lib/forms/specific-policy-topics";
@@ -975,9 +977,20 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      * made from it "Attendance p.14". Where the pinned manual has the card's
      * heading, it is the policy named — over the account's own reading.
      */
+    /*
+     * Port from Ask Bubbles (fee69631; its QA's round 2, 22 Nov 2026, U06/U09/U15/U17): a loop card citing "Care and
+     * Cleaning of Equipment and Facilities, p.21" saved no Direct policy. Its heading went through `namedPolicies`, which
+     * reads "of" as a sentence about a policy, not its name. A loop card's heading is already a heading of the pinned
+     * manual (the tool checked it): it is looked up as that heading (`manualSectionNamedBy`).
+     */
+    const loopHeadingSection = (() => {
+      if (!loopCardHeading || !manual.ok) return null;
+      const section = manualSectionNamedBy(loopCardHeading, manual.chunks);
+      return section ? { phrase: loopCardHeading, section, offenseKey: offenseKeyForManualHeading(section.heading) } : null;
+    })();
     const cardHeading =
       caPolicy && manual.ok && cardPolicyToDraftEnabled() && typeof body.cardPolicy === "string" && body.cardPolicy.trim()
-        ? namedManualSection({ text: cardPolicyPhrase(body.cardPolicy), chunks: manual.chunks })
+        ? (loopHeadingSection ?? namedManualSection({ text: cardPolicyPhrase(body.cardPolicy), chunks: manual.chunks }))
         : null;
     // Only where it ticks the box the manager's own words tick, or they tick none: a card's generic
     // "Attendance" never turns a missed meeting (Absenteeism) into Tardiness.
