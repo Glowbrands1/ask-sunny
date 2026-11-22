@@ -226,6 +226,26 @@ export function namedManualSection(input: {
 }
 
 /**
+ * The one section of the manual these words name as a heading (every word said in the heading, every heading word
+ * said), or null when no heading, or more than one, answers. Port from Ask Bubbles (fee69631; its QA's round 2, 22 Nov
+ * 2026): a loop card's heading is already a heading of the pinned manual, so it is looked up as one, never through
+ * `namedPolicies`, whose NOT_A_NAME rule reads "of", "to", "with", "by" or "about" as a sentence about a policy
+ * ("Care and Cleaning of Equipment and Facilities" named nothing).
+ */
+export function manualSectionNamedBy(phrase: string, chunks: readonly ManualChunk[] | null): ManualSection | null {
+  if (!chunks || chunks.length === 0 || words(phrase).length === 0) return null;
+  const headings = manualSectionHeadings(chunks);
+  const matches = [...new Set(headings.filter((heading) => namesHeading(phrase, heading)))];
+  if (matches.length === 1) return findManualSection(chunks, matches);
+  // CLOSE_SPELLING_MATCH_ENABLED: no heading as spelled, one heading confidently by close spelling.
+  if (matches.length === 0 && closeSpellingMatchEnabled()) {
+    const close = closeHeadingReading(phrase, headings);
+    if (close.confident) return findManualSection(chunks, [close.confident]);
+  }
+  return null;
+}
+
+/**
  * ============================================================================
  * CLOSE_SPELLING_MATCH — "CARE AND CLENING POLICY" IS THE MANUAL'S "CARE AND
  * CLEANING"
