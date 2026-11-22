@@ -152,6 +152,10 @@ export interface ReplayContext {
   redraft(instanceId: string, notes: string): Promise<Record<string, unknown>>;
   /** The manager types on the form and saves (filled by the manager). */
   typeOnForm(instanceId: string, values: Record<string, string>): void;
+  /** Tick a form's checkbox groups (form_instance_values.checked), as a form on file holds them: its warning level, its boxes. */
+  checkOnForm?(instanceId: string, checked: Record<string, string[]>): void;
+  /** The real template and current version ids of a form, for a row a case puts on file directly (its values then load as a saved form's). */
+  templateIds?(key: string): { template_id: string; template_version_id: string };
   /** Production's race: the next message arrives before the drafting model's values are saved. */
   draftNotYetSaved(instanceId: string): void;
   /** The draft route's replies this case, in order (e.g. its `notice`). */
