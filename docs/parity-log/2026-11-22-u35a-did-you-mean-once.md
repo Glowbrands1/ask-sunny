@@ -29,3 +29,12 @@ and after (Sunny's propose_form path never read the reply text). #1243's open ve
 (`nov22-u35a-verbatim-correction-confirms`) fails before and is fixed.
 
 **Live harness:** not run here (the session's permission check refused the key); QA runs Sunny's live set.
+
+**Sunny-stricter rule (QA's ruling A, 22 Nov 2026; pending QA review of whether Bubbles should follow):** Bubbles #1040
+lets the card alone settle a close spelling ("a close spelling whose only staff-list match is the card's own person
+keeps the card theirs"). Sunny's nov16 rule (QA's live set on 1a53042) asks a close spelling unless the manager's own
+words named the person exactly or this chat recorded a confirmation; its case nov16-close-spelling-edit-after-the-card-
+is-asked ("ca for tamsin orwell, …" then "edit tamsen orwel ca" must ask) failed with the Bubbles rule as is. In Sunny
+the card settles a close spelling only when this chat recorded the manager confirming that person (a yes, the full name,
+or the correcting word: `spellingKeysConfirmedFor`), in findStaff's on-card check, cardNameCorrection and
+closeSpellingNotSettled. The tester's chat still passes (T4 "fix her last name bastida" is a recorded confirmation).

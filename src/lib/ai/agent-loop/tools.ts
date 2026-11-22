@@ -1231,10 +1231,13 @@ export async function findStaff(context: ToolContext, input: { name?: unknown; p
      * not turn the typed name into <A> ("fix her last name <other>") seated <A>, because <A> was "on this chat's card" by a
      * reply's TEXT, and the Did-you-mean question itself names <A>. The card is read from this chat's card record (on
      * screen, else the latest card), never from a reply's words.
+      * Sunny-stricter (QA's ruling A, 22 Nov 2026; nov16-close-spelling-edit-after-the-card-is-asked): only when this chat
+     * recorded the manager confirming that person (a yes, the full name, or the correcting word). A card made from the
+     * exact name, with no Did-you-mean answered, settles no later close spelling: it is asked.
      */
     const recordCard = context.cardOnScreen ?? context.earlierCard ?? null;
     const onCard = !nearMissNever && close.kind === "confirm" && close.candidates.length === 1 && !saidNo
-      ? Boolean(recordCard?.employeeKey && recordCard.employeeKey === personKey(close.candidates[0]!.employee.id))
+      ? Boolean(recordCard?.employeeKey && recordCard.employeeKey === personKey(close.candidates[0]!.employee.id)) && spellingKeysConfirmedFor(nameQuestionView(context, read.roster), close.candidates[0]!.employee.id).length > 0
       : false;
     if (onCard && close.kind === "confirm") {
       return { matches: [staffRow(close.candidates[0]!.employee)], note: `A close spelling of ${close.candidates[0]!.name}, the person on this chat's card. Use them; no need to ask.` };
@@ -2254,8 +2257,11 @@ function cardNameCorrection(
    * Port of Ask Bubbles #1040 (U35(a)): with the card already <P>'s, the first message's misspelling of <P> typed again
    * asked "Did you mean **<P>**?" again. A close spelling whose only staff-list match is the card's own person is that
    * person: the card stays theirs, and nothing is asked.
+   * Sunny-stricter (QA's ruling A, 22 Nov 2026; nov16-close-spelling-edit-after-the-card-is-asked): only when this chat
+   * recorded the manager confirming that person (a yes, the full name, or the correcting word). A card made from the
+   * exact name, with no Did-you-mean answered, settles no later close spelling: it is asked.
    */
-  if (cardPerson && close.kind === "confirm" && close.candidates.length > 0 && close.candidates.every((candidate) => candidate.employee.id === cardPerson.id)) {
+  if (cardPerson && close.kind === "confirm" && close.candidates.length > 0 && close.candidates.every((candidate) => candidate.employee.id === cardPerson.id) && spellingKeysConfirmedFor(view, cardPerson.id).length > 0) {
     return { person: cardPerson, from: cardName };
   }
   const candidates = close.kind === "confirm" ? close.candidates.map((candidate) => candidate.name) : [];
@@ -2449,9 +2455,12 @@ function closeSpellingNotSettled(
    * card", the Create request) each asked "Did you mean **<P>**?" again from the first message's misspelling. The card on
    * screen (or this chat's latest card) is already this staff member: the question settles nothing. The card's own
    * record, never the words.
+   * Sunny-stricter (QA's ruling A, 22 Nov 2026; nov16-close-spelling-edit-after-the-card-is-asked): only when this chat
+   * recorded the manager confirming that person (a yes, the full name, or the correcting word). A card made from the
+   * exact name, with no Did-you-mean answered, settles no later close spelling: it is asked.
    */
   const card = context.cardOnScreen ?? context.earlierCard ?? null;
-  if (card?.employeeKey && card.employeeKey === personKey(row.id)) return null;
+  if (card?.employeeKey && card.employeeKey === personKey(row.id) && spellingKeysConfirmedFor({ history: context.history, question: context.question, records: context.nameQuestions ?? [], roster }, row.id).length > 0) return null;
   const turns = identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId);
   const quoted = verifyEvidence(evidence, turns);
   const texts = quoted.ok
