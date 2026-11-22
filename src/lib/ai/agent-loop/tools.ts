@@ -802,14 +802,20 @@ function stepShaped(clause: string): boolean {
  * no date of this incident, is a step too ("<words> — <MM/DD/YYYY>"). Returns those steps, not on the card yet. Read from
  * the clauses' shape and the card's own steps, never a word list.
  */
-export function listedWithKeptSteps(requestWords: string, priorActions: string, incidentIso: string | null, today: string): string[] {
+/*
+ * Sunny (CI on the #1054 port, nov14 batch B): "ca for <P>, she was late on 11/12, she had a verbal on 10/2" with no
+ * incident date given (the model's account "… was late on 11/12."): the incident's own clause was listed as a step. A
+ * clause whose date is in the card's own account (`account`) is this incident, as one on the incident's date is.
+ */
+export function listedWithKeptSteps(requestWords: string, priorActions: string, incidentIso: string | null, today: string, account = ""): string[] {
   const kept = priorActions.split(/\s*(?:;|\n)\s*/).filter((step) => step.trim() !== "");
   if (kept.length === 0) return [];
   const holds = (clause: string, step: string) => {
     const dates = readDates(clause);
     return dates.length > 0 && dates.every((date) => readDates(step).some((stepDate) => sameDate(stepDate, date))) && sharesContentWord(clause, step);
   };
-  const ofThisIncident = (date: ReadDate) => Boolean(incidentIso && Number(incidentIso.slice(5, 7)) === date.month && Number(incidentIso.slice(8, 10)) === date.day);
+  const accountDates = readDates(account);
+  const ofThisIncident = (date: ReadDate) => Boolean(incidentIso && Number(incidentIso.slice(5, 7)) === date.month && Number(incidentIso.slice(8, 10)) === date.day) || accountDates.some((said) => sameDate(said, date));
   const added: string[] = [];
   for (const sentence of requestWords.split(/(?<=[.!?])\s+|\n+/)) {
     const clauses = sentence.replace(/[.!?]+$/, "").split(/\s*,\s*/).filter((clause) => clause.trim() !== "");
@@ -4457,7 +4463,7 @@ export async function proposeForm(
   const keptPriorActions = priorSplit?.kept ?? null;
   const priorActionsRead = priorActionsRefused ? null : (keptPriorActions ?? (statedSteps.length === 0 ? onFileLine : null));
   /* U09 (port of Ask Bubbles #1054, its QA's live triage): a step the manager listed with one the card keeps is on the card too (`listedWithKeptSteps`). */
-  const listedSteps = keptPriorActions && priorActionsRead ? listedWithKeptSteps(requestWords, priorActionsRead, date, today) : [];
+  const listedSteps = keptPriorActions && priorActionsRead ? listedWithKeptSteps(requestWords, priorActionsRead, date, today, whatHappened ?? "") : [];
   const priorActions = priorActionsRead ? [priorActionsRead, ...listedSteps].join(priorActionsRead.includes("\n") ? "\n" : "; ").slice(0, 600) : null;
   /*
    * U09 / U21 (port of Ask Bubbles #1054): a prior step on this card's Prior actions is never this incident's account

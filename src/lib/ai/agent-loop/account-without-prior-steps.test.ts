@@ -51,6 +51,10 @@ describe("listedWithKeptSteps (U09)", () => {
     expect(listedWithKeptSteps("Verbal CA 10-1-2026, late again 11-1-2026", "Verbal CA — 10/01/2026", "2026-11-01", "2026-11-22")).toEqual([]);
     expect(listedWithKeptSteps("Verbal CA 10-1-2026, on 10-20-2026 she was late and left early", "Verbal CA — 10/01/2026", "2026-11-01", "2026-11-22")).toEqual([]);
   });
+  it("control: with no incident date given, a clause whose date is in the card's account is this incident, no step", () => {
+    const said = "ca for tamsin orwell, she was late on 11/12, she had a verbal on 10/2";
+    expect(listedWithKeptSteps(said, "Verbal CA — 10/02/2026", null, "2026-11-22", "Tamsin Orwell was late on 11/12.")).toEqual([]);
+  });
   it("the account then loses the listed step", () => {
     expect(accountWithoutPriorSteps("JBA Policy Manual 1/1/2026. On 11/1/26, Corisande violated the care and cleaning of facilities policy.", "Verbal CA — 11/01/2026; JBA Policy Manual — 01/01/2026", "2026-11-01")).toBe("On 11/1/26, Corisande violated the care and cleaning of facilities policy.");
   });

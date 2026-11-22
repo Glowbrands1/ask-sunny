@@ -40,3 +40,11 @@ replay `nov22-agent-loop-c3-off-roster-name-order-cases.ts` (3 cases) and
 `nov22-agent-loop-u21-prior-steps-out-of-observation-cases.ts` (U21 fixed; U09 listed-step open until #1234).
 
 **Live harness:** not run here (the permission check refused the key); QA runs the live set.
+
+**Gap found in Sunny's CI (also in Ask Bubbles #1054, for Bubbles to mirror):** `listedWithKeptSteps` read the
+incident's own clause as a listed step when the card had no incident date. Sunny's nov14 batch-B case "ca for tamsin
+orwell, she was late on 11/12, she had a verbal on 10/2" (the model's account "Tamsin Orwell was late on 11/12.", no
+incident_date) got Prior actions "Verbal CA — 10/02/2026; she was late on — 11/12/2026". Fix: `listedWithKeptSteps`
+takes the card's account; a clause whose date is in the account is this incident, as one on the incident's date is.
+Unit test (`account-without-prior-steps.test.ts`), failing before, passing after:
+`listedWithKeptSteps("ca for tamsin orwell, she was late on 11/12, she had a verbal on 10/2", "Verbal CA — 10/02/2026", null, "2026-11-22", "Tamsin Orwell was late on 11/12.")` → `[]`.
