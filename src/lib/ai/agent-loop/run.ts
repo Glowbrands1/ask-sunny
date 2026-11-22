@@ -2,6 +2,7 @@ import "server-only";
 
 import { observationDateMismatch, withoutMisdatedRestatements } from "./observation-dates";
 import { withFullOffRosterName } from "./off-roster-line";
+import { speaksOfTheManager, withoutManagerReasoning } from "./reasoning-leak";
 import type { WhichFormSlot } from "./which-form";
 import { cardTurns, personKey, readLoopRecords, replyTurns, type CardRecord, type CardSlot, type ExitOfferSlot, type NameQuestionSlot, type PersonAskedSlot, type TeamConfirmSlot } from "./card-record";
 import { CLAUDE_EFFORT, CLAUDE_MAX_TOKENS, CLAUDE_MODEL } from "@/lib/config/models";
@@ -1352,6 +1353,18 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
             if (promises(text)) text = text.split(/(?<=[.!?])\s+/).filter((sentence) => !PROMISES_LATER_WORK.test(sentence)).join(" ").trim();
             if (earlierDraft(text)) text = text.split(/(?<=[.!?])\s+/).filter((sentence) => !speaksOfEarlierDraft(sentence)).join(" ").trim();
           }
+        }
+        /*
+         * QA's re-run (22 Nov 2026, A13; port of Ask Bubbles #1007): the reply leaked the model's own reasoning ("The
+         * manager's request to add this is about the card on screen (the open draft), not an older form on file."). The reply
+         * is written TO the manager; "the manager" is the app's own name for them in tool results and notes
+         * (`speaksOfTheManager`). A reply sentence that speaks of them in the third person is reasoning, handed back once
+         * and then left out.
+         */
+        if (stoppedAt === "reply" && speaksOfTheManager(text)) {
+          const again = await handBack("[app check] Your reply speaks of \"the manager\" in the third person: that is your own reasoning, not an answer. The manager reads this reply: write to them as \"you\", say only what was done or what you need, and never explain your reasoning. Then write your reply to the manager again.");
+          if (again) text = again;
+          if (speaksOfTheManager(text)) text = withoutManagerReasoning(text) || text;
         }
       }
     });
