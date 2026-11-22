@@ -223,6 +223,23 @@ async function formsOnFileAskedFor(context: ToolContext, evidence: unknown, pers
   return { ok: false, reason: "evidence_other_person", reasonCode: "privacy_not_this_person" };
 }
 
+/**
+ * R14 (QA's Bubbles round 2, 22 Nov 2026): the one full name the manager typed that starts with this one-word name: the
+ * word, then one or two capitalised words straight after it ("Test Employee" in "for Team Member, Test Employee."). Null
+ * for a name of two words or more, or when the manager typed none or several.
+ */
+export function typedFullNameOf(word: string, managerWords: string): string | null {
+  if (!/^[\p{L}'-]+$/u.test(word)) return null;
+  const found = new Set<string>();
+  for (const match of managerWords.matchAll(/(?<![\p{L}'-])[\p{L}'-]+/gu)) {
+    const said = match[0];
+    if (said.toLowerCase() !== word.toLowerCase() || said[0] !== said[0]!.toUpperCase()) continue;
+    const rest = /^((?:[ \t]+\p{Lu}[\p{Ll}'-]+){1,2})(?![\p{L}'-])/u.exec(managerWords.slice((match.index ?? 0) + said.length));
+    if (rest) found.add(`${said}${rest[1]}`.replace(/\s+/g, " ").trim());
+  }
+  return found.size === 1 ? [...found][0]! : null;
+}
+
 /** find_staff's offer for a name not on the staff list (the propose_form refusal gives the same line). */
 export function offRosterNameQuestion(name: string): string {
   return `I can't find **${name}** on your staff list. Reply **use ${name}** to put the name on the form as you typed it, or give me the full name.`;
@@ -3035,7 +3052,10 @@ export async function proposeForm(
   if (read.kind === "read") {
     const id = typeof input.employee_id === "string" ? input.employee_id.trim() : "";
     const person = id ? read.roster.find((row) => row.id === id) : undefined;
-    const typed = typeof input.employee_name === "string" ? withoutJobTitle(tidyTypedName(input.employee_name)) : "";
+    const rawTyped = typeof input.employee_name === "string" ? tidyTypedName(input.employee_name) : "";
+    const titleless = withoutJobTitle(rawTyped);
+    /* R14: "Test Employee", the exact full name the manager typed, is a name; its last word is not a title to strip. */
+    const typed = titleless !== rawTyped && words(titleless).length === 1 && typedFullNameOf(titleless, requestTurnsText(context, read.roster))?.toLowerCase() === rawTyped.toLowerCase() ? rawTyped : titleless;
     /*
      * HARD GUARD, A "NO" NEVER SEATS THE NAME (NEAR_MISS_QUESTION_RULES, parity gap #45): when the manager answered
      * "no" to this chat's own "Did you mean **<A>**?" or "Is this for **<A>**?", <A> is not put on the card.
@@ -3118,6 +3138,20 @@ export async function proposeForm(
      * did_you_mean) comes back exactly as find_staff gives it, with no card; a name find_staff finds no one for and says
      * nothing about falls to propose_form's own not_on_roster refusal below, as before.
      */
+    /*
+     * R14 (QA's Bubbles round 2, 22 Nov 2026): "… for Team Member, Test Employee. Test was assigned …" — the model passed
+     * "Test" on five calls and every reply asked "use Test". A one-word name nobody on the roster has, typed by the manager
+     * in this request as the first word of exactly one capitalised full name ("Test Employee"), goes back with that full
+     * name: propose again with it (taken as typed when it is nobody on the roster, QA's c220/c224 rule). Their own words.
+     */
+    else if (typed && !id && words(typed).length === 1 && rosterMatches(typed, read.roster).length === 0 && typedFullNameOf(typed, requestTurnsText(context, read.roster))) {
+      const fullTyped = typedFullNameOf(typed, requestTurnsText(context, read.roster))!;
+      return {
+        reason_code: "full_name_typed",
+        full_name_typed: fullTyped,
+        error: `The manager typed the full name "${fullTyped}" in this request; "${typed}" is only its first word. Propose the card again now with employee_name "${fullTyped}" exactly, never "${typed}", and never ask "use ${typed}".`,
+      };
+    }
     else if (typed && !id && (lookedUp = await lookUpForCard(context, effects, typed, input.person_evidence, read.roster)).kind !== "none") {
       if (lookedUp.kind === "ask") return lookedUp.result;
       if (!(await personNamedOrPicked(context, lookedUp.person, read.roster))) return personNotNamed(context, template, effects, lookedUp.person);
