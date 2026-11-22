@@ -9,18 +9,20 @@ import { evidenceFrom, headingWith, lastResult, loopStandIn, type LoopDecision }
  * ============================================================================
  *
  * The manager's turn, word for word (R13's, the person invented): "create a verbal CA for team member Testy Testerson at
- * Kearney, NE. location. On 10-16-26 Testy did not sanitize …". With the real model, the account came back as "At
- * Kearney, NE location, on 10/16/26 …" and the card's Observation read "Location, on 10/16/26 Testy did not …": the
- * phrase and its state left (#1223), the word that closed the manager's place phrase stayed. Mechanism
+ * Kearney, NE. location. On 10-16-26 Testy did not sanitize …". With the real model, the card's Observation read "On
+ * 10/16/26 location, Testy did not …" (the account "On 10/16/26 at Kearney, NE location, Testy …"); "At Kearney, NE
+ * location, on …" read "Location, on …". The phrase and its state left (#1223), the word that closed the manager's
+ * place phrase stayed. Mechanism
  * (`withoutNamedSalon`): words after the state, up to the phrase's own comma or full stop, that are all words of the
  * phrase (the salon's name or the place words the phrase is already read with) leave with it.
  */
 
 const FLAG = "AGENT_LOOP_ENABLED";
-const REPORT = "QA's live run on Sunny main 9de3675 (22 Nov 2026), nov22-r13-salon-with-state-leaves-account-whole: the Observation read \"Location, on 10/16/26 …\"";
+const REPORT = "QA's live run on Sunny main 9de3675 (22 Nov 2026), nov22-r13-salon-with-state-leaves-account-whole: the Observation read \"On 10/16/26 location, Testy …\"";
 const T1 = "create a verbal CA for team member Testy Testerson at Kearney, NE. location. On 10-16-26 Testy did not sanitize the tanning beds between guests. payroll deduct is not applicable";
-/** The live model's accounts: as it wrote it, and as the manager typed the phrase. */
+/** The live model's accounts: QA's live card's (the phrase after the date), the phrase first, and as the manager typed it. */
 const LIVE_ACCOUNTS = [
+  "On 10/16/26 at Kearney, NE location, Testy did not sanitize the tanning beds between guests.",
   "At Kearney, NE location, on 10/16/26 Testy did not sanitize the tanning beds between guests.",
   "At Kearney, NE. location. On 10/16/26 Testy did not sanitize the tanning beds between guests.",
 ];

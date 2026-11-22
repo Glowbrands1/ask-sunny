@@ -42,9 +42,15 @@ describe("withoutNamedSalon: the phrase's own place word after the state", () =>
     );
   });
 
+  it("takes \"at Kearney, NE location,\" out after the date (QA's live card: \"On 10/16/26 location, Testy …\")", () => {
+    expect(withoutNamedSalon("On 10/16/26 at Kearney, NE location, Testy did not sanitize the tanning beds between guests.", "loc-0309")).toBe(
+      "On 10/16/26 Testy did not sanitize the tanning beds between guests.",
+    );
+  });
+
   it("mid-account, keeps the sentence's own full stop once", () => {
     expect(withoutNamedSalon("Testy was late at Kearney, NE. location. She did not call.", "loc-0309")).toBe("Testy was late. She did not call.");
-    expect(withoutNamedSalon("Testy was late at Kearney, NE location, on 10/16/26.", "loc-0309")).toBe("Testy was late, on 10/16/26.");
+    expect(withoutNamedSalon("Testy was late at Kearney, NE location, on 10/16/26.", "loc-0309")).toBe("Testy was late on 10/16/26.");
   });
 
   it("keeps words after the state that are not the phrase's (\"NE on 10/16/26\", \"NE side\")", () => {

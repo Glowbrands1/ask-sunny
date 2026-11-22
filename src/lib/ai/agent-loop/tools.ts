@@ -2997,11 +2997,15 @@ export function withoutNamedSalon(account: string, salonId: string): string {
    * phrase (the salon's name, or the place words `isThatSalon` already reads the phrase with) are the phrase's too.
    */
   const ofThePhrase = (words: string) => words.trim() !== "" && words.trim().toLowerCase().split(/\s+/).every((word) => nameWords.has(word) || filler.has(word));
-  const withState = account.replace(/(^|[\s,;])(?:at|in)\s+((?:[A-Za-z0-9'’-]+\s+){0,4}[A-Za-z0-9'’-]+)\s*,\s*([A-Za-z]{2,})(?![A-Za-z0-9'’-])(\.?)(?:((?:\s+[A-Za-z'’]+){1,3})(?=\s*(?:[,.;!?]|$)))?/gi, (whole, before: string, phrase: string, tail: string, dot: string, after: string | undefined, offset: number) => {
+  const withState = account.replace(/(^|[\s,;])(?:at|in)\s+((?:[A-Za-z0-9'’-]+\s+){0,4}[A-Za-z0-9'’-]+)\s*,\s*([A-Za-z]{2,})(?![A-Za-z0-9'’-])(\.?)(?:((?:\s+[A-Za-z'’]+){1,3})(\s*[,.;!?]|(?=\s*$)))?/gi, (whole, before: string, phrase: string, tail: string, dot: string, after: string | undefined, closer: string | undefined, offset: number) => {
     if (!nameWords.has(tail.toLowerCase()) || !isThatSalon(phrase)) return whole;
-    const dropped = after !== undefined && ofThePhrase(after);
-    const rest = after && !dropped ? after : "";
-    return offset === 0 ? rest.trimStart() : `${before.replace(/\s+$/, "")}${dropped ? "" : dot}${rest}`;
+    const lead = offset === 0 ? "" : before.replace(/\s+$/, "");
+    if (after !== undefined && ofThePhrase(after)) {
+      // The phrase's own closing comma goes with it (the sentence reads on); a sentence's end stays, once.
+      const end = (closer ?? "").trim();
+      return offset === 0 ? "" : `${lead}${/[.!?;]/.test(end) ? end : ""}`;
+    }
+    return offset === 0 ? `${after ?? ""}${closer ?? ""}`.trimStart() : `${lead}${dot}${after ?? ""}${closer ?? ""}`;
   });
   const out = withState.replace(/(^|[\s,;])(?:at|in)\s+((?:[A-Za-z0-9'’-]+\s+){0,4}[A-Za-z0-9'’-]+)(?=\s*(?:[,.;!?]|$))(,?)/gi, (whole, before: string, phrase: string, comma: string) =>
     isThatSalon(phrase) ? (before.trim() === "" ? "" : before.replace(/\s+$/, "")) + (comma && before.trim() !== "" ? comma : "") : whole);
