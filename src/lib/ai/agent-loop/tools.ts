@@ -1715,6 +1715,27 @@ export async function findPastForms(context: ToolContext, input: { employee_name
       const top = scored.filter((entry) => entry.score === best && best > 0);
       if (top.length > 0) rows = top.map((entry) => entry.row);
     }
+    /*
+     * Port of Ask Bubbles #1044 (its QA's live round-2 re-run, 22 Nov 2026, U16): "put up the verbal CA for <P>" listed her
+     * Written Warning beside the Verbal one, and a revised original beside its revision, so "with all the same information
+     * given" could not tell which one to copy. Read from the forms' own data: a form a listed revision replaced (status
+     * revised) is not a choice, and when the manager's words for the form (the model's form and about, and the quote of
+     * the message that asked) hold a level some of these forms have ticked (their warning_type), only those are kept.
+     */
+    rows = rows.filter((row) => !(row.status === "revised" && rows.some((other) => other.revisesInstanceId === row.id)));
+    /* The manager's own words for it: the model's form and about, and the quote of the message that asked (forms_on_file_evidence). */
+    const askedQuote = typeof (input.forms_on_file_evidence as { quote?: unknown } | null | undefined)?.quote === "string" ? String((input.forms_on_file_evidence as { quote: string }).quote) : "";
+    const askedWords = new Set([...words(wantForm), ...words(typeof input.about === "string" ? input.about : ""), ...words(askedQuote)]);
+    if (askedWords.size > 0 && rows.length > 1 && rows.length <= 20) {
+      const levels = await Promise.all(rows.map(async (row) => ({
+        row,
+        ticked: await authorizeInstance(context.request, row.id, "view")
+          .then(({ loaded }) => loaded.values.filter((value) => value.fieldKey === "warning_type").flatMap((value) => value.checked ?? []))
+          .catch(() => [] as string[]),
+      })));
+      const named = levels.filter((entry) => entry.ticked.some((key) => askedWords.has(key.toLowerCase())));
+      if (named.length > 0 && named.length < levels.length) rows = named.map((entry) => entry.row);
+    }
     const described = Boolean(wantForm || wantDate || about.length > 0);
     /* Item 18 (Pau via QA): each form's `choice` line says what tells it apart (`formChoices`); the reply lists them as given. */
     const listed = rows.slice(0, 20);

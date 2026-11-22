@@ -156,6 +156,11 @@ import { rulesBookText } from "./rules-book";
  * "[card shown under this reply: …]" line instead of the app note, and one line was added after it: a card comes only
  * from propose_form, never card lines written on a turn without it. It reads the same under every config; nothing else
  * changed.
+ * Re-taken on purpose on 22 Nov 2026 (port from Ask Bubbles #1044, U16): the "Open / edit / pull up / show me" line now
+ * says a form referred to as one that exists is a form on file whatever the verb ("put up" included), and only words
+ * asking to make one start a card; one line was added before the "In the format of" line ("with all the same
+ * information" copies the form on file); the level-evidence line no longer gives "put up the verbal CA" as an example.
+ * It reads the same under every config; nothing else changed.
  */
 
 const fixture = (name: string): string => readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), "utf8");
