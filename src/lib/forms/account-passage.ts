@@ -82,7 +82,13 @@ export function accountPassage(
         own.push(chunk.content);
       }
     }
-    return pick(own, general, first, account, employeeName);
+    /*
+     * Port from Ask Bubbles (fee69631), with the chunk as production holds it: "Care and Cleaning of Equipment and
+     * Facilities" starts 105 characters into its chunk, after the previous section's tail, and no block fit the account
+     * ("trash liners … laundry"), so the text above the heading (that tail) was quoted. A plain heading with no block that
+     * fits leaves its wording as it was; the text above a heading is a general rule only for a list heading (the dress code).
+     */
+    return pick(own, general, first, account, employeeName, true);
   }
   const parts = [first.content.slice(after)];
   for (const chunk of ordered.slice(at + 1, at + MAX_CHUNKS)) {
@@ -96,8 +102,8 @@ export function accountPassage(
   return pick(parts, general, first, account, employeeName);
 }
 
-/** The block of `parts` that shares the most words with the account; else the general rule above the heading; else null. */
-function pick(parts: readonly string[], general: string, first: ManualChunk, account: string, employeeName?: string | null): string | null {
+/** The block of `parts` that shares the most words with the account; else, for a list heading, the general rule above it; else null. */
+function pick(parts: readonly string[], general: string, first: ManualChunk, account: string, employeeName?: string | null, plainHeading = false): string | null {
   const skip = stems(employeeName ?? "", new Set());
   const said = stems(account, skip);
   const blocks = parts
@@ -126,6 +132,8 @@ function pick(parts: readonly string[], general: string, first: ManualChunk, acc
     }
     return verbatimExcerpt(item?.text ?? block);
   }
+  /* A plain heading with no block that fits: null (its wording is left as it was), never the text above it (another section's). */
+  if (plainHeading) return null;
   /* The general rule above the heading, without its own title line. */
   const titles = new Set((first.sections ?? []).map((entry) => entry.heading.trim().toLowerCase()));
   const lines = general.trim().split("\n");

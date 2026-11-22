@@ -93,8 +93,15 @@ function nosyStandIn(view: LoopView) {
   if (!/before|on file/i.test(view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "") && !lastResult(view, "propose_form")) {
     return { tool: "propose_form", input: { template_key: "dpoa", employee_id: firstMatch(view)?.employee_id, what_happened: "Tamsin Orwell was on her phone at the front desk on 11/13." } };
   }
-  const seen = [lastResult(view, "find_past_forms"), lastResult(view, "read_form")].map((result) => JSON.stringify(result ?? {})).join(" ");
-  return { text: `Here is what I found: ${seen}` };
+  /*
+   * Changed on purpose (port of Ask Bubbles #1007, A13, 22 Nov 2026): this stand-in used to reply with the tool results'
+   * raw JSON, whose notes speak of "the manager"; the loop now leaves out reply sentences that speak of the manager in
+   * the third person (`reasoning-leak.ts`), which cut the dump. It now replies with what it read: each listed form and
+   * its status, and the form read. The privacy assertions are unchanged.
+   */
+  const read = lastResult(view, "read_form") as { form?: string; template_name?: string } | null;
+  const seen = [...listed.map((form) => `${form.form} (${form.status})`), ...(read ? [String(read.form ?? read.template_name ?? "")] : [])].filter(Boolean).join("; ");
+  return { text: `Here is what I found: ${seen || "nothing"}.` };
 }
 
 export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [

@@ -681,6 +681,13 @@ export interface ChatFormProposal {
    */
   exitHow?: string;
   exitHowQuote?: string;
+  /**
+   * The agent loop's exit card (QA's Bubbles round 2, 22 Nov 2026, U26): How Employee Resigned as the model read it (one of
+   * the line's own methods) and the manager's words for it. Create writes it only when the quote is in the chat's manager
+   * turns and names that method, checked server-side.
+   */
+  exitMethod?: string;
+  exitMethodQuote?: string;
   /** The agent loop's card (QA's third review): Create never runs today's termination reader for it. */
   fromAgentLoop?: true;
   /** The agent loop's coaching card: the topic, in the manager's words, checked against their message (QA, 17 Nov 2026). */
