@@ -1244,7 +1244,12 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
         /* QA's re-run (22 Nov 2026, A3; port of Ask Bubbles #1004): a restated Observation keeps the Observation's dates (`observation-dates.ts`). */
         /* U22 (port of Ask Bubbles #1034): an exit card's reply reads back only the lines Create saves (`exit-read-back.ts`). */
         if (effects.proposal) return [...cardMismatch(claims, effects.proposal), ...observationDateMismatch(reply, effects.proposal.issue), ...exitReadBackMismatch(reply, effects.proposal.exitReadBack)];
-        const onScreen = shownCard ? ({ warningLevel: shownCard.level ?? null, policyLine: shownCard.policyLine ?? null, payrollDeduct: shownCard.payroll ?? null, payrollDeductAmount: shownCard.payrollAmount ?? null } as unknown as ChatFormProposal) : null;
+        /*
+         * Port of Ask Bubbles #1048 (its QA's live round 3, 22 Nov 2026, A1(a)): T4 "she is at <city> <street>" made no card,
+         * and the reply's true "filed at <salon>" was a mismatch because the record held no salon for a person's card. The
+         * card still shown has its salon id in the record now (`salonId`).
+         */
+        const onScreen = shownCard ? ({ warningLevel: shownCard.level ?? null, policyLine: shownCard.policyLine ?? null, payrollDeduct: shownCard.payroll ?? null, payrollDeductAmount: shownCard.payrollAmount ?? null, locationId: shownCard.salonId ?? null } as unknown as ChatFormProposal) : null;
         /*
          * B6: no card this turn ("she is resigning due to second job …" called no tool and replied "Noted the reason —
          * **Reason for Resignation:** Second job."): an exit card on screen saves nothing new, so a Details or answer line
@@ -1427,6 +1432,18 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
           if (speaksOfTheManager(text)) text = withoutManagerReasoning(text) || text;
         }
         /*
+         * Port of Ask Bubbles #1048 (its QA's live round 3, 22 Nov 2026, A7): "Filed at <salon>, where <staff system> lists
+         * <P>" is the rules book's own line for salon_from_woven. A reply that says it when no card this turn was filed at the
+         * employee's roster salon (the manager named the salon: salon_said) goes back once; if it comes back, that sentence is
+         * left out. Read from the app's own staff-system name, never a word list.
+         */
+        const staffListsLine = new RegExp(`where ${appConfig().staffSystem.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} lists`, "i");
+        if (stoppedAt === "reply" && effects.proposal && !effects.salonFromWoven && staffListsLine.test(text)) {
+          const again = await handBack(`[app check] Your reply says the card is filed where ${appConfig().staffSystem} lists the employee, but no card this turn was filed that way: the card's ${appConfig().locationWord} is the one the manager named (salon_said). Say "Filed at **<the card's ${appConfig().locationWord}>**, as you said." or nothing about it. Then write your reply to the manager again.`);
+          if (again) text = again;
+          if (staffListsLine.test(text)) text = text.split("\n").map((line) => line.split(/(?<=[.!?])\s+/).filter((sentence) => !staffListsLine.test(sentence)).join(" ")).join("\n").replace(/\n{3,}/g, "\n\n").trim();
+        }
+        /*
          * QA's re-run (22 Nov 2026, A8; port of Ask Bubbles #1010): with a team card that has no salon yet, the reply named
          * salons nobody had named (a city's locations, read from a program's abbreviation). Read by the app's own salon
          * reader: a salon the reply names that the manager never named and the card does not hold goes back once; if it
@@ -1538,7 +1555,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   }
   if (offRosterNames.size === 1 && text) text = withFullOffRosterName(text, [...offRosterNames][0]!, appConfig().staffSystem);
   const cardSlot: CardSlot | null = effects.proposal
-    ? { proposalId: effects.proposal.proposalId, employeeKey: effects.proposalEmployeeId ? personKey(effects.proposalEmployeeId) : null, nameKey: effects.proposal.employeeName ? personKey(effects.proposal.employeeName) : null, templateKey: effects.proposal.templateKey, templateName: effects.proposal.templateName ?? null, ...(effects.proposalAsked?.length ? { asked: effects.proposalAsked } : {}), ...(effects.proposalLevel ? { level: effects.proposalLevel } : {}), ...(effects.proposalPayroll ? { payroll: effects.proposalPayroll } : {}), ...(effects.proposalPayroll === "yes" && effects.proposalPayrollAmount ? { payrollAmount: effects.proposalPayrollAmount } : {}), ...(effects.proposal.policyLine ? { policyLine: effects.proposal.policyLine } : {}), ...(effects.proposalAccountKey ? { accountKey: effects.proposalAccountKey } : {}), ...(effects.proposal.formDate ? { incidentDate: effects.proposal.formDate } : {}), ...(effects.proposal.subject === "team" && effects.proposal.status === "needs_location" ? { teamNeedsLocation: true } : {}), ...(effects.proposal.subject === "team" && !effects.proposal.locationId ? { teamNoSalon: true } : {}) }
+    ? { proposalId: effects.proposal.proposalId, employeeKey: effects.proposalEmployeeId ? personKey(effects.proposalEmployeeId) : null, nameKey: effects.proposal.employeeName ? personKey(effects.proposal.employeeName) : null, templateKey: effects.proposal.templateKey, templateName: effects.proposal.templateName ?? null, ...(effects.proposalAsked?.length ? { asked: effects.proposalAsked } : {}), ...(effects.proposalLevel ? { level: effects.proposalLevel } : {}), ...(effects.proposalPayroll ? { payroll: effects.proposalPayroll } : {}), ...(effects.proposalPayroll === "yes" && effects.proposalPayrollAmount ? { payrollAmount: effects.proposalPayrollAmount } : {}), ...(effects.proposal.policyLine ? { policyLine: effects.proposal.policyLine } : {}), ...(effects.proposalAccountKey ? { accountKey: effects.proposalAccountKey } : {}), ...(effects.proposal.formDate ? { incidentDate: effects.proposal.formDate } : {}), ...(effects.proposal.subject === "team" && effects.proposal.status === "needs_location" ? { teamNeedsLocation: true } : {}), ...(effects.proposal.subject === "team" && !effects.proposal.locationId ? { teamNoSalon: true } : {}), ...(effects.proposal.locationId ? { salonId: effects.proposal.locationId } : {}) }
     : null;
   /* Fix batch items 4 and 3: this turn's "Did you mean", for the next turn's name question record (one-way keys only). */
   const nameQuestionSlot: NameQuestionSlot | null = effects.nameQuestion && stoppedAt === "reply"
