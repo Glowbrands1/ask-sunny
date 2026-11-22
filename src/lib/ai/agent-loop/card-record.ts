@@ -101,6 +101,11 @@ export interface NameQuestionSlot {
   readonly offeredNameKeys?: readonly string[];
   /** The answer bridge (QA, 16 Nov 2026): the question asked for the full name ("I can't find **<A'>** … give me the full name"). */
   readonly asksFullName?: boolean;
+  /**
+   * Port of Ask Bubbles #1043 (U35(ii)): the form propose_form was making when it asked (a template key, never a name), so
+   * the question marks that form's request start. Absent for find_staff's questions and older records.
+   */
+  readonly templateKey?: string;
 }
 
 export interface NameQuestionRecord extends NameQuestionSlot {
@@ -227,7 +232,7 @@ export async function readLoopRecords(conversationId: string | undefined, userId
       nameQuestions: rows.flatMap((row) => {
         const asked = row.slots?.agent_loop?.name_question;
         return isNameQuestionSlot(asked)
-          ? [{ offeredKeys: [...asked.offeredKeys], typedKey: asked.typedKey, ...(Array.isArray(asked.offeredNameKeys) ? { offeredNameKeys: asked.offeredNameKeys.filter((key): key is string => typeof key === "string") } : {}), ...(asked.asksFullName === true ? { asksFullName: true } : {}), messageId: row.message_id, questionKey: questionKeyOf(row) }]
+          ? [{ offeredKeys: [...asked.offeredKeys], typedKey: asked.typedKey, ...(Array.isArray(asked.offeredNameKeys) ? { offeredNameKeys: asked.offeredNameKeys.filter((key): key is string => typeof key === "string") } : {}), ...(asked.asksFullName === true ? { asksFullName: true } : {}), ...(typeof asked.templateKey === "string" ? { templateKey: asked.templateKey } : {}), messageId: row.message_id, questionKey: questionKeyOf(row) }]
           : [];
       }),
       turns: rows.flatMap((row) => {
