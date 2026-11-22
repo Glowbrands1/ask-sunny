@@ -2008,6 +2008,18 @@ export function incidentDates(managerWords: string, priorActions: string | null)
 }
 
 /**
+ * QA's re-run (22 Nov 2026, C3; port of Ask Bubbles #1012): "create a CA form for <Last>, <First> at <salon>. she was late
+ * on 10-16" (a name not on the staff list) was kept as "<Last>, <First>": the reply's bold broke ("**<Last>,**."), the
+ * Observation said the lateness twice and the Expectation used the surname as the first name. A name written as two
+ * single words around one comma is, by its own shape, "Last, First": it is read as "First Last". Any other shape is kept
+ * as typed.
+ */
+export function lastCommaFirst(name: string): string {
+  const parts = /^([\p{L}][\p{L}'-]*)\s*,\s*([\p{L}][\p{L}'-]*)$/u.exec(name.trim());
+  return parts ? `${parts[2]} ${parts[1]}` : name;
+}
+
+/**
  * fix-name, live s10 (Pau's ruling, 16 Nov 2026; QA's handoff open question 3): on a card NOT yet created, "fix her last
  * name" may change the card's name, but only through the same roster check as a new name. Today a typed name that
  * missed the roster went on the card as typed (the off-roster shortcut below), with no check at all.
@@ -3236,14 +3248,15 @@ export async function proposeForm(
       };
     }
   } else {
-    const typedName = typeof input.employee_name === "string" ? tidyTypedName(input.employee_name) : "";
+    const typedName = typeof input.employee_name === "string" ? lastCommaFirst(tidyTypedName(input.employee_name)) : "";
     if (!typedName && !effects.staffLookedUp) return askWhoFor(context, template, effects);
     if (!typedName) return { reason_code: "missing_input", error: "Give the employee's name as the manager typed it." };
     employee = { name: typedName, salonIds: [] };
   }
   /* QA (train 5): a name taken as typed is shown in title case when typed all lowercase (`shownAsTyped`). */
   if (offRosterName) {
-    offRosterName = shownAsTyped(offRosterName);
+    /* C3: every check above reads the name as typed; the card's name reads "<Last>, <First>" as "<First> <Last>". */
+    offRosterName = shownAsTyped(lastCommaFirst(offRosterName));
     employee = { ...employee, name: offRosterName };
   }
   /*
