@@ -48,6 +48,11 @@ export function wholeTeamRequest(input: {
   openTemplateName?: string | null;
   /** A draft is open on screen (TEAM_CARD_WORDING: a team expectation is read only without one). */
   draftOpen?: boolean;
+  /**
+   * QA's shadow re-run S2 (22 Nov 2026): the agent loop's model decided this message asks for a whole team or group and
+   * quoted the manager's words (team_evidence, checked real by evidence.ts). The phrase readers above stay the fallback.
+   */
+  teamEvidence?: boolean;
 }): TeamRequest | null {
   if (!wholeTeamCoachingEnabled()) return null;
   const question = input.question.trim();
@@ -57,7 +62,7 @@ export function wholeTeamRequest(input: {
   const answering = input.continuingTemplateKey === "coaching" && readsAsTeamSubject(question);
   const expectation =
     teamCardWordingEnabled() && !input.draftOpen && !input.continuingTemplateKey && teamExpectation(question);
-  if (!bare && !asked && !answering && !expectation) return null;
+  if (!bare && !asked && !answering && !expectation && !input.teamEvidence) return null;
   const store = rememberedStore(question, input.history);
   const head = `Coaching Form for the whole team${store ? ` at ${store}` : ""}`;
   return {
