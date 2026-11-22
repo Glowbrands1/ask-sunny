@@ -226,6 +226,18 @@ async function formsOnFileAskedFor(context: ToolContext, evidence: unknown, pers
   const namesSomeone = (text: string) => rosterNames.some((name) => mentionsPerson(text, name, rosterNames)) || extractEmployeeNames(text).length > 0;
   /* QA's re-review (fix 1): the quoted message names someone else, so no fallback lets this person's forms through. */
   if (namesSomeone(asked.said)) return { ok: false, reason: "evidence_other_person", reasonCode: "privacy_not_this_person" };
+  /*
+   * QA's 266-chat shadow re-run, S1(b) (22 Nov 2026): the reply asked "Do you want me to open <First>'s Corrective Action on
+   * file?" and the manager's answer (naming nobody) was refused, turn after turn. The app's own reply right before the
+   * quoted answer, when it names this person, makes the answer about them. Sunny's reply is read, never the manager's.
+   */
+  {
+    const turns = identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId);
+    const check = verifyEvidence(evidence, turns);
+    const asking = check.ok ? turns[check.turn.index - 1] : undefined;
+    const replyText = asking?.role === "assistant" ? withoutMessageIdTags(asking.content).replace(/[*_]/g, "") : "";
+    if (replyText && names.some((name) => holdsPhrase(replyText, name))) return { ok: true };
+  }
   const antecedent = asked.before.find(namesSomeone);
   if (antecedent !== undefined && namedIn(antecedent)) return { ok: true };
   // PR 2: the card on screen, by the server's card record (its person's roster id, or the key of a typed name), never the reply's text.
