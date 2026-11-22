@@ -61,6 +61,9 @@ const KNOWN = new Set([
   "attendance_not_given", "attendance_evidence_not_found",
   // Added on purpose (port from the sibling app, its QA's live re-test, 21 Nov 2026, A5): a Corrective Action account with no subject.
   "account_no_subject",
+  // Added on purpose (port from the sibling app, its QA's round 2, 22 Nov 2026, R14): a one-word name that is the first word
+  // of the full name the manager typed in this request goes back with that full name.
+  "full_name_typed",
 ]);
 
 /** A line that returns a refusal: `error:` followed by a string, a template or a named message (not `error: Boolean(...)`). */

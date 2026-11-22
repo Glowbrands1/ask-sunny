@@ -3147,9 +3147,8 @@ export async function proposeForm(
     else if (typed && !id && words(typed).length === 1 && rosterMatches(typed, read.roster).length === 0 && typedFullNameOf(typed, requestTurnsText(context, read.roster))) {
       const fullTyped = typedFullNameOf(typed, requestTurnsText(context, read.roster))!;
       return {
-        reason_code: "full_name_typed",
         full_name_typed: fullTyped,
-        error: `The manager typed the full name "${fullTyped}" in this request; "${typed}" is only its first word. Propose the card again now with employee_name "${fullTyped}" exactly, never "${typed}", and never ask "use ${typed}".`,
+        error: `The manager typed the full name "${fullTyped}" in this request; "${typed}" is only its first word. Propose the card again now with employee_name "${fullTyped}" exactly, never "${typed}", and never ask "use ${typed}".`, reason_code: "full_name_typed",
       };
     }
     else if (typed && !id && (lookedUp = await lookUpForCard(context, effects, typed, input.person_evidence, read.roster)).kind !== "none") {
