@@ -3,6 +3,7 @@ import "server-only";
 import { observationDateMismatch, withoutMisdatedRestatements } from "./observation-dates";
 import { withFullOffRosterName } from "./off-roster-line";
 import { speaksOfTheManager, withoutManagerReasoning } from "./reasoning-leak";
+import { salonsNamedNotSaid, withoutSalonGuess } from "./salon-guess";
 import type { WhichFormSlot } from "./which-form";
 import { cardTurns, personKey, readLoopRecords, replyTurns, type CardRecord, type CardSlot, type ExitOfferSlot, type NameQuestionSlot, type PersonAskedSlot, type TeamConfirmSlot } from "./card-record";
 import { CLAUDE_EFFORT, CLAUDE_MAX_TOKENS, CLAUDE_MODEL } from "@/lib/config/models";
@@ -1366,6 +1367,23 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
           if (again) text = again;
           if (speaksOfTheManager(text)) text = withoutManagerReasoning(text) || text;
         }
+        /*
+         * QA's re-run (22 Nov 2026, A8; port of Ask Bubbles #1010): with a team card that has no salon yet, the reply named
+         * salons nobody had named (a city's locations, read from a program's abbreviation). Read by the app's own salon
+         * reader: a salon the reply names that the manager never named and the card does not hold goes back once; if it
+         * comes back, the reply asks the salon question plainly. The team card only: a person's card offers that person's
+         * own roster salons, which the manager never typed. Sunny has no team-card update tool, so a later turn's team card is
+         * the one shown under the last reply (its card record, `teamNeedsLocation`), as well as one made this turn.
+         */
+        const teamNoSalon = effects.proposal ? effects.proposal.subject === "team" && effects.proposal.status === "needs_location" : cardOnScreen?.teamNeedsLocation === true;
+        if (stoppedAt === "reply" && teamNoSalon) {
+          const guessed = (reply: string) => salonsNamedNotSaid(reply, [...input.history.filter((turn) => turn.role === "user").map((turn) => String(turn.content ?? "")), input.question], effects.proposal?.locationId ?? null);
+          if (guessed(text).length > 0) {
+            const again = await handBack(`[app check] Your reply names ${guessed(text).join(", ")}, but the manager named no such ${appConfig().locationWord} and the card has none. Never guess a ${appConfig().locationWord} from another word (an abbreviation, a program, a product). Ask which ${appConfig().locationWord} it is for, plainly. Then write your reply to the manager again.`);
+            if (again) text = again;
+            if (guessed(text).length > 0) text = [withoutSalonGuess(text, guessed(text)), `Which ${appConfig().locationWord} is this for?`].filter(Boolean).join("\n\n");
+          }
+        }
       }
     });
   } catch (error) {
@@ -1450,7 +1468,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   }
   if (offRosterNames.size === 1 && text) text = withFullOffRosterName(text, [...offRosterNames][0]!, appConfig().staffSystem);
   const cardSlot: CardSlot | null = effects.proposal
-    ? { proposalId: effects.proposal.proposalId, employeeKey: effects.proposalEmployeeId ? personKey(effects.proposalEmployeeId) : null, nameKey: effects.proposal.employeeName ? personKey(effects.proposal.employeeName) : null, templateKey: effects.proposal.templateKey, templateName: effects.proposal.templateName ?? null, ...(effects.proposalAsked?.length ? { asked: effects.proposalAsked } : {}), ...(effects.proposalLevel ? { level: effects.proposalLevel } : {}), ...(effects.proposalPayroll ? { payroll: effects.proposalPayroll } : {}), ...(effects.proposalPayroll === "yes" && effects.proposalPayrollAmount ? { payrollAmount: effects.proposalPayrollAmount } : {}), ...(effects.proposal.policyLine ? { policyLine: effects.proposal.policyLine } : {}), ...(effects.proposalAccountKey ? { accountKey: effects.proposalAccountKey } : {}), ...(effects.proposal.formDate ? { incidentDate: effects.proposal.formDate } : {}) }
+    ? { proposalId: effects.proposal.proposalId, employeeKey: effects.proposalEmployeeId ? personKey(effects.proposalEmployeeId) : null, nameKey: effects.proposal.employeeName ? personKey(effects.proposal.employeeName) : null, templateKey: effects.proposal.templateKey, templateName: effects.proposal.templateName ?? null, ...(effects.proposalAsked?.length ? { asked: effects.proposalAsked } : {}), ...(effects.proposalLevel ? { level: effects.proposalLevel } : {}), ...(effects.proposalPayroll ? { payroll: effects.proposalPayroll } : {}), ...(effects.proposalPayroll === "yes" && effects.proposalPayrollAmount ? { payrollAmount: effects.proposalPayrollAmount } : {}), ...(effects.proposal.policyLine ? { policyLine: effects.proposal.policyLine } : {}), ...(effects.proposalAccountKey ? { accountKey: effects.proposalAccountKey } : {}), ...(effects.proposal.formDate ? { incidentDate: effects.proposal.formDate } : {}), ...(effects.proposal.subject === "team" && effects.proposal.status === "needs_location" ? { teamNeedsLocation: true } : {}) }
     : null;
   /* Fix batch items 4 and 3: this turn's "Did you mean", for the next turn's name question record (one-way keys only). */
   const nameQuestionSlot: NameQuestionSlot | null = effects.nameQuestion && stoppedAt === "reply"

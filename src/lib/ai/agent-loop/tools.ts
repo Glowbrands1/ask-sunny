@@ -4845,6 +4845,14 @@ function isShownCardId(context: ToolContext, effects: ToolEffects, id: string): 
  * - WITH NO DRAFT OPEN, "a coaching form for all team members" (or a salon-wide expectation) is the team Coaching card,
  *   "All team members" at one salon (`whole-team-coaching.ts` + `buildProposal`, WHOLE_TEAM_COACHING), never a refusal.
  */
+/*
+ * QA's re-run (22 Nov 2026, A8; port of Ask Bubbles #1010): a team card with no location got a reply that narrowed the
+ * question to the locations of one city, read from a program's abbreviation. A salon comes only from a place the manager
+ * named; with none named, the team card asks from all their salons, in these words.
+ */
+const teamSalonQuestion = () => `Which ${locationWord()} is this for?`;
+const teamSalonNote = () => `The card has no ${locationWord()} yet. End your reply with salon_question, exactly. Never name, guess or narrow the ${locationWords()} from a word the manager did not give as a ${locationWord()} (an abbreviation, a program, a product); the card's own ${locationWord()} list shows them all.`;
+
 export async function coachTeam(context: ToolContext, effects: ToolEffects, input: { team_evidence?: unknown } = {}): Promise<ToolResult> {
   if (context.openFormId) {
     const { coachingForEveryone } = await import("@/lib/forms/coaching-for-everyone");
@@ -4897,7 +4905,7 @@ export async function coachTeam(context: ToolContext, effects: ToolEffects, inpu
       status: card.status,
       ready: card.status === "ready",
       salon: card.locationId ? salonLabel(card.locationId) : null,
-      ...(card.status === "needs_location" ? { choose_salon_from: (card.authorizedLocationIds ?? []).map((id) => ({ id, name: salonLabel(id) })) } : {}),
+      ...(card.status === "needs_location" ? { choose_salon_from: (card.authorizedLocationIds ?? []).map((id) => ({ id, name: salonLabel(id) })), salon_question: teamSalonQuestion(), salon_note: teamSalonNote() } : {}),
       form_date: card.formDate ?? null,
       observation: card.issue ?? null,
       create_offered: card.supportsInlineDraft,
