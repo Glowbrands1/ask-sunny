@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { getSupabaseAdmin } from "@/lib/supabase/server";
+import { isWhichFormSlot, type WhichFormRecord } from "./which-form";
 import type { ChatMessage } from "@/types";
 
 /*
@@ -155,7 +156,7 @@ export interface TeamConfirmRecord extends TeamConfirmSlot {
   readonly questionKey?: string | null;
 }
 
-type TraceRow = { message_id: string | null; slots: { agent_loop?: { card?: unknown; name_question?: unknown; person_asked?: unknown; exit_offer?: unknown; team_confirm?: unknown; steps?: unknown; question_key?: unknown } } | null };
+type TraceRow = { message_id: string | null; slots: { agent_loop?: { card?: unknown; name_question?: unknown; person_asked?: unknown; exit_offer?: unknown; team_confirm?: unknown; which_form?: unknown; steps?: unknown; question_key?: unknown } } | null };
 
 /** The turn's one-way key of the manager's message (`question_key`), to find that message when its id does not match. */
 const questionKeyOf = (row: TraceRow): string | null => (typeof row.slots?.agent_loop?.question_key === "string" ? row.slots.agent_loop.question_key : null);
@@ -174,8 +175,8 @@ export interface TurnRecord {
   readonly card: boolean;
 }
 
-type LoopRecords = { cards: CardRecord[]; nameQuestions: NameQuestionRecord[]; personAsked: PersonAskedRecord[]; exitOffers: ExitOfferRecord[]; teamConfirms: TeamConfirmRecord[]; turns: TurnRecord[] };
-const NO_RECORDS = (): LoopRecords => ({ cards: [], nameQuestions: [], personAsked: [], exitOffers: [], teamConfirms: [], turns: [] });
+type LoopRecords = { cards: CardRecord[]; nameQuestions: NameQuestionRecord[]; personAsked: PersonAskedRecord[]; exitOffers: ExitOfferRecord[]; teamConfirms: TeamConfirmRecord[]; whichForms: WhichFormRecord[]; turns: TurnRecord[] };
+const NO_RECORDS = (): LoopRecords => ({ cards: [], nameQuestions: [], personAsked: [], exitOffers: [], teamConfirms: [], whichForms: [], turns: [] });
 
 /** This user's loop records in this conversation, oldest first, from one read. Empty without a conversation id, or if the read fails. */
 export async function readLoopRecords(conversationId: string | undefined, userId: string, historyMessageIds: readonly string[] = []): Promise<LoopRecords> {
@@ -236,6 +237,11 @@ export async function readLoopRecords(conversationId: string | undefined, userId
       teamConfirms: rows.flatMap((row) => {
         const asked = row.slots?.agent_loop?.team_confirm as Partial<TeamConfirmSlot> | undefined;
         return asked && typeof asked.sourceKey === "string" ? [{ sourceKey: asked.sourceKey, messageId: row.message_id, questionKey: questionKeyOf(row) }] : [];
+      }),
+      /* QA's Bubbles re-run (22 Nov 2026, A11): the forms a "Which one should I open?" listed (`which-form.ts`). */
+      whichForms: rows.flatMap((row) => {
+        const asked = row.slots?.agent_loop?.which_form;
+        return isWhichFormSlot(asked) ? [{ forms: asked.forms, messageId: row.message_id, questionKey: questionKeyOf(row) }] : [];
       }),
       exitOffers: rows.flatMap((row) => {
         const offer = row.slots?.agent_loop?.exit_offer as Partial<ExitOfferSlot> | undefined;
