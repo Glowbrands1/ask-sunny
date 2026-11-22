@@ -223,6 +223,8 @@ export async function createInlineForm({
       ...(proposal.fromAgentLoop ? { fromAgentLoop: true } : {}),
       /* The loop's exit card: how the person left and the manager's words for it (a real manager's exit form, 20 Nov 2026). */
       ...(proposal.fromAgentLoop && proposal.exitHow && proposal.exitHowQuote ? { exitHow: proposal.exitHow, exitHowQuote: proposal.exitHowQuote } : {}),
+      /* The loop's exit card: how the person resigned and the manager's words for it (port from Ask Bubbles #1021, U26); checked again by the route. */
+      ...(proposal.fromAgentLoop && proposal.exitMethod && proposal.exitMethodQuote ? { exitMethod: proposal.exitMethod, exitMethodQuote: proposal.exitMethodQuote } : {}),
       /*
        * QA item 17 (20 Nov 2026): a loop card's account, so an exit form's reason line (a termination) or its Additional
        * Details (a resignation) is the manager's account (the loop checked it against their words). Create writes it only

@@ -198,6 +198,9 @@ export async function POST(request: Request) {
       /** The loop's exit card: how the person left (a resignation_type option) and the manager's words for it. */
       exitHow?: unknown;
       exitHowQuote?: unknown;
+      /** The loop's exit card: How Employee Resigned and the manager's words for it (port from Ask Bubbles #1021, U26). */
+      exitMethod?: unknown;
+      exitMethodQuote?: unknown;
       /** The chat the proposal came from, for `checkProposalIsCurrent`. Ask Sunny only. */
       conversation?: unknown;
       /** Optional stable id for this chat. The first message id is used when this is absent. */
@@ -483,8 +486,19 @@ export async function POST(request: Request) {
           const group = how ? await exitOptionGroup(instanceId, how) : null;
           if (how && group && quote !== "" && flat(userTurns).includes(quote)) exitStated.checked[group] = [how];
         }
+        /*
+         * U26 (QA's Bubbles round 2, 22 Nov 2026): the loop card's How Employee Resigned, written as the manager's statement
+         * only on a resignation, when its quote is in this chat's manager turns and names that method (`quoteNamesMethod`).
+         */
+        if (card.templateKey === EXIT_TEMPLATE_KEY && card.warningLevel !== "termination" && typeof card.exitMethod === "string" && typeof card.exitMethodQuote === "string") {
+          const { quoteNamesMethod } = await import("@/lib/forms/exit-details");
+          const flat = (text: string) => text.toLowerCase().replace(/[*_"“”]/g, "").replace(/\s+/g, " ").trim();
+          if (flat(card.exitMethodQuote) !== "" && flat(userTurns).includes(flat(card.exitMethodQuote)) && quoteNamesMethod(card.exitMethodQuote, card.exitMethod)) {
+            exitStated.values[EXIT_DETAIL_FIELDS.resignationMethod] = card.exitMethod;
+          }
+        }
         if (Object.keys(exitStated.checked).length > 0 || Object.keys(exitStated.values).length > 0) {
-          await applyStatedFacts(instanceId, exitStated, actor.id, new Set([EXIT_PAYROLL_KEY, EXIT_TYPE_GROUP, EXIT_NOTICE_GROUP, EXIT_DETAIL_FIELDS.resignationReason, EXIT_ADDITIONAL_DETAILS_KEY, EXIT_REHIRE_KEY]));
+          await applyStatedFacts(instanceId, exitStated, actor.id, new Set([EXIT_PAYROLL_KEY, EXIT_TYPE_GROUP, EXIT_NOTICE_GROUP, EXIT_DETAIL_FIELDS.resignationReason, EXIT_DETAIL_FIELDS.resignationMethod, EXIT_ADDITIONAL_DETAILS_KEY, EXIT_REHIRE_KEY]));
         }
       }
     }
