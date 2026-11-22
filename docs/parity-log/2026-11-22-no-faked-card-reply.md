@@ -22,8 +22,9 @@ The replay cases below fail on main.
   out if it comes back;
 - "[app note: …]" is stripped from every reply.
 
-Not ported yet: Bubbles also lists the exit form's own labels as card labels (`EXIT_CARD_LABELS` from
-`exit-read-back.ts`). Sunny has no `exit-read-back.ts` until the U22 + B6 port; that port adds them here.
+Bubbles also lists the exit form's own labels as card labels (`EXIT_CARD_LABELS` from `exit-read-back.ts`). Sunny had
+no `exit-read-back.ts` until the U22 + B6 port (#1230); since 22 Nov 2026 (follow-up pull request) `CARD_LINE_LABELS`
+lists them too, as in Bubbles.
 
 **Tests:** `card-lines.test.ts`; replay `nov22-agent-loop-no-faked-card-reply-cases.ts` (the tester's exact words,
 invented people, the live faked replies replayed by stand-ins): 4 cases fail before, pass after. Two older cases that

@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
+import { EXIT_CARD_LABELS } from "./exit-read-back";
 import { CARD_LINE_LABELS, cardLines, historyReply, withoutAppNotes, withoutCardLines } from "./card-lines";
 
 /* Port of Ask Bubbles #1038 (its QA's live re-run 2, 22 Nov 2026, "saved ≠ card"); the person is invented. */
@@ -24,8 +25,15 @@ describe("card lines", () => {
     expect(shown).toMatch(/\[card shown under this reply: Corrective Action Form, made by propose_form/);
   });
 
-  it("every card label is one the rules book tells the model to write", () => {
+  /* Changed on purpose (22 Nov 2026, the exit labels joined CARD_LINE_LABELS, as in Ask Bubbles): the exit form's own labels come from `exit-read-back.ts`, not the rules book, so only the Corrective Action labels are checked against it. */
+  it("every card label is one the rules book tells the model to write, or the exit form's own", () => {
     const book = readFileSync(new URL("./rules-book.ts", import.meta.url), "utf8");
-    for (const label of CARD_LINE_LABELS) expect(book, label).toContain(`**${label}`);
+    for (const label of CARD_LINE_LABELS.filter((label) => !EXIT_CARD_LABELS.includes(label))) expect(book, label).toContain(`**${label}`);
+  });
+
+  it("an exit card's own labelled line is a card line too", () => {
+    const label = EXIT_CARD_LABELS[0]!;
+    expect(cardLines(`Noted.\n\n**${label}:** 11/14/2026`).map((line) => line.label)).toEqual([label]);
+    expect(withoutCardLines(`Noted.\n\n**${label}:** 11/14/2026`)).toBe("Noted.");
   });
 });
