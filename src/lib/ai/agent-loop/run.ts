@@ -1,6 +1,8 @@
 import "server-only";
 
+import { observationDateMismatch, withoutMisdatedRestatements } from "./observation-dates";
 import { withFullOffRosterName } from "./off-roster-line";
+import type { WhichFormSlot } from "./which-form";
 import { cardTurns, personKey, readLoopRecords, replyTurns, type CardRecord, type CardSlot, type ExitOfferSlot, type NameQuestionSlot, type PersonAskedSlot, type TeamConfirmSlot } from "./card-record";
 import { CLAUDE_EFFORT, CLAUDE_MAX_TOKENS, CLAUDE_MODEL } from "@/lib/config/models";
 import { MissingConfigurationError, requireEnv } from "@/lib/config/server-env";
@@ -16,7 +18,7 @@ import { chatTraceDraft } from "../chat-trace-store";
 import { AiError } from "../errors";
 import { noteModelCall } from "../model-failure";
 import { activeSpendMeter } from "../spend-meter";
-import { AI_TIMEOUT_MESSAGE, isAiTimeLimitError, logAiFailure, msLeftForCleanup, withStreamTimeLimit, type StreamWatch } from "../time-limit";
+import { isAiTimeLimitError, logAiFailure, msLeftForCleanup, withStreamTimeLimit, type StreamWatch } from "../time-limit";
 import type { AskResponse } from "../types";
 import { withoutSensitiveDefaults } from "../sensitive-defaults";
 import { finalReplyWithoutMarkers, withoutSourceMarkers, withoutSourceNotes } from "../source-note";
@@ -148,6 +150,9 @@ export function doneThisTurn(effects: Pick<ToolEffects, "proposal" | "formUpdate
 }
 
 /** F1: an error or timeout after something was saved: what was, and that the rest did not finish. */
+/** A turn that ran out of time with nothing done (QA's call, 22 Nov 2026): one sentence, no promise about next time. */
+export const LOOP_TIMEOUT_REPLY = "I ran out of time before I could answer that, so nothing was changed.";
+
 export function partialReply(done: string, stopped: "timeout" | "error"): string {
   return `${done} ${stopped === "timeout" ? "I ran out of time before finishing the rest of that answer" : "Something went wrong before I could finish the rest of that answer"}, so please check it and send anything still missing again.`;
 }
@@ -424,6 +429,8 @@ const evidence = (description: string) => ({
   additionalProperties: false,
 });
 const FORMS_ON_FILE_EVIDENCE = evidence("Where the manager asks about a form on file (what is on file, an earlier form, open / edit / see one). Needed for any form that is not the one open on screen.");
+/* QA's Bubbles re-run (22 Nov 2026, A11): after "Which one should I open?", the manager's own pick (`which-form.ts`). */
+const choiceEvidence = (place: string) => evidence("After your reply asked which listed form to open: the words from THIS message that pick this form (its date, " + place + ", status, form, or its number in the list). Never pick one the manager did not.");
 
 /** The loop's tool definitions with one app's words (the app config's place word); cached per config. */
 /* Built once per config and STATED_PLAN_STEPS_ENABLED setting (its two propose_form fields exist only with the flag on). */
@@ -527,7 +534,7 @@ function buildAgentLoopTools(config: AppConfig, planSteps = false) {
         payroll_evidence: evidence("With payroll_deduct: the manager message and the words from it that answer whether payroll deduct applies: the message being answered, or an answer that came right after your reply showing THIS person's card (never another person's answer)."),
         warning_level: { type: "string", enum: ["verbal", "written", "termination"], description: "Only when the manager stated it for this form. termination: only when the rules book's Termination lines say this form is one." },
         exit_type: { type: "string", enum: ["resignation", "termination"], description: "Employee Exit Form only: which the rules book's Exit lines say this exit is." },
-        exit_how: { type: "string", enum: ["immediate_voluntary_resignation", "notice_not_fulfilled", "no_call_no_show"], description: "Employee Exit Form resignation only: how the person left, when the manager said it (immediate_voluntary_resignation: left by choice with no notice, as \"immediate voluntary termination\", \"quit on the spot\"; notice_not_fulfilled: gave notice but did not work it; no_call_no_show). With exit_how_evidence. Never for a termination." },
+        exit_how: { type: "string", enum: ["submitted_fulfilled_notice", "immediate_voluntary_resignation", "notice_not_fulfilled", "no_call_no_show"], description: "Employee Exit Form resignation only: how the person left, when the manager said it (submitted_fulfilled_notice: gave notice and is working it or worked it; immediate_voluntary_resignation: left by choice with no notice, as \"immediate voluntary termination\", \"quit on the spot\"; notice_not_fulfilled: gave notice but did not work it; no_call_no_show). With exit_how_evidence. Never for a termination." },
         exit_how_evidence: evidence("With exit_how: the manager message of this request and its words that say how the person left."),
         effective_date: { type: "string", description: "Employee Exit Form termination only: the effective or termination date as the manager typed it (e.g. 11/28)." },
         payroll_deduct: { type: "string", enum: ["yes", "no"], description: "Only when the manager said whether payroll deduct applies." },
@@ -567,6 +574,7 @@ function buildAgentLoopTools(config: AppConfig, planSteps = false) {
         instance_id: { type: "string" },
         values: { type: "object", additionalProperties: { type: "string" } },
         forms_on_file_evidence: FORMS_ON_FILE_EVIDENCE,
+        choice_evidence: choiceEvidence(place),
         intent: {
           type: "string",
           enum: ["correct_name", "write_account"],
@@ -583,7 +591,7 @@ function buildAgentLoopTools(config: AppConfig, planSteps = false) {
   {
     name: "open_form",
     description: "Open a form on file on the manager's screen (a draft to edit, a finalized form read-only). Only for a form the manager asked to open, edit or see.",
-    input_schema: object({ instance_id: { type: "string" }, forms_on_file_evidence: FORMS_ON_FILE_EVIDENCE }, ["instance_id"]),
+    input_schema: object({ instance_id: { type: "string" }, forms_on_file_evidence: FORMS_ON_FILE_EVIDENCE, choice_evidence: choiceEvidence(place) }, ["instance_id"]),
   },
   {
     name: "app_help",
@@ -698,7 +706,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   /* PR 6: the turn's one read of the policy manual starts first, beside the chat's record read (`turnManual`). */
   const turn: TurnReads = {};
   turn.manual = manualFor(input.scopeId, turn);
-  const { cards: records, nameQuestions, personAsked, exitOffers, teamConfirms, turns: turnRecords } = await readLoopRecords(input.conversationId, input.actor.subject, input.history.filter((turn) => turn.role === "user" && typeof turn.id === "string").map((turn) => turn.id));
+  const { cards: records, nameQuestions, personAsked, exitOffers, teamConfirms, whichForms, turns: turnRecords } = await readLoopRecords(input.conversationId, input.actor.subject, input.history.filter((turn) => turn.role === "user" && typeof turn.id === "string").map((turn) => turn.id));
   const cards = cardTurns(input.history, records);
   const lastReplyIndex = input.history.findLastIndex((turn) => turn.role === "assistant" && !turn.error);
   const cardOnScreen = !input.openFormId && lastReplyIndex >= 0 ? (cards.get(lastReplyIndex) ?? null) : null;
@@ -707,6 +715,8 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   const whoAsked = lastReplyIndex >= 0 ? (replyTurns(input.history, personAsked).get(lastReplyIndex) ?? null) : null;
   /* QA's code audit, coach_team C: the last reply asked the open draft's "create all?" (the record, never the reply's text). */
   const teamAsked = lastReplyIndex >= 0 ? (replyTurns(input.history, teamConfirms).get(lastReplyIndex) ?? null) : null;
+  /* QA's Bubbles re-run (22 Nov 2026, A11): the last reply asked which listed form to open (the record, never the reply's text). */
+  const whichFormAsked = lastReplyIndex >= 0 && !input.openFormId ? (replyTurns(input.history, whichForms).get(lastReplyIndex) ?? null) : null;
   const context: ToolContext = {
     request: input.request,
     actor: input.actor,
@@ -726,6 +736,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     /* QA (16 Nov 2026; c158, c208): every card and "who is it for?" this chat's loop gave, for where THIS request started. */
     cardRecords: records,
     personAskedRecords: personAsked,
+    whichFormAsked,
     teamConfirmAsked: Boolean(input.openFormId && teamAsked && teamAsked.sourceKey === personKey(input.openFormId)),
     /* #1055's follow-up: the exit-form offer the last reply's tools made (its record, never the reply's text). */
     exitOffered: lastReplyIndex >= 0 ? (replyTurns(input.history, exitOffers).get(lastReplyIndex) ?? null) : null,
@@ -1188,7 +1199,8 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
       const cardShownNow = () => effects.proposal !== null || cardOnScreen !== null;
       const mismatchOf = (reply: string) => {
         const claims = cardClaims(reply);
-        if (effects.proposal) return cardMismatch(claims, effects.proposal);
+        /* QA's re-run (22 Nov 2026, A3; port of Ask Bubbles #1004): a restated Observation keeps the Observation's dates (`observation-dates.ts`). */
+        if (effects.proposal) return [...cardMismatch(claims, effects.proposal), ...observationDateMismatch(reply, effects.proposal.issue)];
         const onScreen = cardOnScreen ? ({ warningLevel: cardOnScreen.level ?? null, policyLine: cardOnScreen.policyLine ?? null } as unknown as ChatFormProposal) : null;
         return cardMismatch(claims, onScreen);
       };
@@ -1213,7 +1225,9 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
          */
         const shownForm = effects.proposal?.templateKey ?? cardOnScreen?.templateKey ?? null;
         const caOnly = (field: string) => /^(?:policy|warning level|payroll deduct|payroll amount) \(/.test(field);
-        const offer = shownForm === appConfig().formKeys.corrective ? still : still.filter((field) => !caOnly(field));
+        /* A misdated restatement of the Observation is no change the manager asked for: it is never offered as one. */
+        const observationDate = (field: string) => /^observation date \(/.test(field);
+        const offer = (shownForm === appConfig().formKeys.corrective ? still : still.filter((field) => !caOnly(field))).filter((field) => !observationDate(field));
         const withoutPolicyLine = (reply: string) => (shownForm !== appConfig().formKeys.corrective ? reply.replace(/^\s*\*\*Policy:?\*\*:?.*$\n?/gim, "").trim() : reply);
         selfReview = { mismatched: [...wrong, ...(missing ? ["policy line (missing)"] : [])], fixed: still.length === 0 && Boolean(again) && !noPolicyLine(again) };
         /*
@@ -1253,6 +1267,8 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
         if (offer.length > 0 && cardShownNow()) text = [...(sayBack.length > 0 ? [`That change isn't on the card yet: ${sayBack.join("; ")}. Tell me again and I'll update the card.`] : []), ...asks].join(" ");
         else if (again) text = withoutPolicyLine(again);
         else if (still.length > 0) text = withoutPolicyLine(text);
+        /* Still misdated after the hand-back: the false restatement is left out; the card under the reply shows the Observation. */
+        if (!(offer.length > 0 && cardShownNow()) && still.some(observationDate)) text = withoutMisdatedRestatements(text, effects.proposal?.issue);
       }
       /*
        * THE DRAFT'S HONESTY CHECK HANDS BACK FIRST (code-check #48, batch D): with a draft open, a reply that claims the
@@ -1430,6 +1446,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   /* Fix batch item 6: propose_form asked who the form is for, for the next turn's person asked record (no names). */
   const personAskedSlot: PersonAskedSlot | null = effects.personAsked && stoppedAt === "reply" && !effects.proposal ? { templateKey: effects.personAsked.templateKey } : null;
   const teamConfirmSlot: TeamConfirmSlot | null = effects.teamConfirm && stoppedAt === "reply" ? { sourceKey: personKey(effects.teamConfirm.sourceInstanceId) } : null;
+  const whichFormSlot: WhichFormSlot | null = effects.whichFormAsked && effects.whichFormAsked.length > 1 && stoppedAt === "reply" && !effects.formOpened && !effects.proposal ? { forms: effects.whichFormAsked } : null;
   /* #1055's follow-up: this turn's tools offered the exit form, for the next turn's exit offer record (one-way keys only). */
   const exitOfferSlot: ExitOfferSlot | null = effects.exitOffered && stoppedAt === "reply"
     ? { employeeKey: effects.exitOffered.employeeId ? personKey(effects.exitOffered.employeeId) : null, nameKey: personKey(effects.exitOffered.name) }
@@ -1438,7 +1455,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     trace.firstTokenMs = firstTokenMs;
     trace.slots = {
       ...(trace.slots ?? {}),
-      agent_loop: { question_key: personKey(input.question), ...(cardSlot ? { card: cardSlot } : {}), ...(nameQuestionSlot ? { name_question: nameQuestionSlot } : {}), ...(personAskedSlot ? { person_asked: personAskedSlot } : {}), ...(exitOfferSlot ? { exit_offer: exitOfferSlot } : {}), ...(teamConfirmSlot ? { team_confirm: teamConfirmSlot } : {}), steps, model_steps: modelSteps, model_calls: modelCalls, ...(turn.manualRead ? { manual_read: turn.manualRead } : {}), step_limit: limit, steps_used: stepNumber - 1 + hiddenCalls, ...(toolModelCalls > 0 ? { tool_model_calls: toolModelCalls } : {}), stopped: stoppedAt, ms: latencyMs, first_token_ms: firstTokenMs, ...(selfReview ? { self_review: selfReview } : {}), ...(draftReview ? { draft_review: draftReview } : {}), ...(levelReview ? { level_review: levelReview } : {}), ...(honestyReview ? { honesty_review: honestyReview } : {}), ...(replyUnwrapped ? { reply_unwrapped: true } : {}), ...(retriesBlocked > 0 ? { stop_retrying: retriesBlocked } : {}), ...(repeatsReused > 0 ? { repeat_calls_reused: repeatsReused } : {}), ...(pronounsReplaced > 0 ? { pronouns_replaced: pronounsReplaced } : {}), ...(fullNamesShortened > 0 ? { full_names_shortened: fullNamesShortened } : {}) },
+      agent_loop: { question_key: personKey(input.question), ...(cardSlot ? { card: cardSlot } : {}), ...(nameQuestionSlot ? { name_question: nameQuestionSlot } : {}), ...(personAskedSlot ? { person_asked: personAskedSlot } : {}), ...(exitOfferSlot ? { exit_offer: exitOfferSlot } : {}), ...(teamConfirmSlot ? { team_confirm: teamConfirmSlot } : {}), ...(whichFormSlot ? { which_form: whichFormSlot } : {}), steps, model_steps: modelSteps, model_calls: modelCalls, ...(turn.manualRead ? { manual_read: turn.manualRead } : {}), step_limit: limit, steps_used: stepNumber - 1 + hiddenCalls, ...(toolModelCalls > 0 ? { tool_model_calls: toolModelCalls } : {}), stopped: stoppedAt, ms: latencyMs, first_token_ms: firstTokenMs, ...(selfReview ? { self_review: selfReview } : {}), ...(draftReview ? { draft_review: draftReview } : {}), ...(levelReview ? { level_review: levelReview } : {}), ...(honestyReview ? { honesty_review: honestyReview } : {}), ...(replyUnwrapped ? { reply_unwrapped: true } : {}), ...(retriesBlocked > 0 ? { stop_retrying: retriesBlocked } : {}), ...(repeatsReused > 0 ? { repeat_calls_reused: repeatsReused } : {}), ...(pronounsReplaced > 0 ? { pronouns_replaced: pronounsReplaced } : {}), ...(fullNamesShortened > 0 ? { full_names_shortened: fullNamesShortened } : {}) },
     };
   }
 
@@ -1448,7 +1465,12 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
    * carries the card, the opened draft and the update, so the screen matches.
    */
   const done = doneThisTurn(effects);
-  if (stoppedAt === "timeout" && !done) throw new AiError("model_failed", AI_TIMEOUT_MESSAGE, 504);
+  /*
+   * QA's Bubbles re-run (22 Nov 2026, A1 follow-up; QA's call (b)): a turn that ran out of time with nothing done threw, so
+   * the manager saw an error that was never saved and the chat showed no reply for that turn on reload (managers saw blank
+   * replies). It is now a normal reply, saved with the chat, saying plainly in one sentence that nothing was changed.
+   */
+  const timedOutNothingDone = stoppedAt === "timeout" && !done;
   if (stoppedAt === "error" && !done) throw new AiError("model_failed", LOOP_FAILED_REPLY, 502);
 
   /*
@@ -1457,7 +1479,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
    * backs and policy line are facts on propose_form's result, worded by the rules book's Card replies.
    */
   let content = (
-    stoppedAt === "timeout" || stoppedAt === "error" ? partialReply(done!, stoppedAt) : stoppedAt === "step_limit" ? stepLimitReply(done, Boolean(effects.formUpdate && effects.formUpdate.updated.length > 0), effects.proposal && cardMade ? withEarlierForm(cardMade, records.at(-1) ?? null, effects) : null) : text
+    timedOutNothingDone ? LOOP_TIMEOUT_REPLY : stoppedAt === "timeout" || stoppedAt === "error" ? partialReply(done!, stoppedAt) : stoppedAt === "step_limit" ? stepLimitReply(done, Boolean(effects.formUpdate && effects.formUpdate.updated.length > 0), effects.proposal && cardMade ? withEarlierForm(cardMade, records.at(-1) ?? null, effects) : null) : text
   ).trim();
   if (content === "") content = done ?? STEP_LIMIT_REPLY;
   /*
