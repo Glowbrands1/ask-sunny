@@ -524,6 +524,18 @@ function buildAgentLoopTools(config: AppConfig, planSteps = false) {
           items: evidence("An earlier manager message of this same request (for this person) that named them differently: their words."),
           description: "Earlier messages of this request the name lookup missed (the manager typed the name differently there, and this message gives it).",
         },
+        same_card_evidence: {
+          ...evidence("Only when this message asks for the card on screen (or this chat's latest card of this form) for THIS person instead of, or as well as, the person it was for (\"make this for <B> instead of <A>\", \"the same corrective action but for <B>\"): its words. Give what_happened too: that card's account as the chat shows it, with this person's name. kind \"same_form\" when the manager asks for the SAME form (\"the same corrective action but for <B>\"): its level and payroll answer are copied too; else kind \"this_card_for\" (\"make this for <B> instead of <A>\")."),
+          properties: {
+            ...evidence("").properties,
+            kind: {
+              type: "string",
+              enum: ["same_form", "this_card_for"],
+              description: "same_form: the manager asks for the SAME form for this person (its level and payroll answer are copied too). this_card_for: the card on screen made for this person instead (\"make this for <B> instead of <A>\"); nothing but the account carries.",
+            },
+          },
+          required: ["message_id", "quote", "kind"],
+        },
         new_form_evidence: evidence("Only when this message asks for another or a new form (a second form for the person on the open draft, or a new request after an earlier card): its words."),
         form_change_evidence: evidence("Only when this message asks for the card on screen to be a different form for the same incident (\"make it a CA instead\", or the manager's yes to your offer of the other form): its words."),
         policy: { type: "string", description: "Always on a Corrective Action, Coaching or Follow-Up Coaching card (Pau, 17 Nov 2026), the heading that fits THIS card's own account, never one copied from another form's card. The one JBA Policy Manual heading that fits what happened, exactly. \"Other — <short topic>\" only for Must See Behaviors, a cleaning or sanitation duty left undone, or an incident no section covers; or both, \"<heading>; Other — <topic>\" (a cleaning duty beside another offense), as the rules book says." },
