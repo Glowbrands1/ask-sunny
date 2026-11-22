@@ -146,6 +146,9 @@ import { rulesBookText } from "./rules-book";
  * Re-taken on purpose on 22 Nov 2026 (port from Ask Bubbles #1021, U26): the exit_unset/exit_ticks line now says
  * exit_ticks is never "as you said", states card.how_resigned, and says exit_method is how the person told the company
  * they were leaving, never how someone reached them. It reads the same under every config; nothing else changed.
+ * Re-taken on purpose on 22 Nov 2026 (port from Ask Bubbles #1028, U16): one line was added after the level-and-payroll
+ * evidence line: a request that names the level ("a verbal CA") is that level's evidence. It reads the same under
+ * every config; nothing else changed.
  */
 
 const fixture = (name: string): string => readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), "utf8");
