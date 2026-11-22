@@ -22,3 +22,33 @@ describe("withoutNamedSalon: a salon phrase with its state", () => {
     expect(withoutNamedSalon("Testy was late at the bank, NE side.", "loc-0309")).toBe("Testy was late at the bank, NE side.");
   });
 });
+
+/*
+ * QA's live run on Sunny main (22 Nov 2026, nov22-r13-salon-with-state-leaves-account-whole): the manager typed "at
+ * Kearney, NE. location." and the live account started "Location, on 10/16/26 …": the phrase and its state left, the
+ * word that closed the manager's place phrase stayed. A word of the phrase itself (the salon's name or the place words
+ * the phrase is already read with) after the state, up to the phrase's comma or full stop, leaves with it.
+ */
+describe("withoutNamedSalon: the phrase's own place word after the state", () => {
+  it("takes \"At Kearney, NE location,\" out whole", () => {
+    expect(withoutNamedSalon("At Kearney, NE location, on 10/16/26 Testy did not sanitize the tanning beds between guests.", "loc-0309")).toBe(
+      "On 10/16/26 Testy did not sanitize the tanning beds between guests.",
+    );
+  });
+
+  it("takes \"At Kearney, NE. location.\" out whole, as the manager typed it", () => {
+    expect(withoutNamedSalon("At Kearney, NE. location. On 10/16/26 Testy did not sanitize the tanning beds between guests.", "loc-0309")).toBe(
+      "On 10/16/26 Testy did not sanitize the tanning beds between guests.",
+    );
+  });
+
+  it("mid-account, keeps the sentence's own full stop once", () => {
+    expect(withoutNamedSalon("Testy was late at Kearney, NE. location. She did not call.", "loc-0309")).toBe("Testy was late. She did not call.");
+    expect(withoutNamedSalon("Testy was late at Kearney, NE location, on 10/16/26.", "loc-0309")).toBe("Testy was late, on 10/16/26.");
+  });
+
+  it("keeps words after the state that are not the phrase's (\"NE on 10/16/26\", \"NE side\")", () => {
+    expect(withoutNamedSalon("At Kearney, NE on 10/16/26 Testy was late.", "loc-0309")).toBe("On 10/16/26 Testy was late.");
+    expect(withoutNamedSalon("Testy was late at the bank, NE side.", "loc-0309")).toBe("Testy was late at the bank, NE side.");
+  });
+});

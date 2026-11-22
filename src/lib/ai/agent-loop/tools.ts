@@ -2991,12 +2991,22 @@ export function withoutNamedSalon(account: string, salonId: string): string {
    * R13 (QA's Bubbles round 2, 22 Nov 2026): "At Dodge, NE on 10/16/26 Testy …" lost "At Dodge" and kept "NE on …". A
    * ", <word>" right after the phrase that is a word of that store's own name (its state) is the phrase's too.
    */
-  const withState = account.replace(/(^|[\s,;])(?:at|in)\s+((?:[A-Za-z0-9'’-]+\s+){0,4}[A-Za-z0-9'’-]+)\s*,\s*([A-Za-z]{2,})(?![A-Za-z0-9'’-])(\.?)/gi, (whole, before: string, phrase: string, tail: string, dot: string, offset: number) =>
-    nameWords.has(tail.toLowerCase()) && isThatSalon(phrase) ? (offset === 0 ? "" : `${before.replace(/\s+$/, "")}${dot}`) : whole);
+  /*
+   * QA's live run on Sunny main (22 Nov 2026): "at Kearney, NE. location." came back as "At Kearney, NE location, on …"
+   * and left "Location, on …". Words after the state up to the phrase's own comma or full stop that are all words of the
+   * phrase (the salon's name, or the place words `isThatSalon` already reads the phrase with) are the phrase's too.
+   */
+  const ofThePhrase = (words: string) => words.trim() !== "" && words.trim().toLowerCase().split(/\s+/).every((word) => nameWords.has(word) || filler.has(word));
+  const withState = account.replace(/(^|[\s,;])(?:at|in)\s+((?:[A-Za-z0-9'’-]+\s+){0,4}[A-Za-z0-9'’-]+)\s*,\s*([A-Za-z]{2,})(?![A-Za-z0-9'’-])(\.?)(?:((?:\s+[A-Za-z'’]+){1,3})(?=\s*(?:[,.;!?]|$)))?/gi, (whole, before: string, phrase: string, tail: string, dot: string, after: string | undefined, offset: number) => {
+    if (!nameWords.has(tail.toLowerCase()) || !isThatSalon(phrase)) return whole;
+    const dropped = after !== undefined && ofThePhrase(after);
+    const rest = after && !dropped ? after : "";
+    return offset === 0 ? rest.trimStart() : `${before.replace(/\s+$/, "")}${dropped ? "" : dot}${rest}`;
+  });
   const out = withState.replace(/(^|[\s,;])(?:at|in)\s+((?:[A-Za-z0-9'’-]+\s+){0,4}[A-Za-z0-9'’-]+)(?=\s*(?:[,.;!?]|$))(,?)/gi, (whole, before: string, phrase: string, comma: string) =>
     isThatSalon(phrase) ? (before.trim() === "" ? "" : before.replace(/\s+$/, "")) + (comma && before.trim() !== "" ? comma : "") : whole);
   if (out === account) return account;
-  const tidy = out.replace(/\s+([,.;!?])/g, "$1").replace(/[ \t]{2,}/g, " ").replace(/^[\s,;]+/, "").trim();
+  const tidy = out.replace(/\s+([,.;!?])/g, "$1").replace(/[ \t]{2,}/g, " ").replace(/^[\s,.;]+/, "").trim();
   return tidy.charAt(0).toUpperCase() + tidy.slice(1);
 }
 
