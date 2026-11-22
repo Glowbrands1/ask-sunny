@@ -4081,9 +4081,29 @@ export async function proposeForm(
    * <name>"), the level an earlier card held never reaches the next card; the manager states it again.
    */
   const samePersonOnScreen = Boolean(context.cardOnScreen && (employee.id ? context.cardOnScreen.employeeKey === personKey(employee.id) : !context.cardOnScreen.employeeKey && context.cardOnScreen.nameKey === personKey(employee.name)));
+  /*
+   * QA's ruling (22 Nov 2026, Bubbles round 2 U35; amending the 16 Nov rule above for no-card replies): an answer the
+   * manager stated for THIS request stays on THIS person's card for the rest of the request, even across a reply with no
+   * card, until a new request (new_form_evidence), another person or another form. So with no card on screen, the
+   * request's latest record of this card still carries its level.
+   */
+  const requestRecord = (has: (record: CardRecord) => boolean) => [...(context.cardRecords ?? [])].reverse().find((record) => isThisCard(record) && inRequest(record) && has(record)) ?? null;
+  /*
+   * QA's ruling on this port (22 Nov 2026, option B; safety first): with no card on screen, an answer carries only while
+   * the card is the SAME incident as the record it comes from, read from data, never words: the same account key (the
+   * account and its date, as the record keeps it), or with no account given, the same incident date. A card whose account
+   * is a new incident ("another ca for <name>, late on 11/14 too") starts clean, even without new_form_evidence.
+   */
+  const givenAccount = typeof input.what_happened === "string" ? input.what_happened.trim() : "";
+  const givenDate = typeof input.incident_date === "string" ? input.incident_date.trim() : "";
+  const sameIncident = (record: CardRecord) =>
+    givenAccount && record.accountKey ? record.accountKey === cardAccountKey(givenAccount, input.incident_date) : Boolean(givenDate && record.incidentDate && record.incidentDate === givenDate);
+  const sameIncidentRecord = (has: (record: CardRecord) => boolean) => requestRecord((record) => has(record) && sameIncident(record));
   const carriedRecord = samePersonOnScreen
-    ? ([...(context.cardRecords ?? [])].reverse().find((record) => isThisCard(record) && inRequest(record) && record.level) ?? (isThisCard(context.cardOnScreen) ? context.cardOnScreen : null))
-    : null;
+    ? (requestRecord((record) => Boolean(record.level)) ?? (isThisCard(context.cardOnScreen) ? context.cardOnScreen : null))
+    : !context.cardOnScreen && !context.openFormId
+      ? sameIncidentRecord((record) => Boolean(record.level))
+      : null;
   /*
    * QA (20 Nov 2026; Runner 2's c263): "Write me a CA form for <A> having a black crewneck on … on 11/13 and 11/6" after
    * "Please create a CA written warning for <A> for being out of dresscode on 11/13" was the SAME CA asked again with more
@@ -4138,7 +4158,8 @@ export async function proposeForm(
   const modelAccount = typeof input.what_happened === "string" ? input.what_happened.trim() : "";
   /* The key holds the incident date the model gave too: "another ca …, late on 11/14" after a card for 11/12 with the same words is another incident (PR 1c). */
   const sameCardKept = !context.openFormId && isThisCard(context.earlierCard) && Boolean(context.earlierCard.accountKey && modelAccount && context.earlierCard.accountKey === cardAccountKey(modelAccount, input.incident_date));
-  const openCard = isThisCard(context.cardOnScreen) ? context.cardOnScreen : sameCardKept ? context.earlierCard : null;
+  /* QA's ruling (22 Nov 2026, U35): with no card on screen, the request's latest record of this card carries its payroll answer. */
+  const openCard = isThisCard(context.cardOnScreen) ? context.cardOnScreen : sameCardKept ? context.earlierCard : !context.cardOnScreen && !context.openFormId ? sameIncidentRecord((record) => Boolean(record.payroll)) : null;
   const payrollRecord = payrollFields && !asksNewForm && openCard?.payroll ? openCard : null;
   if (payroll === null && !answerUnclear && payrollRecord?.payroll) {
     payroll = payrollRecord.payroll;
