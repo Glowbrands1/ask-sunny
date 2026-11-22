@@ -39,6 +39,10 @@ import { rulesBookText } from "./rules-book";
  * follow_up_on_create (say the follow-up date Create sets; never deny a follow-up the form will have). It reads the same
  * under every config; nothing else changed.
  *
+ * Re-taken on purpose on 22 Nov 2026 (port from Ask Bubbles 1b34db2, A11): one Forms on file line was added after
+ * which_form_question: an answer that gives changes is not a pick; open_form and edit_form need choice_evidence; ask
+ * again. It reads the same under every config; nothing else changed.
+ *
  * Re-taken on purpose on 22 Nov 2026 (QA's shadow re-run S2): the whole-team Coaching line now says to call coach_team
  * with team_evidence quoting the manager's words for the whole team or group ("my entire sales team"), whatever word
  * they use. It reads the same under every config; nothing else changed.
@@ -139,6 +143,9 @@ import { rulesBookText } from "./rules-book";
  * type): the Exit line gained one sentence asking for exit_how with exit_how_evidence on a resignation. No app, place,
  * staff system or form key; nothing else changed.
  *
+ * Re-taken on purpose on 22 Nov 2026 (port from Ask Bubbles #1021, U26): the exit_unset/exit_ticks line now says
+ * exit_ticks is never "as you said", states card.how_resigned, and says exit_method is how the person told the company
+ * they were leaving, never how someone reached them. It reads the same under every config; nothing else changed.
  * Re-taken on purpose on 22 Nov 2026 (port from Ask Bubbles #1028, U16): one line was added after the level-and-payroll
  * evidence line: a request that names the level ("a verbal CA") is that level's evidence. It reads the same under
  * every config; nothing else changed.
