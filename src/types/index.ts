@@ -682,6 +682,12 @@ export interface ChatFormProposal {
   exitHow?: string;
   exitHowQuote?: string;
   /**
+   * The agent loop's exit card (port of Ask Bubbles #1034, its QA's round 2, 22 Nov 2026, U22): the lines Create saves, as
+   * the reply may read them back ("**<label>:** <value>"); a reply line under an exit field label that is not one of them
+   * is handed back.
+   */
+  exitReadBack?: string[];
+  /**
    * The agent loop's exit card (QA's Bubbles round 2, 22 Nov 2026, U26): How Employee Resigned as the model read it (one of
    * the line's own methods) and the manager's words for it. Create writes it only when the quote is in the chat's manager
    * turns and names that method, checked server-side.
