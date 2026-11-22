@@ -64,6 +64,9 @@ const KNOWN = new Set([
   // Added on purpose (port from the sibling app, its QA's round 2, 22 Nov 2026, R14): a one-word name that is the first word
   // of the full name the manager typed in this request goes back with that full name.
   "full_name_typed",
+  // Added on purpose (port from the sibling app, its QA's round 2, 22 Nov 2026, U21): a card asked for the card on screen
+  // for another person, with no account, goes back once to be proposed with that card's account.
+  "same_card_account_missing",
 ]);
 
 /** A line that returns a refusal: `error:` followed by a string, a template or a named message (not `error: Boolean(...)`). */

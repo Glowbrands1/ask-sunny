@@ -3514,8 +3514,7 @@ export async function proposeForm(
   const sameCardOther = Boolean(sameCardOf && (employee.id ? sameCardOf.employeeKey !== personKey(employee.id) : sameCardOf.nameKey !== personKey(employee.name)));
   if (sameCardOther && !(typeof input.what_happened === "string" && input.what_happened.trim())) {
     return {
-      reason_code: "same_card_account_missing",
-      error: `The manager asked for the ${template.name} on screen for ${employee.name}. Propose ${employee.name}'s card again now with what_happened: that card's account exactly as this chat shows it (the Observation of the earlier card), with ${employee.name}'s name in place of the earlier person's, and same_card_evidence again. Never ask what happened; never copy a level or a payroll answer.`,
+      error: `The manager asked for the ${template.name} on screen for ${employee.name}. Propose ${employee.name}'s card again now with what_happened: that card's account exactly as this chat shows it (the Observation of the earlier card), with ${employee.name}'s name in place of the earlier person's, and same_card_evidence again. Never ask what happened; never copy a level or a payroll answer.`, reason_code: "same_card_account_missing",
     };
   }
   const copiedFromCard = sameCardOther;
