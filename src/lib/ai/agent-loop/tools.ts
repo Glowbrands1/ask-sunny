@@ -19,6 +19,7 @@ import { keptFormDate } from "./kept-form-date";
 import { answeredNameQuestions, answerNamesSomeoneElse, everKeptOrUsedTyped, isConfirmedSpelling, latestTurnAnswersFor, latestTurnConfirms, latestTurnKeepsOrUsesTyped, latestTurnKeepsTyped, spellingKeysConfirmedFor, spellingKeysConfirmedForName, type NameQuestionView } from "./confirmed-spelling";
 import { AFFIRMATIVE, displayName, editDistance, matchEmployeeName, nameConfirmationQuestion, readNameConfirmation, rosterSpellingOf, type RosterEmployee } from "@/lib/forms/employee-match";
 import { offRosterTyped } from "@/lib/forms/roster-only-names";
+import { detectTemplateIntent } from "@/lib/forms/template-intent";
 import { checkboxGroupsForVariant, parseFormDocument } from "@/lib/forms/document";
 import { draftableCheckboxGroups, draftableFields } from "@/lib/forms/responsibility";
 import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
@@ -875,7 +876,7 @@ export interface ToolEffects {
   /** find_staff ran this turn: a person was named, so a card without one is not "nobody named" (item 6). */
   staffLookedUp?: boolean;
   /** Fix batch items 4 and 3: this turn's last "Did you mean" (the roster ids offered, the name typed), for the record. */
-  nameQuestion?: { offeredIds: string[]; typed: string; offeredNames?: string[]; asksFullName?: boolean };
+  nameQuestion?: { offeredIds: string[]; typed: string; offeredNames?: string[]; asksFullName?: boolean; templateKey?: string };
   /** QA (16 Nov 2026): propose_form ran for a form this turn, so a form is chosen (find_staff may ask the name). */
   formChosen?: boolean;
   /** Batch G (G4), by the rebuild plan's PR 1b: find_past_forms found forms on file to open (open: true) for this person. */
@@ -3634,6 +3635,26 @@ export async function proposeForm(
    */
   const aliasTurns = new Set(aliases.flatMap((alias) => turnsFromThisPersonsRequest(asked, alias, { names: extractEmployeeNames, same: samePerson })));
   const ownTurns = new Set([...turnsFromThisPersonsRequest(asked, employee.name, { names: extractEmployeeNames, same: sameAsThisPerson }), ...aliasTurns]);
+  /*
+   * Port of Ask Bubbles #1043 (its QA's live re-run 2, 22 Nov 2026, U35(ii)): T11 "Create a Corrective Action Form from this
+   * conversation." names nobody, so the walk back from a later turn started this request there, and T3 "verbal warning, no
+   * payroll deduct, …" (said right after the app's "Did you mean <P>?" for this form) was no longer this request's. The
+   * rules book holds that "Create a <form> from this conversation" is the same request. When the walk stops at a form
+   * request that names nobody, and the server holds an earlier request start for THIS card (its card, its "who is it for?",
+   * or propose_form's name question for this form about this person), the request runs from that record. Turns that name
+   * another person are left out below, as before. Records and the app's own form reader, never a word list.
+   */
+  const startRecordIds = new Set([
+    ...(context.cardRecords ?? []).filter((record) => record.templateKey === template.key && (employee.id ? record.employeeKey === personKey(employee.id) : !record.employeeKey && record.nameKey === personKey(employee.name))).map((record) => record.messageId),
+    ...(context.personAskedRecords ?? []).filter((record) => record.templateKey === template.key).map((record) => record.messageId),
+    ...(context.nameQuestions ?? []).filter((record) => record.templateKey === template.key && Boolean(employee.id) && record.offeredKeys.includes(personKey(employee.id!))).map((record) => record.messageId),
+  ].filter((id): id is string => Boolean(id)));
+  const walkStart = asked.ids.findIndex((id) => ownTurns.has(id));
+  const walkStartTurn = walkStart >= 0 ? asked.messages.find((message) => message.id === asked.ids[walkStart]) : undefined;
+  const recordStart = asked.ids.findIndex((id) => startRecordIds.has(id));
+  if (walkStartTurn && recordStart >= 0 && recordStart < walkStart && extractEmployeeNames(walkStartTurn.content).length === 0 && detectTemplateIntent(walkStartTurn.content).kind !== "none") {
+    for (const id of asked.ids.slice(recordStart, walkStart)) ownTurns.add(id);
+  }
   const personTurns = asked.ids.filter((id) => ownTurns.has(id)).filter((id) => {
     if (aliasTurns.has(id)) return true;
     if (id === context.questionMessageId) return true;
@@ -3783,10 +3804,21 @@ export async function proposeForm(
   const whoAskedTurns = conversation
     .filter((turn, index) => turn.role === "user" && conversation[index + 1]?.role === "assistant" && askedWhoFor.test(withoutMessageIdTags(conversation[index + 1]!.content)))
     .map((turn) => turn.id);
+  /*
+   * Port of Ask Bubbles #1043 (U35(ii)): T2 "i have an employee, <P> that needs a corrective action form …" was answered with
+   * propose_form's own "Did you mean <P>?" (a typed name close to one roster person), so the request "started" at the later
+   * card and T3 "verbal warning, no payroll deduct, …" fell before it. propose_form's name question for THIS form about this
+   * person (its record: the form, the offered people's keys) marks the request's start, as the card and "who is it for?"
+   * records do. The record, never the reply's words.
+   */
+  const nameAskedTurns = (context.nameQuestions ?? [])
+    .filter((record) => record.templateKey === template.key && Boolean(employee.id) && record.offeredKeys.includes(personKey(employee.id!)))
+    .map((record) => record.messageId);
   const requestStarts = new Set([
     ...(context.cardRecords ?? []).filter(isThisCard).map((record) => record.messageId),
     ...(context.personAskedRecords ?? []).filter((record) => record.templateKey === template.key).map((record) => record.messageId),
     ...whoAskedTurns,
+    ...nameAskedTurns,
   ].filter((id): id is string => Boolean(id)));
   const ownRequestTurns = conversation.filter((turn) => turn.role === "user" && sourceIds.includes(turn.id));
   const requestStart = ownRequestTurns.find((turn) => requestStarts.has(turn.id));
@@ -4043,8 +4075,25 @@ export async function proposeForm(
     ? (() => {
         const byCard = notTheOfferAnswer(answerEvidence(context, input.payroll_evidence, { card: employee.name, aliases }, evidencePerson), context, evidencePerson.roster);
         if (byCard.ok || !requestStart) return byCard;
-        const byRequest = notTheOfferAnswer(answerEvidence(context, input.payroll_evidence, "request", evidencePerson, { requestTurnIds: [requestStart.id] }), context, evidencePerson.roster);
-        return byRequest.ok && byRequest.turnId === requestStart.id ? byRequest : byCard;
+        /*
+         * Port of Ask Bubbles #1043 (U35(ii); its QA's ruling, and Sunny's live set on #1234, 22 Nov 2026: the model re-proposed
+         * at "Create a Corrective Action Form from this conversation." with T3's "no payroll deduct" and it was refused,
+         * evidence_after_card): any turn of THIS request, for this person and this incident, as the level. This narrows the
+         * 16 Nov rule (the request's first turn only) on purpose: within this request's own turns the answer is this card's.
+         * Another person's turn, a turn before the request started, another person's card ("make this for <B> instead of
+         * <A>") and a new incident are still refused (`answerEvidence`, `requestTurnIds`).
+         */
+        /*
+         * A new incident still starts clean, read from data (Sunny's PR 1c: Remy's "yes", "thanks", then "another ca for remy
+         * calder, late on 11/14 too" after the 11/12 card): when the request's latest card for this person holds an incident
+         * date and this card gives another, an earlier turn's answer is that card's, not this one's.
+         */
+        const latestRequestCard = [...(context.cardRecords ?? [])].reverse().find((record) => isThisCard(record) && Boolean(record.messageId && requestTurnIds.includes(record.messageId)));
+        const givenIncident = typeof input.incident_date === "string" ? input.incident_date.trim() : "";
+        const anotherIncident = Boolean(latestRequestCard?.incidentDate && givenIncident && latestRequestCard.incidentDate !== givenIncident);
+        if (anotherIncident) return byCard;
+        const byRequest = notTheOfferAnswer(answerEvidence(context, input.payroll_evidence, "request", evidencePerson, { requestTurnIds }), context, evidencePerson.roster);
+        return byRequest.ok && requestTurnIds.includes(byRequest.turnId) ? byRequest : byCard;
       })()
     : null;
   let payroll: "yes" | "no" | null = askedPayroll && payrollCheck?.ok ? askedPayroll : null;
