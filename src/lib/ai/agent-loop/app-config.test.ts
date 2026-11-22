@@ -138,6 +138,10 @@ import { rulesBookText } from "./rules-book";
  * Re-taken on purpose on 21 Nov 2026 (QA2; a real manager's exit form, "immideate volunatary termination", ticked no
  * type): the Exit line gained one sentence asking for exit_how with exit_how_evidence on a resignation. No app, place,
  * staff system or form key; nothing else changed.
+ *
+ * Re-taken on purpose on 22 Nov 2026 (port from Ask Bubbles #1028, U16): one line was added after the level-and-payroll
+ * evidence line: a request that names the level ("a verbal CA") is that level's evidence. It reads the same under
+ * every config; nothing else changed.
  */
 
 const fixture = (name: string): string => readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), "utf8");
