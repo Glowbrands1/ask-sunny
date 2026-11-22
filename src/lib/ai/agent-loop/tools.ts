@@ -2821,7 +2821,13 @@ export function withoutNamedSalon(account: string, salonId: string): string {
     return words.length > 0 && words.some((word) => nameWords.has(word)) && words.every((word) => nameWords.has(word) || filler.has(word)) &&
       readSalonMentions(`at ${phrase}`).some((mention) => mention.salonIds.includes(salonId));
   };
-  const out = account.replace(/(^|[\s,;])(?:at|in)\s+((?:[A-Za-z0-9'’-]+\s+){0,4}[A-Za-z0-9'’-]+)(?=\s*(?:[,.;!?]|$))(,?)/gi, (whole, before: string, phrase: string, comma: string) =>
+  /*
+   * R13 (QA's Bubbles round 2, 22 Nov 2026): "At Dodge, NE on 10/16/26 Testy …" lost "At Dodge" and kept "NE on …". A
+   * ", <word>" right after the phrase that is a word of that store's own name (its state) is the phrase's too.
+   */
+  const withState = account.replace(/(^|[\s,;])(?:at|in)\s+((?:[A-Za-z0-9'’-]+\s+){0,4}[A-Za-z0-9'’-]+)\s*,\s*([A-Za-z]{2,})(?![A-Za-z0-9'’-])(\.?)/gi, (whole, before: string, phrase: string, tail: string, dot: string, offset: number) =>
+    nameWords.has(tail.toLowerCase()) && isThatSalon(phrase) ? (offset === 0 ? "" : `${before.replace(/\s+$/, "")}${dot}`) : whole);
+  const out = withState.replace(/(^|[\s,;])(?:at|in)\s+((?:[A-Za-z0-9'’-]+\s+){0,4}[A-Za-z0-9'’-]+)(?=\s*(?:[,.;!?]|$))(,?)/gi, (whole, before: string, phrase: string, comma: string) =>
     isThatSalon(phrase) ? (before.trim() === "" ? "" : before.replace(/\s+$/, "")) + (comma && before.trim() !== "" ? comma : "") : whole);
   if (out === account) return account;
   const tidy = out.replace(/\s+([,.;!?])/g, "$1").replace(/[ \t]{2,}/g, " ").replace(/^[\s,;]+/, "").trim();
