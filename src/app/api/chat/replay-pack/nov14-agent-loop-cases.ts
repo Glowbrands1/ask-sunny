@@ -472,7 +472,7 @@ export const NOV14_AGENT_LOOP_CASES: ReplayCase[] = [
   },
   {
     id: "nov14-agent-loop-stalled-model-times-out",
-    title: "a loop step whose model never sends a token ends at the first-token limit with Part 1's message (504), never an empty reply",
+    title: "a loop step whose model never sends a token ends at the first-token limit with the saved \"nothing was changed\" reply (A1 port; was Part 1's 504), never an empty reply",
     report: `${REPORT}: each call has the Part 1 time limits`,
     status: "fixed",
     fixFlags: [FLAG],
@@ -486,13 +486,15 @@ export const NOV14_AGENT_LOOP_CASES: ReplayCase[] = [
       process.env.AI_MAIN_TIMEOUT_MS = "5000";
       const started = performance.now();
       try {
-        const failure = await t.thread().say("verbal CA for rowan kestrel, she was late on 11/1/26").then(
-          () => null,
-          (error: unknown) => String((error as Error).message),
-        );
-        expect(failure, "the stalled loop answered 200").not.toBeNull();
-        expect(failure).toMatch(/took too long to answer/);
-        expect(failure).toMatch(/504/);
+        /*
+         * Changed on purpose (port from Ask Bubbles 136d85d, A1 follow-up; QA's call (b), 22 Nov 2026): a turn that runs
+         * out of time with nothing done no longer throws Part 1's 504, which the chat never saved, so managers saw a blank
+         * turn on reload. It answers with the saved "nothing was changed" reply. The time limit and "never an empty reply"
+         * still hold.
+         */
+        const reply = await t.thread().say("verbal CA for rowan kestrel, she was late on 11/1/26");
+        expect(reply.content, "the stalled loop gave an empty reply").toMatch(/ran out of time before I could answer that, so nothing was changed/);
+        expect(reply.formProposal ?? null, "a card was made by a stalled loop").toBeNull();
         expect(performance.now() - started).toBeLessThan(15_000);
       } finally {
         if (saved === undefined) delete process.env.AI_MAIN_TIMEOUT_MS;

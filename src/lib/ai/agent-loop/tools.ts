@@ -1,3 +1,4 @@
+import { editDistance as closeEditDistance } from "@/lib/forms/close-spelling";
 import { whichFormChoice, whichFormEntry, type WhichFormEntry, type WhichFormRecord } from "./which-form";
 import "server-only";
 
@@ -2037,6 +2038,21 @@ export function lastCommaFirst(name: string): string {
  * - No match: said so; the card keeps its name.
  * Null when this is not a correction of the card's name (every other path is unchanged).
  */
+/**
+ * Whether a typed full name is a close spelling of a person's: its first name within a few letters of one of their first
+ * names, and its last name within a few letters of their last name (at most two letters, and at most a third of the
+ * longer name). Both must hold, so a shared first name alone ("Avery" for another Avery) is never a correction.
+ */
+function closeSpellingOfName(said: readonly string[], own: { readonly first: readonly string[]; readonly last: readonly string[] }): boolean {
+  const close = (a: string, b: string) => {
+    const allowed = Math.min(2, Math.max(1, Math.floor(Math.max(a.length, b.length) / 3)));
+    return closeEditDistance(a, b, allowed) <= allowed;
+  };
+  const first = said[0]!;
+  const last = said.at(-1)!;
+  return own.first.some((name) => close(name, first)) && own.last.some((name) => close(name, last));
+}
+
 function cardNameCorrection(
   context: ToolContext,
   effects: ToolEffects,
@@ -2084,15 +2100,24 @@ function cardNameCorrection(
   const own = cardPerson ? { first: words([cardPerson.firstName, cardPerson.preferredFirstName ?? ""].join(" ")), last: words(cardPerson.lastName) } : { first: words(cardName).slice(0, 1), last: words(cardName).slice(-1) };
   const sharesAName = said.length >= 2 && (own.first.includes(said[0]!) || own.last.includes(said.at(-1)!));
   /*
+   * QA's Bubbles live re-run (22 Nov 2026, A1, BLOCKER): the card was for the manager's misspelling "<P1>", kept as typed
+   * (not on the staff list); "Her name is <P2>" (the staff list's spelling) shares no name exactly with it, so it was no
+   * correction, and the next card was refused as another person (person_change_not_asked) until the turn timed out. Pau:
+   * a name correction is the manager's own words. A full name whose first AND last names are each a close spelling of
+   * the card's person's (`closeSpellingOfName`) is that person, corrected, whatever form the message asks for.
+   */
+  const spelledClose = said.length >= 2 && closeSpellingOfName(said, own);
+  /*
    * QA's live c219 re-ask (16 Nov 2026): a card for a name not on the roster asks the manager to check that name (its
    * off_roster_name line; recorded as a name question). A different full name given in the next message answers it: a
    * correction of the card's person, though the two names share no word. Read from the record, never the reply's text.
    */
   const answersCardCheck = !cardPerson && card.nameKey !== null && spellingKeysConfirmedForName(view, typed).includes(card.nameKey);
-  if (!sharesAName && !answersCardCheck) return null;
-  /* A roster person the model chose by id corrects the card only when this turn answers the card's recorded name check. */
-  if (options.byId && !answersCardCheck) return null;
-  if (card.templateKey !== templateKey) {
+  if (!sharesAName && !answersCardCheck && !spelledClose) return null;
+  /* A roster person the model chose by id corrects the card only when this turn answers the card's recorded name check, or spells the card's person close. */
+  if (options.byId && !answersCardCheck && !spelledClose) return null;
+  /* A close spelling with another form asked for: the corrected person, and the form the manager asked for (their own request). */
+  if (card.templateKey !== templateKey && !(spelledClose && !answersCardCheck)) {
     /*
      * QA (16 Nov 2026, live c219): a message that answers the name check of the card on screen is about THAT card. It never
      * makes another form unless the message itself asks for one (new_form_evidence, checked against this turn's words).
