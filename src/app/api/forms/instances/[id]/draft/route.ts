@@ -225,7 +225,7 @@ import { attendanceActionPlan, isAttendancePlan, missedMeetingNotLateness } from
 import { absenceWriteUp } from "@/lib/forms/absence-write-up";
 import { withPayrollSentence } from "@/lib/forms/plan-payroll-sentence";
 import { managerTypedActionPlan } from "@/lib/forms/manager-action-plan";
-import { firstNameNotPronouns } from "@/lib/forms/first-name-write-up";
+import { firstNameNotPronouns, otherRosterPeopleIn } from "@/lib/forms/first-name-write-up";
 import { withoutUnsaidPlace } from "@/lib/forms/unsaid-place";
 import { appConfig } from "@/lib/ai/agent-loop/app-config";
 import { accountPassage } from "@/lib/forms/account-passage";
@@ -3035,7 +3035,12 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      */
     if (body.cardFromLoop === true) {
       const proseKeys = new Set(fields.filter((field) => !field.policyGrounded && !DERIVED_POLICY_FIELD_KEYS.has(field.key)).map((field) => field.key));
-      const named = firstNameNotPronouns(draftedPayload.values, loaded.instance.employeeName, proseKeys);
+      /*
+       * Port of Ask Bubbles #1053 (its QA, 22 Nov 2026): a coworker the notes name who is "she" too keeps her own "she",
+       * and another person's "they" stays "they" (U23): Create reads pronouns from the manager's notes, as the card does.
+       */
+      const roster = await (await import("@/lib/forms/employee-roster")).loadScopedRoster(actor.scope).catch(() => []);
+      const named = firstNameNotPronouns(draftedPayload.values, loaded.instance.employeeName, proseKeys, { others: otherRosterPeopleIn(notes, roster, loaded.instance.employeeName), managerWords: notes });
       if (named.changed.length > 0) draftedPayload.values = named.values;
       /*
        * QA's live test of #1144 (20 Nov 2026): a coaching card's Observed opened with its topic ("Greeting guests, she

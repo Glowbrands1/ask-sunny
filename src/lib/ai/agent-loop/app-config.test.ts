@@ -165,6 +165,10 @@ import { rulesBookText } from "./rules-book";
  * exit_dates line: an exit card's reads_back is the only exit lines the reply reads back, every one is saved at Create,
  * and a detail added after the card reaches the form only through propose_form. It reads the same under every config;
  * nothing else changed.
+ * Re-taken on purpose on 22 Nov 2026 (port from Ask Bubbles #1053, U23 T7): the reword_paused line and the "New facts
+ * with a reword ask" line now give "I can't reword the whole account, but I can change any line you give me — tell me
+ * what to change." instead of "Rewording isn't available yet …", and never "not available yet". Rewording stays paused.
+ * It reads the same under every config; nothing else changed.
  */
 
 const fixture = (name: string): string => readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), "utf8");
