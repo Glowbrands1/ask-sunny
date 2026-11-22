@@ -1217,6 +1217,20 @@ function context(): ReplayContext {
         else store.form_instance_values.push({ id: `typed-${key}`, instance_id: instanceId, field_key: key, value, checked: [], filled_by: "manager", provenance: {}, updated_at: new Date().toISOString() } as never);
       }
     },
+    templateIds: (key) => {
+      const template = (store.form_templates ?? []).find((entry) => entry.key === key);
+      if (!template) throw new Error(`no template ${key} in the store`);
+      const versions = store.form_template_versions.filter((entry) => entry.template_id === template.id).sort((a, b) => Number(b.version) - Number(a.version));
+      if (!versions[0]) throw new Error(`no version of ${key} in the store`);
+      return { template_id: String(template.id), template_version_id: String(versions[0].id) };
+    },
+    checkOnForm: (instanceId, checked) => {
+      for (const [key, options] of Object.entries(checked)) {
+        const row = store.form_instance_values.find((entry) => entry.instance_id === instanceId && entry.field_key === key);
+        if (row) Object.assign(row, { checked: [...options], filled_by: "manager" });
+        else store.form_instance_values.push({ id: `checked-${instanceId}-${key}`, instance_id: instanceId, field_key: key, value: null, checked: [...options], filled_by: "manager", provenance: {}, updated_at: new Date().toISOString() } as never);
+      }
+    },
     values: (instanceId) =>
       Object.fromEntries(store.form_instance_values.filter((row) => row.instance_id === instanceId).map((row) => [String(row.field_key), String(row.value ?? "")])),
     checked: (instanceId) =>
