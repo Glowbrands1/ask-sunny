@@ -63,7 +63,8 @@ function whichThenEdit(ids: () => { tenthFinal: string }) {
       if (!lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { employee_name: "Test Testy", form: "dpoa", open: true, ...(/11\/10/.test(text) ? { date: "11/10" } : {}), forms_on_file_evidence: evidenceFrom(view, first, back) } };
       return { text: /11\/10/.test(text) ? "Two forms are dated 11/10, one a draft and one finalized. Which one?" : "Which one should I open?" };
     }
-    if (!lastResult(view, "open_form")) return { tool: "open_form", input: { instance_id: ids().tenthFinal, forms_on_file_evidence: evidenceFrom(view, first, back) } };
+    // Changed on purpose (port from Ask Bubbles 1b34db2, A11): after "Which one should I open?" the open passes the manager's pick from this message (choice_evidence); the expectations are unchanged.
+    if (!lastResult(view, "open_form")) return { tool: "open_form", input: { instance_id: ids().tenthFinal, forms_on_file_evidence: evidenceFrom(view, first, back), choice_evidence: evidenceFrom(view) } };
     const edits = results([view], "edit_form") as Edit[];
     if (edits.length > 0) {
       const done = edits.find((row) => (row.saved?.length ?? 0) > 0);

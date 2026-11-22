@@ -39,6 +39,10 @@ import { rulesBookText } from "./rules-book";
  * follow_up_on_create (say the follow-up date Create sets; never deny a follow-up the form will have). It reads the same
  * under every config; nothing else changed.
  *
+ * Re-taken on purpose on 22 Nov 2026 (port from Ask Bubbles 1b34db2, A11): one Forms on file line was added after
+ * which_form_question: an answer that gives changes is not a pick; open_form and edit_form need choice_evidence; ask
+ * again. It reads the same under every config; nothing else changed.
+ *
  * Re-taken on purpose on 22 Nov 2026 (QA's shadow re-run S2): the whole-team Coaching line now says to call coach_team
  * with team_evidence quoting the manager's words for the whole team or group ("my entire sales team"), whatever word
  * they use. It reads the same under every config; nothing else changed.

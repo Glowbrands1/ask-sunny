@@ -74,6 +74,15 @@ function sentenceBefore(text: string, at: number): string {
   return text.slice(start + 1, at);
 }
 
+/** A pronoun's person: she/her/hers/herself, he/him/his/himself, or they/them/their/theirs/themself. Null for any other word. */
+function pronounKind(word: string): "she" | "he" | "they" | null {
+  const lower = word.toLowerCase();
+  if (/^(?:she|her|hers|herself)$/.test(lower)) return "she";
+  if (/^(?:he|him|his|himself)$/.test(lower)) return "he";
+  if (/^(?:they|them|their|theirs|themself|themselves)$/.test(lower)) return "they";
+  return null;
+}
+
 const possessive = (name: string) => (/s$/i.test(name) ? `${name}'` : `${name}'s`);
 
 /** The verb after a replaced "they" agrees with one person ("they were" → "<name> was"). */
@@ -139,6 +148,14 @@ export function withoutPersonPronouns(
     if (reporterPronouns.length > 0) {
       const sentenceStart = at - before.length;
       const clauseStart = sentenceStart + before.length - clause.length;
+      /*
+       * QA's round 2 (22 Nov 2026, U23; port of Ask Bubbles #1014): "she asked another employee what they would do if they
+       * had 8 arms" became "<P> asked another employee what <P> would do …". A pronoun of another kind than its reporter's
+       * ("they" in a clause "she" reports, "he" in one "she" reports) is someone else, and stays as written.
+       */
+      const reporterKind = pronounKind(reporterPronouns.at(-1)![0]);
+      const ownKind = pronounKind(reply.slice(at).match(/^\p{L}+/u)?.[0] ?? "");
+      if (reporterKind !== null && ownKind !== null && reporterKind !== ownKind) return "untrusted";
       return keepsOwn(clauseStart + reporterPronouns.at(-1)!.index!) ? "untrusted" : "trusted";
     }
     if (/\b(?:him|her|them|his|their)\b/.test(clause.slice(0, verb.index))) return "untrusted";
