@@ -25,3 +25,22 @@ describe("salonsNamedNotSaid (A8)", () => {
     expect(withoutSalonGuess(LIVE, guessed)).toBe("Updated the team card with the new BRC cleaning flow details.");
   });
 });
+
+/*
+ * Ask Bubbles' live re-run 2 (22 Nov 2026, A8; port of #1033): a global login's reply named two salons in one sentence
+ * and asked "Which one is this coaching for?" right after it. The question goes with the sentence it follows.
+ */
+describe("withoutSalonGuess (A8, live re-run 2)", () => {
+  const LIVE_T2 =
+    "You have two Lincoln salons — NE Lincoln 27th Street and NE Lincoln O Street. Which one is this coaching for?\n\nThe team card now includes the new bed cleaning flow details. Once you confirm the salon, it's ready for Create.";
+
+  it("drops the sentence naming the guessed salons and the question right after it, keeping the rest", () => {
+    const out = withoutSalonGuess(LIVE_T2, salonsNamedNotSaid(LIVE_T2, [T1, T2], null));
+    expect(out).not.toMatch(/Lincoln|Which one/);
+    expect(out).toMatch(/^The team card now includes the new bed cleaning flow details\./);
+  });
+
+  it("keeps a question that does not follow a dropped sentence", () => {
+    expect(withoutSalonGuess("Does this look right? Updated the card.", ["NE Lincoln 27th Street"])).toBe("Does this look right? Updated the card.");
+  });
+});
