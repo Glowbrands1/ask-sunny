@@ -915,6 +915,51 @@ export function readExitDetails(rawText: string, today: string, facts?: ExitFact
   };
 }
 
+/*
+ * ============================================================================
+ * HOW THE PERSON RESIGNED IS HOW THEY QUIT (QA's Bubbles round 2, 22 Nov 2026, U26)
+ * ============================================================================
+ *
+ * "<GM> called and left a voicemail for <P> when she did not show for her shift. Later that day <P> returned the call
+ * and told <AGM> … she quit effective immediately." saved How Employee Resigned "Voicemail": the voicemail was the
+ * manager's, not how she quit. Two readings for the agent loop's exit card, from the line's own methods and the exit
+ * form's own reader, no new word lists:
+ *
+ *   `EXIT_METHOD_LABELS`            the methods this line takes; the model reads one (`exit_method`).
+ *   `quoteNamesMethod`              the manager's quoted words name that method: half its words or more (three letters
+ *                                   or more each), said whole, as a prefix, or a close spelling; or the line's own
+ *                                   reader reads it in the quote.
+ *   `resignationStatementMethod`    with no method from the model: only the sentences the exit form's own reader reads a
+ *                                   resignation type from (`readExitFacts`, one sentence at a time) are read for the
+ *                                   method; undefined when no sentence states one (the whole account is read, as before).
+ */
+export const EXIT_METHOD_LABELS: readonly string[] = METHODS.map((method) => method.label);
+
+export function quoteNamesMethod(quote: string, label: string): boolean {
+  if (!EXIT_METHOD_LABELS.includes(label)) return false;
+  if (methodsIn(normalize(quote)).includes(label)) return true;
+  const wordsOf = (text: string) => [...new Set((text.toLowerCase().match(/[a-z]+/g) ?? []).filter((word) => word.length >= 3))];
+  const labelWords = wordsOf(label);
+  const quoted = wordsOf(quote);
+  const named = labelWords.filter((word) =>
+    quoted.some((typed) => typed === word || word.startsWith(typed) || typed.startsWith(word) || (typed.length >= 5 && word.length >= 5 && editDistance(typed, word) <= 2)),
+  );
+  return labelWords.length > 0 && named.length >= Math.ceil(labelWords.length / 2);
+}
+
+export function resignationStatementMethod(rawText: string, today: string): string | null | undefined {
+  const stating: string[] = [];
+  for (const turn of normalize(rawText).split(JOIN)) {
+    for (const sentence of statements(turn)) {
+      if ((exitFactValues(readExitFacts(sentence, today)).checked[EXIT_TYPE_GROUP] ?? []).length > 0) stating.push(sentence);
+    }
+  }
+  if (stating.length === 0) return undefined;
+  const found: string[] = [];
+  for (const sentence of stating) for (const label of methodsIn(sentence)) if (!found.includes(label)) found.push(label);
+  return joinMethods(found);
+}
+
 /** The Details answers as form values, keyed the way the stored version keys them. */
 export function exitDetailValues(details: ExitDetails): {
   values: Record<string, string>;
