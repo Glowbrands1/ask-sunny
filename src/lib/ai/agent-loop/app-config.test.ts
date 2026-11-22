@@ -152,6 +152,10 @@ import { rulesBookText } from "./rules-book";
  * Re-taken on purpose on 22 Nov 2026 (port from Ask Bubbles #1026, U21): one line was added after the "policy and no
  * person" line: "make this for <B> instead of <A>" / "the same corrective action but for <B>" go with same_card_evidence
  * (kind same_form or this_card_for) and copied_from_card. It reads the same under every config; nothing else changed.
+ * Re-taken on purpose on 22 Nov 2026 (port from Ask Bubbles #1038, "saved ≠ card"): the earlier-card line now names the
+ * "[card shown under this reply: …]" line instead of the app note, and one line was added after it: a card comes only
+ * from propose_form, never card lines written on a turn without it. It reads the same under every config; nothing else
+ * changed.
  */
 
 const fixture = (name: string): string => readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), "utf8");
