@@ -5020,6 +5020,15 @@ function isShownCardId(context: ToolContext, effects: ToolEffects, id: string): 
  */
 const teamSalonQuestion = () => `Which ${locationWord()} is this for?`;
 const teamSalonNote = () => `The card has no ${locationWord()} yet. End your reply with salon_question, exactly. Never name, guess or narrow the ${locationWords()} from a word the manager did not give as a ${locationWord()} (an abbreviation, a program, a product); the card's own ${locationWord()} list shows them all.`;
+/*
+ * Ask Bubbles' live re-run 2 (22 Nov 2026, A8; port of #1033, QA's ruling): a global login's team card with no salon is
+ * ready (a global login may file with none), and its result carried no salon question, so the model wrote its own and
+ * narrowed it from an abbreviation. Any team card that holds no salon carries salon_question and salon_note, from all
+ * the manager's salons.
+ */
+const teamSalonAsked = (card: ChatFormProposal) => card.status === "needs_location" || !card.locationId;
+const teamSalonChoices = (card: ChatFormProposal) =>
+  (card.authorizedLocationIds && card.authorizedLocationIds.length > 0 ? card.authorizedLocationIds : appConfig().locations().map((salon) => salon.id)).map((id) => ({ id, name: salonLabel(id) }));
 
 export async function coachTeam(context: ToolContext, effects: ToolEffects, input: { team_evidence?: unknown } = {}): Promise<ToolResult> {
   if (context.openFormId) {
@@ -5073,7 +5082,7 @@ export async function coachTeam(context: ToolContext, effects: ToolEffects, inpu
       status: card.status,
       ready: card.status === "ready",
       salon: card.locationId ? salonLabel(card.locationId) : null,
-      ...(card.status === "needs_location" ? { choose_salon_from: (card.authorizedLocationIds ?? []).map((id) => ({ id, name: salonLabel(id) })), salon_question: teamSalonQuestion(), salon_note: teamSalonNote() } : {}),
+      ...(teamSalonAsked(card) ? { choose_salon_from: teamSalonChoices(card), salon_question: teamSalonQuestion(), salon_note: teamSalonNote() } : {}),
       form_date: card.formDate ?? null,
       observation: card.issue ?? null,
       create_offered: card.supportsInlineDraft,
