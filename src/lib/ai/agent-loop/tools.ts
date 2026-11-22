@@ -4520,13 +4520,21 @@ export async function proposeForm(
    * Port of Ask Bubbles #1047 (B6, its QA's live round 3, 22 Nov 2026): "she is resigning due to second job" left Reason for
    * Resignation empty on the card, the reply and the saved draft. The reason is the model's reading (exit_reason), kept
    * when every word of it is in the manager's quoted words of this request (exit_reason_evidence; `exit-reason-said.ts`);
-   * Create writes it as their statement. A termination keeps its own reason path.
+   * Create writes it as their statement. On a termination the reason is the card's account (below).
    */
   const exitReasonQuote = typeof (input.exit_reason_evidence as { quote?: unknown } | null | undefined)?.quote === "string" ? String((input.exit_reason_evidence as { quote: string }).quote).trim().slice(0, 300) : "";
-  const exitReasonText = template.key === appConfig().formKeys.exit && !exitTermination && input.exit_type !== "termination" && typeof input.exit_reason === "string" && exitReasonQuote !== "" && answerEvidence(context, input.exit_reason_evidence, "request", evidencePerson, { requestTurnIds }).ok
+  const exitReasonText = template.key === appConfig().formKeys.exit && (Boolean(exitTermination) || input.exit_type !== "termination") && typeof input.exit_reason === "string" && exitReasonQuote !== "" && answerEvidence(context, input.exit_reason_evidence, "request", evidencePerson, { requestTurnIds }).ok
     ? (await import("@/lib/forms/exit-reason-said")).reasonFromQuote(input.exit_reason, exitReasonQuote)
     : null;
-  const exitReason = exitReasonText ? { text: exitReasonText, quote: exitReasonQuote } : null;
+  const statedReason = exitReasonText ? { text: exitReasonText, quote: exitReasonQuote } : null;
+  /*
+   * Port of Ask Bubbles #1052 (l6, its coder 5's live triage, 22 Nov 2026): "exit form for <P>, terminated for job
+   * abandonment, not eligible for rehire" made a termination card with no account in both live runs; the reply even offered
+   * to add the reason. A termination's reason is its account (Create saves it as the Reason line): with no account from the
+   * model, the stated reason, checked as above, is the account.
+   */
+  if (exitTermination && statedReason && !whatHappened) whatHappened = statedReason.text;
+  const exitReason = exitTermination ? null : statedReason;
   let salonFromWoven: string | null = null;
   if (!typedSalon && employee.id && proposal.status === "needs_location") {
     const primary = await rosterPrimarySalon(context.actor.scope, employee.id);

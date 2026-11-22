@@ -168,6 +168,9 @@ import { rulesBookText } from "./rules-book";
  * Re-taken on purpose on 22 Nov 2026 (port from Ask Bubbles #1047, B6 exit reason): the exit_unset line now says to pass
  * exit_reason, in the manager's words with exit_reason_evidence, when the manager says why the person is leaving, and none
  * when no reason was given. It reads the same under every config; nothing else changed.
+ * Re-taken on purpose on 22 Nov 2026 (port from Ask Bubbles #1052, l6): the same exit_unset line now names a
+ * termination's "terminated for <x>" as a reason too, says exit_reason is passed on a resignation or a termination, and
+ * never to offer to add a reason the model can pass. It reads the same under every config; nothing else changed.
  */
 
 const fixture = (name: string): string => readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), "utf8");
