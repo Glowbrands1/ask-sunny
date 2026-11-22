@@ -4788,7 +4788,8 @@ export async function proposeForm(
     ...(earlierKept ? { earlier_card: { kept: true, ...(earlierRow ? { employee: displayName(earlierRow) } : {}), form: earlier!.templateName ?? earlier!.templateKey } } : {}),
     ...(otherNamed.length > 0 ? { account_names_other_person: { named: otherNamed, card_person: employee.name } } : {}),
     ...(unset.length > 0 && !answerUnclear ? { unset } : {}),
-    ...(payrollFields && !amountOnForm && (payroll || typedAmount) ? { payroll_question_only: `The ${template.name} asks only whether payroll deduction applies (Yes / No); it has no payroll amount line and no line for the reason of a deduction. Keep a deduction's amount and its reason in the account (what_happened): they go in Additional Details. This is about payroll only: the reason the person is leaving has its own line on the form (Reason for Resignation), which Create fills; never say the form has no reason line.` } : {}),
+    /* The 266-chat run's 036 (QA, 22 Nov 2026): the note leads with the card's own payroll answer, so a No is never read back as ticked. */
+    ...(payrollFields && !amountOnForm && (payroll || typedAmount) ? { payroll_question_only: `Payroll deduction on the card: ${payroll === "yes" ? "Yes" : payroll === "no" ? "No" : "not set"}. The ${template.name} asks only whether payroll deduction applies (Yes / No); it has no payroll amount line and no line for the reason of a deduction. Keep a deduction's amount and its reason in the account (what_happened): they go in Additional Details. This is about payroll only: the reason the person is leaving has its own line on the form (Reason for Resignation), which Create fills; never say the form has no reason line.` } : {}),
     ...(answerUnclear ? { payroll_answer_unclear: { ask_exactly: payrollQuestion } } : {}),
     ...(levelUnnamed && !levelAnswerUnclear ? { level_not_named: { ask_exactly: LEVEL_QUESTION } } : {}),
     /*
