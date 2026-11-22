@@ -809,7 +809,14 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     find_past_forms: async (args) => withLookupReplyName(context, await findPastForms(context, args, effects), (args as { employee_name?: unknown }).employee_name),
     read_form: (args) => readForm(context, args, effects),
     read_policy: (args) => readPolicy(context, args, effects),
-    propose_form: (args) => proposeForm(context, effects, args),
+    propose_form: async (args) => {
+      const asked = effects.nameQuestion;
+      const result = await proposeForm(context, effects, args);
+      /* U35(ii) (port of Ask Bubbles #1043): a name question this propose_form call asked belongs to the form it was making (the record's templateKey). */
+      const key = (args as { template_key?: unknown } | null)?.template_key;
+      if (effects.nameQuestion && effects.nameQuestion !== asked && typeof key === "string") effects.nameQuestion = { ...effects.nameQuestion, templateKey: key };
+      return result;
+    },
     /*
      * PR 6 item 3: an edit with no values runs the form's reviser, which makes its own model calls. It runs only when
      * the turn's budget (AGENT_LOOP_MAX_STEPS, loop steps plus every model call a tool made) has room for the reviser
@@ -1535,7 +1542,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     : null;
   /* Fix batch items 4 and 3: this turn's "Did you mean", for the next turn's name question record (one-way keys only). */
   const nameQuestionSlot: NameQuestionSlot | null = effects.nameQuestion && stoppedAt === "reply"
-    ? { offeredKeys: effects.nameQuestion.offeredIds.map(personKey), typedKey: personKey(effects.nameQuestion.typed), ...(effects.nameQuestion.offeredNames?.length ? { offeredNameKeys: effects.nameQuestion.offeredNames.map(personKey) } : {}), ...(effects.nameQuestion.asksFullName ? { asksFullName: true } : {}) }
+    ? { offeredKeys: effects.nameQuestion.offeredIds.map(personKey), typedKey: personKey(effects.nameQuestion.typed), ...(effects.nameQuestion.offeredNames?.length ? { offeredNameKeys: effects.nameQuestion.offeredNames.map(personKey) } : {}), ...(effects.nameQuestion.asksFullName ? { asksFullName: true } : {}), ...(effects.nameQuestion.templateKey ? { templateKey: effects.nameQuestion.templateKey } : {}) }
     : null;
   /* Fix batch item 6: propose_form asked who the form is for, for the next turn's person asked record (no names). */
   const personAskedSlot: PersonAskedSlot | null = effects.personAsked && stoppedAt === "reply" && !effects.proposal ? { templateKey: effects.personAsked.templateKey } : null;
