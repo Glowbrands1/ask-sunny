@@ -18,6 +18,8 @@
  *   APP NOTES    "[app note: …]" is the app's, never the manager's: it is never shown.
  */
 
+import { EXIT_CARD_LABELS } from "./exit-read-back";
+
 export const CARD_LINE_LABELS: readonly string[] = [
   "Observation of Offense",
   "Prior actions",
@@ -27,6 +29,8 @@ export const CARD_LINE_LABELS: readonly string[] = [
   "Payroll deduction amount",
   "Job title",
   "Action Plan",
+  /* The exit form's own labels (`exit-read-back.ts`), as Ask Bubbles lists them: an exit card line on a turn with no card call is a card nobody proposed too. */
+  ...EXIT_CARD_LABELS,
 ];
 
 const flat = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
