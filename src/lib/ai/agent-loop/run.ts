@@ -1,6 +1,7 @@
 import "server-only";
 
 import { withFullOffRosterName } from "./off-roster-line";
+import type { WhichFormSlot } from "./which-form";
 import { cardTurns, personKey, readLoopRecords, replyTurns, type CardRecord, type CardSlot, type ExitOfferSlot, type NameQuestionSlot, type PersonAskedSlot, type TeamConfirmSlot } from "./card-record";
 import { CLAUDE_EFFORT, CLAUDE_MAX_TOKENS, CLAUDE_MODEL } from "@/lib/config/models";
 import { MissingConfigurationError, requireEnv } from "@/lib/config/server-env";
@@ -424,6 +425,8 @@ const evidence = (description: string) => ({
   additionalProperties: false,
 });
 const FORMS_ON_FILE_EVIDENCE = evidence("Where the manager asks about a form on file (what is on file, an earlier form, open / edit / see one). Needed for any form that is not the one open on screen.");
+/* QA's Bubbles re-run (22 Nov 2026, A11): after "Which one should I open?", the manager's own pick (`which-form.ts`). */
+const choiceEvidence = (place: string) => evidence("After your reply asked which listed form to open: the words from THIS message that pick this form (its date, " + place + ", status, form, or its number in the list). Never pick one the manager did not.");
 
 /** The loop's tool definitions with one app's words (the app config's place word); cached per config. */
 /* Built once per config and STATED_PLAN_STEPS_ENABLED setting (its two propose_form fields exist only with the flag on). */
@@ -567,6 +570,7 @@ function buildAgentLoopTools(config: AppConfig, planSteps = false) {
         instance_id: { type: "string" },
         values: { type: "object", additionalProperties: { type: "string" } },
         forms_on_file_evidence: FORMS_ON_FILE_EVIDENCE,
+        choice_evidence: choiceEvidence(place),
         intent: {
           type: "string",
           enum: ["correct_name", "write_account"],
@@ -583,7 +587,7 @@ function buildAgentLoopTools(config: AppConfig, planSteps = false) {
   {
     name: "open_form",
     description: "Open a form on file on the manager's screen (a draft to edit, a finalized form read-only). Only for a form the manager asked to open, edit or see.",
-    input_schema: object({ instance_id: { type: "string" }, forms_on_file_evidence: FORMS_ON_FILE_EVIDENCE }, ["instance_id"]),
+    input_schema: object({ instance_id: { type: "string" }, forms_on_file_evidence: FORMS_ON_FILE_EVIDENCE, choice_evidence: choiceEvidence(place) }, ["instance_id"]),
   },
   {
     name: "app_help",
@@ -698,7 +702,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   /* PR 6: the turn's one read of the policy manual starts first, beside the chat's record read (`turnManual`). */
   const turn: TurnReads = {};
   turn.manual = manualFor(input.scopeId, turn);
-  const { cards: records, nameQuestions, personAsked, exitOffers, teamConfirms, turns: turnRecords } = await readLoopRecords(input.conversationId, input.actor.subject, input.history.filter((turn) => turn.role === "user" && typeof turn.id === "string").map((turn) => turn.id));
+  const { cards: records, nameQuestions, personAsked, exitOffers, teamConfirms, whichForms, turns: turnRecords } = await readLoopRecords(input.conversationId, input.actor.subject, input.history.filter((turn) => turn.role === "user" && typeof turn.id === "string").map((turn) => turn.id));
   const cards = cardTurns(input.history, records);
   const lastReplyIndex = input.history.findLastIndex((turn) => turn.role === "assistant" && !turn.error);
   const cardOnScreen = !input.openFormId && lastReplyIndex >= 0 ? (cards.get(lastReplyIndex) ?? null) : null;
@@ -707,6 +711,8 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   const whoAsked = lastReplyIndex >= 0 ? (replyTurns(input.history, personAsked).get(lastReplyIndex) ?? null) : null;
   /* QA's code audit, coach_team C: the last reply asked the open draft's "create all?" (the record, never the reply's text). */
   const teamAsked = lastReplyIndex >= 0 ? (replyTurns(input.history, teamConfirms).get(lastReplyIndex) ?? null) : null;
+  /* QA's Bubbles re-run (22 Nov 2026, A11): the last reply asked which listed form to open (the record, never the reply's text). */
+  const whichFormAsked = lastReplyIndex >= 0 && !input.openFormId ? (replyTurns(input.history, whichForms).get(lastReplyIndex) ?? null) : null;
   const context: ToolContext = {
     request: input.request,
     actor: input.actor,
@@ -726,6 +732,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     /* QA (16 Nov 2026; c158, c208): every card and "who is it for?" this chat's loop gave, for where THIS request started. */
     cardRecords: records,
     personAskedRecords: personAsked,
+    whichFormAsked,
     teamConfirmAsked: Boolean(input.openFormId && teamAsked && teamAsked.sourceKey === personKey(input.openFormId)),
     /* #1055's follow-up: the exit-form offer the last reply's tools made (its record, never the reply's text). */
     exitOffered: lastReplyIndex >= 0 ? (replyTurns(input.history, exitOffers).get(lastReplyIndex) ?? null) : null,
@@ -1430,6 +1437,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   /* Fix batch item 6: propose_form asked who the form is for, for the next turn's person asked record (no names). */
   const personAskedSlot: PersonAskedSlot | null = effects.personAsked && stoppedAt === "reply" && !effects.proposal ? { templateKey: effects.personAsked.templateKey } : null;
   const teamConfirmSlot: TeamConfirmSlot | null = effects.teamConfirm && stoppedAt === "reply" ? { sourceKey: personKey(effects.teamConfirm.sourceInstanceId) } : null;
+  const whichFormSlot: WhichFormSlot | null = effects.whichFormAsked && effects.whichFormAsked.length > 1 && stoppedAt === "reply" && !effects.formOpened && !effects.proposal ? { forms: effects.whichFormAsked } : null;
   /* #1055's follow-up: this turn's tools offered the exit form, for the next turn's exit offer record (one-way keys only). */
   const exitOfferSlot: ExitOfferSlot | null = effects.exitOffered && stoppedAt === "reply"
     ? { employeeKey: effects.exitOffered.employeeId ? personKey(effects.exitOffered.employeeId) : null, nameKey: personKey(effects.exitOffered.name) }
@@ -1438,7 +1446,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     trace.firstTokenMs = firstTokenMs;
     trace.slots = {
       ...(trace.slots ?? {}),
-      agent_loop: { question_key: personKey(input.question), ...(cardSlot ? { card: cardSlot } : {}), ...(nameQuestionSlot ? { name_question: nameQuestionSlot } : {}), ...(personAskedSlot ? { person_asked: personAskedSlot } : {}), ...(exitOfferSlot ? { exit_offer: exitOfferSlot } : {}), ...(teamConfirmSlot ? { team_confirm: teamConfirmSlot } : {}), steps, model_steps: modelSteps, model_calls: modelCalls, ...(turn.manualRead ? { manual_read: turn.manualRead } : {}), step_limit: limit, steps_used: stepNumber - 1 + hiddenCalls, ...(toolModelCalls > 0 ? { tool_model_calls: toolModelCalls } : {}), stopped: stoppedAt, ms: latencyMs, first_token_ms: firstTokenMs, ...(selfReview ? { self_review: selfReview } : {}), ...(draftReview ? { draft_review: draftReview } : {}), ...(levelReview ? { level_review: levelReview } : {}), ...(honestyReview ? { honesty_review: honestyReview } : {}), ...(replyUnwrapped ? { reply_unwrapped: true } : {}), ...(retriesBlocked > 0 ? { stop_retrying: retriesBlocked } : {}), ...(repeatsReused > 0 ? { repeat_calls_reused: repeatsReused } : {}), ...(pronounsReplaced > 0 ? { pronouns_replaced: pronounsReplaced } : {}), ...(fullNamesShortened > 0 ? { full_names_shortened: fullNamesShortened } : {}) },
+      agent_loop: { question_key: personKey(input.question), ...(cardSlot ? { card: cardSlot } : {}), ...(nameQuestionSlot ? { name_question: nameQuestionSlot } : {}), ...(personAskedSlot ? { person_asked: personAskedSlot } : {}), ...(exitOfferSlot ? { exit_offer: exitOfferSlot } : {}), ...(teamConfirmSlot ? { team_confirm: teamConfirmSlot } : {}), ...(whichFormSlot ? { which_form: whichFormSlot } : {}), steps, model_steps: modelSteps, model_calls: modelCalls, ...(turn.manualRead ? { manual_read: turn.manualRead } : {}), step_limit: limit, steps_used: stepNumber - 1 + hiddenCalls, ...(toolModelCalls > 0 ? { tool_model_calls: toolModelCalls } : {}), stopped: stoppedAt, ms: latencyMs, first_token_ms: firstTokenMs, ...(selfReview ? { self_review: selfReview } : {}), ...(draftReview ? { draft_review: draftReview } : {}), ...(levelReview ? { level_review: levelReview } : {}), ...(honestyReview ? { honesty_review: honestyReview } : {}), ...(replyUnwrapped ? { reply_unwrapped: true } : {}), ...(retriesBlocked > 0 ? { stop_retrying: retriesBlocked } : {}), ...(repeatsReused > 0 ? { repeat_calls_reused: repeatsReused } : {}), ...(pronounsReplaced > 0 ? { pronouns_replaced: pronounsReplaced } : {}), ...(fullNamesShortened > 0 ? { full_names_shortened: fullNamesShortened } : {}) },
     };
   }
 

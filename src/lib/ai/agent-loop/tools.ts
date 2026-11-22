@@ -1,3 +1,4 @@
+import { whichFormChoice, whichFormEntry, type WhichFormEntry, type WhichFormRecord } from "./which-form";
 import "server-only";
 
 import { keptPlanSteps } from "@/lib/forms/stated-plan-steps";
@@ -124,6 +125,8 @@ export interface ToolContext {
   readonly earlierCard?: CardRecord | null;
   /** Fix batch items 4 and 3: the "Did you mean" questions this chat's find_staff gave, from the server's record. */
   readonly nameQuestions?: readonly NameQuestionRecord[];
+  /** QA's Bubbles re-run (22 Nov 2026, A11): the last reply asked which of these listed forms to open (`which-form.ts`). */
+  readonly whichFormAsked?: WhichFormRecord | null;
   /**
    * QA (16 Nov 2026, the live check of the pasted-script rule): a form is chosen in this conversation before this turn
    * (a card was made, a form is open, or the app asked who a form is for). No name question is asked before there is a form.
@@ -482,6 +485,19 @@ export function requestTurns(
   return { ok: true, ids, quotes, texts };
 }
 
+/** QA's Bubbles re-run (22 Nov 2026, A11): open_form / edit_form of a listed form while "Which one?" is open needs the manager's pick. */
+function whichFormRefusal(context: ToolContext, id: string, evidence: unknown, formsOnFileEvidence?: unknown): ToolResult | null {
+  const choose = (claim: unknown) => whichFormChoice({ asked: context.whichFormAsked, instanceId: id, evidence: claim, history: context.history, question: context.question, questionMessageId: context.questionMessageId });
+  const choice = choose(evidence);
+  if (choice.ok) return null;
+  /*
+   * Sunny's port: the manager's pick quoted as forms_on_file_evidence ("the 10/31 one about …", the message that asks to
+   * open it) is the same pick when those words, from THIS message, single out this form by the same checks.
+   */
+  if (formsOnFileEvidence !== undefined && choose(formsOnFileEvidence).ok) return null;
+  return { reason_code: choice.reason_code, error: choice.error };
+}
+
 /** read_form, open_form and edit_form of a form that is not open: refused unless the manager asked about this form's person. */
 async function formOnFileRefusal(context: ToolContext, id: string, evidence: unknown): Promise<ToolResult | null> {
   // A form that is not visible (or an id that is no form's: not_a_form_id) is the tool's own load to report, first.
@@ -773,6 +789,8 @@ export interface ToolEffects {
   personAsked?: { templateKey: string };
   /** coach_team asked "create all?" for this open Coaching draft this turn, for the record. */
   teamConfirm?: { sourceInstanceId: string };
+  /** QA's Bubbles re-run (22 Nov 2026, A11): the forms this turn's find_past_forms listed with which_form_question. */
+  whichFormAsked?: WhichFormEntry[];
   /** QA (#1055's follow-up): this turn's tools offered the exit form for this person (the exit_offer record). */
   exitOffered?: { employeeId: string | null; name: string };
   /** find_staff ran this turn: a person was named, so a card without one is not "nobody named" (item 6). */
@@ -1709,6 +1727,7 @@ export async function findPastForms(context: ToolContext, input: { employee_name
           };
         })()
       : null;
+    if (effects && !onScreenChoice && forms.length > 1 && input.open === true) effects.whichFormAsked = forms.map(whichFormEntry);
     let withdrawn: string | null = null;
     if (input.open === true && effects && !onScreenChoice) {
       effects.openRequested = typed;
@@ -4763,6 +4782,8 @@ export async function editForm(
    */
   const openedThisTurn = effects.formOpened?.instanceId ?? null;
   if (id !== context.openFormId && id !== openedThisTurn && !fromShownCard) {
+    const unchosen = whichFormRefusal(context, id, (input as { choice_evidence?: unknown }).choice_evidence, input.forms_on_file_evidence);
+    if (unchosen) return unchosen;
     const refused = await formOnFileRefusal(context, id, input.forms_on_file_evidence);
     if (refused) return refused;
   }
@@ -5594,10 +5615,12 @@ function documentFieldKeys(document: unknown): Set<string> {
  * Puts a form on file in front of the manager, as today's chat reopen does (`formOpened`): a draft opens to edit; a
  * finalized form opens read-only (its card offers "Edit as new draft"). Past forms only when asked.
  */
-export async function openForm(context: ToolContext, effects: ToolEffects, input: { instance_id?: unknown; forms_on_file_evidence?: unknown }): Promise<ToolResult> {
+export async function openForm(context: ToolContext, effects: ToolEffects, input: { instance_id?: unknown; forms_on_file_evidence?: unknown; choice_evidence?: unknown }): Promise<ToolResult> {
   const id = typeof input.instance_id === "string" ? input.instance_id.trim() : "";
   if (id === "") return { reason_code: "missing_input", error: "Give the form's instance_id (from find_past_forms)." };
   if (id !== context.openFormId) {
+    const unchosen = whichFormRefusal(context, id, input.choice_evidence, input.forms_on_file_evidence);
+    if (unchosen) return unchosen;
     const refused = await formOnFileRefusal(context, id, input.forms_on_file_evidence);
     if (refused) return refused;
   }
