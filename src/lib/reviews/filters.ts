@@ -145,6 +145,20 @@ export function lastFullMonthsOf(week: string): number | null {
     : null;
 }
 
+/**
+ * ONE CALENDAR MONTH, CENTRAL: `yyyy-mm` (Pau, 23 Nov 2026: "pls add the per
+ * month for both like September october november"). The month-to-date
+ * counted-at rule over that whole month, so October's figure on the
+ * leaderboard and the list its link opens are the same reviews. Unlike
+ * `month`, it names one month for good: "2026-10" is October in any month.
+ */
+export const MONTH_KEY_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+/** True when a `week` value names one calendar month (`yyyy-mm`). */
+export function isMonthWeek(week: string): boolean {
+  return MONTH_KEY_PATTERN.test(week);
+}
+
 /** Every period value that is a named window rather than one reporting week. */
 export const NAMED_PERIODS: readonly string[] = [
   WEEK_ALL,
@@ -161,8 +175,8 @@ export interface ReviewFilters {
    */
   tab: ReviewsTab;
   /**
-   * `current`, `month`, `3months`, `6months`, `ytd`, `all`, or the `yyyy-mm-dd` Sunday of one reporting
-   * period.
+   * `current`, `month`, `3months`, `6months`, `ytd`, `all`, a `yyyy-mm` calendar month, or the
+   * `yyyy-mm-dd` Sunday of one reporting period.
    *
    * IT FILTERS ON THE PERIOD A REVIEW WAS ASSIGNED TO, not on when it was
    * first seen — so a backlog imported this morning is absent from
@@ -245,6 +259,7 @@ export function parseReviewFilters(
   const weekRaw = first(params.week);
   const week =
     (weekRaw && NAMED_PERIODS.includes(weekRaw)) ||
+    (weekRaw && isMonthWeek(weekRaw)) ||
     (weekRaw && ISO_DATE_PATTERN.test(weekRaw))
       ? weekRaw
       : WEEK_ALL;
