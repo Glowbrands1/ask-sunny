@@ -1120,9 +1120,21 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
        * TRUNCATION_RETRY (parity gap #36): a reply cut at the token limit is never shown cut. It is written again once,
        * from the same conversation and this turn's tool results (the cut text left out), with twice the budget and no
        * tools, so nothing is called twice.
+       *
+       * A STEP CUT WHILE THINKING (port of Ask Bubbles #1060, 190a33d; its QA's live regression set, 22 Nov 2026: a
+       * message with many facts answered "I couldn't finish that in the steps I have for one message"). The loop thinks
+       * (adaptive) inside the step's output budget, and a message with many facts, or the reply after a long card result,
+       * can spend the whole budget thinking: the step ends "length" with no text and no tool call. That is no cut reply.
+       * Without its tools the retry could not make the call the step was thinking towards, so it ended with no text and
+       * the turn read as the step limit. That step is asked again as the loop step it was, with the tools and twice the
+       * budget, inside the turn's step budget; nothing was called in it, so nothing is called twice. Its calls and
+       * messages join the turn's (the hand-backs').
        */
       /* F4 (QA, batch F): ONE STEP BUDGET FOR THE TURN. A retry or hand-back gets only the steps left under the cap. */
       const stepsLeft = () => Math.max(0, limit - (stepNumber - 1) - hiddenCalls);
+      /* The turn's messages so far (its tool calls and results): the loop's, or the loop's and a step asked again (below). */
+      let turnMessagesAfterRetry: unknown[] | null = null;
+      const turnMessages = async (): Promise<unknown[]> => turnMessagesAfterRetry ?? (await result.response).messages;
       if (last?.finishReason === "length" && stepsLeft() === 0) {
         text = "";
         stoppedAt = "step_limit";
@@ -1130,6 +1142,8 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
         const response = await result.response;
         const turn = [...response.messages];
         if (turn.at(-1)?.role === "assistant") turn.pop();
+        /* Cut while thinking: no text and no tool call (above). */
+        const cutWhileThinking = (last.text ?? "").trim() === "" && last.toolCalls.length === 0;
         /* QA's audit (item 14a): the retry is its own model call, with its own first-token wait. */
         watch.attempt();
         const again = streamText({
@@ -1139,6 +1153,15 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
             { role: "system", content: dynamic },
           ],
           messages: [...(conversationOf(input.history, input.question, input.questionMessageId, cards) as never[]), ...(turn as never[])],
+          ...(cutWhileThinking
+            ? {
+                tools,
+                /* The turn's one step budget (F4): this step and any after it, with the tools' own model calls. */
+                stopWhen: () => stepNumber - 1 + hiddenCalls >= limit,
+                prepareStep: ({ messages }: { messages: unknown[] }) => ({ messages: withLastMessageCached(messages as never) }),
+                providerOptions: LOOP_PROVIDER_OPTIONS,
+              }
+            : {}),
           maxOutputTokens: CLAUDE_MAX_TOKENS.standard * 2,
           maxRetries: timed.maxRetries,
           abortSignal: timed.signal,
@@ -1159,8 +1182,9 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
         const retried = await again.steps;
         watch.idle();
         const final = retried.at(-1);
-        text = final?.finishReason === "length" ? "" : (final?.text ?? "").trim();
+        text = final?.finishReason === "length" || final?.finishReason === "tool-calls" ? "" : (final?.text ?? "").trim();
         if (text === "") stoppedAt = "step_limit";
+        if (cutWhileThinking) turnMessagesAfterRetry = [...turn, ...(await again.response).messages];
       }
       /*
        * SELF-REVIEW (above, `cardMismatch`): with a card made this turn, or a card on screen and nothing changed this
@@ -1173,7 +1197,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
         if (left === 0) return "";
         const hiddenBefore = hiddenCalls;
         const proposalBefore = effects.proposal;
-        const response = await result.response;
+        const turnSoFar = await turnMessages();
         /* QA's audit (item 14a): the hand-back is its own model call; each of its steps waits for its own first token. */
         watch.attempt();
         const review = streamText({
@@ -1182,7 +1206,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
             { role: "system", content: agentLoopRules(), providerOptions: EPHEMERAL },
             { role: "system", content: dynamic },
           ],
-          messages: [...(conversationOf(input.history, input.question, input.questionMessageId, cards) as never[]), ...(response.messages as never[]), { role: "user", content: note } as never],
+          messages: [...(conversationOf(input.history, input.question, input.questionMessageId, cards) as never[]), ...(turnSoFar as never[]), { role: "user", content: note } as never],
           tools,
           stopWhen: ({ steps: done }) => done.length + (hiddenCalls - hiddenBefore) >= Math.min(4, left),
           /*
