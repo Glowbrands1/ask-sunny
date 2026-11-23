@@ -1228,6 +1228,10 @@ describe("new flags default off and wrappers are inert", () => {
           ":(exclude)src/features/forms/hr-approval-lists.tsx",
           ":(exclude)src/features/forms/hr-approval-screen.tsx",
           ":(exclude)src/app/(app)/forms/hr-approval/**",
+          // "Bubbles approvals ↗" on Form Monitoring (Pau, 23 Nov 2026: an approver in both apps needs Ask Bubbles'
+          // approvals from here): a link tab in hr-approval-lists.tsx, mounted by forms/monitoring/page.tsx, both
+          // excluded above. Only for people who already get the app switcher; a plain link to Ask Bubbles' own Pending
+          // HR approval view, with no count and no data crossing. No chat or form behaviour changes.
           // Import's "belongs to another account" line (QA, 31 Oct 2026, both apps): shown only
           // when the server declines a chat as another account's, i.e. only with
           // CHAT_IMPORT_OWN_ONLY_ENABLED on. Off, the server never declines that way, so it never shows.

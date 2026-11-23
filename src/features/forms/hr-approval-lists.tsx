@@ -8,7 +8,8 @@ import { formatBusinessTime } from "@/lib/business-date";
  * HR APPROVAL ON FORM MONITORING (FORMS_HR_APPROVAL_ENABLED). Server-rendered
  * from rows the page read for this reader only:
  *
- *   HrApprovalTabs  "All forms" and "Pending HR approval (N)", shown to HR only
+ *   HrApprovalTabs  "All forms" and "Pending HR approval (N)", shown to HR only, and
+ *                   "Bubbles approvals ↗" for those who also get the app switcher
  *   HrQueueList     HR's tab: waiting forms oldest first (overdue marked), then
  *                   the ones they sent back or rejected
  *   MyFormsWithHr   the manager's own forms that HR has not approved yet
@@ -42,7 +43,23 @@ function hrHref(id: string): string {
   return `/forms/hr-approval/${id}`;
 }
 
-export function HrApprovalTabs({ active, pending, overdue }: { active: "all" | "hr"; pending: number; overdue: number }) {
+export function HrApprovalTabs({
+  active,
+  pending,
+  overdue,
+  bubblesApprovalsHref,
+}: {
+  active: "all" | "hr";
+  /** Null: this reader is not HR, so no "Pending HR approval" tab. */
+  pending: number | null;
+  overdue: number;
+  /**
+   * "Bubbles approvals ↗" (Pau, 23 Nov 2026): Ask Bubbles' Forms Register on its Pending HR approval view. Given only
+   * to people who already get the app switcher (`pageShowsAppSwitcher`), so only those with access to both apps. A
+   * plain link: no data crosses, Ask Bubbles checks its own login, and there is no count on it.
+   */
+  bubblesApprovalsHref?: string | null;
+}) {
   const tab = (selected: boolean) =>
     `inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs ${
       selected ? "border-foreground bg-foreground text-background" : "border-border text-muted-foreground hover:text-foreground"
@@ -52,10 +69,17 @@ export function HrApprovalTabs({ active, pending, overdue }: { active: "all" | "
       <Link href="/forms/monitoring" className={tab(active === "all")} aria-current={active === "all" ? "page" : undefined}>
         All forms
       </Link>
-      <Link href="/forms/monitoring?view=hr" className={tab(active === "hr")} aria-current={active === "hr" ? "page" : undefined}>
-        Pending HR approval ({pending})
-        {overdue > 0 ? <span className="font-semibold text-status-attention">· {overdue} overdue</span> : null}
-      </Link>
+      {pending !== null ? (
+        <Link href="/forms/monitoring?view=hr" className={tab(active === "hr")} aria-current={active === "hr" ? "page" : undefined}>
+          Pending HR approval ({pending})
+          {overdue > 0 ? <span className="font-semibold text-status-attention">· {overdue} overdue</span> : null}
+        </Link>
+      ) : null}
+      {bubblesApprovalsHref ? (
+        <a href={bubblesApprovalsHref} className={tab(false)} aria-label="Bubbles approvals (opens Ask Bubbles)">
+          Bubbles approvals ↗
+        </a>
+      ) : null}
     </nav>
   );
 }

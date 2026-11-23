@@ -30,6 +30,15 @@ export function leadershipHubUrl(): string {
   return urlOr(process.env.NEXT_PUBLIC_LEADERSHIP_HUB_URL, DEFAULT_LEADERSHIP_HUB_URL).replace(/\/+$/, "");
 }
 
+/**
+ * Ask Bubbles' Forms Register on its "Pending HR approval" view: the "Bubbles approvals ↗" tab on Form Monitoring
+ * (Pau, 23 Nov 2026). The switcher's own Bubbles address plus Bubbles' route; a plain link, nothing handed across.
+ */
+export function bubblesHrApprovalsUrl(): string {
+  const bubbles = switchableApps().find((app) => app.id === "ask-bubbles")!;
+  return `${bubbles.url.replace(/\/+$/, "")}/forms/monitoring?view=hr`;
+}
+
 export type SwitchableApp = {
   id: "ask-sunny" | "ask-bubbles" | "leadership-hub";
   emoji: string;

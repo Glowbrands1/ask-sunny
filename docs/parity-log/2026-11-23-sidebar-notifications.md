@@ -21,3 +21,17 @@ callers are the same. No change.
 
 **Sunny-only styling:** the rail item uses Ask Sunny's own nav-item style (rounded pill, its rail ink and hover), not
 Bubbles' bordered button. **Sibling app:** not needed; this brings Sunny to Bubbles' existing behaviour.
+
+## Same day: "Bubbles approvals ↗" on Form Monitoring
+
+**Request (Pau, 23 Nov 2026, via QA):** an approver who works in both apps needs Ask Bubbles' pending approvals from
+Ask Sunny's Form Monitoring.
+
+**Change (Ask Sunny only):** a "Bubbles approvals ↗" tab next to "All forms" and "Pending HR approval". It is a plain
+link to Ask Bubbles' own Forms Register on its Pending HR approval view (`/forms/monitoring?view=hr`), built from the
+same Ask Bubbles address the app switcher uses (`bubblesHrApprovalsUrl()` in `lib/config/app-switcher.ts`). It is shown
+only to people who already get the app switcher (`pageShowsAppSwitcher`). It has no count, no data crosses between the
+apps, and Ask Bubbles checks its own login on arrival.
+
+**Sibling app:** not ported. The request was for Ask Sunny's page. A matching "Sunny approvals ↗" tab on Bubbles' Forms
+Register would be a separate ask.
