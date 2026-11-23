@@ -973,6 +973,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   const [templates, manual] = await Promise.all([templateChoices(input.actor.role), turnManual(context)]);
   const dynamic = agentLoopSystem({
     cardOpen: cardOpenAtStart,
+    cardOpenForm: cardOnScreen?.templateName ?? null,
     managerName: input.actor.displayName,
     role: input.actor.role,
     salons: authorizedSalonIds(input.actor.scope).map((id) => salonLabel(id)!),
