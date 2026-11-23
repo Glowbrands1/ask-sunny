@@ -401,10 +401,10 @@ class Thread {
     return payload;
   }
 
-  /** The card's Create, as the browser does it. */
-  async create(): Promise<string> {
+  /** The card's Create, as the browser does it; `salon` is the salon the manager picks on a card that asks for one. */
+  async create(salon?: string): Promise<string> {
     expect(this.proposal, "no card to create from").not.toBeNull();
-    const result = await createInlineForm({ proposal: this.proposal!, messages: this.messages, call, onCreated: () => {} });
+    const result = await createInlineForm({ proposal: salon ? { ...this.proposal!, locationId: salon } : this.proposal!, messages: this.messages, call, onCreated: () => {} });
     this.instanceId = toUuid(result.reference.instanceId);
     return this.instanceId;
   }
@@ -478,7 +478,12 @@ async function plan(turns: readonly string[], observation: string) {
   const thread = new Thread();
   for (const turn of turns) await thread.say(turn);
   state.draft = { values: { observation } };
-  const id = await thread.create();
+  /*
+   * CHANGED ON PURPOSE (port of Ask Bubbles #1072, f140; QA round 2, 23 Nov 2026): Create now refuses a card still
+   * asking which salon ("Which salon is this about?") instead of saving it with no salon, so the manager picks the
+   * salon on the card first, as the browser's picker does. These cases are about the Action Plan, not the salon.
+   */
+  const id = await thread.create(thread.proposal?.locationId ? undefined : "loc-0309");
   return String(store.form_instance_values.find((row) => row.instance_id === id && row.field_key === "action_plan")?.value ?? "");
 }
 

@@ -21,6 +21,14 @@ const T1 = "put up the verbal CA for Oriel Tamsworth";
 const T2 = "create a verbal CA for Oriel Tamsworth with all the same information given";
 const ADMIN = { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] };
 const ACCOUNT = "Oriel did not complete the closing cleaning checklist on 11/14/26 and left the tanning beds unwiped.";
+/*
+ * CHANGED ON PURPOSE (Pau's Failure 2 review via QA, 23-24 Nov 2026; the sibling app's same change): a copy for the SAME
+ * person with the SAME incident date as a form on file is that duplicate, so propose_form first asks "Oriel already has a
+ * Corrective Action for 11/14 (finalized …). Do you want to open that one, or is this a separate incident?"
+ * (same_incident_on_file). The copy case checks that question at T2, and the copy itself after T3 below.
+ */
+const T3_SEPARATE = "it's a separate incident";
+const ASKED_SAME_DAY = /Oriel already has a Corrective Action for 11\/14 \(finalized[^)]*\)\. Do you want to open that one, or is this a separate incident\?/;
 
 /**
  * Oriel's Corrective Actions on file, as Form Monitoring holds them: a Verbal Warning on 11/14 revised once (the
@@ -70,8 +78,13 @@ export const NOV22_AGENT_LOOP_U16_OPEN_EXISTING_CA_CASES: ReplayCase[] = [
           if (!found) return { tool: "find_past_forms", input: { employee_name: "Oriel Tamsworth", form: "verbal CA", open: true, forms_on_file_evidence: evidenceFrom(view, T1) } };
           return { text: `${(found.forms ?? []).map((form) => `- ${form.choice}`).join("\n")}\n\n${found.which_form_question ?? ""}` };
         }
-        const proposed = lastResult(view, "propose_form") as { card?: unknown } | null;
+        const proposed = lastResult(view, "propose_form") as { card?: unknown; ask_exactly?: string } | null;
         if (proposed?.card) return { text: "Here's the Corrective Action Form for **Oriel**." };
+        if (proposed) return { text: proposed.ask_exactly ?? `Stopped: ${JSON.stringify(proposed)}` };
+        if (users(view) === 3) {
+          if (!lastResult(view, "read_form")) return { tool: "read_form", input: { instance_id: "ca-oriel-verbal-r1", forms_on_file_evidence: evidenceFrom(view, T2, 1) } };
+          return { tool: "propose_form", input: { template_key: "dpoa", employee_name: "Oriel Tamsworth", person_evidence: evidenceFrom(view, "Oriel Tamsworth", 1), warning_level: "verbal", level_evidence: evidenceFrom(view, "verbal", 1), what_happened: ACCOUNT, policy: headingWith(view, /care and cleaning/i), separate_incident_evidence: evidenceFrom(view, T3_SEPARATE) } };
+        }
         const read = lastResult(view, "read_form");
         if (!read) return { tool: "read_form", input: { instance_id: "ca-oriel-verbal-r1", forms_on_file_evidence: evidenceFrom(view, T2) } };
         return { tool: "propose_form", input: { template_key: "dpoa", employee_name: "Oriel Tamsworth", person_evidence: evidenceFrom(view, "Oriel Tamsworth"), warning_level: "verbal", level_evidence: evidenceFrom(view, "verbal"), what_happened: ACCOUNT, policy: headingWith(view, /care and cleaning/i) } };
@@ -87,8 +100,11 @@ export const NOV22_AGENT_LOOP_U16_OPEN_EXISTING_CA_CASES: ReplayCase[] = [
       expect([...new Set(offered)], JSON.stringify(lookups)).toEqual(["ca-oriel-verbal-r1"]);
       const second = await thread.say(T2);
       expect(second.content, `T2 asked what happened instead of copying the form on file:\n${second.content}`).not.toMatch(/what happened\?/i);
-      expect(second.formProposal?.templateKey, second.content).toBe("dpoa");
-      expect(String((second.formProposal as { issue?: string } | undefined)?.issue ?? ""), second.content).toMatch(/closing cleaning checklist/);
+      /* CHANGED ON PURPOSE (see T3_SEPARATE): the copy on the form on file's own date asks first; the manager says it is separate. */
+      expect(second.content).toMatch(ASKED_SAME_DAY);
+      const third = await thread.say(T3_SEPARATE);
+      expect(third.formProposal?.templateKey, third.content).toBe("dpoa");
+      expect(String((third.formProposal as { issue?: string } | undefined)?.issue ?? ""), third.content).toMatch(/closing cleaning checklist/);
     },
   },
 ];
