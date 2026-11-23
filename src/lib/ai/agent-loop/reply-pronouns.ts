@@ -18,10 +18,15 @@
  * examples are this module's unit tests.
  */
 
-const ALWAYS = /\b(?:he|him|his|she|her|hers|himself|herself)\b/gi;
+/*
+ * Reflexives (himself, herself, themself) are never replaced (port from the sibling app, its QA's live re-run, 23 Nov 2026:
+ * "did not clean up after themself" became "… after <name>", the person the object of their own action), as the saved
+ * write-up never replaces them (`employee-reference.ts`).
+ */
+const ALWAYS = /\b(?:he|him|his|she|her|hers)\b/gi;
 /** they/them in a person's place: someone told, asked, thanked; someone who quit, worked, said; "themself". */
 const THEY_PERSON =
-  /\b(?:tell|ask|let|remind|give|call|text|email|meet|thank|inform|notify|pay|schedule|fire|terminate|coach)\s+them\b|\bthey(?:'re|'ve|'ll|'d)?\s+(?:were|are|was|is|have|had|will|would|quit|resigned|left|worked|said|did|can|should|need|gave|told|missed|came)\b|\bthemsel(?:f|ves)\b/gi;
+  /\b(?:tell|ask|let|remind|give|call|text|email|meet|thank|inform|notify|pay|schedule|fire|terminate|coach)\s+them\b|\bthey(?:'re|'ve|'ll|'d)?\s+(?:were|are|was|is|have|had|will|would|quit|resigned|left|worked|said|did|can|should|need|gave|told|missed|came)\b/gi;
 /** A verb that reports what someone asked, said or wrote (in Sunny's reply): the clause after it is reported speech. */
 const REPORTING = /\b(?:asked|asking|told|telling|said|saying|stated|stating|reminded|reminding|messaged|messaging|texted|texting|emailed|wrote|writing|replied|replying|explained|explaining|claimed|claiming|admitted|admitting|wanted\s+to\s+know)\b/;
 /** Words that make "they/them" the form's fields or the card, when they come before it in the sentence. */
