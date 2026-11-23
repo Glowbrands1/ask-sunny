@@ -756,7 +756,13 @@ class Thread {
   private sequence = 0;
   private offeredCopy: OfferedCopy | undefined;
   // A well-formed client id, so the route keeps the intake state between turns (`isClientConversationId`).
-  private readonly conversationId = createId("conv");
+  readonly conversationId: string;
+  private readonly idPrefix: string;
+
+  constructor(options: { readonly conversationId?: string; readonly idPrefix?: string } = {}) {
+    this.conversationId = options.conversationId ?? createId("conv");
+    this.idPrefix = options.idPrefix ?? "m";
+  }
   /** PR 6 item 5: the thread asks for progress lines (`askProgress`); the last turn's statuses and stream version. */
   private progressAsked = false;
   lastProgress: string[] = [];
@@ -769,7 +775,7 @@ class Thread {
   async say(question: string, reading: Record<string, unknown> = {}, extra: Record<string, unknown> = {}): Promise<Answer> {
     state.reading = reading;
     const history = this.messages.map(({ id, role, content, formProposal }) => ({ id, role, content, ...(formProposal ? { formProposal } : {}) }));
-    const id = `m${(this.sequence += 1)}`;
+    const id = `${this.idPrefix}${(this.sequence += 1)}`;
     const pendingCopy = offeredCopyForTurn(this.offeredCopy, this.messages);
     this.offeredCopy = undefined;
     const response = await chatRoute.POST(
@@ -1109,7 +1115,7 @@ afterEach(() => {
 
 function context(): ReplayContext {
   return {
-    thread: () => new Thread(),
+    thread: (options) => new Thread(options),
     as: (role, scope, subject) => {
       setRole(role);
       setScope(scope);
