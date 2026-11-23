@@ -912,13 +912,13 @@ describe("the STC SD L10s", () => {
   });
 });
 
-// Madeline Patterson (DM L10), 23 Nov 2026, in her words:
+// The DM L10 facilitator, 23 Nov 2026, in their words:
 //  - "can you remove the timer setting on the L10 meetings? Currently, it moves us to the next section after a certain
 //    timeframe, even when we aren't ready yet."
 //  - the "Someone else changed this while you were editing" banner ("issues › GB for DM and Office use › resolvedAt")
 //    "throughout our meeting"
 //  - "i also cannot add IDS topics anymore to the DM l10 meeting."
-describe("DM L10 report, 23 Nov 2026 (Madeline Patterson)", () => {
+describe("DM L10 report, 23 Nov 2026 (the DM L10 facilitator)", () => {
   it('"it moves us to the next section after a certain timeframe, even when we aren\'t ready yet": the meeting stays on its section when the planned time is over', async () => {
     vi.useFakeTimers();
     renderView();

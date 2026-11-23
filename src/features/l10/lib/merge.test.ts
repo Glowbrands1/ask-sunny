@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { mergeThreeWay } from "./merge";
 
-// Madeline Patterson (DM L10 facilitator), 23 Nov 2026: the meeting page said "Someone else changed this while you were
+// The DM L10 facilitator, 23 Nov 2026: the meeting page said "Someone else changed this while you were
 // editing … issues › GB for DM and Office use › resolvedAt" and paused until she chose, all meeting.
 const issue = (over: Record<string, unknown>) => ({ id: "i1", title: "GB for DM and Office use", notes: "", resolved: false, ...over });
 

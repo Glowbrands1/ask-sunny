@@ -33,7 +33,7 @@ afterEach(() => {
 /**
  * Two people in the same meeting at once, against one shared stand-in for the Hub's record (version-checked saves,
  * like the real one): nothing either of them does is lost, nobody sees a banner, nothing freezes.
- * Madeline Patterson (DM L10), 23 Nov 2026, and the owner: "when someone type something at the same time it should not
+ * The DM L10 facilitator, 23 Nov 2026, and the owner: "when someone type something at the same time it should not
  * show that banner but instead save both their work".
  */
 function sharedHub(doc: Record<string, unknown>) {

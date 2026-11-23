@@ -32,7 +32,7 @@ export function mergeThreeWay(base: Json, local: Json, remote: Json, path = "", 
     const merged: Record<string, Json> = {};
     const conflicts: string[] = [];
     // Two people solving the same issue is not a clash: both wanted it solved, and only the clock time they pressed
-    // Solve differs (Madeline Patterson, 23 Nov 2026: "issues › … › resolvedAt" stopped her page all meeting). The
+    // Solve differs (the DM L10 facilitator, 23 Nov 2026: "issues › … › resolvedAt" stopped the page all meeting). The
     // earlier solve time and the other person's session are kept. Solved by one and reopened by the other still asks.
     const bothSolved = local.resolved === true && remote.resolved === true;
     for (const k of keys) {
