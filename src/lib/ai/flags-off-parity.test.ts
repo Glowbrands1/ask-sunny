@@ -1288,6 +1288,13 @@ describe("new flags default off and wrappers are inert", () => {
           // HR approval of forms (owner request, 23 Nov 2026, both apps): the approval panel, HR's tab and Overview
           // card, the manager's "Your forms with HR" list, and the review page. Behind FORMS_HR_APPROVAL_ENABLED:
           // off, the server sends no approval data, so none of them renders and the page answers 404.
+          // Then (Pau, via QA, 23 Nov 2026, QA approved, both apps): "when manager replies in note, there should be
+          // approve button here please and notify manager ... then the manager once sent back, will have option to print
+          // and save as PDF" — the panel's Approve beside Add note, the card's Print beside Download PDF (inline-form.tsx,
+          // above); and "its so small pending approval, make it red button and animated shaking if theres a pending" —
+          // HR's tab in hr-approval-lists.tsx and its .hr-pending-shake in globals.css (below), off under reduced motion.
+          // The Approve button and the tab are behind the same flag: off, no approval data, so neither renders. Print
+          // shows on any finalized form and opens the same server PDF as Download PDF.
           ":(exclude)src/features/forms/hr-approval-panel.tsx",
           ":(exclude)src/features/forms/hr-approval-lists.tsx",
           ":(exclude)src/features/forms/hr-approval-screen.tsx",

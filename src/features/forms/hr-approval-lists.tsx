@@ -8,10 +8,15 @@ import { formatBusinessTime } from "@/lib/business-date";
  * HR APPROVAL ON FORM MONITORING (FORMS_HR_APPROVAL_ENABLED). Server-rendered
  * from rows the page read for this reader only:
  *
- *   HrApprovalTabs  "All forms" and "Pending HR approval (N)", shown to HR only, and
+ *   HrApprovalTabs  "All forms" and "Pending HR approval (N)", shown to HR only;
+ *                   with N > 0 a red button that shakes every few seconds (Pau,
+ *                   via QA, 23 Nov 2026: "its so small pending approval, make it
+ *                   red button and animated shaking if theres a pending"); and
  *                   "Bubbles approvals ↗" for those who also get the app switcher
- *   HrQueueList     HR's tab: waiting forms oldest first (overdue marked), then
- *                   the ones they sent back or rejected
+ *   HrQueueList     HR's tab: "Needs your decision" — waiting forms oldest first
+ *                   (overdue marked), then sent-back forms the manager replied to
+ *                   ("Manager replied to changes") — exactly the rows N counts;
+ *                   then "Waiting on the manager": sent back or rejected
  *   MyFormsWithHr   the manager's own forms that HR has not approved yet
  */
 
@@ -23,6 +28,17 @@ export interface HrQueueListRow {
   requestedAt: string | null;
   waiting: string;
   overdue: boolean;
+  /** Sent back, and the manager has replied since: needs HR's decision (Pau, via QA, 23 Nov 2026). */
+  managerReplied?: boolean;
+}
+
+/** Whether this row needs HR's decision now; what the tab's number counts (`needsHrDecision` on the server). */
+function needsDecision(row: HrQueueListRow): boolean {
+  return row.state === "pending" || row.managerReplied === true;
+}
+
+function stateWords(row: HrQueueListRow): string {
+  return row.managerReplied ? "Manager replied to changes" : STATE_WORDS[row.state];
 }
 
 export interface MyHrFormListRow {
@@ -61,18 +77,33 @@ export function HrApprovalTabs({
   bubblesApprovalsHref?: string | null;
 }) {
   const tab = (selected: boolean) =>
-    `inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs ${
+    `inline-flex items-center gap-1.5 rounded-full border px-4 py-2 text-sm font-medium ${
       selected ? "border-foreground bg-foreground text-background" : "border-border text-muted-foreground hover:text-foreground"
     }`;
+  /*
+   * Pau: "its so small pending approval, make it red button and animated shaking if theres a pending". With anything
+   * needing HR, a real button in the danger colour, shaking briefly every few seconds (`.hr-pending-shake`, off under
+   * prefers-reduced-motion); with nothing, the ordinary tab.
+   */
+  const urgent = pending !== null && pending > 0;
+  const pendingClass = urgent
+    ? "hr-pending-shake inline-flex items-center gap-2 rounded-[var(--radius-md)] border border-status-failed bg-status-failed px-4 py-2 text-sm font-semibold text-white shadow-sm hover:opacity-90"
+    : tab(active === "hr");
   return (
-    <nav aria-label="Form Monitoring views" className="mb-4 flex flex-wrap gap-2">
+    <nav aria-label="Form Monitoring views" className="mb-4 flex flex-wrap items-center gap-2">
       <Link href="/forms/monitoring" className={tab(active === "all")} aria-current={active === "all" ? "page" : undefined}>
         All forms
       </Link>
       {pending !== null ? (
-        <Link href="/forms/monitoring?view=hr" className={tab(active === "hr")} aria-current={active === "hr" ? "page" : undefined}>
+        <Link
+          href="/forms/monitoring?view=hr"
+          className={pendingClass}
+          aria-current={active === "hr" ? "page" : undefined}
+          data-testid="hr-pending-tab"
+          data-urgent={urgent ? "true" : "false"}
+        >
           Pending HR approval ({pending})
-          {overdue > 0 ? <span className="font-semibold text-status-attention">· {overdue} overdue</span> : null}
+          {overdue > 0 ? <span className={urgent ? "font-semibold" : "font-semibold text-status-attention"}>· {overdue} overdue</span> : null}
         </Link>
       ) : null}
       {bubblesApprovalsHref ? (
@@ -88,8 +119,31 @@ export function HrQueueList({ rows }: { rows: HrQueueListRow[] }) {
   if (rows.length === 0) {
     return <p className="text-sm text-muted-foreground">No forms are waiting for your approval.</p>;
   }
+  const decide = rows.filter(needsDecision);
+  const onManager = rows.filter((row) => !needsDecision(row));
   return (
-    <ul className="divide-y divide-border rounded-[var(--radius-md)] border border-border" data-testid="hr-queue">
+    <div className="space-y-4">
+      <section aria-label="Needs your decision" data-testid="hr-queue-decide">
+        <h2 className="mb-2 text-sm font-semibold text-foreground">Needs your decision ({decide.length})</h2>
+        {decide.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No forms are waiting for your approval.</p>
+        ) : (
+          <QueueRows rows={decide} testId="hr-queue" />
+        )}
+      </section>
+      {onManager.length > 0 ? (
+        <section aria-label="Waiting on the manager" data-testid="hr-queue-on-manager">
+          <h2 className="mb-2 text-sm font-semibold text-foreground">Waiting on the manager ({onManager.length})</h2>
+          <QueueRows rows={onManager} testId="hr-queue-sent-back" />
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
+function QueueRows({ rows, testId }: { rows: HrQueueListRow[]; testId: string }) {
+  return (
+    <ul className="divide-y divide-border rounded-[var(--radius-md)] border border-border" data-testid={testId}>
       {rows.map((row) => (
         <li key={row.id}>
           <Link href={hrHref(row.id)} className="flex items-center gap-3 px-3 py-2.5 hover:bg-surface-muted">
@@ -101,8 +155,8 @@ export function HrQueueList({ rows }: { rows: HrQueueListRow[] }) {
               </p>
             </div>
             <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
-              <Badge tone={row.state === "pending" ? "accent" : "outline"} size="sm">
-                {STATE_WORDS[row.state]}
+              <Badge tone={needsDecision(row) ? "accent" : "outline"} size="sm">
+                {stateWords(row)}
               </Badge>
               {row.state === "pending" ? <span className="text-xs text-subtle-foreground">{row.waiting}</span> : null}
               {row.overdue ? (

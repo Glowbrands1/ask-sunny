@@ -23,6 +23,9 @@ describe("Form Monitoring's Bubbles approvals tab (Pau, 23 Nov 2026)", () => {
     expect(tab.getAttribute("href")).toBe(HREF);
     // A link only: no count on it.
     expect(tab.textContent).not.toMatch(/\d/);
+    // #1288's red shaking "Pending HR approval" stays; the Bubbles tab after it is an ordinary tab.
+    expect(screen.getByTestId("hr-pending-tab").getAttribute("data-urgent")).toBe("true");
+    expect(tab.className).not.toMatch(/hr-pending-shake|status-failed/);
   });
 
   it("is not there for someone without the app switcher", () => {
