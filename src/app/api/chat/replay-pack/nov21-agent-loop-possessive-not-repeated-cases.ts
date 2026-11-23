@@ -23,7 +23,7 @@ const ACCOUNT_TOLD = "Her shift lead, Corin Vale, told her to go home and she re
 export const NOV21_AGENT_LOOP_POSSESSIVE_NOT_REPEATED_CASES: ReplayCase[] = [
   {
     id: "nov21-possessive-not-repeated-reply-and-card",
-    title: `QA2's R3: "${SAID}": the reply and the card's issue read "to show the team the new puppy", never "Remy's team Remy's new puppy"`,
+    title: `QA2's R3: "${SAID}": the reply and the card's issue read "to show Remy's team the new puppy", never "Remy's team Remy's new puppy"`,
     report: REPORT,
     status: "fixed",
     fixFlags: [FLAG],
@@ -53,7 +53,8 @@ export const NOV21_AGENT_LOOP_POSSESSIVE_NOT_REPEATED_CASES: ReplayCase[] = [
       for (const [where, text] of [["reply", reply.content], ["card issue", issue]] as const) {
         expect(text, `${where} repeats the possessive:\n${text}`).not.toMatch(/Remy's team Remy's/);
         expect(text, `${where} keeps a pronoun:\n${text}`).not.toMatch(/\bher\b/);
-        expect(text, `${where}:\n${text}`).toMatch(/to show the team the new puppy/);
+        /* CHANGED ON PURPOSE (port of Ask Bubbles #1075; QA's ruling, 22 Nov 2026, Pau's round 3 U23, option B in the card/reply pass only): the first possessive keeps its owner, the second is "the"; the saved write-up keeps HR's "the team". Was /to show the team the new puppy/. */
+        expect(text, `${where}:\n${text}`).toMatch(/to show Remy's team the new puppy/);
       }
     },
   },

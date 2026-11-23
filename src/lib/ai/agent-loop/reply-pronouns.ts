@@ -245,7 +245,16 @@ export function withoutPersonPronouns(
     const notReported = !REPORTING.test(clauseBefore.toLowerCase());
     /* Only an object ("show her team", "team her new puppy"): never one opening a clause ("and her shift …") or after "with"/"of". */
     const opensClause = clauseBefore.trim() === "" || /\b(?:and|but|or|so|then|with|of)[ \t]+$/i.test(clauseBefore);
-    if (again && owns && word !== "hers" && (afterPreposition || (notReported && !opensClause))) {
+    /*
+     * Port of Ask Bubbles #1075 (9ce649e; QA's ruling, 22 Nov 2026, Pau's round 3 U23: "her personal life" became "the
+     * personal life"): the first possessive of the person already named keeps its owner ("<Name>'s"); "the" only after a
+     * place or time preposition (item 19: the closed set just above) or once this sentence already said whose ("show
+     * <P>'s team the new puppy"). QA's ruling (B): this is the chat's card and reply only; the saved write-up keeps HR's
+     * design (`employee-reference.ts`, 3 Oct 2026), so the two may now differ on a possessive, by design.
+     */
+    const sentenceStart = at - sentenceBefore(reply, at).length;
+    const ownerSaid = new RegExp(`${possessive(display).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}])`, "iu").test(sentenceBefore(reply, at)) || edits.some((edit) => edit.from >= sentenceStart && edit.from < at && edit.text === possessive(display));
+    if (again && owns && word !== "hers" && (afterPreposition || (ownerSaid && notReported && !opensClause))) {
       edits.push({ from: at, to: end, text: match[0][0] === match[0][0]!.toUpperCase() ? "The" : "the" });
       continue;
     }
