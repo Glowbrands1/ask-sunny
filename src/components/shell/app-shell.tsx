@@ -117,7 +117,15 @@ export function AppShell({
               Demo
             </Badge>
           ) : null}
-          {bell ? <NotificationBell data={bell} /> : null}
+          {/*
+            On phones the bell stays here; on desktop it is the rail's first item (sidebar.tsx), as in Ask Bubbles
+            (Pau, 23 Nov 2026: "why no notification for [the approver]? should be same as bubbles").
+          */}
+          {bell ? (
+            <span className="lg:hidden">
+              <NotificationBell data={bell} />
+            </span>
+          ) : null}
           <Dialog>
             <DialogTrigger asChild>
               <Button
@@ -183,6 +191,7 @@ export function AppShell({
           showAppSwitcher={showAppSwitcher}
           showLeadershipHub={showLeadershipHub}
           meetingTabs={meetingTabs}
+          bell={bell}
         />
         </div>
       </aside>

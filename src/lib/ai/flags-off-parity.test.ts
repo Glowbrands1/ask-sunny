@@ -1299,6 +1299,11 @@ describe("new flags default off and wrappers are inert", () => {
           // or with a notification; its mount line is in app-shell.tsx and its read in layout.tsx, both
           // excluded above. No chat or form behaviour changes.
           ":(exclude)src/features/notifications",
+          // The bell as the rail's first item on desktop, as in Ask Bubbles (Pau, 23 Nov 2026, as an HR approver: "why
+          // no notification for [the approver]? should be same as bubbles … for the form acceptance"): the rail variant
+          // in notification-bell.tsx, its mount in sidebar.tsx, and app-shell.tsx keeping the top-bar bell for phones
+          // only. All three paths are already excluded here; the same people get the same panel. No chat or form
+          // behaviour changes.
           // Times shown in the business zone (CT) (Pau via QA, 15 Nov 2026: "The whole app and chat should be in CT"):
           // display formatting only, on purpose and not behind a flag; the stored values stay UTC.
           ":(exclude)src/features/admin/analytics/feedback-queue.tsx",

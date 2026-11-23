@@ -7,6 +7,8 @@ import { CalendarCheck, ChevronsLeft, Lock } from "lucide-react";
 import { BrandMark, SunMark } from "@/components/brand-mark";
 import { Tooltip } from "@/components/ui/overlays";
 import { useSession } from "@/lib/session/session-context";
+import { NotificationBell } from "@/features/notifications/notification-bell";
+import type { BellData } from "@/lib/notifications/types";
 import { cn } from "@/lib/utils/cn";
 import { AppSwitcher } from "./app-switcher";
 import { NAV_SECTIONS, isActivePath } from "./navigation";
@@ -21,6 +23,7 @@ export function SidebarNav({
   showAppSwitcher = false,
   showLeadershipHub = false,
   meetingTabs = [],
+  bell = null,
 }: {
   collapsed?: boolean;
   onToggleCollapse?: () => void;
@@ -37,6 +40,12 @@ export function SidebarNav({
    * meetings this person attends and Ask Sunny may open. Not a boundary: the page and every action re-check.
    */
   meetingTabs?: { href: string; label: string }[];
+  /**
+   * The signed-in person's notifications (the layout's `bellForLayout`). On desktop the bell is the rail's first
+   * item, as in Ask Bubbles (Pau, 23 Nov 2026); on phones the top bar shows it (app-shell.tsx), so the drawer does
+   * not repeat it. Null: no bell.
+   */
+  bell?: BellData | null;
 }) {
   const pathname = usePathname();
   const { can, isAdmin, demoMode } = useSession();
@@ -111,6 +120,7 @@ export function SidebarNav({
         aria-label="Main"
         className="scroll-slim flex-1 overflow-y-auto px-3 py-4"
       >
+        {bell && variant === "desktop" ? <NotificationBell data={bell} variant="rail" collapsed={isCollapsed} /> : null}
         {sections.map((section) => (
           <div key={section.id} className="mb-5 last:mb-0">
             {!isCollapsed ? (
