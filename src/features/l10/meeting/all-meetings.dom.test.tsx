@@ -87,6 +87,33 @@ describe.each(MEETING_KEYS.map((k) => [k]))("meeting %s", (key) => {
     expect((save.mock.calls[1] as unknown as [string, number])[1]).toBe(7);
     expect(screen.queryByText(/Someone else changed this/)).toBeNull();
     expect(document.querySelector("[inert]")).toBeNull();
+    // Not silent either: a small note says the other person's change and mine were both kept, and it blocks nothing.
+    expect(screen.getByTestId("merge-note").textContent).toMatch(/Both sets of changes are saved/);
     await waitFor(() => expect(screen.getByTestId("save-status").textContent).toBe("All changes saved"));
+  });
+
+  it("says so when live updates stop arriving, and when they are back", async () => {
+    vi.useFakeTimers();
+    const load = vi.fn<LoadFn>().mockRejectedValue(new Error("down"));
+    render(<MeetingView info={keyInfo} initial={loaded()} save={vi.fn() as unknown as SaveFn} end={vi.fn() as unknown as EndFn} load={load as unknown as LoadFn} viewer={viewer} roster={roster} hubMeetingUrl={HUB} pollMs={1000} debounceMs={0} today="2026-11-13" dateLabel="Fri, Nov 13" />);
+    expect(screen.queryByTestId("sync-offline")).toBeNull();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3500);
+    });
+    expect(screen.getByTestId("sync-offline")).toBeTruthy();
+    load.mockResolvedValue({ ok: true, loaded: loaded(3) });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+    expect(screen.queryByTestId("sync-offline")).toBeNull();
+  });
+
+  it("sends an edit that is still waiting for its save when the page is left", async () => {
+    const save = vi.fn<() => Promise<SaveOutcome>>().mockResolvedValue({ ok: true, version: 4, updatedAt: "t" });
+    const { unmount } = render(<MeetingView info={keyInfo} initial={loaded()} save={save as unknown as SaveFn} end={vi.fn() as unknown as EndFn} viewer={viewer} roster={roster} hubMeetingUrl={HUB} pollMs={0} debounceMs={60_000} today="2026-11-13" dateLabel="Fri, Nov 13" />);
+    fireEvent.click(screen.getByRole("button", { name: "Start meeting" }));
+    expect(save).not.toHaveBeenCalled(); // still inside the wait before the save
+    unmount();
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
   });
 });

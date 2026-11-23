@@ -99,7 +99,7 @@ export function MeetingView({
   const refuse = { ok: false as const, kind: "forbidden" as const, message: "This is an old version and cannot be changed." };
   const saveFn: SaveFn = readOnly || !save ? async () => refuse : save;
   const endFn: EndFn = readOnly || !end ? async () => refuse : end;
-  const { doc, edit, status, retry, flushNow, serverNow } = useMeetingSync({ meetingKey: info.key, initial, save: saveFn, load, serverTime, debounceMs, pollMs });
+  const { doc, edit, status, offline, mergeNote, dismissMergeNote, retry, flushNow, serverNow } = useMeetingSync({ meetingKey: info.key, initial, save: saveFn, load, serverTime, debounceMs, pollMs });
 
   const [sectionElapsed, setSectionElapsed] = useState<Partial<Record<AgendaKey, number>>>({});
   const [extras, setExtras] = useState<Partial<Record<AgendaKey, number>>>({});
@@ -259,7 +259,11 @@ export function MeetingView({
         return false;
       }
       edit((d) => ({ ...d, issues: markRecapped(d.issues, sessionKey, id), timer: endedTimer(readTimer(d), serverNow()) }));
-      await flushNow();
+      if (!(await flushNow())) {
+        // The recap is saved, but the "meeting ended" mark on the shared page is not: say so rather than leave quietly.
+        setEndError("The recap is saved, but this page could not save that the meeting has ended. Check the save status and try again.");
+        return false;
+      }
       return true;
     } catch {
       setEndError("The recap was not saved. Nothing was lost: try again.");
@@ -342,6 +346,19 @@ export function MeetingView({
         </div>
         )}
       </header>
+      {offline && !readOnly && (
+        <p role="status" data-testid="sync-offline" className="m-0 rounded-lg bg-warn/30 px-4 py-2 text-sm font-semibold">
+          Not live: this page cannot reach the meeting right now, so other people&rsquo;s changes are not showing. Your changes are kept and will save when it is back.
+        </p>
+      )}
+      {mergeNote && (
+        <p role="status" data-testid="merge-note" className="m-0 flex flex-wrap items-center gap-2 rounded-lg bg-cream px-4 py-2 text-sm">
+          <span>Someone else was editing too. Both sets of changes are saved; where you changed the same thing, yours was kept ({mergeNote.join("; ")}).</span>
+          <Button variant="link" onClick={dismissMergeNote}>
+            Dismiss
+          </Button>
+        </p>
+      )}
 
       {readOnly && (
         <div role="note" data-testid="history-banner" className="rounded-[10px] border-2 border-ink bg-sunny px-4 py-3 text-sm font-semibold">
@@ -534,7 +551,7 @@ export function MeetingView({
             {view === "business-best" && <BusinessBest attendees={attendees} onChange={(next) => edit((d) => ({ ...d, attendees: keepHiddenAttendees(d.attendees, next) }))} />}
             {view === "scorecard" && <Scorecard doc={doc} edit={edit} people={people} bloom={bloom} today={today} {...(bloom ? { wide: scorecardWide, onWide: setScorecardWide } : {})} salons={salonsFor(key)} />}
             {view === "rocks" && <Rocks rocks={doc.rocks} onChange={(rocks) => edit((d) => ({ ...d, rocks }))} people={people} ownerOptions={owners} today={today} saveStatus={statusText(status)} bloom={bloom} />}
-            {view === "headlines" && <Headlines headlines={doc.headlines} onChange={(headlines) => edit((d) => ({ ...d, headlines }))} author={people[0] ?? ""} />}
+            {view === "headlines" && <Headlines headlines={doc.headlines} onChange={(headlines) => edit((d) => ({ ...d, headlines }))} author={myName || (people[0] ?? "")} />}
             {view === "todos" && <Todos todos={doc.todos} onChange={(todos) => edit((d) => ({ ...d, todos }))} people={owners} today={today} bloom={bloom} />}
             {view === "ids" && <Ids doc={doc} edit={edit} session={timer.sessionId ?? "pending"} meetingKey={info.key} voter={{ id: viewer.id, name: viewer.name || viewer.label }} attendees={attendees} addedBy={myName} headlines={agenda.some((a) => a.key === "headlines")} rocks={agenda.some((a) => a.key === "rocks")} bloom={bloom} people={owners} />}
             {view === "conclude" && !(bloom && !timer.started) && (

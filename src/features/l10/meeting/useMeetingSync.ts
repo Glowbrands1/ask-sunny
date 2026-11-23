@@ -44,6 +44,10 @@ export function useMeetingSync({ meetingKey, initial, save, load, serverTime, po
   const [doc, setDoc] = useState<MeetingDoc>(() => readDoc(initial.doc));
   const [status, setStatus] = useState<SyncStatus>({ kind: initial.version === 0 ? "empty" : "saved" });
   const [tick, setTick] = useState(0);
+  // Said out loud instead of silently: live updates have stopped arriving, or a teammate's change was replaced by mine.
+  const [offline, setOffline] = useState(false);
+  const [mergeNote, setMergeNote] = useState<string[] | null>(null);
+  const pollFailures = useRef(0);
 
   const docRef = useRef<MeetingDoc>(doc);
   const baseRef = useRef<{ version: number; doc: MeetingDoc }>({ version: initial.version, doc: readDoc(initial.doc) });
@@ -98,7 +102,9 @@ export function useMeetingSync({ meetingKey, initial, save, load, serverTime, po
       // at the same time"). Their changes and mine are merged item by item; where we changed the very same value, mine
       // (the latest save) wins. Saved on top of theirs right away.
       const remote = readDoc(res.latest.doc);
-      const merged = readDoc(mergeThreeWay(baseRef.current.doc, docRef.current, remote, "", "local").merged as Record<string, unknown>);
+      const result = mergeThreeWay(baseRef.current.doc, docRef.current, remote, "", "local");
+      const merged = readDoc(result.merged as Record<string, unknown>);
+      if (result.conflicts.length) setMergeNote(result.conflicts.slice(0, 3));
       baseRef.current = { version: res.latest.version, doc: remote };
       docRef.current = merged;
       setDoc(merged);
@@ -114,6 +120,21 @@ export function useMeetingSync({ meetingKey, initial, save, load, serverTime, po
     return () => clearTimeout(t);
   }, [tick, flush, debounceMs]);
 
+  // Leaving the page (a link inside the app, a tab closing) with an edit still waiting for its save must not lose it: the
+  // debounce above is cancelled on the way out, so send what is pending now (the Hub's silent-failure audit, 23 Nov 2026).
+  const flushRef = useRef(flush);
+  useEffect(() => {
+    flushRef.current = flush;
+  });
+  useEffect(() => {
+    const sendPending = () => void flushRef.current();
+    window.addEventListener("pagehide", sendPending);
+    return () => {
+      window.removeEventListener("pagehide", sendPending);
+      sendPending();
+    };
+  }, []);
+
   // Keep this screen in step with the rest of the meeting: look for a newer version every few seconds and when the
   // window regains focus. A screen with unsaved edits of its own is left alone; its next save merges instead.
   useEffect(() => {
@@ -127,9 +148,16 @@ export function useMeetingSync({ meetingKey, initial, save, load, serverTime, po
         res = await load(meetingKey);
         noteServerTime(res.serverTime);
       } catch {
+        if (++pollFailures.current >= 3) setOffline(true);
         return;
       }
-      if (stopped || !res.ok || res.loaded.version <= baseRef.current.version || !clean()) return;
+      if (!res.ok) {
+        if (++pollFailures.current >= 3) setOffline(true);
+        return;
+      }
+      pollFailures.current = 0;
+      setOffline(false);
+      if (stopped || res.loaded.version <= baseRef.current.version || !clean()) return;
       const remote = readDoc(res.loaded.doc);
       baseRef.current = { version: res.loaded.version, doc: remote };
       docRef.current = remote;
@@ -164,5 +192,6 @@ export function useMeetingSync({ meetingKey, initial, save, load, serverTime, po
     return () => window.removeEventListener("beforeunload", warn);
   }, [unsaved]);
 
-  return { doc, edit, status, retry, flushNow, serverNow };
+  const dismissMergeNote = useCallback(() => setMergeNote(null), []);
+  return { doc, edit, status, offline, mergeNote, dismissMergeNote, retry, flushNow, serverNow };
 }
