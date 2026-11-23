@@ -295,6 +295,7 @@ import {
   resolveFormDate,
 } from "@/lib/forms/form-date-grounding";
 import { unreadDayBrief, unreadDayNotice, unreadIncidentDay } from "@/lib/forms/unread-day-date";
+import { heldForHr } from "@/lib/forms/hr-approval-rules";
 
 /**
  * POST /api/forms/instances/[id]/draft
@@ -437,6 +438,13 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
     if (loaded.instance.status !== "draft") {
       return NextResponse.json(
         { error: "This form is finalized. Create a revision to change it." },
+        { status: 409 },
+      );
+    }
+    // HR APPROVAL: a form waiting for HR is changed only by HR until they send it back.
+    if (heldForHr(loaded.instance.hrApprovalState)) {
+      return NextResponse.json(
+        { error: "This form is waiting for HR approval. You can change it again if HR sends it back.", code: "HELD_FOR_HR" },
         { status: 409 },
       );
     }
