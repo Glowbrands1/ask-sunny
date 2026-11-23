@@ -348,6 +348,62 @@ export const NOV23_EXIT_ON_FILE_NEVER_DUPLICATED_CASES: ReplayCase[] = [
       expect(reply.content).toBe("Rhea already has a Corrective Action for 11/16 (finalized). Do you want to open that one, or is this a separate incident?");
       await thread.say(SEPARATE);
       expect(thread.proposal?.templateKey, `the manager's answer did not make the card:\n${JSON.stringify(outs.at(-1)).slice(0, 600)}`).toBe("dpoa");
+      /* Control (the sibling app's case): the loop cleared that date, so Create, the last gate, never asks again. */
+      expect(await thread.create(), "Create did not save after the manager said it is a separate incident").toBeTruthy();
     },
   })),
+  {
+    id: "nov23-same-incident-copy-without-date-is-asked",
+    title: "QA's live check on the sibling app (24 Nov 2026), on Sunny: \"create a verbal CA for rhea cotter with all the same information given\" reads her 11/16 CA and proposes the copy with NO date (as the live model did): no card; the reply asks about the 11/16 one",
+    report: "QA's live check on the sibling app (24 Nov 2026): the copy's card had no form date, so the same-date check had nothing to compare and a second CA went up with no warning",
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.() || process.env.AGENT_LOOP_LIVE === "1") return;
+      start(t, false);
+      const ask = "create a verbal CA for rhea cotter with all the same information given";
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        const result = lastResult(view, "propose_form") as (ProposeOut & { card?: unknown }) | null;
+        if (result?.card) return { text: "Here's the Corrective Action Form for **Rhea**." };
+        if (result) return { text: result.ask_exactly ?? `refused: ${result.reason_code}` };
+        if (!lastResult(view, "read_form")) return { tool: "read_form", input: { instance_id: "ca-rhea-1116", forms_on_file_evidence: evidenceFrom(view, ask) } };
+        return {
+          tool: "propose_form",
+          input: { template_key: "dpoa", employee_id: RHEA.id, person_evidence: evidenceFrom(view, "rhea cotter"), warning_level: "verbal", level_evidence: evidenceFrom(view, "a verbal CA"), observation: "Rhea was late to open the salon." },
+        };
+      }));
+      const thread = t.thread();
+      const reply = await thread.say(ask);
+      expect(thread.proposal ?? null, `a second CA went up with no word of the 11/16 one:\n${reply.content}`).toBeNull();
+      expect(reply.content).toContain("Rhea already has a Corrective Action for 11/16 (finalized). Do you want to open that one, or is this a separate incident?");
+    },
+  },
+  {
+    id: "nov23-same-incident-create-is-held-at-the-last-gate",
+    title: "Create, the last gate (the sibling app's case): Rhea's CA card for 11/22 is made with nothing on file that day; a CA for her 11/22 is then filed in another of this manager's chats (an Assistant Salon Director sees her own forms); Create is held with the same question, and no second form is saved",
+    report: "QA's live check on the sibling app (24 Nov 2026): the same check at Create, when the form date is known, catches every path",
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.() || process.env.AGENT_LOOP_LIVE === "1") return;
+      start(t, false);
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        const result = lastResult(view, "propose_form") as ProposeOut | null;
+        if (result) return { text: result.ask_exactly ?? "Here's the Corrective Action Form for **Rhea**." };
+        return { tool: "propose_form", input: { template_key: "dpoa", employee_id: RHEA.id, person_evidence: evidenceFrom(view, "rhea cotter"), incident_date: "11/22/2026", observation: "Rhea was late to open.", warning_level: "verbal", level_evidence: evidenceFrom(view, "a verbal CA") } };
+      }));
+      const thread = t.thread();
+      await thread.say("write a verbal CA for rhea cotter, she was late to open on 11/22");
+      expect(thread.proposal?.templateKey, "no 11/22 card (the case proves nothing)").toBe("dpoa");
+      (t.forms() as Row[]).push({
+        id: "ca-rhea-1122", ...t.templateIds!("dpoa"), variant_key: null, employee_role: null, location_id: KEARNEY.primaryAreaId, location_name: "NE Kearney",
+        created_by: ASD, created_by_role: "assistant_salon_director", source: "ask_sunny", status: "draft", follow_up_date: null, archived_at: null,
+        revises_instance_id: null, template_key: "dpoa", template_name: "Corrective Action Form", employee_name: "Rhea Cotter", form_date: "2026-11-22",
+        created_at: "2026-11-23T17:30:00Z", updated_at: "2026-11-23T17:30:00Z",
+      });
+      const before = (t.forms() as Row[]).length;
+      await expect(thread.create(), "Create saved a second CA for 11/22").rejects.toThrow(/Rhea already has a Corrective Action for 11\/22 \(a draft\)\. Do you want to open that one, or is this a separate incident\?/);
+      expect((t.forms() as Row[]).length, "a form was saved").toBe(before);
+    },
+  },
 ];

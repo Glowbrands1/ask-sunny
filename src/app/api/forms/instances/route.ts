@@ -298,6 +298,35 @@ export async function POST(request: Request) {
       if (!currency.current) {
         return NextResponse.json({ error: currency.reason, code: "proposal_superseded" }, { status: 409 });
       }
+      /*
+       * THE LAST GATE FOR THE SAME INCIDENT (QA's live check on the sibling app, 24 Nov 2026: "create a verbal CA for <P>
+       * with all the same information given" put up a second CA with no date on the card, so the agent loop had nothing to
+       * compare). A Corrective Action or Coaching card the loop made is held here when this person (by name, as the card
+       * names them) already has that form on file for the date the form will be saved with (a form filed since the card
+       * was made counts), unless the manager said that date is a separate incident (the loop's record). The reply's own
+       * question.
+       */
+      const { appConfig } = await import("@/lib/ai/agent-loop/app-config");
+      const sameDayKinds = new Set([appConfig().formKeys.corrective, appConfig().formKeys.coaching]);
+      const saveDate = isIsoCalendarDate(body.formDate) ? body.formDate : businessToday();
+      if (settlement && sameDayKinds.has(body.templateKey) && settlement.sameIncidentChecked !== saveDate) {
+        const [{ formsOnFileSameDay, sameDayOnFileQuestion }, { candidateNameWords }, { samePerson }] = await Promise.all([
+          import("@/lib/forms/same-incident"),
+          import("@/lib/forms/chat-form-records"),
+          import("@/lib/forms/proposal"),
+        ]);
+        const cardName = body.employeeName ?? "";
+        const onFile = await formsOnFileSameDay(actor, {
+          nameWords: candidateNameWords(cardName),
+          isPerson: (name) => samePerson(name, cardName) || settlement.isSettledName(name),
+          templateKey: body.templateKey,
+          formDate: saveDate,
+        });
+        if (onFile.length > 0) {
+          const first = cardName.trim().split(/\s+/)[0] || cardName;
+          return NextResponse.json({ error: sameDayOnFileQuestion(first, template.name, onFile), code: "same_incident_on_file" }, { status: 409 });
+        }
+      }
     }
 
     /*
