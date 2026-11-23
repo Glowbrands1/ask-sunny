@@ -164,8 +164,12 @@ export interface ReplayContext {
   loopOn?(): boolean;
   /** AGENT_LOOP_ENABLED: the loop really answers this case's turns (the flag on, a stand-in model, the manager listed). */
   loopActive?(): boolean;
-  /** AGENT_LOOP_ENABLED: the loop's stand-in model for this case (`loop-stand-in.ts`); lists the signed-in manager in AGENT_LOOP_USERS. */
-  loopModel?(standIn: import("./loop-stand-in").LoopStandIn): void;
+  /**
+   * AGENT_LOOP_ENABLED: the loop's stand-in model for this case (`loop-stand-in.ts`); lists the signed-in manager in
+   * AGENT_LOOP_USERS. `scripted` (QA, 22 Nov 2026): the stand-in even in an AGENT_LOOP_LIVE run, for a case whose point is
+   * the app's own path around a model behaviour no real model can be made to show (a turn that stalls past the time limit).
+   */
+  loopModel?(standIn: import("./loop-stand-in").LoopStandIn, options?: { scripted?: boolean }): void;
   /** AGENT_LOOP_ENABLED: find_staff's roster read fails from now on. */
   rosterFails?(): void;
   /**

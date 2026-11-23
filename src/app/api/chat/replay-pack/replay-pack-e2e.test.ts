@@ -1241,12 +1241,12 @@ function context(): ReplayContext {
       ),
     draftReplies: () => [...draftReplies],
     loopOn: () => process.env.AGENT_LOOP_ENABLED === "true",
-    loopModel: (standIn) => {
+    loopModel: (standIn, options) => {
       loop.standIn = standIn;
       // The loop's inactive_in_woven fact reads the whole directory (terminated people too) through its own seam.
       __setAgentLoopDirectoryForTests(async () => state.directory as never);
       // AGENT_LOOP_LIVE (dev, opt-in): the real model, recorded into the case's stand-in (`liveRecording`).
-      __setAgentLoopModelForTests(liveModel ? liveRecording(standIn, liveModel) : standIn.model);
+      __setAgentLoopModelForTests(liveModel && !options?.scripted ? liveRecording(standIn, liveModel) : standIn.model);
       // The loop runs only for listed users (an empty list is nobody): this case's signed-in manager is listed.
       if (!loop.listed) {
         loop.users = process.env.AGENT_LOOP_USERS;
