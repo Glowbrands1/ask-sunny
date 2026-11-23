@@ -34,7 +34,7 @@ import {
  * The rules (who sees what, which forms, Central-time business days) are in
  * `hr-approval-rules.ts`. This file does the writes:
  *
- *   send      the manager's "Finalize and send for approval": Finalize's own
+ *   send      the manager's "Finalize and send to HR for approval": Finalize's own
  *             checks run first (required fields, unverified policy), then the
  *             form is marked pending and HR's bell rings. Still a draft.
  *   decide    HR approves (the form is finalized as Finalize always did, and
@@ -113,7 +113,7 @@ async function displayName(appUserId: string): Promise<string> {
   }
 }
 
-/** The manager's "Finalize and send for approval". Throws Finalize's own errors while the form can still be fixed. */
+/** The manager's "Finalize and send to HR for approval". Throws Finalize's own errors while the form can still be fixed. */
 export async function sendForHrApproval(
   instanceId: string,
   actor: FormsActor,
@@ -198,7 +198,7 @@ export async function decideHrApproval(
     const { data } = await supabase.from("form_instances").select("hr_approval_follow_up_date").eq("id", instanceId).maybeSingle();
     const followUp = (data as { hr_approval_follow_up_date?: unknown } | null)?.hr_approval_follow_up_date;
     /*
-     * THE FORM'S OWN HISTORY SAYS THE MANAGER FINALIZED IT — they pressed "Finalize and send for approval", and it
+     * THE FORM'S OWN HISTORY SAYS THE MANAGER FINALIZED IT — they pressed "Finalize and send to HR for approval", and it
      * takes effect now. HR's approval is recorded only in the approval history, which only the creator and HR read
      * (owner: "im the only one to see [HR's] note or approval"); the general history is served to every reader of
      * the finalized form, so naming HR there would tell them.

@@ -142,7 +142,7 @@ export function HrApprovalPanel({
       {view.state === "changes_requested" || view.state === "rejected" ? (
         !view.canDecide ? (
           <p className="mt-2 text-xs text-muted-foreground">
-            Make the changes on the form, save, then press Finalize and send for approval again.
+            Make the changes on the form, save, then press Finalize and send to HR for approval again.
           </p>
         ) : null
       ) : null}

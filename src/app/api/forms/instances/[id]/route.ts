@@ -70,7 +70,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     const { actor, loaded } = await authorizeInstance(request, id, "view");
     /*
      * HR APPROVAL: the approval panel — state, waiting time, HR's notes — for the form's creator and HR only; null for
-     * every other reader. `finalizeToHr` tells the card to label its button "Finalize and send for approval".
+     * every other reader. `finalizeToHr` tells the card to label its button "Finalize and send to HR for approval".
      */
     const hrApproval = await hrApprovalViewFor(actor, loaded.instance);
     const finalizeToHr = await finalizeGoesToHr(actor, loaded.instance).catch(() => false);

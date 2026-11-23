@@ -7,7 +7,7 @@ import type { FormsActor } from "./access";
 /**
  * HR APPROVAL, THE WHOLE ROUND TRIP (owner request, 23 Nov 2026), against the real `instances.ts` and `hr-approval.ts`:
  *
- *   the manager presses "Finalize and send for approval"   → still a draft, pending; HR's bell rings
+ *   the manager presses "Finalize and send to HR for approval"   → still a draft, pending; HR's bell rings
  *   the manager tries to change it                          → refused while HR has it
  *   HR edits it                                             → saved, in the approval history only
  *   HR sends it back without a note                         → refused: a note is required

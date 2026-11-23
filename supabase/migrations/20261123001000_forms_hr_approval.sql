@@ -1,7 +1,7 @@
 -- FORMS — HR APPROVAL BEFORE A FORM IS FINAL
 --
 -- Every form except the Coaching Form and the Follow-Up Coaching Form waits for
--- HR's approval after the manager presses "Finalize and send for approval"
+-- HR's approval after the manager presses "Finalize and send to HR for approval"
 -- (owner request, 23 Nov 2026). While it waits it is still a DRAFT
 -- (`status = 'draft'`): it is not on file, it is not a prior warning, and no
 -- final PDF exists. HR approves (the form is then finalized as before), rejects
@@ -51,7 +51,7 @@ revoke all on public.form_hr_approvers from anon, authenticated;
 alter table public.form_instances
   add column if not exists hr_approval_state text,
   add column if not exists hr_approval_requested_at timestamptz,
-  -- Who pressed "Finalize and send for approval" last: anyone who may edit the draft may send it (owner, 23 Nov
+  -- Who pressed "Finalize and send to HR for approval" last: anyone who may edit the draft may send it (owner, 23 Nov
   -- 2026), and the sender, like the creator, sees the form while it waits and HR's answer.
   add column if not exists hr_approval_requested_by text,
   -- Everyone who has ever sent it (owner, 23 Nov 2026: a Salon Director who sent an Assistant's draft keeps seeing it

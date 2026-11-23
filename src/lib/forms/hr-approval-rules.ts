@@ -6,7 +6,7 @@ import { envFlag } from "@/lib/config/chat-quality-flags";
  * ============================================================================
  *
  * Owner request, 23 Nov 2026: every form except the Coaching Form waits for HR
- * after the manager presses "Finalize and send for approval". HR approves (the
+ * after the manager presses "Finalize and send to HR for approval". HR approves (the
  * form is then finalized exactly as before), rejects, or sends it back for
  * changes, each with a note, and may edit it meanwhile.
  *

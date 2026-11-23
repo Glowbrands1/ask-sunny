@@ -10,7 +10,7 @@ import { evidenceFrom, lastResult, loopStandIn, type LoopDecision, type LoopView
  * HR APPROVAL OF FORMS (owner request, 23 Nov 2026; CLAUDE.md rule 5)
  * ============================================================================
  *
- * Every form but the Coaching Form waits for HR after "Finalize and send for approval", and while it waits only the
+ * Every form but the Coaching Form waits for HR after "Finalize and send to HR for approval", and while it waits only the
  * manager who created it and HR may know it exists (owner: "only me and HR can see its waiting and im the only one
  * to see HR's note or approval"). The AI reads the step through read_hr_approvals, scoped like the page:
  *
