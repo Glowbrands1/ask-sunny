@@ -211,11 +211,12 @@ export class SupabaseKnowledgeProvider implements KnowledgeProvider {
   }
 
   toCitations(results: SearchResult[]): SourceCitation[] {
-    const byChunkId = new Map(this.lastRows.map((row) => [row.chunk_id, row]));
+    /* By chunk and locator: a manual hit split at a heading line is two rows of one chunk (board f109, QA's controls). */
+    const byChunkId = new Map(this.lastRows.map((row) => [`${row.chunk_id}\0${row.locator}`, row]));
     // EXCERPT_EMPTY_CARD_DROP_ENABLED: no empty card, none labelled with the sibling company.
     return shownCitations(
       results
-        .map((result) => byChunkId.get(result.chunkId))
+        .map((result) => byChunkId.get(`${result.chunkId}\0${result.locator}`))
         .filter((row): row is MatchedChunkRow => Boolean(row))
         .map(rowToCitation),
     );
