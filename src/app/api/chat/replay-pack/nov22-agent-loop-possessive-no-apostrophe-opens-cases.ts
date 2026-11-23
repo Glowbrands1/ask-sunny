@@ -15,6 +15,7 @@ import { evidenceFrom, lastResult, loopStandIn, type LoopDecision } from "./loop
  */
 
 const FLAG = "AGENT_LOOP_ENABLED";
+const LIVE = process.env.AGENT_LOOP_LIVE === "1";
 const REPORT = "QA's 266-chat shadow re-run (22 Nov 2026), S1: \"open <First>s ca\" refused as someone else's forms, a stuck loop";
 
 type Found = { forms?: { instance_id?: string }[]; best_match?: string; reason_code?: string; ask_exactly?: string };
@@ -63,7 +64,7 @@ export const NOV22_AGENT_LOOP_POSSESSIVE_NO_APOSTROPHE_OPENS_CASES: ReplayCase[]
     fixFlags: [FLAG],
     async run(t) {
       if (!t.loopOn?.()) return;
-      await onFile(t);
+      const remys = await onFile(t);
       const said = "open Junos ca";
       const model = loopStandIn((view): LoopDecision => {
         const found = lastResult(view, "find_past_forms") as Found | null;
@@ -71,9 +72,19 @@ export const NOV22_AGENT_LOOP_POSSESSIVE_NO_APOSTROPHE_OPENS_CASES: ReplayCase[]
         return { text: "ok" };
       });
       t.loopModel!(model);
-      await t.thread().say(said);
-      const found = lastResult(model.views.at(-1)!, "find_past_forms") as Found;
-      expect(found.reason_code, JSON.stringify(found)).toBe("privacy_not_this_person");
+      const reply = await t.thread().say(said);
+      /*
+       * QA's live run (22 Nov 2026): the real model asked for Juno's forms (Juno has none on file), never Remy's, so there
+       * was no refusal to read. What the manager must never get: one of Remy's forms listed or opened for "Junos". The
+       * refusal is asserted on the stand-in's run, which asks for Remy's forms with Juno's words.
+       */
+      const listed = model.views.flatMap((view) => view.results.filter((entry) => entry.tool === "find_past_forms")).map((entry) => entry.output as Found);
+      expect(listed.flatMap((output) => output.forms ?? []).map((form) => form.instance_id), `Remy's form was listed for "${said}"`).not.toContain(remys);
+      expect(reply.formOpened?.instanceId ?? null, `Remy's form was opened for "${said}"`).not.toBe(remys);
+      if (!LIVE) {
+        const found = lastResult(model.views.at(-1)!, "find_past_forms") as Found;
+        expect(found.reason_code, JSON.stringify(found)).toBe("privacy_not_this_person");
+      }
     },
   },
 ];

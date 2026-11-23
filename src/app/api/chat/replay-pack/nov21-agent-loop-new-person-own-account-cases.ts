@@ -18,6 +18,7 @@ import { evidenceFrom, lastResult, loopStandIn, type LoopDecision } from "./loop
 
 const FLAG = "AGENT_LOOP_ENABLED";
 const NEW_FLAG = "CARD_PERSON_THIS_REQUEST_ENABLED";
+const LIVE = process.env.AGENT_LOOP_LIVE === "1";
 const REPORT = "QA2 (21 Nov 2026), #1199: \"the same for juno paxton, she was late on 11/10/26\" refused without new_form_evidence";
 
 /* The rule is CARD_PERSON_THIS_REQUEST's: with it off no card for another person is refused, so there is nothing to show. */
@@ -67,9 +68,14 @@ export const NOV21_AGENT_LOOP_NEW_PERSON_OWN_ACCOUNT_CASES: ReplayCase[] = [
       await thread.say("verbal ca for remy calder, she was 20 minutes late on 11/9/26");
       const second = loopStandIn((view): LoopDecision => (lastResult(view, "propose_form") ? { text: "Kept Remy's card." } : { ...card("e-3", "Juno messaged Remy."), input: { ...card("e-3", "Juno messaged Remy.").input, person_evidence: evidenceFrom(view, "Juno Paxton") } }));
       t.loopModel!(second);
-      await thread.say("On 11/14/26 Salon Director, Juno Paxton, messaged Remy Calder asking if she forgot to clock in on 11/13/26");
+      const reply = await thread.say("On 11/14/26 Salon Director, Juno Paxton, messaged Remy Calder asking if she forgot to clock in on 11/13/26");
+      // QA's live run (22 Nov 2026): the real model never proposed a card for Juno (it added the message to Remy's
+      // account), so there was no refusal to read. What the manager sees: Remy's card stays, no card for Juno. The refusal
+      // is asserted whenever a card for Juno was proposed (the stand-in always proposes one).
+      expect((thread.proposal as { employeeName?: string } | undefined)?.employeeName, `the open card is no longer Remy's:\n${reply.content}`).toBe("Remy Calder");
+      expect(reply.formProposal?.employeeName ?? null, "a card for Juno was shown").not.toBe("Juno Paxton");
       const result = lastResult(second.views.at(-1)!, "propose_form") as { reason_code?: string } | null;
-      expect(result?.reason_code).toBe("person_change_not_asked");
+      if (!LIVE || result !== null) expect(result?.reason_code).toBe("person_change_not_asked");
     },
   },
 ];

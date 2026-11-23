@@ -135,3 +135,25 @@ export function withCorrectedSpelling(
   }
   return { text: out, replaced };
 }
+
+/**
+ * Port from the sibling app (its QA's live re-run, 23 Nov 2026): the card was "<preferred> <last>" and the manager's account said
+ * "on 11/14 <legal first> worked …": the pronoun pass and the drafter read the legal first name as someone else ("did not
+ * clean up after <preferred>", "the account describes another individual's actions"). The card person's OTHER own first
+ * names (Woven's legal or preferred first name, the caller's `otherFirsts`, held by nobody else on the staff list), alone
+ * or with the surname, are this person: they become `short`. Text in quotes is left as written.
+ */
+export function withOwnOtherFirstNames(text: string, otherFirsts: readonly string[], lastName: string, short: string): { text: string; replaced: number } {
+  const name = short.trim();
+  if (!text || !name || otherFirsts.length === 0) return { text, replaced: 0 };
+  let replaced = 0;
+  const out = outsideQuotes(text, (piece) =>
+    otherFirsts.reduce((current, first) => {
+      const words = [first, ...lastName.trim().split(/\s+/).filter(Boolean)].map(escape);
+      const full = new RegExp(String.raw`(?<![\p{L}'’-])${words.join(String.raw`\s+`)}(?![\p{L}-])`, "giu");
+      const alone = new RegExp(String.raw`(?<![\p{L}'’-])${escape(first)}(?![\p{L}-])`, "giu");
+      return current.replace(full, () => ((replaced += 1), name)).replace(alone, () => ((replaced += 1), name));
+    }, piece),
+  );
+  return { text: out, replaced };
+}

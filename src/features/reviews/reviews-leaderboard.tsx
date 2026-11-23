@@ -10,12 +10,10 @@ import {
   goalSummary,
   rankLocations,
   type GoalStatus,
-  type RankMetric,
   type ReviewGoalContext,
 } from "@/lib/reviews/goal";
 import {
   reviewsHref,
-  WEEK_CURRENT,
   WEEK_MONTH,
   type ReviewFilters,
 } from "@/lib/reviews/filters";
@@ -40,8 +38,12 @@ import {
  * Asked for by Gwen Harlan (October 2026): "I want the team to be able
  * to hop on the leaderboard and see how many each store has gotten to their
  * required 10 reviews/month." So the leaderboard is now a RANKING by qualifying
- * reviews month to date, each salon drawn against the monthly target, with the
- * week's figure beside it and a toggle to rank by the week instead.
+ * reviews month to date, each salon drawn against the monthly target.
+ *
+ * MONTHLY ONLY (November 2026). Pau: "for google reviews can you make it
+ * monthly not weekly … i mean salon leaderboard". The "This week" column and
+ * the "Rank by this week" toggle are gone; the goal is monthly, so the board
+ * is too. Salons tied on the month still share a rank.
  *
  * WHAT IT NO LONGER SHOWS: Unanswered, "Replies waiting", All this week and
  * Last week. The response queue is the Needs Response view's job.
@@ -71,9 +73,9 @@ const STATUS_FILTERS: { key: "all" | GoalStatus; label: string }[] = [
  */
 const ROW_GRID =
   "grid gap-x-3 gap-y-2 px-4 grid-cols-[2.75rem_minmax(0,1fr)_minmax(0,1fr)] " +
-  "[grid-template-areas:'rank_salon_salon'_'rank_status_status'_'rank_week_month'_'rank_bar_bar'] " +
-  "lg:grid-cols-[3.5rem_minmax(0,1.5fr)_5.5rem_7rem_minmax(11rem,1.5fr)_7.5rem] " +
-  "lg:[grid-template-areas:'rank_salon_week_month_bar_status'] lg:items-center";
+  "[grid-template-areas:'rank_salon_salon'_'rank_status_status'_'rank_month_month'_'rank_bar_bar'] " +
+  "lg:grid-cols-[3.5rem_minmax(0,1.5fr)_7rem_minmax(11rem,1.5fr)_7.5rem] " +
+  "lg:[grid-template-areas:'rank_salon_month_bar_status'] lg:items-center";
 
 export function ReviewsLeaderboard({
   locations,
@@ -86,13 +88,12 @@ export function ReviewsLeaderboard({
   goal: ReviewGoalContext;
   canManageAnchors: boolean;
 }) {
-  const [metric, setMetric] = useState<RankMetric>("month");
   const [status, setStatus] = useState<"all" | GoalStatus>("all");
   const [district, setDistrict] = useState("all");
   const [search, setSearch] = useState("");
 
   const districts = useMemo(() => districtsOf(locations), [locations]);
-  const ranked = useMemo(() => rankLocations(locations, metric), [locations, metric]);
+  const ranked = useMemo(() => rankLocations(locations, "month"), [locations]);
   const summary = useMemo(() => goalSummary(locations, goal), [locations, goal]);
 
   const counts: Record<"all" | GoalStatus, number> = {
@@ -169,33 +170,6 @@ export function ReviewsLeaderboard({
       <section className="min-w-0 overflow-hidden rounded-[var(--radius-lg)] border border-border bg-surface shadow-raised">
         <div className="flex flex-col gap-2.5 border-b border-border-hairline px-4 py-3.5">
           <div className="flex flex-wrap items-center gap-2">
-            <div
-              role="group"
-              aria-label="Rank by"
-              className="inline-flex rounded-[22px] border border-border-strong bg-surface p-0.5 shadow-soft"
-            >
-              {(
-                [
-                  ["month", "Rank by month to date"],
-                  ["week", "Rank by this week"],
-                ] as const
-              ).map(([key, label]) => (
-                <button
-                  key={key}
-                  type="button"
-                  aria-pressed={metric === key}
-                  onClick={() => setMetric(key)}
-                  className={cn(
-                    "rounded-[20px] px-3 py-[5px] text-[11.5px] font-bold whitespace-nowrap transition-colors",
-                    metric === key
-                      ? "bg-selected text-selected-foreground"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
             {districts.length > 1 ? (
               <TableSelect
                 label="District"
@@ -247,13 +221,12 @@ export function ReviewsLeaderboard({
         >
           <span className="[grid-area:rank]">Rank</span>
           <span className="[grid-area:salon]">Salon</span>
-          <span className="text-right [grid-area:week]">This week</span>
           <span className="text-right [grid-area:month]">Month to date</span>
           <span className="[grid-area:bar]">Progress to {goal.target}</span>
           <span className="[grid-area:status]">Status</span>
         </div>
 
-        <ol aria-label={`Salons ranked by qualifying reviews ${metric === "month" ? "month to date" : "this week"}`}>
+        <ol aria-label="Salons ranked by qualifying reviews month to date">
           {shown.map(({ location, rank, tied }) => {
             const state = goalStatus(location, goal);
             const counting = rank !== null;
@@ -291,7 +264,7 @@ export function ReviewsLeaderboard({
                       ...filters,
                       tab: "reviews",
                       storeCode: location.storeCode,
-                      week: WEEK_CURRENT,
+                      week: WEEK_MONTH,
                     })}
                     className="flex min-h-6 items-center text-[12.5px] font-black text-foreground hover:underline"
                   >
@@ -310,31 +283,6 @@ export function ReviewsLeaderboard({
                       </>
                     )}
                   </span>
-                </div>
-
-                <div className="[grid-area:week] lg:text-right">
-                  <span className="block text-[8px] font-black tracking-[0.1em] text-muted-foreground uppercase lg:hidden">
-                    This week
-                  </span>
-                  {counting ? (
-                    <Link
-                      href={reviewsHref({
-                        ...filters,
-                        tab: "reviews",
-                        storeCode: location.storeCode,
-                        week: WEEK_CURRENT,
-                        qualifying: "yes",
-                      })}
-                      className={cn(
-                        "inline-flex min-h-6 min-w-6 items-center text-[15px] font-black tabular-nums hover:underline lg:justify-end",
-                        location.qualifyingThisWeek > 0 ? "text-foreground" : "text-muted-foreground",
-                      )}
-                    >
-                      {location.qualifyingThisWeek > 0 ? `+${location.qualifyingThisWeek}` : "0"}
-                    </Link>
-                  ) : (
-                    <span className="text-[15px] font-black text-muted-foreground">—</span>
-                  )}
                 </div>
 
                 <div className="[grid-area:month] lg:text-right">
