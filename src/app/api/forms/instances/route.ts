@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { redactHrApproval } from "@/lib/forms/hr-approval-rules";
 
 import { cardPayrollAmount } from "@/lib/forms/card-payroll-amount";
 import { teamTopicReadConversation } from "@/lib/forms/team-card-not-product";
@@ -49,7 +50,7 @@ import {
   listInstances,
   type InstanceView,
 } from "@/lib/forms/instances";
-import { instanceListFilterFor, visibleInstances } from "@/lib/forms/instance-scope";
+import { actorMaySeeInstance, instanceListFilterFor, visibleInstances } from "@/lib/forms/instance-scope";
 import { privateAwareLimit, privateCreatorsActive } from "@/lib/forms/private-creators";
 import { historySaysDifferentIncident } from "@/lib/forms/draft-actions";
 import { findOpenIncidentDraft, findResentDraft } from "@/lib/forms/draft-reopen";
@@ -165,7 +166,8 @@ export async function GET(request: Request) {
     // offer a "Delete 5" that removed nothing, and would leak how many exist.
     const sweep = await findDemoInstances();
     return NextResponse.json({
-      instances,
+      // The approval columns only for those who may read HR's decision (owner, 23 Nov 2026: no leaks).
+      instances: instances.map((instance) => redactHrApproval(actor, instance)),
       view,
       demo: {
         deletable: visibleInstances(actor, sweep.deletable).length,
@@ -604,7 +606,9 @@ export async function POST(request: Request) {
         incident: incidentText || null,
         ...(sameChat ? { sameChat } : {}),
       }).catch(() => null);
-      if (open && mine(open)) return reused(open);
+      // Re-checked against the reader, as the sibling app's cross-chat lookup is (leak audit, 23 Nov 2026): a draft they
+      // may not see, such as someone else's waiting for HR with the approval flag since turned off, is never handed over.
+      if (open && mine(open) && actorMaySeeInstance(actor, open)) return reused(open);
     }
 
     /*

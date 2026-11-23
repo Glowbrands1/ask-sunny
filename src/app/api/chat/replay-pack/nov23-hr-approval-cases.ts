@@ -182,4 +182,65 @@ export const NOV23_HR_APPROVAL_CASES: ReplayCase[] = [
       expect(seen).not.toMatch(/Corrective Action Form/);
     },
   },
+  {
+    id: "nov23-hr-approval-admin-edit-never-reaches-a-revision-waiting-for-hr",
+    title:
+      'an administrator: "change the date on Peregrine\'s write up to 11/12" while the store manager\'s revision of it waits for HR: nothing about the revision, its sender or HR reaches the model, and nothing is written',
+    report:
+      'Owner, 23 Nov 2026: "are u sure this doesnt leak information, that other people cant see what a certain manager created? make sure history also in chat people dont see what a certain person created pls."',
+    status: "fixed",
+    fixFlags: FLAGS,
+    async run(t) {
+      if (!t.loopOn?.() || !hrApprovalEnabled()) return;
+      // The store manager's Corrective Action, finalized; then their revision of it, sent to HR.
+      const id = await sentToHr(t);
+      const original = (t.rows?.("form_instances") ?? []).find((candidate) => candidate.id === id)!;
+      const manager = String(original.created_by);
+      original.hr_approval_state = "approved";
+      original.status = "finalized";
+      original.finalized_at = "2026-11-20T16:00:00Z";
+      const revision = "0c1d2e3f-4a5b-4c6d-8e7f-8091a2b3c4d5";
+      t.addRows!("form_instances", [
+        {
+          ...original,
+          id: revision,
+          status: "draft",
+          finalized_at: null,
+          revises_instance_id: id,
+          hr_approval_state: "pending",
+          hr_approval_requested_at: "2026-11-23T15:00:00Z",
+          hr_approval_requested_by: manager,
+          hr_approval_senders: [manager],
+        },
+      ]);
+      const before = JSON.stringify(t.values(id));
+
+      t.as("admin", GLOBAL, "admin-tamsin-reeve");
+      const model = loopStandIn((view: LoopView): LoopDecision =>
+        lastResult(view, "edit_form") !== null || view.results.some((result) => result.tool === "edit_form")
+          ? { text: "I couldn't change that form." }
+          : {
+              tool: "edit_form",
+              input: { instance_id: id, values: { form_date: "2026-11-12" }, forms_on_file_evidence: evidenceFrom(view, "Peregrine Ashdown's write up") },
+            },
+      );
+      t.loopModel!(model);
+      const reply = await t.thread().say("change the date on Peregrine Ashdown's write up to 11/12");
+
+      const seen = JSON.stringify(model.views.flatMap((view) => view.results));
+      expect(seen, "edit_form was not called (the case proves nothing)").toContain("edit_form");
+      expect(seen, "the revision waiting for HR reached an administrator").not.toContain(revision);
+      expect(seen, "the store manager's account reached an administrator").not.toContain(manager);
+      expect(seen).not.toMatch(/HR approval|waiting for HR|hr_approval/i);
+      /*
+       * One plain answer, naming nothing. The agent loop already answered this way before the leak audit (its edit
+       * errors are "could not be changed just now"); the leak was the card's "Edit as new draft" route
+       * (hr-approval-visibility.test.ts, which fails on the old code). This case keeps the chat path to that.
+       */
+      expect(seen, "the refusal is not a plain one").toMatch(/could not be changed just now|can't be edited right now/);
+      expect(seen).not.toMatch(/No such form/);
+      expect(reply.content).not.toMatch(/HR/);
+      expect(JSON.stringify(t.values(id)), "the finalized form was written").toBe(before);
+    },
+  },
 ];

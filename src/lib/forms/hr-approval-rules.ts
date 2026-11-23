@@ -272,3 +272,47 @@ export const HELD_FOR_HR = "HELD_FOR_HR";
 export function isHeldForHr(error: unknown): error is Error & { code: typeof HELD_FOR_HR } {
   return error instanceof Error && (error as { code?: unknown }).code === HELD_FOR_HR;
 }
+
+/*
+ * ============================================================================
+ * WHAT THE API SENDS ABOUT HR, TO WHOM (owner, 23 Nov 2026: "are u sure this doesnt leak information, that other
+ * people cant see what a certain manager created?")
+ * ============================================================================
+ *
+ * Every form row carries its approval columns. A reader who may not see HR's decision (anyone but the creator, a
+ * sender or HR: `mayReadHrDecision`) gets them blank, so an approved form reads as an ordinary finalized one in
+ * the JSON too, not only on screen. Applied at every forms route that returns a row.
+ */
+export interface HrApprovalColumns {
+  createdBy: string;
+  hrApprovalState?: HrApprovalState | null;
+  hrApprovalRequestedAt?: string | null;
+  hrApprovalRequestedBy?: string | null;
+  hrApprovalSenders?: readonly string[];
+}
+
+export function redactHrApproval<T extends HrApprovalColumns>(reader: HrReader, row: T): T {
+  if (mayReadHrDecision(reader, row)) return row;
+  const carries = Boolean(row.hrApprovalState || row.hrApprovalRequestedAt || row.hrApprovalRequestedBy || row.hrApprovalSenders?.length);
+  if (!carries) return row;
+  return { ...row, hrApprovalState: null, hrApprovalRequestedAt: null, hrApprovalRequestedBy: null, hrApprovalSenders: [] };
+}
+
+/** The same, for a loaded form (`{ instance, … }`). */
+export function redactLoadedHrApproval<L extends { instance: HrApprovalColumns }>(reader: HrReader, loaded: L): L {
+  const instance = redactHrApproval(reader, loaded.instance);
+  return instance === loaded.instance ? loaded : { ...loaded, instance };
+}
+
+/**
+ * THE ONE ANSWER for a form this reader may not see (owner, 23 Nov 2026). An open revision of a form they can see
+ * may be waiting for HR, sent by someone else; "Edit as new draft" and the chat used to hand that revision back, or
+ * say why it could not be opened. They now get this, which names nobody and nothing about HR.
+ */
+export class FormNotEditableNowError extends Error {
+  readonly code = "FORM_NOT_EDITABLE_NOW";
+  constructor() {
+    super("This form can't be edited right now.");
+    this.name = "FormNotEditableNowError";
+  }
+}
