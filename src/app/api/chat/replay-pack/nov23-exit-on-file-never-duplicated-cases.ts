@@ -33,6 +33,7 @@ const T1 =
   "make thes edits on rhea cotter exit Hi Kara,\nPlease make the following edits and resubmit for approval: \n\n    Remove dates for notice given and notice fulfilled. Dates should only be entered when the Submitted & Fulfilled Notice box is checked.\n\n    How Employee Resigned should state: On dd/mm/yyyy Rhea gave verbal notice of her immediate resignation to Kara Wexley, Assistant Salon Director\n    Additional Details should read: Rhea voluntarily terminated her employment effective immediately and provided no other details regarding her resignation";
 const T2 = "make  an exit form then";
 const T3 = "her last day worked was 11/17/2026. she forfeit her bonus and drops to minium wage";
+const T4 = "what happended should be Rhea voluntarily terminated her employment effective immediately and provided no other details regarding her resignation";
 
 type Row = Record<string, unknown>;
 
@@ -50,6 +51,11 @@ function onFile(t: ReplayContext, withExit = true): void {
     row("coaching", "Coaching Form", "co-rhea-1109", "2026-11-09", "finalized"),
     ...(withExit ? [row("stc-exit", "Resignation/Exit Form", "exit-rhea-1120", "2026-11-20", "finalized")] : []),
   );
+  /* Each Corrective Action's own Type of Warning, as on the live forms: HR's "gave verbal notice" names one of them. */
+  t.checkOnForm!("ca-rhea-1111", { warning_type: ["verbal"] });
+  t.checkOnForm!("ca-rhea-1116", { warning_type: ["written"] });
+  /* The finalized exit form as the live record had it: notice dates entered with the Submitted & Fulfilled box unchecked. */
+  if (withExit) t.typeOnForm("exit-rhea-1120", { notice_given_date: "2026-11-17", notice_fulfilled_date: "2026-11-17", resignation_method: "Verbal", details: "Rhea quit." });
 }
 
 function start(t: ReplayContext, withExit = true): void {
@@ -159,7 +165,7 @@ export const NOV23_EXIT_ON_FILE_NEVER_DUPLICATED_CASES: ReplayCase[] = [
   },
   {
     id: "nov23-exit-type-kept-on-the-same-card",
-    title: "(c) T1 → T2 → T3 verbatim (no exit form on file here): T2's card shows how she left from T1's \"immediate resignation\"; T3 (last day worked) proposes the same card again and keeps it, never asking how she left again",
+    title: "(c) T1 → T2 → T3 → T4 verbatim (no exit form on file here): T2's card shows how she left from T1's \"immediate resignation\"; T3 (last day worked) proposes the same card again and keeps it, never asking how she left again",
     report: REPORT,
     status: "fixed",
     fixFlags: [FLAG],
@@ -186,6 +192,122 @@ export const NOV23_EXIT_ON_FILE_NEVER_DUPLICATED_CASES: ReplayCase[] = [
       const again = outs.at(-1);
       expect(again?.facts?.exit_ticks ?? [], `the same card lost how she left:\n${JSON.stringify(again?.facts)}`).toContain("Immediate Voluntary Resignation");
       expect(again?.facts?.exit_unset ?? [], "the card asks how she left again").not.toContain("resignation_type");
+      /* Failure 2, items 5 and 6: her T4 (the account) is proposed on the same card again; how she left stays, never asked. */
+      await thread.say(T4);
+      const fourth = outs.at(-1);
+      expect(fourth?.facts?.exit_ticks ?? [], `T4's card lost how she left:\n${JSON.stringify(fourth?.facts)}`).toContain("Immediate Voluntary Resignation");
+      expect(fourth?.facts?.exit_unset ?? [], "T4's card asks how she left again").not.toContain("resignation_type");
     },
   },
+  {
+    id: "nov23-exit-hr-edits-revise-the-finalized-form",
+    title: "Failure 2, items 2 and 4: T1 verbatim (HR's edits pasted) edits the finalized exit form of 11/20 through a revision: both notice dates cleared, How Employee Resigned and Additional Details as HR wrote them; no second exit form, the original untouched",
+    report: REPORT,
+    status: { open: "awaiting Pau's ruling (QA, 23 Nov 2026): may a chat edit on a revision clear or replace exit fields the manager typed (would_blank / typed_by_manager) when this message states the edit" },
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.() || process.env.AGENT_LOOP_LIVE === "1") return;
+      start(t);
+      const edits: Row[] = [];
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        const edited = lastResult(view, "edit_form") as Row | null;
+        if (edited) {
+          edits.push(edited);
+          return { text: "Done." };
+        }
+        if (!lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { employee_name: "Rhea Cotter", form: "exit", open: true, forms_on_file_evidence: evidenceFrom(view, "rhea cotter exit") } };
+        return {
+          tool: "edit_form",
+          input: {
+            instance_id: "exit-rhea-1120",
+            forms_on_file_evidence: evidenceFrom(view, "make thes edits on rhea cotter exit"),
+            values: {
+              notice_given_date: "",
+              notice_fulfilled_date: "",
+              resignation_method: "On dd/mm/yyyy Rhea gave verbal notice of her immediate resignation to Kara Wexley, Assistant Salon Director",
+              details: "Rhea voluntarily terminated her employment effective immediately and provided no other details regarding her resignation",
+            },
+          },
+        };
+      }));
+      await t.thread().say(T1);
+      const exits = exitForms(t);
+      const revision = exits.find((row) => row.revises_instance_id === "exit-rhea-1120");
+      expect(revision, `no revision of the finalized exit form:\n${JSON.stringify(edits.at(-1)).slice(0, 600)}`).toBeTruthy();
+      expect(exits.filter((row) => row.id !== "exit-rhea-1120" && row.revises_instance_id !== "exit-rhea-1120"), "a second exit form was made").toEqual([]);
+      const now = t.values(String(revision!.id));
+      expect(now.notice_given_date ?? "", `notice given still dated:\n${JSON.stringify(edits.at(-1)).slice(0, 900)}`).toBe("");
+      expect(now.notice_fulfilled_date ?? "", "notice fulfilled still dated").toBe("");
+      expect(now.resignation_method).toMatch(/gave verbal notice of her immediate resignation/);
+      expect(now.details).toMatch(/voluntarily terminated her employment effective immediately/);
+      expect(t.values("exit-rhea-1120").notice_given_date, "the finalized original changed").toBe("2026-11-17");
+    },
+  },
+  {
+    id: "nov23-exit-last-day-worked-is-not-the-form-date",
+    title: "Failure 2, item 7: T3 verbatim (\"her last day worked was 11/17/2026 …\") with the model sending 11/17 as the date, as live: the card's last day worked is 11/17 and its form date stays today's, never moved to the last day worked",
+    report: REPORT,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.() || process.env.AGENT_LOOP_LIVE === "1") return;
+      start(t, false);
+      const outs: (ProposeOut & { card?: { form_date?: string | null } })[] = [];
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        const result = lastResult(view, "propose_form") as (ProposeOut & { card?: { form_date?: string | null } }) | null;
+        if (result) {
+          outs.push(result);
+          return { text: "Here's the Resignation/Exit Form for **Rhea**." };
+        }
+        return said(view) === T3 ? exitCard(view, { incident_date: "11/17/2026" }) : exitCard(view);
+      }));
+      const thread = t.thread();
+      await thread.say("make an exit form for rhea cotter");
+      await thread.say(T3);
+      expect(thread.proposal?.templateKey).toBe("stc-exit");
+      expect(thread.proposal?.formDate, `the form date moved to the last day worked:\n${JSON.stringify(outs.at(-1)).slice(0, 600)}`).not.toBe("2026-11-17");
+      expect(thread.proposal?.formDate).toBe("2026-11-23");
+    },
+  },
+  ...(["2026-11-16", "2026-11-22"] as const).map((day): ReplayCase => ({
+    id: day === "2026-11-16" ? "nov23-ca-same-incident-date-says-one-is-on-file" : "nov23-ca-other-incident-date-card-made",
+    title: day === "2026-11-16"
+      ? "Failure 2, item 3: a Corrective Action for the same person and the same incident date as one on file (finalized 11/16): no card; the reply says one is on file for 11/16 and offers to open it; \"start a new one\" then makes the card"
+      : "Failure 2, item 3, control: a Corrective Action for the same person on another incident date (11/22) is made at once",
+    report: REPORT,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.() || process.env.AGENT_LOOP_LIVE === "1") return;
+      start(t, false);
+      const ask = `write a verbal CA for rhea cotter, she was late to open on ${day.slice(5, 7)}/${day.slice(8, 10)}`;
+      const outs: ProposeOut[] = [];
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        const result = lastResult(view, "propose_form") as ProposeOut | null;
+        if (result) {
+          outs.push(result);
+          return { text: result.ask_exactly ?? "Here's the Corrective Action Form for **Rhea**." };
+        }
+        return {
+          tool: "propose_form",
+          input: {
+            template_key: "dpoa", employee_id: RHEA.id, person_evidence: evidenceFrom(view, "rhea cotter", view.turns.filter((turn) => turn.role === "user").length > 1 ? 1 : 0),
+            incident_date: `${day.slice(5, 7)}/${day.slice(8, 10)}/2026`, observation: "Rhea was late to open.",
+            warning_level: "verbal", level_evidence: evidenceFrom(view, "a verbal CA", view.turns.filter((turn) => turn.role === "user").length > 1 ? 1 : 0),
+          },
+        };
+      }));
+      const thread = t.thread();
+      const reply = await thread.say(ask);
+      if (day === "2026-11-22") {
+        expect(thread.proposal?.templateKey, JSON.stringify(outs.at(-1)).slice(0, 600)).toBe("dpoa");
+        return;
+      }
+      expect(outs.at(-1)?.reason_code, JSON.stringify(outs.at(-1)).slice(0, 600)).toBe("form_on_file_same_date");
+      expect(thread.proposal, "a second Corrective Action card for the same incident date").toBeFalsy();
+      expect(reply.content).toMatch(/already has a Corrective Action Form on file for 11\/16\/2026 \(finalized/);
+      await thread.say("start a new one");
+      expect(thread.proposal?.templateKey, `the manager's answer did not make the card:\n${JSON.stringify(outs.at(-1)).slice(0, 600)}`).toBe("dpoa");
+    },
+  })),
 ];

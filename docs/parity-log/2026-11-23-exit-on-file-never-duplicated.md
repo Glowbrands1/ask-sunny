@@ -15,7 +15,7 @@ then", and <P> got a second exit form, with HR's edits on the new draft. "How di
   person's exit card proposed again with no type in the new request keeps it, so how they left is not asked again.
 - No word list: the forms on file, the card record and the form's own option keys.
 
-**Root cause in production: open until the next occurrence.** On main and on the commit live at the time (96656dc5),
+**Root cause in production: found in Failure 2** (`2026-11-23-exit-edit-request-failure-2.md`: a level named in HR's text dropped the other kinds). Earlier note, kept for the record: open until the next occurrence. On main and on the commit live at the time (96656dc5),
 with production's flags (HR approval, the forms-on-file flags, the Assistant Salon Director create flag, which QA confirmed
 is "true" in production), the replay lists the finalized exit form first for the same two calls (about 4.8k characters
 each). The production result was about 2.5k characters, roughly four forms; the reply named four Corrective Actions. The
