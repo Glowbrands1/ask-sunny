@@ -4563,7 +4563,8 @@ export async function proposeForm(
   if (policyNotForThisCard) policyLine = policyLine && policyLine.includes("; ") ? policyLine.split("; ").slice(1).join("; ") : null;
   const otherPart = askedOther || (/^other\b/i.test(askedPolicy) ? askedPolicy : "");
   if (otherPart) {
-    const topic = otherPart.replace(/^other\s*[—:-]?\s*/i, "").trim() || cleaning || whatHappened.slice(0, 120);
+    /* Port from the sibling app (its QA's live re-run, 23 Nov 2026, A1): a bare "Other" is never given a sentence of the account as its topic; it stays "Other". */
+    const topic = otherPart.replace(/^other\s*[—:-]?\s*/i, "").trim() || cleaning;
     const other = topic ? `Other — ${topic}` : "Other";
     policyLine = policyLine ? `${policyLine}; ${other}` : other;
   }
