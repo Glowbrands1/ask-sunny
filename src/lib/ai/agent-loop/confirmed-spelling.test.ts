@@ -91,3 +91,16 @@ describe("a reply that names someone else is not a yes (item 3, c137)", () => {
     expect(answerNamesSomeoneElse(view(remi, "Juno Paxton was late", "and Rowan Kestrel too"), "e-2")).toBeNull();
   });
 });
+
+/* Port of Ask Bubbles #1040 (U35(a)): the word that turns the typed name into the offered one, said in an answer, confirms that person. */
+describe("a typo corrected to the offered name confirms (U35(a))", () => {
+  it("\"fix her first name remy\" for the typed Remi Calder confirms Remy Calder; another word, or the word alone, confirms nobody", () => {
+    expect(answeredNameQuestions(view(one, "fix her first name remy"))[0]?.by).toBe("correction");
+    expect(answeredNameQuestions(view(one, "fix her first name remy"))[0]?.confirmed?.id).toBe("e-2");
+    expect(answeredNameQuestions(view(one, "fix her first name juno"))[0]?.confirmed ?? null).toBeNull();
+    expect(answeredNameQuestions(view(one, "remy"))[0]?.confirmed ?? null).toBeNull();
+  });
+  it("with two offered, the one the word makes of the typed name is confirmed", () => {
+    expect(answeredNameQuestions(view(asked(["e-2", "e-6"], "Remi Calder"), "fix her first name remy"))[0]?.confirmed?.id).toBe("e-2");
+  });
+});

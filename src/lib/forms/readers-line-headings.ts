@@ -7,9 +7,10 @@
  * manual heading with no box of its own is recorded under the box Pau was told: Time Records under Standards of Conduct,
  * saved as "Standards of Conduct — Time Records" (f071). Runner 2's c259 (QA2, 21 Nov 2026, option (a)): the loop card
  * says the same, "Standards of Conduct — Time Records, JBA Policy Manual p.36", so the card and the saved ticks agree.
+ * Pau's ruling (23 Nov 2026, via QA, "add the page everywhere"): the saved Policy Violated is that card line, page included.
  *
  * Every reader of this rule reads it here: the loop card's policy line (`withReadersLineBox`), Create's reading of the
- * heading back from that line (`withoutReadersLineBox`), and the draft route's saved Policy Violated. Removing an entry,
+ * heading back from that line (`withoutReadersLineBox`), and the saved Policy Violated (the card's line). Removing an entry,
  * or changing its box, changes all three at once (Pau's choice (b) or (c) is a one-line change).
  */
 

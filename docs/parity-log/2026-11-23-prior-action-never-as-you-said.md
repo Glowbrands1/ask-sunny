@@ -23,7 +23,9 @@ Replay: `nov23-agent-loop-prior-action-never-as-you-said-cases.ts`, with Remy Ca
 turn and the model copying the on-file line both fail on main and pass now, as do the evidence-backed "as you said", the
 salon first-name rule (a Remy at the same salon is not attributed, a Remy at another salon still is) and the archived
 rule. The `nov20-prior-on-file*` cases expected the old auto-fill; they were changed on purpose to the offer, each with
-a comment.
+a comment. After merging main (#1290), #1256's `onFileBeside` (forms on file kept beside added steps) is removed: it put
+forms on the card the manager never accepted. Its case `nov23-a13-adding-prior-step-keeps-on-file-line` is changed as
+Ask Bubbles changed its own in #1089.
 
 **Ask Bubbles:** it already has #1089. Rule 3 is in Bubbles #1124. Bubbles has no `prior_actions_evidence` field; its
 "as you said" for prior actions comes from this message's stated steps (`statedPriorActions`). Porting the evidence field

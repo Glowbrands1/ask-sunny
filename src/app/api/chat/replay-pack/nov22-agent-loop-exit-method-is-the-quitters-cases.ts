@@ -123,7 +123,7 @@ export const NOV22_AGENT_LOOP_EXIT_METHOD_IS_THE_QUITTERS_CASES: ReplayCase[] = 
   },
   {
     id: "nov22-u26-former-employee-own-salon-offered-first",
-    title: "U26: a former employee Woven lists at Kearney (in the manager's scope): that salon is offered first (employee_salon), and the card is filed there",
+    title: "U26: a former employee Woven lists at Kearney (in the manager's scope): the card is filed there at once (salon_from_woven), never left asking which salon",
     report: REPORT,
     status: "fixed",
     fixFlags: [FLAG],
@@ -135,8 +135,13 @@ export const NOV22_AGENT_LOOP_EXIT_METHOD_IS_THE_QUITTERS_CASES: ReplayCase[] = 
       t.loopModel!(model);
       await thread.say(T1);
       const all = results(model.views);
-      expect(all[0]?.card?.status, "the case proves nothing: the first card already had a salon").toBe("needs_location");
-      expect(all[0]?.facts?.employee_salon, "her own Woven salon was not offered").toBe(KEARNEY_NAME);
+      /*
+       * Changed on purpose (port of Ask Bubbles #1072, board f140): her one Woven salon used to be only offered
+       * (employee_salon), and when the live model did not propose again with it, Create met a card still asking which
+       * salon. The first card is now filed there, as an active person's is, and says so (salon_from_woven).
+       */
+      expect(all[0]?.card?.status, "the first card still asks which salon").toBe("ready");
+      expect(all[0]?.facts?.salon_from_woven, "the card does not say it is filed at her Woven salon").toBe(KEARNEY_NAME);
       expect(thread.proposal?.locationId, "the card was not filed at her Woven salon").toBe("loc-0309");
     },
   },
