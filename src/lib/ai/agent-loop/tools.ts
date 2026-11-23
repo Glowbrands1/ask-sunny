@@ -296,7 +296,12 @@ async function formsOnFileAskedFor(context: ToolContext, evidence: unknown, pers
     const turns = identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId);
     const replyNames = (turn: IdentifiedTurn | undefined) => {
       const replyText = turn?.role === "assistant" ? withoutMessageIdTags(turn.content).replace(/[*_]/g, "") : "";
-      return replyText !== "" && names.some((name) => holdsPhrase(replyText, name));
+      /*
+       * A live manager's "yes" (Pau's review, 23 Nov 2026): the reply asked "do you want to see <First>'s Resignation/Exit
+       * Form on file?", by first name only, and her "yes" was refused twice. The first name only this roster person holds
+       * names them in the app's own question too (`firstNameIsThisPerson`).
+       */
+      return replyText !== "" && (names.some((name) => holdsPhrase(replyText, name)) || firstNameIsThisPerson(replyText));
     };
     if (replyNames(turns[asked.index - 1])) return { ok: true };
     /*
@@ -310,7 +315,8 @@ async function formsOnFileAskedFor(context: ToolContext, evidence: unknown, pers
     const sinceCited = turns.filter((turn) => turn.role === "user" && turn.index >= asked.index);
     if (asked.index < current.index && replyNames(turns[current.index - 1]) && !sinceCited.some((turn) => namesSomeone(withoutMessageIdTags(turn.content)))) return { ok: true };
   }
-  const antecedent = asked.before.find(namesSomeone);
+  /* The manager's earlier turn that names someone, a lower-case first name only one roster person holds included ("show me <first>sexit"). */
+  const antecedent = asked.before.find((turn) => namesSomeone(turn) || firstNameIsThisPerson(turn));
   if (antecedent !== undefined && (namedIn(antecedent) || lastNameIsThisPerson(antecedent) || firstNameIsThisPerson(antecedent))) return { ok: true };
   // PR 2: the card on screen, by the server's card record (its person's roster id, or the key of a typed name), never the reply's text.
   const onScreen = context.cardOnScreen;

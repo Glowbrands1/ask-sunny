@@ -159,4 +159,67 @@ export const NOV23_AGENT_LOOP_SHOW_FIRSTS_EXIT_CASES: ReplayCase[] = [
       expect(replies.join("\n"), "a reply listed her Coaching Form or asked coaching or exit").not.toMatch(/Coaching Form/);
     },
   },
+  {
+    id: "nov23-show-firsts-exit-confirm-then-open",
+    title: `Confirm, then open: "${T1}" → the reply asks "do you want to see Tirzah's Resignation/Exit Form on file?" (first name only) → "yes" is not refused as someone else's forms and the exit form opens`,
+    report: REPORT,
+    status: "fixed",
+    fixFlags: ["AGENT_LOOP_ENABLED"],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      setUp(t, ["2026-11-20"]);
+      const model = loopStandIn((view): LoopDecision => {
+        if (users(view) === 1) return { text: "Just to confirm — do you want to see Tirzah's Resignation/Exit Form on file?" };
+        const found = lastResult(view, "find_past_forms") as Found | null;
+        if (!found) return { tool: "find_past_forms", input: { employee_name: "Tirzah Quillon", open: true, forms_on_file_evidence: evidenceFrom(view, "yes") } };
+        const forms = found.forms ?? [];
+        if (forms.length === 1 && !lastResult(view, "open_form")) return { tool: "open_form", input: { instance_id: forms[0]!.instance_id, forms_on_file_evidence: evidenceFrom(view, "yes") } };
+        const opened = lastResult(view, "open_form") as { error?: string } | null;
+        return { text: opened?.error ?? found.error ?? "Opening her Resignation/Exit Form." };
+      });
+      t.loopModel!(model, { scripted: true });
+      const thread = t.thread();
+      await thread.say(T1);
+      const reply = await thread.say("yes");
+      const refusals = model.views.flatMap((view) => view.results).map((entry) => (entry.output as { reason_code?: string }).reason_code).filter(Boolean);
+      expect(refusals, "her \"yes\" was refused").not.toContain("privacy_not_this_person");
+      expect(reply.formOpened?.instanceId ?? null, `the exit form did not open after "yes":\n${reply.content}`).toBe("exit-tirzah-1120");
+    },
+  },
+  {
+    id: "nov23-show-firsts-exit-type-and-date-pick-the-exit",
+    title: "Type and date together: all of Tirzah's forms listed, then \"the exit 11202026\" opens the 11/20 exit form, never the Coaching draft of that date",
+    report: REPORT,
+    status: "fixed",
+    fixFlags: ["AGENT_LOOP_ENABLED"],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      setUp(t, ["2026-11-20"]);
+      const T1_ALL = "show me tirzahs forms";
+      const T2 = "the exit 11202026";
+      /* The model tries the Coaching draft of that date first, as the live model's "coaching or exit?" weighed it. */
+      const model = loopStandIn((view): LoopDecision => {
+        if (users(view) === 1) {
+          const found = lastResult(view, "find_past_forms") as Found | null;
+          if (!found) return { tool: "find_past_forms", input: { employee_name: "Tirzah Quillon", open: true, forms_on_file_evidence: evidenceFrom(view, T1_ALL) } };
+          return { text: `${(found.forms ?? []).map((form) => `- ${form.form} · dated ${form.form_date}`).join("\n")}\n\n${found.which_form_question ?? ""}` };
+        }
+        const tries = view.results.filter((entry) => entry.tool === "open_form").map((entry) => entry.output as { reason_code?: string; error?: string });
+        if (tries.some((result) => !result.reason_code)) return { text: "Opening the 11/20 Resignation/Exit Form." };
+        const order = ["coaching-tirzah-1120", "exit-tirzah-1120"];
+        const next = order[tries.length];
+        if (next) return { tool: "open_form", input: { instance_id: next, forms_on_file_evidence: evidenceFrom(view, T1_ALL, 1), choice_evidence: evidenceFrom(view, T2) } };
+        return { text: tries.at(-1)?.error ?? "Which one?" };
+      });
+      t.loopModel!(model, { scripted: true });
+      const thread = t.thread();
+      await thread.say(T1_ALL);
+      const listed = model.views.flatMap((view) => view.results.filter((entry) => entry.tool === "find_past_forms")).map((entry) => entry.output as Found)[0]!;
+      expect((listed.forms ?? []).length, "no kind named: all her forms are listed").toBe(6);
+      const reply = await thread.say(T2);
+      const coachingTry = model.views.flatMap((view) => view.results.filter((entry) => entry.tool === "open_form")).map((entry) => entry.output as { reason_code?: string })[0];
+      expect(coachingTry?.reason_code, "the Coaching draft was opened for \"the exit 11202026\"").toBe("which_form_not_chosen");
+      expect(reply.formOpened?.instanceId ?? null, `"${T2}" did not open the 11/20 exit form:\n${reply.content}`).toBe("exit-tirzah-1120");
+    },
+  },
 ];

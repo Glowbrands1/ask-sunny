@@ -39,6 +39,9 @@ The one exit form on file never opened.
     whenever a form of the named kind is listed. A date shared with a Coaching draft picks the exit form, and the model is
     told never to ask "coaching or exit?".
   Replay `nov23-show-firsts-exit-verbatim-four-turns` plays her four turns with an invented name.
+- **Confirm, then open (Pau's brief, case 1).** The subject check's app-question rule (`replyNames`) and its
+  earlier-turn rule (the antecedent) also take a first name that only this roster person holds. A "yes" to "do you want
+  to see <First>'s … on file?" opens the form, where her real "yes" was refused twice.
 
 **Ask Bubbles: port by Bubbles coder 2, from this PR (QA, 23 Nov 2026).** Bubbles' `main` (72404b3) already reads a
 lower-case first name and its possessive (`firstNamed`). It has the other gaps:
