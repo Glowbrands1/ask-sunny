@@ -183,6 +183,10 @@ import { rulesBookText } from "./rules-book";
  * read_hr_approvals, and "Forms on file and privacy" gained one line: a form waiting for HR is not on file, and HR
  * approval answers come only from read_hr_approvals, which lists only the asker's own forms. It reads the same under
  * every config; nothing else changed.
+ *
+ * Re-taken on purpose on 23 Nov 2026 (port of Ask Bubbles #1113, cbfd1847, its round 2 U25): the Card replies line for
+ * name_corrected now says, with name_corrected.also_changed, the name change and then each item of also_changed, never
+ * "nothing else changed". It reads the same under every config; nothing else changed.
  */
 
 const fixture = (name: string): string => readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), "utf8");

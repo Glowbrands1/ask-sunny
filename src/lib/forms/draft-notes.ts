@@ -112,6 +112,9 @@ export function draftNotesAreUsable(notes: DraftNotes): boolean {
  * when the card shows what happened: a card with no incident still drafts
  * nothing. Each line is a field the card displayed, labelled as such.
  */
+/** The labels of the card's own lines (`draftNotesFromCard`); also stripped from a loop coaching write-up (Ask Bubbles #1113). */
+export const CARD_LINE = /^(?:Employee|Job title|Location|Date|What happened|Type of warning|Payroll deduct applicable|Payroll deduct amount|Prior actions): /;
+
 /**
  * The notes without the card's own lines (`draftNotesFromCard`'s "Employee: …", "What happened: …"): the manager's turns
  * only (item 19: a card's lines are the agent loop's words, never the manager's, so no address is read from them).
@@ -119,7 +122,7 @@ export function draftNotesAreUsable(notes: DraftNotes): boolean {
 export function notesWithoutCardLines(notes: string): string {
   return notes
     .split("\n")
-    .filter((line) => !/^(?:Employee|Job title|Location|Date|What happened|Type of warning|Payroll deduct applicable|Payroll deduct amount|Prior actions): /.test(line))
+    .filter((line) => !CARD_LINE.test(line))
     .join("\n");
 }
 

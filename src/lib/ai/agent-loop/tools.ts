@@ -5144,9 +5144,28 @@ export async function proposeForm(
     .filter(({ name }) => !holdsWeekday(name))
     .slice(0, 3)
     .map(({ name, sentence }) => ({ name: untrusted(name), sentence: untrusted(sentence) }));
+  /*
+   * Port of Ask Bubbles #1113 (cbfd1847; its QA's round 2, U25): "create coaching form for <P>; coaching on under
+   * performance" corrected the name, and the reply said "nothing else changed" while the card's coaching topic was gone.
+   * What else differs from the card the name was corrected on (its server record), field by field, so the reply never
+   * says nothing else changed when something did. A field the record does not hold (an older record) is not compared.
+   * Sunny's record keeps the account as a one-way key of the model's account (`accountKey`), and no salon.
+   */
+  const correctedOn = nameCorrectedFrom !== null ? (context.cardOnScreen ?? context.earlierCard ?? null) : null;
+  const alsoChanged = correctedOn
+    ? [
+        correctedOn.coachingTopic !== undefined && (correctedOn.coachingTopic ?? null) !== (coachingTopic ?? null)
+          ? `coaching topic: ${correctedOn.coachingTopic ?? "none"} → ${coachingTopic ?? "none"}`
+          : null,
+        correctedOn.accountKey && effects.proposalAccountKey && effects.proposalAccountKey !== correctedOn.accountKey ? "the account (Observation)" : null,
+        correctedOn.policyLine && (card.policyLine ?? null) !== correctedOn.policyLine ? `policy: ${correctedOn.policyLine} → ${card.policyLine ?? "none"}` : null,
+        correctedOn.level && (level ?? null) !== correctedOn.level ? `warning level: ${correctedOn.level} → ${level ?? "not set"}` : null,
+        correctedOn.payroll && (payroll ?? null) !== correctedOn.payroll ? `payroll deduct: ${correctedOn.payroll} → ${payroll ?? "not set"}` : null,
+      ].filter((change): change is string => change !== null)
+    : [];
   const facts = {
     /* fix-name, live s10: the card's name changed from → to, so the reply can say so (the person may be another roster person, by exact match). */
-    ...(nameCorrectedFrom !== null ? { name_corrected: { from: nameCorrectedFrom, to: employee.name } } : {}),
+    ...(nameCorrectedFrom !== null ? { name_corrected: { from: nameCorrectedFrom, to: employee.name, ...(alsoChanged.length > 0 ? { also_changed: alsoChanged } : {}) } } : {}),
     ...(switchedFrom ? { form_changed: { from: switchedFrom.templateName, earlier_created: switchedFrom.created } } : {}),
     ...(earlierKept ? { earlier_card: { kept: true, ...(earlierRow ? { employee: displayName(earlierRow) } : {}), form: earlier!.templateName ?? earlier!.templateKey } } : {}),
     ...(otherNamed.length > 0 ? { account_names_other_person: { named: otherNamed, card_person: employee.name } } : {}),
