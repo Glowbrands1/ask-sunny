@@ -137,6 +137,28 @@ export const PROFILE_PHOTO_FIELDS = [
  */
 export const ANTIFORGERY_HEADER: string | null = null;
 
+/*
+ * THE CONTENT POSTS' ANTI-FORGERY HEADER (WOVEN_POST_ANTIFORGERY_HEADER_ENABLED, default off).
+ *
+ * From 19 Nov 2026 every content-list POST answered HTTP 400 with no
+ * anti-forgery wording, in both apps and for both Woven companies, while the
+ * GET pages kept working (knowledge_sync_runs: the last good runs were on
+ * 12 Nov; the scheduled syncs failed from 19 Nov). Our requests did not
+ * change in that window. An empty 400 on a POST is what ASP.NET Core answers
+ * when its anti-forgery check fails, and that check reads the token from a
+ * request HEADER on a JSON post. So, with the switch on, every content POST
+ * carries the `__RequestVerificationToken` of the latest authenticated page
+ * in a header. The header's name is the one the page's own ajax set-up
+ * declares; when the page declares none, ASP.NET Core's default name.
+ * UNVERIFIED until a Preview run with the switch on reads the lists.
+ */
+export const ANTIFORGERY_DEFAULT_HEADER = "RequestVerificationToken";
+/** A header name that carries an anti-forgery token. */
+export const ANTIFORGERY_HEADER_NAME = /^(?:[a-z0-9-]*requestverificationtoken|x-(?:csrf|xsrf)-token|[a-z0-9-]*antiforgery[a-z0-9-]*)$/i;
+/** A `<meta>` that carries the token, when the page has no hidden input. */
+export const ANTIFORGERY_META_NAME = /^(?:__)?requestverificationtoken$|^csrf-token$/i;
+
+
 /** Recognised in error pages, so an anti-forgery refusal is named as such. */
 export const ANTIFORGERY_ERROR_MARKER = /anti-?forgery|RequestVerificationToken/i;
 
