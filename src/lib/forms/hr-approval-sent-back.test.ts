@@ -1,0 +1,224 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { fakeSupabase, type FakeStore } from "@/test/fake-supabase";
+import type { AccessScope } from "@/types";
+
+import type { FormsActor } from "./access";
+import { approvableFromSentBack } from "./hr-approval-rules";
+
+/**
+ * APPROVE FROM "SENT BACK", ONCE THE MANAGER HAS REPLIED (Pau, via QA, 23 Nov 2026), against the real `instances.ts`
+ * and `hr-approval.ts`:
+ *
+ *   "when manager replies in note, there should be approve button here please and notify manager, then it will show in
+ *    form monitoring for that manager only for her salon but of course [the person who sees every salon] will be able
+ *    to see all. then the manager once sent back, will have option to print and save as PDF"
+ *
+ * The screen: a form "Sent back by HR for changes", its thread (sent for approval with a note, HR sent it back with a
+ * note, the manager replied with a note), then a Note box with Add note. HR now has Approve beside Add note; approving
+ * finalizes the form as it is, records "HR approved it", and rings the manager's bell. Afterwards the form is an
+ * ordinary finalized form: its own salon's managers and every-salon accounts see it in Form Monitoring, another salon's
+ * manager never does. Invented accounts and an invented employee only.
+ */
+
+const ORIGINAL = { ...process.env };
+
+const store: FakeStore = {
+  form_instances: [],
+  form_instance_values: [],
+  form_instance_events: [],
+  form_template_versions: [],
+  form_templates: [],
+  form_template_current: [],
+  form_template_assets: [],
+} as FakeStore;
+const extra = store as unknown as Record<string, Record<string, unknown>[]>;
+
+vi.mock("@/lib/supabase/server", () => ({ getSupabaseAdmin: () => fakeSupabase(store) }));
+
+const { ensureTemplateLibrary } = await import("./repository");
+const { createInstance, loadInstance } = await import("./instances");
+const { sendForHrApproval, decideHrApproval, commentOnHrApproval, hrApprovalViewFor, HrApprovalError } = await import("./hr-approval");
+const { actorMaySeeInstance } = await import("./instance-scope");
+
+const CREATOR = "sd-marigold";
+const HR = "hr-fenwick";
+
+const WORNALL: AccessScope = { level: "salon", primaryAreaId: "loc-wornall", alsoCoversAreaIds: [] };
+const OTHER_SALON: AccessScope = { level: "salon", primaryAreaId: "loc-other", alsoCoversAreaIds: [] };
+const GLOBAL: AccessScope = { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] };
+
+const manager: FormsActor = { id: CREATOR, role: "salon_director", verified: true, scope: WORNALL, visibility: WORNALL, hrApprover: false } as FormsActor;
+const hr: FormsActor = { id: HR, role: "district_manager", verified: true, scope: GLOBAL, visibility: GLOBAL, hrApprover: true } as FormsActor;
+
+const SENT_NOTE = "Please review — second late opening this month.";
+const SEND_BACK_NOTE = "Add the date of the first late opening.";
+const REPLY_NOTE = "The first one was 11/12, I added it.";
+
+beforeEach(async () => {
+  process.env.FORMS_HR_APPROVAL_ENABLED = "true";
+  store.form_instances = [];
+  store.form_instance_values = [];
+  store.form_instance_events = [];
+  store.form_template_versions = [];
+  store.form_templates = [];
+  store.form_template_current = [];
+  store.form_template_assets = [];
+  extra.form_hr_approvers = [{ app_user_id: HR, revoked_at: null }];
+  extra.form_hr_approval_events = [];
+  extra.app_notifications = [];
+  extra.app_users = [
+    { id: HR, email: "hr.fenwick@example.com", display_name: "Fenwick", status: "active" },
+    { id: CREATOR, email: "marigold@example.com", display_name: "Marigold", status: "active" },
+  ];
+  await ensureTemplateLibrary("system");
+});
+afterEach(() => {
+  process.env = { ...ORIGINAL };
+  vi.useRealTimers();
+});
+
+async function policyReview() {
+  return createInstance({
+    templateKey: "policy-review",
+    variantKey: null,
+    employeeName: "Juniper Ashdown",
+    employeeRole: "Tanning Consultant",
+    locationId: "loc-wornall",
+    locationName: "KC Wornall",
+    createdBy: CREATOR,
+    source: "manual",
+    formDate: "2026-11-23",
+  });
+}
+
+/** Each step a minute apart, so the approval history's order is the order things happened. */
+let minute = 0;
+function tick() {
+  minute += 1;
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date(Date.UTC(2026, 10, 23, 15, minute)));
+}
+
+/** The screen's thread: sent with a note, sent back with a note, and (when `replied`) the manager's reply. */
+async function sentBack(replied: boolean) {
+  minute = 0;
+  const instance = await policyReview();
+  tick();
+  await sendForHrApproval(instance.id, manager, "2026-12-01", { acknowledgeUnverifiedPolicy: true });
+  tick();
+  await commentOnHrApproval(instance.id, manager, SENT_NOTE);
+  tick();
+  await decideHrApproval(instance.id, hr, "send_back", SEND_BACK_NOTE);
+  if (replied) {
+    tick();
+    await commentOnHrApproval(instance.id, manager, REPLY_NOTE);
+  }
+  tick();
+  return (await loadInstance(instance.id))!.instance;
+}
+
+const bells = (to: string) => extra.app_notifications!.filter((row) => row.recipient_email === to);
+
+describe("HR approves a form it sent back, once the manager has replied (Pau)", () => {
+  it("Approve sits beside Add note for HR only, and only after the manager's reply", async () => {
+    const waiting = await sentBack(false);
+    expect((await hrApprovalViewFor(hr, waiting))?.canApproveSentBack, "no reply yet").toBe(false);
+
+    await commentOnHrApproval(waiting.id, manager, REPLY_NOTE);
+    const replied = (await loadInstance(waiting.id))!.instance;
+    const hrView = await hrApprovalViewFor(hr, replied);
+    expect(hrView?.label).toBe("Sent back by HR for changes");
+    expect(hrView?.canApproveSentBack).toBe(true);
+    // Send back and Reject stay for a form waiting for HR; this one is sent back.
+    expect(hrView?.canDecide).toBe(false);
+    expect((await hrApprovalViewFor(manager, replied))?.canApproveSentBack, "the manager never sees Approve").toBe(false);
+  });
+
+  it("approving it finalizes the form as it is, records HR's approval in the thread, and rings the manager's bell", async () => {
+    const replied = await sentBack(true);
+    const before = bells("marigold@example.com").length;
+
+    const approved = await decideHrApproval(replied.id, hr, "approve", undefined);
+    expect(approved.status).toBe("finalized");
+    expect(approved.hrApprovalState).toBe("approved");
+
+    const thread = await hrApprovalViewFor(manager, approved);
+    expect(thread?.history.map((entry) => [entry.by, entry.action])).toEqual([
+      ["You", "submitted"],
+      ["You", "commented"],
+      ["HR", "changes_requested"],
+      ["You", "commented"],
+      ["HR", "approved"],
+    ]);
+    const rung = bells("marigold@example.com").slice(before);
+    expect(rung).toHaveLength(1);
+    expect(rung[0]).toMatchObject({ title: "HR approved your form", href: `/forms/hr-approval/${replied.id}` });
+  });
+
+  it("refused before the manager replies, and for anyone but HR", async () => {
+    const waiting = await sentBack(false);
+    await expect(decideHrApproval(waiting.id, hr, "approve", undefined)).rejects.toThrow(/once the manager replies/);
+    await commentOnHrApproval(waiting.id, manager, REPLY_NOTE);
+    await expect(decideHrApproval(waiting.id, manager, "approve", undefined)).rejects.toBeInstanceOf(HrApprovalError);
+    expect((await loadInstance(waiting.id))!.instance.status).toBe("draft");
+  });
+
+  it("control: HR's own note after sending it back is not the manager's reply", async () => {
+    const waiting = await sentBack(false);
+    await commentOnHrApproval(waiting.id, hr, "Any update?");
+    expect((await hrApprovalViewFor(hr, (await loadInstance(waiting.id))!.instance))?.canApproveSentBack).toBe(false);
+    await expect(decideHrApproval(waiting.id, hr, "approve", undefined)).rejects.toThrow(/once the manager replies/);
+  });
+
+  it("control: send back and reject still need the form to be waiting for HR", async () => {
+    const replied = await sentBack(true);
+    await expect(decideHrApproval(replied.id, hr, "send_back", "Again")).rejects.toThrow(/not waiting for HR approval/);
+    await expect(decideHrApproval(replied.id, hr, "reject", "No")).rejects.toThrow(/not waiting for HR approval/);
+  });
+});
+
+describe("after approval, Form Monitoring shows it by salon, as any finalized form (Pau)", () => {
+  it("the manager of its salon and an every-salon account see it; another salon's manager never does", async () => {
+    const replied = await sentBack(true);
+    const approved = await decideHrApproval(replied.id, hr, "approve", undefined);
+    const otherSalonManager = { ...manager, id: "sd-larkspur", scope: OTHER_SALON, visibility: OTHER_SALON } as FormsActor;
+    const sameSalonManager = { ...manager, id: "asd-wornall", role: "assistant_salon_director", scope: WORNALL, visibility: WORNALL } as FormsActor;
+    const everySalon = { ...manager, id: "admin-rowan", role: "admin", scope: GLOBAL, visibility: GLOBAL } as FormsActor;
+    expect(actorMaySeeInstance(manager, approved)).toBe(true);
+    expect(actorMaySeeInstance(sameSalonManager, approved)).toBe(true);
+    expect(actorMaySeeInstance(everySalon, approved)).toBe(true);
+    expect(actorMaySeeInstance(otherSalonManager, approved), "another salon's manager sees it").toBe(false);
+    // Who approved it and every note stay with its creator, its senders and HR (the owner's rule, unchanged).
+    expect(await hrApprovalViewFor(sameSalonManager, approved)).toBeNull();
+    expect(await hrApprovalViewFor(everySalon, approved)).toBeNull();
+  });
+});
+
+describe("approvableFromSentBack (the rule)", () => {
+  const instance = { createdBy: CREATOR, hrApprovalState: "changes_requested" as const, hrApprovalRequestedBy: CREATOR, hrApprovalSenders: [CREATOR] };
+  const at = (minuteOf: number) => new Date(Date.UTC(2026, 10, 23, 15, minuteOf)).toISOString();
+
+  it("a reply from the creator or a sender after the latest send-back", () => {
+    expect(approvableFromSentBack(instance, [
+      { action: "submitted", actor: CREATOR, at: at(1) },
+      { action: "changes_requested", actor: HR, at: at(2) },
+      { action: "commented", actor: CREATOR, at: at(3) },
+    ])).toBe(true);
+  });
+
+  it("not a reply older than the latest send-back", () => {
+    expect(approvableFromSentBack(instance, [
+      { action: "changes_requested", actor: HR, at: at(2) },
+      { action: "commented", actor: CREATOR, at: at(3) },
+      { action: "submitted", actor: CREATOR, at: at(4) },
+      { action: "changes_requested", actor: HR, at: at(5) },
+    ])).toBe(false);
+  });
+
+  it("not a rejected form, and not a waiting one", () => {
+    const events = [{ action: "changes_requested", actor: HR, at: at(2) }, { action: "commented", actor: CREATOR, at: at(3) }];
+    expect(approvableFromSentBack({ ...instance, hrApprovalState: "rejected" }, events)).toBe(false);
+    expect(approvableFromSentBack({ ...instance, hrApprovalState: "pending" }, events)).toBe(false);
+  });
+});

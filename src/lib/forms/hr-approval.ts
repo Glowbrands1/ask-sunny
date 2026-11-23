@@ -7,6 +7,7 @@ import { HR_COMMENT_KIND, HR_DECISION_KIND, HR_REQUEST_KIND, clearRequestBells, 
 import { accountEmail, listHrApprovers } from "./hr-approval-approvers";
 import {
   HR_STATE_LABEL,
+  approvableFromSentBack,
   awaitingHr,
   heldForHr,
   isCreatorOrSender,
@@ -103,6 +104,18 @@ async function recordHrEvent(instanceId: string, action: string, actor: string, 
   if (error) throw new Error(`Could not record the HR approval step: ${error.message}`);
 }
 
+/** The approval history's facts (no notes): what `approvableFromSentBack` reads. */
+async function approvalEventFacts(instanceId: string): Promise<{ action: string; actor: string; at: string }[]> {
+  const { data, error } = await getSupabaseAdmin()
+    .from("form_hr_approval_events")
+    .select("action, actor, created_at")
+    .eq("instance_id", instanceId)
+    .order("created_at", { ascending: true })
+    .limit(200);
+  if (error) throw new Error(`Could not read the approval history: ${error.message}`);
+  return ((data ?? []) as { action: string; actor: string; created_at: string }[]).map((row) => ({ action: row.action, actor: row.actor, at: row.created_at }));
+}
+
 async function displayName(appUserId: string): Promise<string> {
   try {
     const { data } = await getSupabaseAdmin().from("app_users").select("display_name").eq("id", appUserId).maybeSingle();
@@ -182,7 +195,21 @@ export async function decideHrApproval(
   if (actor.hrApprover !== true) throw new HrApprovalError("Only HR can decide on this form.", 403);
   const before = await loadInstance(instanceId);
   if (!before) throw new HrApprovalError("That form no longer exists.", 404);
-  if (!heldForHr(before.instance.hrApprovalState)) throw new HrApprovalError("This form is not waiting for HR approval.");
+  /*
+   * Pau (via QA, 23 Nov 2026): a form HR sent back may be APPROVED once the manager has replied with a note, without
+   * waiting for them to send it again (`approvableFromSentBack`). Reject and send back still need it waiting.
+   */
+  const fromSentBack =
+    decision === "approve" &&
+    before.instance.status === "draft" &&
+    approvableFromSentBack(before.instance, await approvalEventFacts(instanceId));
+  if (!heldForHr(before.instance.hrApprovalState) && !fromSentBack) {
+    throw new HrApprovalError(
+      before.instance.hrApprovalState === "changes_requested" && decision === "approve"
+        ? "This form was sent back for changes. It can be approved once the manager replies with a note, or sends it again."
+        : "This form is not waiting for HR approval.",
+    );
+  }
   const note = cleanNote(noteInput);
   if (decision !== "approve" && !note) {
     throw new HrApprovalError(
@@ -316,6 +343,11 @@ export interface HrApprovalView {
   /** The reader is HR and may edit the values now. */
   canEdit: boolean;
   /**
+   * The reader is HR, the form was sent back for changes, and its manager has replied with a note since: HR may approve
+   * it now, beside Add note (Pau, via QA, 23 Nov 2026; `approvableFromSentBack`).
+   */
+  canApproveSentBack: boolean;
+  /**
    * Pending, but the hold is not live (the flag turned off, or no approver left): the creator may edit and finalize
    * it as an ordinary draft (`releaseStaleHold`).
    */
@@ -363,6 +395,9 @@ export async function hrApprovalViewFor(actor: FormsActor, instance: InstanceRow
     overdue: state === "pending" && isOverdue(instance.hrApprovalRequestedAt, now),
     canDecide: hr && state === "pending" && !released,
     canEdit: hr && state === "pending" && !released,
+    canApproveSentBack:
+      hr && instance.status === "draft" && hrApprovalEnabled() &&
+      approvableFromSentBack(instance, rows.map((row) => ({ action: row.action, actor: row.actor, at: row.created_at }))),
     history,
   };
 }

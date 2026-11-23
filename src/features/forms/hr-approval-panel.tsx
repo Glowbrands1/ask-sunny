@@ -20,6 +20,8 @@ import { formatBusinessTime } from "@/lib/business-date";
  *
  *   HR, while the form waits    Approve · Send back for changes · Reject, a note
  *                               required for the last two; a note box for comments
+ *   HR, sent back, once the     Approve beside Add note (Pau, via QA, 23 Nov 2026):
+ *   manager has replied         no need to wait for the manager to send it again
  *   the creator                 the state, how long it has waited, and every note
  */
 
@@ -31,6 +33,8 @@ export interface HrApprovalPanelView {
   overdue: boolean;
   canDecide: boolean;
   canEdit: boolean;
+  /** HR, on a form sent back that its manager has replied to since: Approve sits beside Add note. */
+  canApproveSentBack?: boolean;
   /** Pending, but HR approval is off or nobody can approve: the creator may finalize it themselves. */
   released?: boolean;
   history: { action: string; by: string; note: string | null; at: string }[];
@@ -175,6 +179,11 @@ export function HrApprovalPanel({
                 Reject
               </Button>
             </>
+          ) : view.canApproveSentBack ? (
+            <Button variant="accent" size="sm" onClick={() => void act("approve")} disabled={busy !== null} data-testid="hr-approve-sent-back">
+              {busy === "approve" ? <Loader2 className="animate-spin" /> : <Check />}
+              Approve
+            </Button>
           ) : null}
           <Button variant="ghost" size="sm" onClick={() => void act("comment")} disabled={busy !== null}>
             {busy === "comment" ? <Loader2 className="animate-spin" /> : view.canDecide ? <MessageSquare /> : <Send />}
@@ -184,6 +193,10 @@ export function HrApprovalPanel({
         {view.canDecide ? (
           <p className="text-xs text-subtle-foreground">
             You can edit the form above before approving. Approving finalizes it.
+          </p>
+        ) : view.canApproveSentBack ? (
+          <p className="text-xs text-subtle-foreground">
+            The manager replied. Approving finalizes the form as it is now; the manager is told in their bell.
           </p>
         ) : null}
       </div>
