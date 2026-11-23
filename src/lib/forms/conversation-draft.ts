@@ -6,6 +6,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { correctActiveForm } from "./chat-correction";
 import { sameEmployee } from "./draft-reopen";
 import { loadInstance, type InstanceRow } from "./instances";
+import { withoutHeldForHr } from "./hr-approval-rules";
 
 /**
  * ONE DRAFT PER FORM IN A CONVERSATION (CONVERSATION_DRAFT_REUSE_ENABLED).
@@ -139,13 +140,15 @@ export async function findConversationDraft(input: {
   if (templateError || !template) return null;
 
   const since = new Date((input.now ?? new Date()).getTime() - WINDOW_MS).toISOString();
-  const { data, error } = await supabase
+  const { data, error } = await withoutHeldForHr(
+    supabase
     .from("form_instances")
     .select("id, employee_name, template_id, created_at, form_date")
     .eq("created_by", input.createdBy)
     .eq("template_id", template.id)
     .eq("source", "ask_sunny")
     .eq("status", "draft")
+    )
     .gte("created_at", since)
     .order("created_at", { ascending: false })
     .limit(25);

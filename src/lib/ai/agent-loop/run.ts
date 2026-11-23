@@ -18,7 +18,7 @@ import { authorizedSalonIds } from "@/lib/forms/location-scope";
 import { rosterSalonName } from "@/lib/forms/salon-mention";
 import type { ChatFormProposal, ChatMessage } from "@/types";
 
-import { finishChatTrace, openChatTrace } from "../chat-trace";
+import { finishChatTrace, openChatTrace, redactTraceText } from "../chat-trace";
 import { chatTraceDraft } from "../chat-trace-store";
 import { AiError } from "../errors";
 import { noteModelCall } from "../model-failure";
@@ -722,6 +722,25 @@ export async function runAgentTurn(input: AgentTurnInput): Promise<AskResponse> 
   return finishChatTrace(draft, () => loop(input), { awaitWrite: true });
 }
 
+/** Board f111: a searched query is kept to this many characters. */
+const QUERY_CAP = 200;
+
+/** Board f111: the words a search tool was given, joined; null for a tool that searches nothing. */
+export function searchedWords(tool: string, args: unknown): string | null {
+  const input = (args ?? {}) as Record<string, unknown>;
+  const text = (key: string) => (typeof input[key] === "string" ? String(input[key]).trim() : "");
+  const fields: Record<string, readonly string[]> = {
+    find_staff: ["name"],
+    find_past_forms: ["employee_name", "form", "date", "date_from", "date_to"],
+    read_policy: ["heading"],
+    search_knowledge: ["query"],
+  };
+  const keys = fields[tool];
+  if (!keys) return null;
+  const parts = keys.map((key) => (text(key) ? `${key}: ${text(key)}` : "")).filter(Boolean);
+  return parts.length > 0 ? parts.join("; ") : null;
+}
+
 async function loop(input: AgentTurnInput): Promise<AskResponse> {
   /*
    * A CARD IS OPEN (Pau, 15:00Z 14 Nov 2026: a mid-form question is answered and the open card stays): the last reply
@@ -777,6 +796,14 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   const noop = input.openFormId ? await import("@/lib/forms/form-noop-reply") : null;
   const openBefore = noop && input.openFormId ? await noop.formBeforeTurn(input.openFormId, input.request) : null;
   const steps: AgentLoopStep[] = [];
+  /*
+   * Board f111 (QA, 23 Nov 2026): the words the loop searched with, for later checks: find_staff's name, find_past_forms'
+   * person, form and dates, read_policy's heading, search_knowledge's query. A slot of their own
+   * (`slots.agent_loop_queries`): `steps` stays value-free. Each passes `redactTraceText` and is capped at 200 characters;
+   * they come from the manager's own messages, which the same row already holds (`original_query`). Never written to the
+   * repository: no fixture is generated from them.
+   */
+  const queries: { step: number; tool: string; query: string }[] = [];
   const replyNames = new Set<string>();
   const offRosterNames = new Set<string>();
   /* The tools this turn called so far (the hand-backs' too), for the item 7 check below. */
@@ -870,6 +897,8 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   };
   /* One tool call, timed and counted for the trace: its name, ms and result size; never its values. */
   const runTool = async (step: number, name: string, args: unknown): Promise<ToolResult> => {
+    const searched = searchedWords(name, args);
+    if (searched) queries.push({ step, tool: name, query: redactTraceText(searched).slice(0, QUERY_CAP) });
     const started = performance.now();
     let result: ToolResult;
     let toolCalls = 0;
@@ -1586,6 +1615,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     trace.slots = {
       ...(trace.slots ?? {}),
       agent_loop: { question_key: personKey(input.question), ...(cardSlot ? { card: cardSlot } : {}), ...(nameQuestionSlot ? { name_question: nameQuestionSlot } : {}), ...(personAskedSlot ? { person_asked: personAskedSlot } : {}), ...(exitOfferSlot ? { exit_offer: exitOfferSlot } : {}), ...(teamConfirmSlot ? { team_confirm: teamConfirmSlot } : {}), ...(whichFormSlot ? { which_form: whichFormSlot } : {}), steps, model_steps: modelSteps, model_calls: modelCalls, ...(turn.manualRead ? { manual_read: turn.manualRead } : {}), step_limit: limit, steps_used: stepNumber - 1 + hiddenCalls, ...(toolModelCalls > 0 ? { tool_model_calls: toolModelCalls } : {}), stopped: stoppedAt, ms: latencyMs, first_token_ms: firstTokenMs, ...(selfReview ? { self_review: selfReview } : {}), ...(draftReview ? { draft_review: draftReview } : {}), ...(levelReview ? { level_review: levelReview } : {}), ...(honestyReview ? { honesty_review: honestyReview } : {}), ...(replyUnwrapped ? { reply_unwrapped: true } : {}), ...(retriesBlocked > 0 ? { stop_retrying: retriesBlocked } : {}), ...(repeatsReused > 0 ? { repeat_calls_reused: repeatsReused } : {}), ...(pronounsReplaced > 0 ? { pronouns_replaced: pronounsReplaced } : {}), ...(fullNamesShortened > 0 ? { full_names_shortened: fullNamesShortened } : {}) },
+      ...(queries.length > 0 ? { agent_loop_queries: queries } : {}),
     };
   }
 

@@ -106,8 +106,11 @@ export function OverviewScreen({
   performanceOverview,
   performanceStrip,
   googleReviews,
+  hrApprovalCard,
 }: {
   followUps: OverviewFollowUps;
+  /** HR APPROVAL: HR's "forms waiting for your approval" card, server-rendered; absent for everybody else. */
+  hrApprovalCard?: ReactNode;
   /**
    * The Performance Overview card, rendered on the SERVER and passed in.
    *
@@ -280,6 +283,8 @@ export function OverviewScreen({
         person — a permanent bar saying nothing is wrong teaches a reader to
         ignore the colour.
       */}
+      {hrApprovalCard ?? null}
+
       {attention.needsAttention > 0 ? (
         <AlarmBar
           className="mb-5"
