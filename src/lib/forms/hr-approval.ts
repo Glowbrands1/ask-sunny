@@ -302,6 +302,11 @@ export interface HrApprovalView {
   canDecide: boolean;
   /** The reader is HR and may edit the values now. */
   canEdit: boolean;
+  /**
+   * Pending, but the hold is not live (the flag turned off, or no approver left): the creator may edit and finalize
+   * it as an ordinary draft (`releaseStaleHold`).
+   */
+  released: boolean;
   history: HrApprovalEntry[];
 }
 
@@ -328,14 +333,17 @@ export async function hrApprovalViewFor(actor: FormsActor, instance: InstanceRow
     at: row.created_at,
   }));
   const hr = actor.hrApprover === true;
+  const { hrHoldLive } = await import("./hr-approval-approvers");
+  const released = state === "pending" && !(await hrHoldLive());
   return {
+    released,
     state,
     label: HR_STATE_LABEL[state],
     requestedAt: instance.hrApprovalRequestedAt,
     waiting: state === "pending" ? waitingLabel(instance.hrApprovalRequestedAt, now) : null,
     overdue: state === "pending" && isOverdue(instance.hrApprovalRequestedAt, now),
-    canDecide: hr && state === "pending",
-    canEdit: hr && state === "pending",
+    canDecide: hr && state === "pending" && !released,
+    canEdit: hr && state === "pending" && !released,
     history,
   };
 }

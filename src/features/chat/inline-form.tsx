@@ -377,7 +377,7 @@ export function InlineForm({
    * `toHr`: this Finalize sends the form to HR, so the button and the confirmation say so.
    */
   const hrApproval = loaded.hrApproval ?? null;
-  const heldForHr = hrApproval?.state === "pending" && !hrApproval.canEdit;
+  const heldForHr = hrApproval?.state === "pending" && !hrApproval.canEdit && hrApproval.released !== true;
   const hrReviewing = hrApproval?.state === "pending" && hrApproval.canEdit;
   const toHr = loaded.finalizeToHr === true;
   const readOnly = finalized || prefilling || heldForHr;

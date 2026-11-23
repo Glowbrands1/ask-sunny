@@ -177,6 +177,31 @@ describe("the round trip", () => {
     expect(rejected.status).toBe("draft");
   });
 
+  /*
+   * ROLLBACK NEVER STRANDS A FORM (review of #1268): with the flag turned off, or the last approver revoked, nobody
+   * can approve a pending form, so it goes back to its creator as an ordinary draft they can edit and finalize.
+   */
+  it.each([
+    ["the flag is turned off", () => { delete process.env.FORMS_HR_APPROVAL_ENABLED; }],
+    ["the only approver is revoked", () => { extra.form_hr_approvers = [{ app_user_id: HR, revoked_at: "2026-11-24T00:00:00Z" }]; }],
+  ])("a pending form is released when %s: the creator edits and finalizes it", async (_case, rollBack) => {
+    const instance = await policyReview();
+    await sendForHrApproval(instance.id, manager, null, { acknowledgeUnverifiedPolicy: true });
+    rollBack();
+    const view = await hrApprovalViewFor(manager, (await loadInstance(instance.id))!.instance);
+    expect(view?.released, "the card would stay locked").toBe(true);
+    await saveInstanceValues(instance.id, { values: { form_date: "2026-11-24" }, checked: {} }, CREATOR);
+    expect((await loadInstance(instance.id))!.instance.hrApprovalState).toBeNull();
+    const finalized = await finalizeInstance(instance.id, CREATOR, null, { acknowledgeUnverifiedPolicy: true });
+    expect(finalized.status).toBe("finalized");
+  });
+
+  it("a pending form's plain Finalize is refused while the hold is live", async () => {
+    const instance = await policyReview();
+    await sendForHrApproval(instance.id, manager, null, { acknowledgeUnverifiedPolicy: true });
+    await expect(finalizeInstance(instance.id, CREATOR, null, { acknowledgeUnverifiedPolicy: true })).rejects.toBeInstanceOf(HeldForHrError);
+  });
+
   it("only the manager who created the form sends it", async () => {
     const instance = await policyReview();
     await expect(sendForHrApproval(instance.id, theirDm, null, { acknowledgeUnverifiedPolicy: true })).rejects.toThrow(/Only the manager who created/);

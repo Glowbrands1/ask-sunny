@@ -31,6 +31,8 @@ export interface HrApprovalPanelView {
   overdue: boolean;
   canDecide: boolean;
   canEdit: boolean;
+  /** Pending, but HR approval is off or nobody can approve: the creator may finalize it themselves. */
+  released?: boolean;
   history: { action: string; by: string; note: string | null; at: string }[];
 }
 
@@ -128,7 +130,11 @@ export function HrApprovalPanel({
         </ol>
       ) : null}
 
-      {view.state === "pending" && !view.canDecide ? (
+      {view.released ? (
+        <p className="mt-2 text-xs text-muted-foreground">
+          HR approval is not running right now, so this form is yours again: you can change it and finalize it.
+        </p>
+      ) : view.state === "pending" && !view.canDecide ? (
         <p className="mt-2 text-xs text-muted-foreground">
           HR is reviewing this form. It is finalized when they approve it, and you will see their answer in the bell.
         </p>

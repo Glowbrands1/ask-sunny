@@ -42,8 +42,9 @@ revoke all on public.form_hr_approvers from anon, authenticated;
 -- NO SEED ROW. The approver is added as data after this is applied, by account id, never by name or email:
 --   insert into public.form_hr_approvers (app_user_id, reason, granted_by)
 --   values ('<account id>', 'Approved HR approver for forms (owner request, 23 Nov 2026)', '<who added it>');
--- Until a row exists nobody is HR: with the flag on, forms still go to HR and wait, unseen by anybody but their
--- creator, so add the row before turning FORMS_HR_APPROVAL_ENABLED on.
+-- Until a row exists nobody is HR, and Finalize finalizes as before even with FORMS_HR_APPROVAL_ENABLED on ("no
+-- approver, no hold", `finalizeGoesToHr`). A form already pending when the flag is turned off or the last approver is
+-- revoked goes back to its creator as an ordinary draft (`releaseStaleHold`).
 
 -- ------------------------------------------------------- the form's state ---
 

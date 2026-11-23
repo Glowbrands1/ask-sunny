@@ -64,3 +64,22 @@ export async function accountEmail(appUserId: string): Promise<string | null> {
     return null;
   }
 }
+
+/**
+ * WHETHER THE HOLD IS LIVE: the flag on and at least one active approver. Only then is a pending form kept from its
+ * creator. Off, or with nobody left to approve (the flag turned off, the last approver revoked), a pending form would
+ * otherwise be frozen with no way out, so its creator's edit or Finalize releases it (`releaseStaleHold`).
+ */
+export async function hrHoldLive(): Promise<boolean> {
+  return hrApprovalEnabled() && (await listHrApprovers()).length > 0;
+}
+
+/** A pending form whose hold is no longer live goes back to an ordinary draft. Only a `pending` row is touched. */
+export async function releaseStaleHold(instanceId: string): Promise<void> {
+  const { error } = await getSupabaseAdmin()
+    .from("form_instances")
+    .update({ hr_approval_state: null, hr_approval_requested_at: null })
+    .eq("id", instanceId)
+    .eq("hr_approval_state", "pending");
+  if (error) throw new Error(`Could not release the form from HR approval: ${error.message}`);
+}
