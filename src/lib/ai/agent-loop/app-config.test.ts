@@ -39,6 +39,10 @@ import { rulesBookText } from "./rules-book";
  * follow_up_on_create (say the follow-up date Create sets; never deny a follow-up the form will have). It reads the same
  * under every config; nothing else changed.
  *
+ * Re-taken on purpose on 22 Nov 2026 (the 266-chat run's 036, QA's step 3): the Card replies line for
+ * payroll_question_only now says the card's own payroll answer (its first sentence), never "ticked" for a No, and the
+ * amount line only when there is an amount or reason. It reads the same under every config; nothing else changed.
+ *
  * Re-taken on purpose on 22 Nov 2026 (the 266-chat run's 039/241, QA's step 3): the Card replies line for the account
  * now reads its label from card.account_label, the form's own (Details of Coaching on a coaching form), never
  * "Observation of Offense" on every incident card. It reads the same under every config; nothing else changed.
