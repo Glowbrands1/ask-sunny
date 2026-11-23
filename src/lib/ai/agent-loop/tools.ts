@@ -4328,7 +4328,21 @@ export async function proposeForm(
   const priorActionsRefused = priorSplit ? (priorSplit.kept === null ? priorSplit.problem : null) : null;
   const priorStepsLeftOff = priorSplit && priorSplit.kept !== null && priorSplit.dropped.length > 0 ? priorSplit.dropped : [];
   const keptPriorActions = priorSplit?.kept ?? null;
-  const priorActions = priorActionsRefused ? null : (keptPriorActions ?? (statedSteps.length === 0 ? onFileLine : null));
+  const priorActionsRead = priorActionsRefused ? null : (keptPriorActions ?? (statedSteps.length === 0 ? onFileLine : null));
+  /*
+   * ADDING A STEP NEVER REMOVES ONE (port of Ask Bubbles #1069, its QA's live regression set, 22 Nov 2026, A13): with this
+   * person's card of this form on screen (its Prior actions filled from the forms on file), "in the previously recieved
+   * coaching include that <P> signed the jba policy manual on 10-15-26" came back with the new step only: the model listed
+   * just that, and the Corrective Action on file left the card. The forms on file stay beside the steps this request
+   * adds; a form on file whose date a kept step already has is that step, never listed twice. Read from the forms' own
+   * dates, never a word list.
+   */
+  const thisCardOnScreen = samePersonOnScreen && context.cardOnScreen?.templateKey === template.key;
+  const keptDates = priorActionsRead ? readDates(priorActionsRead) : [];
+  const onFileBeside = thisCardOnScreen && keptPriorActions && priorActionsRead
+    ? priorsOnFile.filter((prior) => !readDates(priorsOnFileLine([prior])).some((onFile) => keptDates.some((kept) => sameDate(kept, onFile))))
+    : [];
+  const priorActions = priorActionsRead && onFileBeside.length > 0 ? [priorsOnFileLine(onFileBeside), priorActionsRead].join(priorActionsRead.includes("\n") ? "\n" : "; ").slice(0, 600) : priorActionsRead;
   /*
    * QA's production audit (20 Nov 2026): "I need a verbal CA wrote up for <A>. I need the JBA policy for dress code
    * enclosed. can you also site the coaching that was done on 11/3" put 11/3, the prior coaching's date, on the card as
