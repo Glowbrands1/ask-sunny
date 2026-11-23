@@ -5,6 +5,7 @@ import { AuthError } from "@/lib/auth/types";
 import { authorizeRequest } from "@/lib/auth/server";
 import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 import { resolveFormsVisibility } from "./forms-visibility";
+import { resolveHrApprover } from "./hr-approval-approvers";
 import type { AccessScope, Permission, Role } from "@/types";
 
 /**
@@ -70,6 +71,11 @@ export interface FormsActor {
    * `authorizeForms`.
    */
   wouldRequire?: Permission;
+  /**
+   * This account approves forms as HR (`form_hr_approvers`, read only while FORMS_HR_APPROVAL_ENABLED is on). Absent
+   * or false: a form waiting for HR that this actor did not create does not exist for them. See `hr-approval-rules.ts`.
+   */
+  hrApprover?: boolean;
 }
 
 const DEMO_ROLE_HEADER = "x-ask-sunny-demo-role";
@@ -127,6 +133,7 @@ export async function authorizeForms(
       // but the flag is carried from the identity rather than asserted, so the
       // two can never disagree.
       verified: context.identity.verified,
+      hrApprover: context.identity.verified ? await resolveHrApprover(context.identity.subject) : false,
     };
   }
 

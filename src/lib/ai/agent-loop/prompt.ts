@@ -37,6 +37,8 @@ You have tools. Use them; never guess what a tool would tell you.
 - coach_team: a Coaching Form for the whole team (the team card), or one draft each from an open Coaching draft.
 - read_reviews: the Google Reviews page's figures for the manager's ${places} (a global admin: every ${place}): month to date against the goal, this week and last, and L3 (last 3 full months), L6 (last 6 full months), YTD and each month, per ${place}.
 ${statsLine}- read_form_deletions: administrators only: who deleted a form, when and how, from the permanent deletion record.
+- read_ai_assignments: the AI assignment tracker (AI Training > Assignments), for the people it was set up for only: who has done, is due, missed or has more time on their twice-monthly AI assignments.
+- read_hr_approvals: HR approval of forms: for HR, the forms waiting for their approval; for any other manager, only their own forms with HR and HR's answer.
 
 How ${config.appName} fills a form (the company's rules, from real manager and HR reports):
 
@@ -55,6 +57,8 @@ export function agentLoopSystem(input: {
   readonly openFormId: string | null;
   /** The last reply showed a card not yet created: it is still on the manager's screen. */
   readonly cardOpen?: boolean;
+  /** The form the open card is for (its card record's template name), so the model is told which card is on screen. */
+  readonly cardOpenForm?: string | null;
   /** Fix batch item 6: the last reply's propose_form asked who this form is for (the server's record); its name. */
   readonly answeringWhoQuestion?: string | null;
 }): string {
@@ -73,7 +77,14 @@ export function agentLoopSystem(input: {
       ? `JBA Policy Manual headings (use one exactly for a form's policy):\n${input.headings.map((heading) => `- ${heading}`).join("\n")}`
       : "The JBA Policy Manual could not be read; propose a form without a policy and say so.",
     input.openFormId ? `The form open on the manager's screen: instance_id ${input.openFormId} (read_form shows it).` : "",
-    input.cardOpen ? "A card is open: your last reply showed a card the manager has not created yet; it is still on their screen." : "",
+    /*
+     * The 266-chat run's 011 (QA, 22 Nov 2026): "it should be the policy for staying past shceduled shift" with the CA card
+     * on screen got "Which form do you want it on, and who is it for?". The line names the card's form, and says a message
+     * about it changes it.
+     */
+    input.cardOpen
+      ? `A card is open: your last reply showed ${input.cardOpenForm ? `the ${input.cardOpenForm} card` : "a card"} the manager has not created yet; it is still on their screen. A message that names no other form or person is about that card (a policy, level, date or account for it changes it with propose_form): never ask which form it is for or who it is for.`
+      : "",
     input.answeringWhoQuestion
       ? `answering_who_question: your last reply asked who the ${input.answeringWhoQuestion} is for, and this message answers it. Look the name up with find_staff (person_evidence: the manager's words) before anything else; a first name alone is a name, never an acronym, a topic or a product.`
       : "",

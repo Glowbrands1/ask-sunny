@@ -35,9 +35,17 @@ import { rulesBookText } from "./rules-book";
  * and the Business data rules one line for it (administrators only). Neither names the app, place, staff system or form
  * key; nothing else changed.
  *
+ * Re-taken on purpose on 23 Nov 2026 (Pau, AI Training -> Assignments): the tool list gained read_ai_assignments and
+ * the Business data rules one line for it (only the tracker's named people). Neither names the app, place, staff
+ * system or form key; nothing else changed.
+ *
  * Re-taken on purpose on 20 Nov 2026 (f048b, QA's live 23a): one Card replies line was added for propose_form's
  * follow_up_on_create (say the follow-up date Create sets; never deny a follow-up the form will have). It reads the same
  * under every config; nothing else changed.
+ *
+ * Re-taken on purpose on 22 Nov 2026 (the 266-chat run's 039/241, QA's step 3): the Card replies line for the account
+ * now reads its label from card.account_label, the form's own (Details of Coaching on a coaching form), never
+ * "Observation of Offense" on every incident card. It reads the same under every config; nothing else changed.
  *
  * Re-taken on purpose on 22 Nov 2026 (port from Ask Bubbles 1b34db2, A11): one Forms on file line was added after
  * which_form_question: an answer that gives changes is not a pick; open_form and edit_form need choice_evidence; ask
@@ -165,6 +173,16 @@ import { rulesBookText } from "./rules-book";
  * exit_dates line: an exit card's reads_back is the only exit lines the reply reads back, every one is saved at Create,
  * and a detail added after the card reaches the form only through propose_form. It reads the same under every config;
  * nothing else changed.
+ *
+ * Re-taken on purpose on 21 Nov 2026 (Pau: a search of past forms by topic, FORM_TOPIC_SEARCH_ENABLED): one Replies line
+ * was added: forms on file about a topic ("any forms about cash handling at my <place>s this month?", "who's been written
+ * up for dress code?") call find_past_forms with about and no employee_name, list each form as given, say the counts, and
+ * "showing N of M". It uses the config's place word; nothing else changed.
+ *
+ * Re-taken on purpose on 23 Nov 2026 (HR approval of forms, owner request; CLAUDE.md rule 5): the tool list gained
+ * read_hr_approvals, and "Forms on file and privacy" gained one line: a form waiting for HR is not on file, and HR
+ * approval answers come only from read_hr_approvals, which lists only the asker's own forms. It reads the same under
+ * every config; nothing else changed.
  */
 
 const fixture = (name: string): string => readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), "utf8");

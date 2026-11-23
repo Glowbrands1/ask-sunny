@@ -16,6 +16,7 @@ import { evidenceFrom, headingWith, lastResult, loopStandIn, type LoopDecision }
  */
 
 const FLAG = "AGENT_LOOP_ENABLED";
+const LIVE = process.env.AGENT_LOOP_LIVE === "1";
 const REPORT = "QA's Bubbles live re-run (22 Nov 2026, A11, HIGH), ported: after \"Which one should I open?\", changes that pick no form opened and wrote one";
 const EDITS_NOT_A_PICK = "this is a verbal warning. previous coaching policy manual 10-15-26";
 
@@ -76,7 +77,10 @@ export const NOV22_AGENT_LOOP_WHICH_FORM_NEEDS_PICK_CASES: ReplayCase[] = [
       expect(listed.content, "the three forms were not listed with the which-one question (the case proves nothing)").toContain("Which one should I open?");
       const reply = await thread.say(EDITS_NOT_A_PICK);
       const refused = model.views.flatMap((view) => view.results.filter((result) => result.tool === "open_form")).at(-1)?.output as { reason_code?: string } | undefined;
-      expect(refused?.reason_code, "a form the manager never picked was opened").toBe("which_form_not_chosen");
+      // QA's live run (22 Nov 2026): the real model asked again and never called open_form, so there was no refusal to
+      // read. What the manager sees and what is saved are asserted below (nothing on screen, no form written, the question
+      // asked again); the refusal whenever open_form was called (the stand-in always calls it).
+      if (!LIVE || refused !== undefined) expect(refused?.reason_code, "a form the manager never picked was opened").toBe("which_form_not_chosen");
       expect(reply.formOpened, "a form the manager never picked is on screen").toBeFalsy();
       expect(ids.map((id) => JSON.stringify(t.values(id))), "a form the manager never picked was written").toEqual(before);
       expect(reply.content).toMatch(/Which one should I open\?/);
