@@ -11,7 +11,7 @@ import type { AccessScope, Role } from "@/types";
 
 import { PRODUCTION_SALONS } from "@/data/salons";
 
-import { FIGURES_MAX, OTHERS_NOT_VISIBLE, OUTSIDE_ACCESS, dataToolHandlers, figuresWithin, readFormDeletions, readReviews, readStats, salonsForTurn, type DataToolDeps, type FormDeletionRow } from "./data-tools";
+import { FIGURES_MAX, OTHERS_NOT_VISIBLE, OUTSIDE_ACCESS, dataToolHandlers, figuresWithin, readAiAssignments, readFormDeletions, readReviews, readStats, salonsForTurn, type DataToolDeps, type FormDeletionRow } from "./data-tools";
 
 /*
  * The agent loop's app data tools (QA, 15 Nov 2026): read_reviews and read_stats, with Pau's scope rules enforced in
@@ -102,6 +102,7 @@ function deps(overrides: Partial<DataToolDeps> = {}) {
     },
     readBreakdown: async () => null,
     loadFormDeletions: async () => [],
+    loadAssignmentTracker: async () => ({ people: [], marks: [] }),
     fetchDailyStatsGuide: vi.fn(async () => ({
       ok: true as const,
       grounding: { role: {} as never, documentId: "d", documentTitle: "DAILY STATS INTERPRETATION FRAMEWORK", matchedBy: "tag" as const, rows: [{ chunk_id: "c1", document_id: "d", document_title: "DAILY STATS INTERPRETATION FRAMEWORK", category: "operations", locator: "Section 2", content: "Lead with the one metric furthest from goal.", similarity: 0.9 } as never], presentGroups: [] },
@@ -296,7 +297,8 @@ describe("the scope rules", () => {
   it("the handlers are keyed as the loop dispatches them", () => {
     // f066 (20 Nov 2026) added read_form_deletions, the admin-only deletion record: a third handler on purpose.
     // HR approval (23 Nov 2026) added read_hr_approvals, so the AI can read the new approval step (CLAUDE.md rule 5).
-    expect(Object.keys(dataToolHandlers(ctx(MANAGER, "")))).toEqual(["read_reviews", "read_stats", "read_form_deletions", "read_hr_approvals"]);
+    // 23 Nov 2026 (Pau) added read_ai_assignments, the AI assignment tracker for its named people. Both on purpose.
+    expect(Object.keys(dataToolHandlers(ctx(MANAGER, "")))).toEqual(["read_reviews", "read_stats", "read_form_deletions", "read_ai_assignments", "read_hr_approvals"]);
   });
 });
 
@@ -373,5 +375,48 @@ describe("read_form_deletions", () => {
 
   it("is one of the loop's tools", () => {
     expect(Object.keys(dataToolHandlers(ctx(ADMIN, "", "admin")))).toContain("read_form_deletions");
+  });
+});
+
+/*
+ * AI Training -> Assignments (Pau, 23 Nov 2026): the AI assignment tracker, read by the people it was set up for only
+ * (`AI_ASSIGNMENT_TRACKER_EMAILS`). The emails and the people on the tracker are invented.
+ */
+describe("read_ai_assignments", () => {
+  const TRACKER = {
+    people: [
+      { id: "p1", name: "Brindle Oakhart", group: null, startDate: null, sortOrder: null },
+      { id: "p2", name: "Corvin Ashby", group: null, startDate: null, sortOrder: null },
+    ],
+    marks: [
+      { personId: "p1", month: "2026-11", half: 0 as const, state: "done" as const },
+      { personId: "p2", month: "2026-11", half: 0 as const, state: "extended" as const },
+    ],
+  };
+  const as = (email: string, role: Role = "admin") => ({ ...ctx(ADMIN, "who hasn't done their AI assignment yet?", role), actor: { role, scope: ADMIN, email } });
+
+  it("someone on the tracker's list reads who is done, has more time, and what is missing", async () => {
+    vi.stubEnv("AI_ASSIGNMENT_TRACKER_EMAILS", "tracker.one@example.test, tracker.two@example.test");
+    const { deps: d } = deps({ loadAssignmentTracker: async () => TRACKER });
+    const result = (await readAiAssignments(as("Tracker.Two@example.test"), d)) as { refused?: string; tracker: { untrusted_text: string; source: string } };
+    vi.unstubAllEnvs();
+    expect(result.refused).toBeUndefined();
+    expect(result.tracker.source).toBe("AI Training > Assignments");
+    expect(result.tracker.untrusted_text).toContain("The current half is Nov 1–15, 2026.");
+    expect(result.tracker.untrusted_text).toContain("Done this half: Brindle Oakhart.");
+    expect(result.tracker.untrusted_text).toContain("Asked for more time this half: Corvin Ashby.");
+    expect(result.tracker.untrusted_text).toContain("- Brindle Oakhart: 1 done, 2 missing, 0 with more time.");
+  });
+
+  it("anyone else, an administrator included, is refused and nothing is read", async () => {
+    vi.stubEnv("AI_ASSIGNMENT_TRACKER_EMAILS", "tracker.one@example.test");
+    const load = vi.fn(async () => TRACKER);
+    const { deps: d } = deps({ loadAssignmentTracker: load });
+    for (const actor of [as("someone.else@example.test", "admin"), as("someone.else@example.test", "owner"), { ...ctx(ADMIN, "", "admin") }]) {
+      const result = (await readAiAssignments(actor, d)) as { refused?: string };
+      expect(result.refused).toMatch(/only for the people it was set up for/);
+    }
+    vi.unstubAllEnvs();
+    expect(load).not.toHaveBeenCalled();
   });
 });

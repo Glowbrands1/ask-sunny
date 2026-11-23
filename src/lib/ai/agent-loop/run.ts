@@ -1,6 +1,7 @@
 import { POLICY_MANUAL_SIGNED_KEY, POLICY_MANUAL_SIGNED_LABEL } from "@/lib/forms/prior-actions";
 import { EXIT_METHOD_LABELS } from "@/lib/forms/exit-details";
 import { cardLines, historyReply, withoutAppNotes, withoutCardLines } from "./card-lines";
+import { withCardOpening } from "./card-opening";
 import { exitReadBackMismatch, withoutUnsavedExitLines } from "./exit-read-back";
 import "server-only";
 
@@ -545,6 +546,8 @@ function buildAgentLoopTools(config: AppConfig, planSteps = false) {
           },
           required: ["message_id", "quote", "kind"],
         },
+        form_asked_evidence: evidence("Optional. Only when the manager typed a form's name or title (\"the coaching form\"), whether or not the library has it: their words naming it. Leave it out for a request that describes what to do without a form's title. propose_form checks a title against the form you chose."),
+        instead_of_asked: { type: "boolean", description: "True only when the form the manager named is not in the library and this form is the one you offer in its place (the manager agreed, or you say so). The card then says so; never swap silently." },
         new_form_evidence: evidence("Only when this message asks for another or a new form (a second form for the person on the open draft, or a new request after an earlier card): its words."),
         form_change_evidence: evidence("Only when this message asks for the card on screen to be a different form for the same incident (\"make it a CA instead\", or the manager's yes to your offer of the other form): its words."),
         policy: { type: "string", description: "Always on a Corrective Action, Coaching or Follow-Up Coaching card (Pau, 17 Nov 2026), the heading that fits THIS card's own account, never one copied from another form's card. The one JBA Policy Manual heading that fits what happened, exactly. \"Other — <short topic>\" only for Must See Behaviors, a cleaning or sanitation duty left undone, or an incident no section covers; or both, \"<heading>; Other — <topic>\" (a cleaning duty beside another offense), as the rules book says." },
@@ -1617,6 +1620,8 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     fullNamesShortened = short.replaced;
   }
   if (offRosterNames.size === 1 && text) text = withFullOffRosterName(text, [...offRosterNames][0]!, appConfig().staffSystem);
+  /* Port of Ask Bubbles #1098 (its QA's u22 live records): a reply with this turn's card that names no form opens with the card's own opening. */
+  if (effects.proposal && text) text = withCardOpening(text, effects.proposal.templateName, replyNames.size === 1 ? [...replyNames][0]! : effects.proposal.employeeName);
   const cardSlot: CardSlot | null = effects.proposal
     ? { proposalId: effects.proposal.proposalId, employeeKey: effects.proposalEmployeeId ? personKey(effects.proposalEmployeeId) : null, nameKey: effects.proposal.employeeName ? personKey(effects.proposal.employeeName) : null, templateKey: effects.proposal.templateKey, templateName: effects.proposal.templateName ?? null, ...(effects.proposalAsked?.length ? { asked: effects.proposalAsked } : {}), ...(effects.proposalLevel ? { level: effects.proposalLevel } : {}), ...(effects.proposalPayroll ? { payroll: effects.proposalPayroll } : {}), ...(effects.proposalPayroll === "yes" && effects.proposalPayrollAmount ? { payrollAmount: effects.proposalPayrollAmount } : {}), ...(effects.proposal.policyLine ? { policyLine: effects.proposal.policyLine } : {}), ...(effects.proposalAccountKey ? { accountKey: effects.proposalAccountKey } : {}), ...(effects.proposal.formDate ? { incidentDate: effects.proposal.formDate } : {}), ...(effects.proposal.subject === "team" && effects.proposal.status === "needs_location" ? { teamNeedsLocation: true } : {}), ...(effects.proposal.subject === "team" && !effects.proposal.locationId ? { teamNoSalon: true } : {}), ...(effects.proposal.locationId ? { salonId: effects.proposal.locationId } : {}) }
     : null;
