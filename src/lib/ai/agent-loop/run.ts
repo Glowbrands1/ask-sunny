@@ -484,7 +484,6 @@ function buildAgentLoopTools(config: AppConfig, planSteps = false) {
       about: { type: "string", description: "Words the manager used about the form (\"" + examples.formAbout + "\"), if any. With no employee_name, the topic to search every form's saved text for (\"cash handling\", \"dress code\")." },
       forms_on_file_evidence: FORMS_ON_FILE_EVIDENCE,
       open: { type: "boolean", description: "true when the manager asks to open, edit or see one form on file (not a list of what is on file)." },
-      include_archived: { type: "boolean", description: "true only when the manager asks for archived forms. Finalized forms are listed archived or not; this adds archived drafts." },
     }, ["forms_on_file_evidence"]),
   },
   {

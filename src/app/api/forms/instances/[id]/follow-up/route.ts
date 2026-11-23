@@ -48,7 +48,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     const instance = await setFollowUpDate(id, body.date, actor.id);
     return NextResponse.json({ instance });
   } catch (error) {
-    // A refusal here is an answer, not a fault: the form is archived, already
+    // A refusal here is an answer, not a fault: the form is already
     // complete, or the date was not a date.
     if (error instanceof InstanceNotVisibleError) {
       return NextResponse.json({ error: error.message }, { status: 404 });

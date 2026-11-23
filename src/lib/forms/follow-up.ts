@@ -10,6 +10,8 @@ import { businessToday, businessWeekEnd, daysBetween } from "@/lib/business-date
  * state would need a nightly job to flip it, and would be wrong for however
  * many hours the job was late.
  *
+ * There is no archived state (Pau, 23 Nov 2026): a form is Draft or Finalized.
+ *
  * WHY THESE STATES ARE MUTUALLY EXCLUSIVE. The brief listed the rules
  * separately, and read literally they overlap: a draft with a follow-up date in
  * the past satisfies both DRAFTED and OVERDUE. Overlapping pills whose counts
@@ -17,7 +19,6 @@ import { businessToday, businessWeekEnd, daysBetween } from "@/lib/business-date
  * this resolves the overlap as a priority chain, ordered by what somebody needs
  * to know first:
  *
- *   archived      — off the active list; it is nobody's outstanding work
  *   followed_up   — the conversation happened; the date it was due no longer
  *                   decides anything
  *   overdue       — tracked, not done, and the date has passed
@@ -42,15 +43,13 @@ export type FollowUpState =
   | "untracked"
   | "open"
   | "overdue"
-  | "followed_up"
-  | "archived";
+  | "followed_up";
 
 /** The little a derivation needs to know about a form. */
 export interface FollowUpFacts {
   status: "draft" | "finalized" | "revised";
   followUpDate: string | null;
   followedUpAt: string | null;
-  archivedAt: string | null;
   /** Set on a revision: the form it revises. */
   revisesInstanceId?: string | null;
 }
@@ -59,7 +58,6 @@ export function followUpState(
   form: FollowUpFacts,
   today: string = businessToday(),
 ): FollowUpState {
-  if (form.archivedAt) return "archived";
   if (form.followedUpAt) return "followed_up";
   // Replaced by a finalized revision, which carries the follow-up now.
   if (form.status === "revised") return "untracked";
@@ -118,7 +116,7 @@ export interface FollowUpCounts {
 /**
  * Counted from the rows themselves, every time, so a count cannot disagree with
  * the list beneath it. `all` is the row total, and because the states are
- * disjoint the other four plus the untracked and archived rows account for it
+ * disjoint the other four plus the untracked rows account for it
  * exactly.
  */
 export function followUpCounts(
@@ -154,7 +152,7 @@ export interface AttentionSummary {
  * Tuesday.
  *
  * Excluded by construction, because `followUpState` gets there first:
- * followed-up records, archived records, and forms with no follow-up date —
+ * followed-up records and forms with no follow-up date —
  * including drafts nobody has started tracking.
  */
 export function attentionSummary(
@@ -214,5 +212,4 @@ export const FOLLOW_UP_LABEL: Record<FollowUpState, string> = {
   open: "Open",
   overdue: "Overdue",
   followed_up: "Followed up",
-  archived: "Archived",
 };

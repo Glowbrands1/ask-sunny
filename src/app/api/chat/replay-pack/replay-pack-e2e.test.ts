@@ -278,12 +278,13 @@ vi.mock("@/lib/config/server-env", async (importOriginal) => {
 });
 
 vi.mock("@/lib/auth/server", async () => {
-  const { DEFAULT_PERMISSION_MATRIX, hasPermission } = await import("@/lib/permissions");
+  // The ACTIVE matrix, as production's authorizeRequest reads it: the defaults plus what an administrator saved (23 Nov 2026).
+  const { activePermissionMatrix, hasPermission } = await import("@/lib/permissions");
   const { AuthError } = await import("@/lib/auth/types");
   return {
     authorizeRequest: async (_request: Request, permission: string) => {
       const role = (state as { role?: string }).role ?? "district_manager";
-      if (!hasPermission(DEFAULT_PERMISSION_MATRIX, role as never, permission as never)) {
+      if (!hasPermission(activePermissionMatrix(), role as never, permission as never)) {
         throw new AuthError("forbidden", "Your role does not have permission to do that.");
       }
       return {

@@ -85,7 +85,7 @@ export interface RevisionEntry {
 export interface RevisionHistory {
   /** The record the history was asked about. */
   readonly instanceId: string;
-  /** The chain, original first. Archived drafts and records the reader may not open are left out. */
+  /** The chain, original first. Records the reader may not open are left out. */
   readonly entries: readonly RevisionEntry[];
 }
 

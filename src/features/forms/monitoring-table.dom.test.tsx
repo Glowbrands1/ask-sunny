@@ -97,7 +97,6 @@ function form(overrides: Partial<MonitoredForm> = {}): MonitoredForm {
     finalizedAt: "2026-09-01T12:00:00Z",
     exportedAt: null,
     revisesInstanceId: null,
-    archivedAt: null,
     isDemo: true,
     updatedAt: "2026-09-01T10:00:00Z",
     ...overrides,
@@ -110,7 +109,6 @@ function table(
   forms: MonitoredForm[],
   options: {
     followUp?: "all" | "drafted" | "open" | "overdue" | "followed_up";
-    view?: "active" | "archived" | "all";
     attention?: { overdue: number; dueThisWeek: number; needsAttention: number };
     demo?: { deletable: number; protected: number };
   } = {},
@@ -119,7 +117,6 @@ function table(
     <MonitoringTable
       forms={forms}
       notice={null}
-      view={options.view ?? "active"}
       followUp={options.followUp ?? "all"}
       today={TODAY}
       attention={options.attention ?? NO_ATTENTION}
@@ -182,12 +179,6 @@ describe("the follow-up pills", () => {
     table(mixed);
     await userEvent.click(pill("Overdue"));
     expect(navigated.pushes).toEqual(["/forms/monitoring?followup=overdue"]);
-  });
-
-  it("keeps the archive shelf when the pill changes, and vice versa", async () => {
-    table(mixed, { view: "archived", followUp: "all" });
-    await userEvent.click(pill("Open"));
-    expect(navigated.pushes).toEqual(["/forms/monitoring?view=archived&followup=open"]);
   });
 
   it("says nothing is in an empty state rather than showing 'no forms yet'", () => {
@@ -300,14 +291,6 @@ describe("start tracking", () => {
     expect(navigated.refreshes).toBe(1);
   });
 
-  it("is not offered on an archived form", () => {
-    table([form({ employeeName: "Hidden One", archivedAt: "2026-09-02T00:00:00Z" })], {
-      view: "archived",
-    });
-    expect(
-      rowFor("Hidden One").ui.queryByRole("button", { name: /start tracking/i }),
-    ).toBeNull();
-  });
 });
 
 describe("changing the date", () => {
@@ -422,9 +405,10 @@ describe("the attention banner", () => {
   });
 });
 
-/* ------------------------------------------------ delete / archive regression --- */
+/* ------------------------------------------------ delete regression --- */
 
-describe("delete and archive still work as they did", () => {
+// On purpose (Pau, 23 Nov 2026): the Archive / Restore items and the Archived shelf are gone; a form is only Draft or Finalized.
+describe("delete still works as it did, and there is no archive", () => {
   async function openMenu(name: string) {
     await userEvent.click(rowFor(name).ui.getByRole("button", { name: /more actions/i }));
     return within(await screen.findByRole("menu"));
@@ -437,19 +421,9 @@ describe("delete and archive still work as they did", () => {
     expect(menu.queryByRole("menuitem", { name: /archive/i })).toBeNull();
   });
 
-  it("offers Archive INSTEAD OF Delete on a finalized form", async () => {
+  it("offers nothing to remove on a finalized form: no menu at all", () => {
     table([form({ employeeName: "Filed One" })]);
-    const menu = await openMenu("Filed One");
-    expect(menu.getByRole("menuitem", { name: /^archive$/i })).toBeTruthy();
-    expect(menu.queryByRole("menuitem", { name: /^delete$/i })).toBeNull();
-  });
-
-  it("offers Restore on an archived row", async () => {
-    table([form({ employeeName: "Hidden One", archivedAt: "2026-09-02T00:00:00Z" })], {
-      view: "archived",
-    });
-    const menu = await openMenu("Hidden One");
-    expect(menu.getByRole("menuitem", { name: /restore/i })).toBeTruthy();
+    expect(rowFor("Filed One").ui.queryByRole("button", { name: /more actions/i })).toBeNull();
   });
 
   it("still names the record before deleting it", async () => {
@@ -510,7 +484,8 @@ describe("small row controls are big enough to tap", () => {
   const sized = (element: HTMLElement) => /\b(?:min-h-8|size-8)\b/.test(element.className);
 
   it("Start tracking, PDF and the row menu", () => {
-    table([form({ employeeName: "Filed One" })]);
+    // A draft now: a finalized form has no row menu (no archive, no delete; Pau, 23 Nov 2026).
+    table([form({ employeeName: "Filed One", status: "draft" })]);
     const { ui } = rowFor("Filed One");
     expect(sized(ui.getByRole("button", { name: /start tracking/i }))).toBe(true);
     expect(sized(ui.getByRole("button", { name: /pdf/i }))).toBe(true);
@@ -617,11 +592,10 @@ describe("the row menu \"…\" opens with something in it", () => {
     expect(await screen.findByRole("menuitem", { name: /delete/i })).toBeTruthy();
   });
 
-  it("an admin gets Archive on a finalized form", async () => {
+  it("an admin gets no \"…\" on a finalized form: it is kept on file, not archived or deleted", () => {
     admin();
     table([form({ employeeName: "Filed One" })]);
-    await userEvent.click(rowFor("Filed One").ui.getByRole("button", { name: "More actions for Filed One" }));
-    expect(await screen.findByRole("menuitem", { name: /archive/i })).toBeTruthy();
+    expect(rowFor("Filed One").ui.queryByRole("button", { name: "More actions for Filed One" })).toBeNull();
   });
 
   it("the ... is not showing when clicked: a role that cannot manage gets no empty \"…\" on a draft", () => {

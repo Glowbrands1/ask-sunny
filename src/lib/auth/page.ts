@@ -5,10 +5,11 @@ import { redirect } from "next/navigation";
 
 import { isDemoMode } from "@/lib/config/runtime";
 import {
-  DEFAULT_PERMISSION_MATRIX,
+  activePermissionMatrix,
   canAccessAdminConsole,
   hasPermission,
 } from "@/lib/permissions";
+import { ensurePermissionsLoaded } from "@/lib/permissions/store";
 import type { Permission, Role } from "@/types";
 import { getAuthProvider } from "./index";
 import type { AuthenticatedIdentity } from "./types";
@@ -70,8 +71,8 @@ export function pageAuthorizationEnforced(): boolean {
  * update this.
  */
 export function defaultLandingForRole(role: Role): string {
-  if (hasPermission(DEFAULT_PERMISSION_MATRIX, role, "view_overview")) return "/";
-  if (hasPermission(DEFAULT_PERMISSION_MATRIX, role, "ask_questions")) return "/chat";
+  if (hasPermission(activePermissionMatrix(), role, "view_overview")) return "/";
+  if (hasPermission(activePermissionMatrix(), role, "ask_questions")) return "/chat";
   /*
    * A role with neither is not something the matrix currently produces. Landing
    * on the login screen is the honest answer for it: there is no screen this
@@ -114,7 +115,8 @@ export async function requireAuthenticatedPage(): Promise<AuthenticatedIdentity 
  * somebody with no explanation is how a permission boundary gets reported as a
  * broken link.
  *
- * The permission is checked against DEFAULT_PERMISSION_MATRIX on the server.
+ * The permission is checked against the active matrix (defaults plus what an
+ * administrator saved) on the server.
  * The browser's copy lives in IndexedDB and is editable in demo mode; a client
  * that edited it must not thereby open a screen.
  */
@@ -123,12 +125,14 @@ export async function requirePagePermission(
 ): Promise<AuthenticatedIdentity | null> {
   if (!pageAuthorizationEnforced()) return pageIdentity();
 
+  // The saved matrix first, so this check and every synchronous one the page runs after it use it.
+  await ensurePermissionsLoaded();
   const identity = await requireAuthenticatedPage();
   // Unreachable when enforcing — requireAuthenticatedPage redirects — but the
   // types do not know that, and a null here must never read as "allowed".
   if (!identity) redirect("/login");
 
-  if (!hasPermission(DEFAULT_PERMISSION_MATRIX, identity.role, permission)) {
+  if (!hasPermission(activePermissionMatrix(), identity.role, permission)) {
     const landing = defaultLandingForRole(identity.role);
     redirect(`${landing}${landing.includes("?") ? "&" : "?"}denied=${permission}`);
   }
@@ -208,7 +212,8 @@ export function pageGuardsAreAdvisoryOnly(): boolean {
 export async function pageCan(permission: Permission): Promise<boolean> {
   if (!pageAuthorizationEnforced()) return true;
 
+  await ensurePermissionsLoaded();
   const identity = await pageIdentity();
   if (!identity || !identity.verified) return false;
-  return hasPermission(DEFAULT_PERMISSION_MATRIX, identity.role, permission);
+  return hasPermission(activePermissionMatrix(), identity.role, permission);
 }

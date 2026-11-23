@@ -740,7 +740,8 @@ describe("who receives which rows", () => {
       /^\s*\/\/.*$/gm,
       "",
     );
-    expect(code).toContain("DEFAULT_PERMISSION_MATRIX");
+    // Changed on purpose (Pau, 23 Nov 2026): the server's matrix is the ACTIVE one — the defaults plus the saved changes.
+    expect(code).toContain("activePermissionMatrix()");
     expect(code).toMatch(/context\.identity\.role/);
   });
 });

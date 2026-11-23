@@ -50,7 +50,6 @@ function instanceRow(id: string) {
     followedUpBy: null,
     finalizedAt: null,
     exportedAt: null,
-    archivedAt: null,
     revisesInstanceId: null,
     createdAt: "2026-10-26T12:00:00Z",
     updatedAt: "2026-10-26T12:00:00Z",

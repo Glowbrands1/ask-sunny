@@ -1,7 +1,7 @@
 import "server-only";
 
 import { AuthError } from "@/lib/auth/types";
-import { DEFAULT_PERMISSION_MATRIX, asdNoFormMonitoringEnabled, hasPermission } from "@/lib/permissions";
+import { activePermissionMatrix, asdNoFormMonitoringEnabled, hasPermission } from "@/lib/permissions";
 
 import { authorizeForms, type FormsActor } from "./access";
 import {
@@ -72,7 +72,7 @@ export type InstanceAction =
   | "view"
   /** Change its content: save, assistant draft, finalize, revise, follow-up. */
   | "edit"
-  /** Manage the record itself: archive, restore, delete. */
+  /** Manage the record itself: delete. */
   | "manage";
 
 /**
@@ -111,7 +111,7 @@ export function actorMaySeeInstance(
    *   A manager files a coaching record at salon A.
    *   They transfer, and their scope becomes salon B.
    *   Their AccessScope no longer covers salon A at all.
-   *   They could still open, edit, finalize, archive and delete that record —
+   *   They could still open, edit, finalize and delete that record —
    *   and download its PDF — because they had once created it.
    *
    * Authorization here answers "may this person see this salon's HR records
@@ -249,7 +249,7 @@ export function withoutUnreadable<T extends Pick<InstanceRow, "layoutFamily">>(
  */
 function actorHolds(actor: FormsActor, permission: Permission): boolean {
   if (!actor.verified) return true;
-  return actor.role !== null && hasPermission(DEFAULT_PERMISSION_MATRIX, actor.role, permission);
+  return actor.role !== null && hasPermission(activePermissionMatrix(), actor.role, permission);
 }
 
 /**

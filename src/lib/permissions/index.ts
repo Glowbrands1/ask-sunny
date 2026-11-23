@@ -399,3 +399,131 @@ export function isPermissionLockedFor(role: Role, permission: Permission) {
     permission === "view_l10_meetings"
   );
 }
+
+/*
+ * ============================================================================
+ * SAVED CHANGES TO THE MATRIX (Pau, 23 Nov 2026)
+ * ============================================================================
+ *
+ * An administrator ticks and unticks cells on the Permissions screen; what is
+ * saved is an OVERRIDE per role, kept in `permission_overrides`. The matrix
+ * that is ENFORCED (server) and used for `can()` (browser) is the defaults with
+ * those overrides merged over them: `activePermissionMatrix()`.
+ *
+ * A role with no override uses the defaults, so an empty table changes nothing,
+ * and an override replaces the flag-shaped defaults for that role (ASD under
+ * `assistantManagerCreateEnabled` / `asdNoFormMonitoringEnabled`): somebody
+ * saved it on purpose.
+ *
+ * WHAT AN OVERRIDE CAN NEVER DO, whatever is stored: change the administrator
+ * roles (full access), or touch a cell that is not editable
+ * (`isPermissionEditableFor`). `sanitizeOverrides` drops those and anything
+ * unknown, so a hand-edited row cannot lock the administrators out or hand a
+ * manager an administrator screen.
+ */
+
+/** Role -> the WHOLE permission list for that role. A role absent here uses the defaults. */
+export type PermissionOverrides = Partial<Record<Role, Permission[]>>;
+
+/**
+ * Whether the matrix screen may change this cell.
+ *
+ * Not editable: anything for an administrator role; the locked cells
+ * (`isPermissionLockedFor`); and the administrator-only permissions
+ * (`ADMIN_ONLY_PERMISSIONS`) for a role that does not hold them by default —
+ * the Regional Manager's `view_ai_usage` can be taken away, but nobody else can
+ * be given spend or adoption analytics.
+ */
+export function isPermissionEditableFor(role: Role, permission: Permission): boolean {
+  if (isPermissionLockedFor(role, permission)) return false;
+  if (ADMIN_ONLY_PERMISSIONS.includes(permission) && !hasPermission(DEFAULT_PERMISSION_MATRIX, role, permission)) {
+    return false;
+  }
+  return true;
+}
+
+const KNOWN_ROLES = new Set<string>(ROLES);
+const KNOWN_PERMISSIONS = new Set<string>(PERMISSIONS);
+
+/** Keeps only what may be enforced: known roles, known keys, editable cells. Never throws. */
+export function sanitizeOverrides(raw: unknown): PermissionOverrides {
+  const out: PermissionOverrides = {};
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
+  for (const [role, list] of Object.entries(raw as Record<string, unknown>)) {
+    if (!KNOWN_ROLES.has(role) || !Array.isArray(list)) continue;
+    const r = role as Role;
+    if (canAccessAdminConsole(r)) continue;
+    const kept = new Set<Permission>();
+    for (const entry of list) {
+      if (typeof entry === "string" && KNOWN_PERMISSIONS.has(entry) && isPermissionEditableFor(r, entry as Permission)) {
+        kept.add(entry as Permission);
+      }
+    }
+    out[r] = PERMISSIONS.filter((permission) => kept.has(permission));
+  }
+  return out;
+}
+
+/** The defaults with `overrides` merged over them. Fixed cells always keep their default. */
+export function effectiveMatrix(
+  overrides: unknown,
+  defaults: PermissionMatrix = DEFAULT_PERMISSION_MATRIX,
+): PermissionMatrix {
+  const clean = sanitizeOverrides(overrides);
+  const out = {} as PermissionMatrix;
+  for (const role of ROLES) {
+    const base = defaults[role] ?? [];
+    const override = clean[role];
+    if (!override) {
+      out[role] = base;
+      continue;
+    }
+    const fixed = base.filter((permission) => !isPermissionEditableFor(role, permission));
+    out[role] = PERMISSIONS.filter((permission) => override.includes(permission) || fixed.includes(permission));
+  }
+  return out;
+}
+
+/**
+ * What to store for a full matrix (the screen's draft): only roles whose
+ * editable cells differ from the defaults, so a role ticked back to its default
+ * goes back to following the defaults.
+ */
+export function overridesFromMatrix(
+  matrix: PermissionMatrix,
+  defaults: PermissionMatrix = DEFAULT_PERMISSION_MATRIX,
+): PermissionOverrides {
+  const out: PermissionOverrides = {};
+  for (const role of ROLES) {
+    if (canAccessAdminConsole(role)) continue;
+    const editable = PERMISSIONS.filter((permission) => isPermissionEditableFor(role, permission));
+    const chosen = editable.filter((permission) => matrix[role]?.includes(permission));
+    const wanted = editable.filter((permission) => defaults[role]?.includes(permission));
+    if (chosen.join() !== wanted.join()) out[role] = chosen;
+  }
+  return out;
+}
+
+let activeOverrides: PermissionOverrides = {};
+let activeMatrix: PermissionMatrix = DEFAULT_PERMISSION_MATRIX;
+
+/**
+ * THE MATRIX IN FORCE RIGHT NOW. Synchronous, so the ~30 places that ask
+ * "may this role?" stay synchronous. On the server `ensurePermissionsLoaded()`
+ * (`store.ts`) refreshes it at the start of every authorized request and page;
+ * in the browser the session loads it from `/api/admin/permissions`. Until
+ * something has loaded it, it IS the defaults — never anything wider.
+ */
+export function activePermissionMatrix(): PermissionMatrix {
+  return activeMatrix;
+}
+
+export function activePermissionOverrides(): PermissionOverrides {
+  return activeOverrides;
+}
+
+/** Replaces the saved overrides (sanitized). Called by the loader and the session, and by tests. */
+export function setActivePermissionOverrides(raw: unknown): void {
+  activeOverrides = sanitizeOverrides(raw);
+  activeMatrix = effectiveMatrix(activeOverrides);
+}

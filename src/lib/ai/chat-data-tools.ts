@@ -4,7 +4,7 @@ import { z } from "zod";
 
 import { CLAUDE_HAIKU_MODEL } from "@/lib/config/models";
 import { reportBreakdownEnabled } from "@/lib/config/chat-quality-flags";
-import { hasPermission, DEFAULT_PERMISSION_MATRIX } from "@/lib/permissions";
+import { hasPermission, activePermissionMatrix } from "@/lib/permissions";
 import { loadSalonPerformanceSection } from "@/lib/reporting/read/salon-performance-briefing-source";
 import { loadSalesTotalsSection } from "@/lib/reporting/read/sales-totals-briefing-source";
 import { reportingScopeOf } from "@/lib/reporting/scope/authorized-salons";
@@ -164,9 +164,9 @@ export async function loadChatDataBlock(input: {
   const planned = planDataRead({
     choice,
     canViewReviews:
-      input.role !== null && hasPermission(DEFAULT_PERMISSION_MATRIX, input.role, "view_google_reviews"),
+      input.role !== null && hasPermission(activePermissionMatrix(), input.role, "view_google_reviews"),
     canViewReports:
-      input.role !== null && hasPermission(DEFAULT_PERMISSION_MATRIX, input.role, "view_reports"),
+      input.role !== null && hasPermission(activePermissionMatrix(), input.role, "view_reports"),
     salesAlreadyBriefed: input.briefedFamilies.includes("sales-totals"),
     compAlreadyBriefed: input.briefedFamilies.includes("salon-performance"),
   });

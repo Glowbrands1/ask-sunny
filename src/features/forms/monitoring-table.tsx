@@ -3,8 +3,6 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import {
-  Archive,
-  ArchiveRestore,
   CalendarPlus,
   CheckCircle2,
   Download,
@@ -20,7 +18,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Notice } from "@/components/ui/feedback";
 import { AlarmBar } from "@/components/ui/marquee";
 import { ScrollTable } from "@/components/ui/layout";
-import { Input, Label, Select } from "@/components/ui/field";
+import { Input, Select } from "@/components/ui/field";
 import {
   Dialog,
   DialogActions,
@@ -70,8 +68,6 @@ import { RegisterRowActions } from "@/form-revisions/register-row-actions";
  * date. Nothing is stored as "overdue" and nothing is hard-coded.
  */
 
-export type MonitoringView = "active" | "archived" | "all";
-
 export interface MonitoredForm {
   id: string;
   templateName: string;
@@ -91,7 +87,6 @@ export interface MonitoredForm {
   finalizedAt: string | null;
   exportedAt: string | null;
   revisesInstanceId: string | null;
-  archivedAt: string | null;
   /**
    * True when the row carries `demo:` provenance — a fact written by the
    * server when it was created, not a guess from the employee's name.
@@ -130,7 +125,6 @@ const PINNED =
  *   followed_up  the success token: the conversation happened
  *   drafted      neutral: unfinished, not late
  *   untracked    outline: no commitment exists to be late for
- *   archived     neutral: off the active list entirely
  *
  * Making every follow-up state pink would leave the manager no way to see which
  * one needs them.
@@ -141,7 +135,6 @@ const FOLLOW_UP_TONE: Record<FollowUpState, BadgeTone> = {
   followed_up: "ready",
   drafted: "neutral",
   untracked: "outline",
-  archived: "neutral",
 };
 
 /** The document's own lifecycle, shown small under the form name. */
@@ -154,7 +147,6 @@ const DOC_STATUS_LABEL = {
 export function MonitoringTable({
   forms,
   notice,
-  view,
   followUp,
   today,
   attention,
@@ -162,8 +154,6 @@ export function MonitoringTable({
 }: {
   forms: MonitoredForm[];
   notice: string | null;
-  /** Which shelf the server read. Changing it re-reads on the server. */
-  view: MonitoringView;
   /** Which follow-up state the pills are filtered to. */
   followUp: FollowUpFilter;
   /**
@@ -178,14 +168,13 @@ export function MonitoringTable({
   /**
    * Outstanding work across the ACTIVE set, counted on the server by the same
    * query the Overview uses. Not derived from the rows on screen: those are
-   * shelf- and pill-filtered, so a banner taken from them would say "nothing
+   * pill-filtered, so a banner taken from them would say "nothing
    * needs attention" the moment somebody looked at Followed up.
    */
   attention: AttentionSummary;
   /**
-   * What a demo sweep would do, counted on the SERVER across every shelf — not
-   * from the rows on screen, which are filtered and would give a wrong number
-   * the moment somebody switches to Archived.
+   * What a demo sweep would do, counted on the SERVER — not
+   * from the rows on screen, which are filtered and could give a wrong number.
    */
   demo: { deletable: number; protected: number };
 }) {
@@ -196,7 +185,7 @@ export function MonitoringTable({
   const [busy, setBusy] = React.useState<string | null>(null);
   /** The row a confirmation dialog is open for, and what it would do. */
   const [confirming, setConfirming] = React.useState<
-    { kind: "delete" | "archive" | "restore"; form: MonitoredForm } | null
+    { kind: "delete"; form: MonitoredForm } | null
   >(null);
   const [sweeping, setSweeping] = React.useState(false);
   /** The row whose empty date box is being filled in, after Start tracking. */
@@ -252,25 +241,10 @@ export function MonitoringTable({
    */
   const removeForm = (form: MonitoredForm) =>
     run(form.id, `Deleted the ${form.templateShortName} for ${form.employeeName}.`, () =>
-      // `formsFetch` turns the route's 409 — "this form is finalized, archive
-      // it instead" — into a thrown message shown as the problem notice, so
+      // `formsFetch` turns the route's 409 — "this form is finalized, so it
+      // cannot be deleted" — into a thrown message shown as the problem notice, so
       // the refusal reaches the person in the server's own words.
       call(`/api/forms/instances/${form.id}`, { method: "DELETE" }),
-    );
-
-  /** Archive, or put back. Never touches status or a single filled value. */
-  const setArchived = (form: MonitoredForm, archived: boolean) =>
-    run(
-      form.id,
-      archived
-        ? `Archived the ${form.templateShortName} for ${form.employeeName}. The record is kept.`
-        : `Restored the ${form.templateShortName} for ${form.employeeName}.`,
-      () =>
-        call(`/api/forms/instances/${form.id}`, {
-          method: "PUT",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ archived }),
-        }),
     );
 
   /** Set or move the follow-up date. Persists immediately — there is no Save. */
@@ -364,11 +338,9 @@ export function MonitoringTable({
    * linked to — which is what lets the Overview send somebody straight to
    * `?followup=overdue`.
    */
-  function go(next: { view?: MonitoringView; followUp?: FollowUpFilter }) {
+  function go(next: { followUp?: FollowUpFilter }) {
     const params = new URLSearchParams();
-    const nextView = next.view ?? view;
     const nextFollowUp = next.followUp ?? followUp;
-    if (nextView !== "active") params.set("view", nextView);
     if (nextFollowUp !== "all") params.set("followup", nextFollowUp);
     const query = params.toString();
     router.push(query ? `/forms/monitoring?${query}` : "/forms/monitoring");
@@ -379,9 +351,7 @@ export function MonitoringTable({
   const emptyMessage =
     followUp !== "all"
       ? `Nothing is ${FOLLOW_UP_LABEL[followUp as FollowUpState].toLowerCase()}.`
-      : view === "archived"
-        ? "Nothing is archived."
-        : null;
+      : null;
 
   return (
     <div className="space-y-4">
@@ -459,21 +429,6 @@ export function MonitoringTable({
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2">
-              <Label htmlFor="monitoring-view" className="text-muted-foreground">
-                Show
-              </Label>
-              <Select
-                id="monitoring-view"
-                value={view}
-                onChange={(event) => go({ view: event.target.value as MonitoringView })}
-                className="h-9 w-36"
-              >
-                <option value="active">Active forms</option>
-                <option value="archived">Archived</option>
-                <option value="all">All</option>
-              </Select>
-            </div>
             <Select
               aria-label="Form"
               value={templateName}
@@ -603,7 +558,7 @@ export function MonitoringTable({
                           * Changing the date is the common act, so it is a date
                           * box in the row rather than something behind a dialog
                           * — it persists on change, and there is no Save to
-                          * forget. Deleting and archiving live in the menu,
+                          * forget. Deleting a draft lives in the menu,
                           * where a destructive action belongs.
                           */}
                         <td className="px-2.5 py-2 whitespace-nowrap">
@@ -622,7 +577,7 @@ export function MonitoringTable({
                                 type="date"
                                 aria-label={`Follow-up date for ${form.employeeName}`}
                                 defaultValue={form.followUpDate ?? ""}
-                                disabled={working || !mayTrack || Boolean(form.archivedAt)}
+                                disabled={working || !mayTrack}
                                 autoFocus={tracking}
                                 onChange={(event) => {
                                   const value = event.target.value;
@@ -642,7 +597,7 @@ export function MonitoringTable({
                                 </span>
                               ) : null}
                             </span>
-                          ) : mayTrack && !form.archivedAt ? (
+                          ) : mayTrack ? (
                             <button
                               type="button"
                               onClick={() => setStarting(form.id)}
@@ -692,7 +647,7 @@ export function MonitoringTable({
                               {downloading === form.id ? "Preparing…" : "PDF"}
                             </button>
 
-                            {mayManage || (form.followedUpAt && mayTrack) ? (
+                            {(mayManage && form.status === "draft") || (form.followedUpAt && mayTrack) ? (
                               <DropdownMenu>
                                 <DropdownMenuTrigger
                                   aria-label={`More actions for ${form.employeeName}`}
@@ -707,46 +662,23 @@ export function MonitoringTable({
                                       Reopen follow-up
                                     </DropdownMenuItem>
                                   ) : null}
-                                  {mayManage ? (
+                                  {mayManage && form.status === "draft" ? (
                                     <>
                                       {form.followedUpAt && mayTrack ? (
                                         <DropdownMenuSeparator />
                                       ) : null}
                                       {/*
-                                        * DELETE OR ARCHIVE — decided by status,
-                                        * not offered as a pair one of which the
-                                        * server will refuse. A draft can be
-                                        * deleted; anything finalized or revised
-                                        * is a signed HR document, so the only
-                                        * offer is Archive.
+                                        * A DRAFT can be deleted. A finalized form is a signed HR
+                                        * document: it stays on file and the menu offers nothing for
+                                        * it. There is no archive (Pau, 23 Nov 2026).
                                         */}
-                                      {form.archivedAt ? (
-                                        <DropdownMenuItem
-                                          onSelect={() => setArchived(form, false)}
-                                        >
-                                          <ArchiveRestore />
-                                          Restore
-                                        </DropdownMenuItem>
-                                      ) : form.status === "draft" ? (
-                                        <DropdownMenuItem
-                                          tone="danger"
-                                          onSelect={() =>
-                                            setConfirming({ kind: "delete", form })
-                                          }
-                                        >
-                                          <Trash2 />
-                                          Delete
-                                        </DropdownMenuItem>
-                                      ) : (
-                                        <DropdownMenuItem
-                                          onSelect={() =>
-                                            setConfirming({ kind: "archive", form })
-                                          }
-                                        >
-                                          <Archive />
-                                          Archive
-                                        </DropdownMenuItem>
-                                      )}
+                                      <DropdownMenuItem
+                                        tone="danger"
+                                        onSelect={() => setConfirming({ kind: "delete", form })}
+                                      >
+                                        <Trash2 />
+                                        Delete
+                                      </DropdownMenuItem>
                                     </>
                                   ) : null}
                                 </DropdownMenuContent>
@@ -779,12 +711,8 @@ export function MonitoringTable({
       >
         {confirming ? (
           <DialogContent
-            title={confirming.kind === "delete" ? "Delete this form?" : "Archive this form?"}
-            description={
-              confirming.kind === "delete"
-                ? "This removes the form instance and its draft data."
-                : "The form leaves the active list. Nothing it says changes, and it stays on the record."
-            }
+            title="Delete this form?"
+            description="This removes the form instance and its draft data."
           >
             <dl className="space-y-3 text-[13px]">
               <div>
@@ -808,25 +736,14 @@ export function MonitoringTable({
               <Button variant="ghost" onClick={() => setConfirming(null)}>
                 Cancel
               </Button>
-              {confirming.kind === "delete" ? (
-                <Button
-                  variant="destructive"
-                  onClick={() => removeForm(confirming.form)}
-                  disabled={busy === confirming.form.id}
-                >
-                  {busy === confirming.form.id ? <Loader2 className="animate-spin" /> : <Trash2 />}
-                  Delete
-                </Button>
-              ) : (
-                <Button
-                  variant="primary"
-                  onClick={() => setArchived(confirming.form, true)}
-                  disabled={busy === confirming.form.id}
-                >
-                  {busy === confirming.form.id ? <Loader2 className="animate-spin" /> : <Archive />}
-                  Archive
-                </Button>
-              )}
+              <Button
+                variant="destructive"
+                onClick={() => removeForm(confirming.form)}
+                disabled={busy === confirming.form.id}
+              >
+                {busy === confirming.form.id ? <Loader2 className="animate-spin" /> : <Trash2 />}
+                Delete
+              </Button>
             </DialogActions>
           </DialogContent>
         ) : null}
@@ -855,7 +772,7 @@ export function MonitoringTable({
             {demo.protected > 0 ? (
               <p>
                 {demo.protected} finalized demo form{demo.protected === 1 ? " is" : "s are"} kept.
-                Finalized forms are archived, never deleted.
+                Finalized forms are kept on file and cannot be deleted.
               </p>
             ) : null}
           </div>

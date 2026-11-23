@@ -167,7 +167,7 @@ export async function reopenRequestedForm(input: {
     try {
       const actor = await authorizeForms(input.request, "view_form_monitoring");
       // PRIVATE_CREATOR_FORMS: over-read, then trim to the page; off, 200 itself.
-      visible = visibleInstances(actor, await listInstances("active", privateAwareLimit(200), instanceListFilterFor(actor))).slice(0, 200);
+      visible = visibleInstances(actor, await listInstances(privateAwareLimit(200), instanceListFilterFor(actor))).slice(0, 200);
     } catch {
       return null;
     }

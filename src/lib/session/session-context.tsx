@@ -16,10 +16,13 @@ import { isDemoMode } from "@/lib/config/runtime";
 import { demoRuntime } from "@/lib/demo/runtime";
 import { ACTIVE_BRAND } from "@/lib/brand";
 import {
-  DEFAULT_PERMISSION_MATRIX,
   canAccessAdminConsole,
+  effectiveMatrix,
   hasPermission,
   ROLES,
+  sanitizeOverrides,
+  setActivePermissionOverrides,
+  type PermissionOverrides,
 } from "@/lib/permissions";
 import { useAppStore } from "@/lib/store/app-store";
 import { useHydrated, usePreference, writePreference } from "@/lib/utils/client-store";
@@ -47,9 +50,11 @@ import { userFromSession, type AuthenticatedSession } from "./authenticated-user
  *   - `signInAsDemo` and `setDemoRole` THROW. Not no-ops: a stray call is a bug
  *     that would otherwise silently do nothing, and the only reason to call
  *     either is to change who you are, which real mode must refuse loudly.
- *   - `can()` reads DEFAULT_PERMISSION_MATRIX, never the store's editable copy.
- *     A person who edited their local matrix must not see admin navigation
- *     appear, even though the server would still refuse them.
+ *   - `can()` reads the matrix the SERVER enforces (the defaults plus what an
+ *     administrator saved, handed down by the layout and re-fetched from
+ *     /api/admin/permissions), never the store's editable copy. A person who
+ *     edited their local matrix must not see admin navigation appear, even
+ *     though the server would still refuse them.
  *
  * DEMO MODE is unchanged: sessionStorage holds a signed-in flag and a chosen
  * role, so a refresh mid-presentation does not drop the presenter back to the
@@ -130,12 +135,30 @@ interface SessionValue {
   signInAsDemo: (role?: Role) => void;
   signOut: () => void;
   setDemoRole: (role: Role) => void;
+  /**
+   * Real mode: reads the matrix the server enforces and re-draws `can()` from
+   * it. Resolves to the overrides now in force, or null if it could not be read
+   * (the matrix already held stays). Demo mode: a no-op returning null.
+   */
+  refreshPermissions: () => Promise<PermissionOverrides | null>;
 }
 
 const SessionContext = createContext<SessionValue | null>(null);
 
 function isRole(value: string): value is Role {
   return (ROLES as string[]).includes(value);
+}
+
+/** The overrides the server enforces, or null if they could not be read (the matrix held stays). */
+async function fetchServerOverrides(): Promise<PermissionOverrides | null> {
+  try {
+    const response = await fetch("/api/admin/permissions", { cache: "no-store" });
+    if (!response.ok) return null;
+    const body = (await response.json()) as { overrides?: unknown };
+    return sanitizeOverrides(body.overrides ?? {});
+  } catch {
+    return null;
+  }
 }
 
 export function SessionProvider({
@@ -156,10 +179,13 @@ export function SessionProvider({
    * identical if you only check the identity.
    */
   productionAuth = false,
+  initialPermissionOverrides,
 }: {
   children: ReactNode;
   session?: AuthenticatedSession | null;
   productionAuth?: boolean;
+  /** The saved permission changes the server had in force when it rendered. */
+  initialPermissionOverrides?: PermissionOverrides;
 }) {
   const { permissionMatrix } = useAppStore();
   const hydratedFromClient = useHydrated();
@@ -169,6 +195,40 @@ export function SessionProvider({
   const roleRaw = usePreference("session", ROLE_KEY, DEFAULT_ROLE);
 
   const authenticated = productionAuth && session !== null;
+
+  /*
+   * REAL MODE'S MATRIX: the server's. Starts from what the layout rendered with
+   * (so the first paint is right), is re-read from the server on load and after
+   * the Permissions screen saves. Until anything has said otherwise it is the
+   * built-in defaults — never wider.
+   */
+  const [serverOverrides, setServerOverrides] = useState<PermissionOverrides>(() =>
+    sanitizeOverrides(initialPermissionOverrides ?? {}),
+  );
+  const serverMatrix = useMemo(() => effectiveMatrix(serverOverrides), [serverOverrides]);
+
+  const applyOverrides = useCallback((next: PermissionOverrides) => {
+    setActivePermissionOverrides(next);
+    setServerOverrides(next);
+  }, []);
+
+  const refreshPermissions = useCallback(async (): Promise<PermissionOverrides | null> => {
+    if (!productionAuth) return null;
+    const next = await fetchServerOverrides();
+    if (next) applyOverrides(next);
+    return next;
+  }, [productionAuth, applyOverrides]);
+
+  useEffect(() => {
+    if (!productionAuth || !session) return;
+    let cancelled = false;
+    void fetchServerOverrides().then((next) => {
+      if (next && !cancelled) applyOverrides(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [productionAuth, session, applyOverrides]);
 
   // Nothing to wait for when the server already answered.
   const hydrated = productionAuth ? true : hydratedFromClient;
@@ -326,11 +386,11 @@ export function SessionProvider({
   const can = useCallback(
     (permission: Permission) =>
       hasPermission(
-        productionAuth ? DEFAULT_PERMISSION_MATRIX : permissionMatrix,
+        productionAuth ? serverMatrix : permissionMatrix,
         role,
         permission,
       ),
-    [productionAuth, permissionMatrix, role],
+    [productionAuth, serverMatrix, permissionMatrix, role],
   );
 
   const value = useMemo<SessionValue>(
@@ -350,6 +410,7 @@ export function SessionProvider({
       signInAsDemo,
       signOut,
       setDemoRole,
+      refreshPermissions,
     }),
     [
       hydrated,
@@ -364,6 +425,7 @@ export function SessionProvider({
       signInAsDemo,
       signOut,
       setDemoRole,
+      refreshPermissions,
     ],
   );
 
