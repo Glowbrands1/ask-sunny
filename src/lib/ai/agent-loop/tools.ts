@@ -410,7 +410,17 @@ export function levelFormWords(formName: string): string[] {
  */
 export function quoteNamesForm(text: string, template: { readonly name: string; readonly shortName?: string | null }): boolean {
   const spaced = (value: string) => value.replace(/[-‐-―]+/g, " ");
-  const names = [template.name, template.shortName ?? ""].map((name) => spaced(name).replace(/\s+form\s*$/i, "").trim()).filter(Boolean);
+  /*
+   * Port of Ask Bubbles #1082 (309ec42; QA, 23 Nov 2026, the exit-lock gap): a name with alternatives ("Resignation/Exit
+   * Form") answers to each of them with its last word ("Resignation Form", "Exit Form"): the name's own shape, never a list
+   * of words.
+   */
+  const alternatives = (name: string): string[] => {
+    const found = /^(.+?)\s+(\S+)\s*$/.exec(name);
+    if (!found || !found[1]!.includes("/")) return [name];
+    return [name, ...found[1]!.split("/").map((part) => `${part.trim()} ${found[2]}`)];
+  };
+  const names = [template.name, template.shortName ?? ""].flatMap(alternatives).map((name) => spaced(name).replace(/\s+form\s*$/i, "").trim()).filter(Boolean);
   const initials = names.map((name) => name.split(/\s+/)).filter((parts) => parts.length > 1).map((parts) => parts.map((part) => part[0]).join(""));
   /* Whole words, any case and spacing (holdsPhrase needs 3 characters, and "CA" is two). */
   const said = ` ${foldName(withoutMessageIdTags(spaced(text))).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim()} `;
@@ -2715,7 +2725,14 @@ export interface PriorOnFile {
  * (`visibleInstances`), none dated after today, at most 10 (the newest). The level of each CA is read from its saved
  * form. The card's own level is never set from them: it stays the manager's.
  */
-async function finalizedPriorsOnFile(context: ToolContext, person: RosterEmployee, roster: readonly RosterEmployee[], today: string): Promise<PriorOnFile[]> {
+/*
+ * Port of Ask Bubbles #1083 (0fbdd8b; its QA's live re-run, 23 Nov 2026, U09): for an incident on 11/1 the card's Prior
+ * actions listed ten forms on file dated 11/10–11/17, all AFTER the incident. A form on file is a prior action only when
+ * it is dated before this card's incident date (`before`: the date this proposal gives, else that of this person's card
+ * proposed earlier this turn or on screen, as a re-proposal often gives none); with no incident date at all, on or before
+ * today, as before. Only finalized forms count.
+ */
+async function finalizedPriorsOnFile(context: ToolContext, person: RosterEmployee, roster: readonly RosterEmployee[], today: string, before: string | null = null): Promise<PriorOnFile[]> {
   const actor = await chatFormsActor(context.actor).catch(() => undefined);
   if (!actor) return [];
   const keys = appConfig().formKeys;
@@ -2723,7 +2740,7 @@ async function finalizedPriorsOnFile(context: ToolContext, person: RosterEmploye
   const names = fullNamesOf(person);
   const nameWords = [...new Set(names.flatMap(candidateNameWords))];
   const rows = visibleInstances(actor, await listInstances("all", 200, { ...instanceListFilterFor(actor), employeeNameWords: nameWords }).catch(() => []))
-    .filter((row) => row.status === "finalized" && kinds.has(row.templateKey) && (row.formDate ?? "") <= today)
+    .filter((row) => row.status === "finalized" && kinds.has(row.templateKey) && (row.formDate ?? "") <= today && (!before || (row.formDate ?? "") < before))
     .filter((row) => names.some((full) => samePerson(full, row.employeeName)) || sameRosterPerson(row.employeeName, displayName(person), roster))
     .sort((a, b) => (a.formDate ?? "").localeCompare(b.formDate ?? "") || a.createdAt.localeCompare(b.createdAt))
     .slice(-10);
@@ -3694,7 +3711,6 @@ export async function proposeForm(
       const before = await lockedForm(context, employee);
       if (before && before.templateKey !== template.key) switchedFrom = { templateName: before.templateName, created: before.created };
     }
-    const exitAsked = template.key === appConfig().formKeys.exit && verifyEvidence(input.exit_evidence, thisTurn, { thisTurnOnly: true }).ok;
     /*
      * BOARD f108 (QA handoff, 22 Nov 2026: the form lock trusts the AI's quote). A real quote of this turn was enough to
      * switch the open card's form, whatever it said: "she said she'd be late again" made the CA a Coaching card. To leave
@@ -3707,6 +3723,13 @@ export async function proposeForm(
       const reply = thisTurn.length >= 2 ? thisTurn[thisTurn.length - 2]! : null;
       return reply?.role === "assistant" && quoteNamesForm(reply.content, template);
     };
+    /*
+     * Port of Ask Bubbles #1082 (QA, 23 Nov 2026, the exit-lock gap): a switch to the exit form passed on any real quote of
+     * this turn as exit_evidence, so "she told me she is thinking about quitting" made the CA on screen an exit card. It
+     * needs what every other form change needs: the quote names the exit form, or this turn answers the app's own offer of
+     * it (`lockLeft`).
+     */
+    const exitAsked = template.key === appConfig().formKeys.exit && verifyEvidence(input.exit_evidence, thisTurn, { thisTurnOnly: true }).ok && lockLeft(input.exit_evidence);
     if (!(asksNewForm && lockLeft(input.new_form_evidence)) && !(changeAsked && lockLeft(input.form_change_evidence)) && !exitAsked) {
       const locked = await lockedForm(context, employee);
       if (locked && locked.templateKey !== template.key) {
@@ -3779,6 +3802,19 @@ export async function proposeForm(
     whatHappened = (await import("@/lib/forms/short-name")).withCorrectedSpelling(whatHappened, employee.name, nameCorrectedFrom !== null ? [nameCorrectedFrom] : [], rosterSpellingOf(employee.id ?? null, read.kind === "read" ? read.roster : [])).text;
     const short = replyNameFor(employee.name, read.kind === "read" ? read.roster : [], extractEmployeeNames(managerTurns(context)), employee.id ?? null);
     whatHappened = (await import("@/lib/forms/short-name")).withShortName(whatHappened, employee.name, short).text;
+    /*
+     * Port from the sibling app (its QA's live re-run, 23 Nov 2026): the account names the card's person by their OTHER own
+     * first name (the roster's legal one while the card shows the preferred, or the reverse). It is this person, held by
+     * nobody else on the staff list: it becomes the card's short name, so the pronoun pass and Create's drafter read one person.
+     */
+    const ownRow = employee.id && read.kind === "read" ? read.roster.find((row) => row.id === employee.id) : undefined;
+    if (ownRow && read.kind === "read") {
+      const shortFirst = (short.trim().split(/\s+/)[0] ?? "").toLowerCase();
+      const firstsOf = (row: { firstName?: string | null; preferredFirstName?: string | null }) => [row.firstName, row.preferredFirstName].map((first) => (first ?? "").trim()).filter(Boolean);
+      const others = [...new Set(firstsOf(ownRow).filter((first) => first.toLowerCase() !== shortFirst))].filter((first) =>
+        !read.roster.some((row) => row.id !== ownRow.id && firstsOf(row).some((name) => name.toLowerCase() === first.toLowerCase())));
+      if (others.length > 0) whatHappened = (await import("@/lib/forms/short-name")).withOwnOtherFirstNames(whatHappened, others, ownRow.lastName ?? "", short).text;
+    }
   }
   /* The incident's own words (this person's turns, read below) are checked against the account once they are known. */
   const asked = managerContext(context.history as ChatMessage[], { id: context.questionMessageId, content: context.question });
@@ -4546,7 +4582,7 @@ export async function proposeForm(
    * own steps win. A date from a form on file counts as stated (the model may copy the line), never this incident's date.
    */
   const rosterPerson = caOnlyFields && employee.id && read.kind === "read" ? read.roster.find((row) => row.id === employee.id) ?? null : null;
-  const priorsOnFile = rosterPerson ? await finalizedPriorsOnFile(context, rosterPerson, read.kind === "read" ? read.roster : [], today) : [];
+  const priorsOnFile = rosterPerson ? await finalizedPriorsOnFile(context, rosterPerson, read.kind === "read" ? read.roster : [], today, date ?? (effects.proposal && effects.proposal.employeeName === employee.name ? effects.proposal.formDate ?? null : null) ?? ownCard?.incidentDate ?? null) : [];
   const onFileLine = priorsOnFile.length > 0 ? priorsOnFileLine(priorsOnFile) : null;
   /*
    * QA's round 2 (22 Nov 2026, U09; port of Ask Bubbles #1015): "JBA Policy Manual 1-1-2026, Verbal CA 11-1-2026. On
