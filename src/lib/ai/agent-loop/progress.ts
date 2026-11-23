@@ -53,6 +53,8 @@ export function progressStatus(tool: string, args: unknown): string {
       return "Checking the deletion record…";
     case "read_ai_assignments":
       return "Checking the AI assignments…";
+    case "read_hr_approvals":
+      return "Checking HR approvals…";
     case "app_help":
       return `Checking ${appConfig().appName}'s help…`;
     default:

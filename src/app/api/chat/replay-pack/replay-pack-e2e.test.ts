@@ -65,6 +65,13 @@ const store: FakeStore = {
   // AI Training -> Assignments (23 Nov 2026): the AI assignment tracker read_ai_assignments reads.
   ai_assignment_people: [],
   ai_assignment_marks: [],
+  // HR approval (23 Nov 2026, migration 20261123001000): the approver list, the approval history, the 6 AM reminder's
+  // record, the bell, and the user directory the bell and the queue read names and emails from.
+  form_hr_approvers: [],
+  form_hr_approval_events: [],
+  form_hr_reminder_sends: [],
+  app_notifications: [],
+  app_users: [],
 } as unknown as FakeStore;
 
 // As production builds the role table when the ASD may create forms (NEXT_PUBLIC_, read once at load).
@@ -1203,9 +1210,10 @@ function context(): ReplayContext {
       summaries.reply = summary;
     },
     rows: (table) => [...(((store as unknown as Record<string, unknown[] | undefined>)[table] ?? []) as Record<string, unknown>[])],
-    seedRows: (table, rows) => {
-      const tables = store as unknown as Record<string, unknown[] | undefined>;
-      (tables[table] ??= []).push(...rows);
+    addRows: (table, rows) => {
+      const tables = store as unknown as Record<string, Record<string, unknown>[] | undefined>;
+      if (!tables[table]) throw new Error(`replay pack: no table "${table}" in the case database`);
+      tables[table]!.push(...rows.map((row) => ({ ...row })));
     },
     draftWriteCarries: (field) => {
       faults.strayDraftField = field;

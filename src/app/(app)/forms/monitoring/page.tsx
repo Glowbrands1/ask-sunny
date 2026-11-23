@@ -27,6 +27,8 @@ import {
 } from "@/lib/forms/instance-scope";
 import { pageFormsAccess } from "@/lib/forms/page-scope";
 import type { Permission } from "@/types";
+import { HrApprovalTabs, HrQueueList, MyFormsWithHr } from "@/features/forms/hr-approval-lists";
+import { hrQueueSummary, listHrQueue, listMyFormsWithHr, type HrQueueRow, type MyHrFormRow } from "@/lib/forms/hr-approval";
 
 export const metadata: Metadata = { title: "Form Monitoring" };
 export const dynamic = "force-dynamic";
@@ -85,6 +87,26 @@ export default async function FormMonitoringPage({
   const access = await pageFormsAccess(identity);
   const mayRead = (instance: Parameters<typeof actorMaySeeInstance>[1]) =>
     actorMaySeeInstance(access.actor, instance);
+
+  /*
+   * HR APPROVAL (FORMS_HR_APPROVAL_ENABLED). HR gets a "Pending HR approval" tab (`?view=hr`) listing every form
+   * waiting for them; a manager sees their own forms HR has not approved yet. Nobody else sees either: a form waiting
+   * for HR is not in anybody else's list at all (`instanceListFilterFor`).
+   */
+  const isHr = access.actor.hrApprover === true;
+  const hrView = isHr && requestedView === "hr";
+  let hrQueue: HrQueueRow[] = [];
+  let hrSummary: { pending: number; overdue: number } | null = null;
+  let myWithHr: MyHrFormRow[] = [];
+  try {
+    if (isHr) {
+      hrSummary = await hrQueueSummary(access.actor);
+      if (hrView) hrQueue = await listHrQueue(access.actor);
+    }
+    myWithHr = await listMyFormsWithHr(access.actor);
+  } catch {
+    // A failed approval read leaves the ordinary list as it is; the tab and the card simply do not show.
+  }
 
   if (!access.noSalon) try {
     /*
@@ -164,7 +186,12 @@ export default async function FormMonitoringPage({
 
         <FormsAccessNotice permission="view_form_monitoring" />
 
-        {access.noSalon ? (
+        {hrSummary ? <HrApprovalTabs active={hrView ? "hr" : "all"} pending={hrSummary.pending} overdue={hrSummary.overdue} /> : null}
+        {!hrView ? <MyFormsWithHr rows={myWithHr} /> : null}
+
+        {hrView ? (
+          <HrQueueList rows={hrQueue} />
+        ) : access.noSalon ? (
           <Notice tone="attention" title="No home salon assigned">
             Form Monitoring shows the forms for your own salon, and your account has no salon assigned yet. An administrator can set it in User Management.
           </Notice>

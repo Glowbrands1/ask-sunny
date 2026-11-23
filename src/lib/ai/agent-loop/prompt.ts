@@ -38,6 +38,7 @@ You have tools. Use them; never guess what a tool would tell you.
 - read_reviews: the Google Reviews page's figures for the manager's ${places} (a global admin: every ${place}): month to date against the goal, this week and last, and L3 (last 3 full months), L6 (last 6 full months), YTD and each month, per ${place}.
 ${statsLine}- read_form_deletions: administrators only: who deleted a form, when and how, from the permanent deletion record.
 - read_ai_assignments: the AI assignment tracker (AI Training > Assignments), for the people it was set up for only: who has done, is due, missed or has more time on their twice-monthly AI assignments.
+- read_hr_approvals: HR approval of forms: for HR, the forms waiting for their approval; for any other manager, only their own forms with HR and HR's answer.
 
 How ${config.appName} fills a form (the company's rules, from real manager and HR reports):
 

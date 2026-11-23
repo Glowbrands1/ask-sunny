@@ -22,12 +22,12 @@ const SIGNED_IN = "qa-manager@example.test";
 
 function tracker(t: ReplayContext): void {
   vi.setSystemTime(new Date("2026-11-23T18:00:00Z"));
-  t.seedRows!("ai_assignment_people", [
+  t.addRows!("ai_assignment_people", [
     { id: "aaaaaaaa-0000-4000-8000-000000000001", name: "Ash Fernwell", group_name: null, start_date: null, sort_order: null },
     { id: "aaaaaaaa-0000-4000-8000-000000000002", name: "Bram Tolliver", group_name: null, start_date: null, sort_order: null },
     { id: "aaaaaaaa-0000-4000-8000-000000000003", name: "Cass Lindqvist", group_name: null, start_date: "2026-11-03", sort_order: null },
   ]);
-  t.seedRows!("ai_assignment_marks", [
+  t.addRows!("ai_assignment_marks", [
     { person_id: "aaaaaaaa-0000-4000-8000-000000000001", month: "2026-11", half: 1, state: "done" },
     { person_id: "aaaaaaaa-0000-4000-8000-000000000003", month: "2026-11", half: 1, state: "extended" },
   ]);
