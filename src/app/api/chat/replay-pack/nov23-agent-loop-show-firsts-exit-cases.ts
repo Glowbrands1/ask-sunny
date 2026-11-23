@@ -112,4 +112,51 @@ export const NOV23_AGENT_LOOP_SHOW_FIRSTS_EXIT_CASES: ReplayCase[] = [
       expect(reply.formOpened?.instanceId ?? null, `"11202026" did not open the 11/20 exit form:\n${reply.content}`).toBe("exit-tirzah-1120");
     },
   },
+  {
+    id: "nov23-show-firsts-exit-verbatim-four-turns",
+    title: `Her four turns, verbatim but for the name: "${T1}" → "yes" → "yes" → "11202026" opens the exit form; no reply lists her Coaching Form or asks "coaching or exit?"`,
+    report: REPORT,
+    status: "fixed",
+    fixFlags: ["AGENT_LOOP_ENABLED"],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      setUp(t, ["2026-11-20"]);
+      /*
+       * The model as in the trace: T1 and T2 only ask to confirm; from T3 it looks up her forms with this message's words
+       * ("yes": no kind in them, and no \`form\`), opens the one form listed, or lists them; T4 opens the first listed form
+       * with the date she typed, then the next one if that is refused.
+       */
+      const model = loopStandIn((view): LoopDecision => {
+        const turn = users(view);
+        if (turn === 1) return { text: "Just to confirm — do you want to see Tirzah's Resignation/Exit Form on file?" };
+        if (turn === 2) return { text: "Can you confirm: do you want Tirzah Quillon's Resignation/Exit Form?" };
+        const opened = view.results.filter((entry) => entry.tool === "open_form").map((entry) => entry.output as { opened?: boolean; reason_code?: string; error?: string });
+        if (opened.some((result) => !result.reason_code)) return { text: "Opening her Resignation/Exit Form." };
+        const found = lastResult(view, "find_past_forms") as Found | null;
+        if (turn === 3) {
+          if (!found) return { tool: "find_past_forms", input: { employee_name: "Tirzah Quillon", open: true, forms_on_file_evidence: evidenceFrom(view, "yes") } };
+          const forms = found.forms ?? [];
+          if (forms.length === 1 && opened.length === 0) return { tool: "open_form", input: { instance_id: forms[0]!.instance_id, forms_on_file_evidence: evidenceFrom(view, "yes") } };
+          return { text: `${forms.map((form) => `- ${form.form} · dated ${form.form_date}`).join("\n")}\n\nWhich one would you like to open?` };
+        }
+        const listed = (lastResult(view, "find_past_forms") as Found | null)?.forms ?? [];
+        const sameDate = listed.filter((form) => form.form_date === "2026-11-20");
+        const next = sameDate[opened.length];
+        if (next) return { tool: "open_form", input: { instance_id: next.instance_id, forms_on_file_evidence: evidenceFrom(view, "11202026"), choice_evidence: evidenceFrom(view, "11202026") } };
+        return { text: opened.at(-1)?.error ?? "Which one did you mean?" };
+      });
+      t.loopModel!(model, { scripted: true });
+      const thread = t.thread();
+      const replies = [];
+      let openedId: string | null = null;
+      for (const said of [T1, "yes", "yes", "11202026"]) {
+        const reply = await thread.say(said);
+        replies.push(reply.content);
+        openedId ??= reply.formOpened?.instanceId ?? null;
+        if (openedId) break;
+      }
+      expect(openedId, `her exit form never opened:\n${replies.join("\n---\n")}`).toBe("exit-tirzah-1120");
+      expect(replies.join("\n"), "a reply listed her Coaching Form or asked coaching or exit").not.toMatch(/Coaching Form/);
+    },
+  },
 ];

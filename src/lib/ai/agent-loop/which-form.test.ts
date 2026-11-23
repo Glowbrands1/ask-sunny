@@ -66,3 +66,33 @@ describe("whichFormChoice: a date typed as eight digits (a live manager's \"1120
     expect(pick("x-1", "11312026")).toMatchObject({ ok: false });
   });
 });
+
+describe("whichFormChoice: the kind the manager named (Pau, 23 Nov 2026: \"she clearly said exit form, but sunny at the bottom keep asking coaching or exit\")", () => {
+  const listedForms = [
+    { instance_id: "c-1", form: "Coaching Form", status: "draft", form_date: "2026-11-20", salon: "NE Kearney" },
+    { instance_id: "x-1", form: "Resignation/Exit Form", status: "finalized", form_date: "2026-11-20", salon: "NE Kearney" },
+    { instance_id: "a-1", form: "Corrective Action Form", status: "finalized", form_date: "2026-11-16", salon: "NE Kearney" },
+  ];
+  const listed: WhichFormRecord = { forms: listedForms.map(whichFormEntry), messageId: "m1" };
+  const pick = (id: string, said: string, kindWords: string[] | null) =>
+    whichFormChoice({ asked: listed, instanceId: id, evidence: { message_id: "m2", quote: said }, history, question: said, questionMessageId: "m2", kindWords });
+
+  it("\"11202026\" after \"exit\" picks the exit form, though a Coaching draft has the same date", () => {
+    expect(pick("x-1", "11202026", ["exit", "resignation"])).toEqual({ ok: true });
+  });
+
+  it("the Coaching draft of that date is never the pick when the manager asked for the exit form", () => {
+    const refused = pick("c-1", "11202026", ["exit", "resignation"]);
+    expect(refused).toMatchObject({ ok: false, reason_code: "which_form_not_chosen" });
+    expect((refused as { error: string }).error).toMatch(/never ask/);
+  });
+
+  it("the one listed form of the named kind is the pick on a bare yes", () => {
+    expect(pick("x-1", "yes", ["exit", "resignation"])).toEqual({ ok: true });
+  });
+
+  it("no kind named: a date two listed forms share picks neither by kind (unchanged)", () => {
+    expect(pick("c-1", "11202026", null)).toEqual({ ok: true });
+    expect(pick("x-1", "yes", null)).toMatchObject({ ok: false });
+  });
+});

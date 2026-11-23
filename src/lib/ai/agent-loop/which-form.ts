@@ -106,6 +106,13 @@ export function whichFormChoice(input: {
   readonly history: readonly ChatMessage[];
   readonly question: string;
   readonly questionMessageId?: string | null;
+  /**
+   * The template-name words of the kind of form this request named (the caller's `requestFormKind`: "exit" said before
+   * "yes" and "11202026"). Pau (23 Nov 2026): "she clearly said exit form, but sunny at the bottom keep asking coaching or
+   * exit". A listed form of another kind is never the pick while a listed form is of that kind; a form of that kind that
+   * shares its date with one of another kind is picked by that date.
+   */
+  readonly kindWords?: readonly string[] | null;
 }): WhichFormChoice {
   const asked = input.asked;
   if (!asked || asked.forms.length < 2) return { ok: true };
@@ -118,16 +125,29 @@ export function whichFormChoice(input: {
     reason_code,
     error: `${why} Your last reply asked which of the ${asked.forms.length} listed forms to open, and the manager has not picked one. Nothing was opened and nothing was written. Ask again which one, listing them as before; say that what the manager just told you will go on the one they pick. Never pick one for them.`,
   });
+  const kindWords = (input.kindWords ?? []).map((word) => word.toLowerCase());
+  const ofKind = (other: WhichFormEntry) => kindWords.length > 0 && kindWords.some((word) => (other.form ?? "").toLowerCase().includes(word));
+  const kindListed = asked.forms.filter(ofKind);
+  if (kindListed.length > 0 && !ofKind(entry)) {
+    return {
+      ok: false,
+      reason_code: "which_form_not_chosen",
+      error: `The manager asked for a ${kindListed[0]!.form ?? "form of another kind"}, and this form is a ${entry.form ?? "different form"}. Nothing was opened. Open the listed ${kindListed[0]!.form ?? "form"} the manager's words pick (by its date, salon, status or number); never ask whether they mean this ${entry.form ?? "form"}.`,
+    };
+  }
+  /* Only the forms of the kind the request named are the choices; a date they share with forms of other kinds still picks. */
+  const choices = kindListed.length > 0 ? kindListed : asked.forms;
   const claim = readEvidence(input.evidence);
   if (!claim) return refused("which_form_not_chosen", "Give choice_evidence: the manager's words from this message that pick this form.");
   const turns = identifiedTurns(input.history, input.question, input.questionMessageId);
   const check = verifyEvidence(input.evidence, turns, { thisTurnOnly: true });
   if (!check.ok) return refused("which_form_not_chosen", `The choice_evidence is not the manager's words in this message (${check.reason}).`);
   const picks =
-    picksByDate(claim.quote, entry, asked.forms) ||
-    picksBy(claim.quote, entry, asked.forms, "salon") ||
-    picksBy(claim.quote, entry, asked.forms, "status") ||
-    picksBy(claim.quote, entry, asked.forms, "form") ||
+    (choices.length === 1 && choices[0] === entry) ||
+    picksByDate(claim.quote, entry, choices) ||
+    picksBy(claim.quote, entry, choices, "salon") ||
+    picksBy(claim.quote, entry, choices, "status") ||
+    picksBy(claim.quote, entry, choices, "form") ||
     picksByPosition(claim.quote, position + 1);
   return picks ? { ok: true } : refused("which_form_not_chosen", "Those words do not single out this form: they name none of its date, salon, status, form or number in the list that the others do not share.");
 }

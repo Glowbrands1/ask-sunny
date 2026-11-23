@@ -30,12 +30,23 @@ The one exit form on file never opened.
   they are listed.
 - `which-form` reads an eight-digit date ("11202026") when it is a real calendar date.
 
-**Ask Bubbles: same gaps, port pending.** Bubbles' `main` (72404b3) already reads a lower-case first name and its
-possessive (`firstNamed`). It still has the other three gaps:
+- After Pau read the real chat ("she clearly said exit form, but sunny at the bottom keep asking coaching or exit"),
+  two more parts were added:
+  - **The kind named earlier holds** (`requestFormKind`). The kind is read from this message, then from the manager's
+    earlier turns, back to where the request began. A request keeps running while each reply in between ended in a
+    question. So "yes", "yes" and "11202026" keep the "exit" said first, and `find_past_forms` narrows on that kind too.
+  - **The other kind is never the pick.** While a which-form question is open, a listed form of another kind is refused
+    whenever a form of the named kind is listed. A date shared with a Coaching draft picks the exit form, and the model is
+    told never to ask "coaching or exit?".
+  Replay `nov23-show-firsts-exit-verbatim-four-turns` plays her four turns with an invented name.
+
+**Ask Bubbles: port by Bubbles coder 2, from this PR (QA, 23 Nov 2026).** Bubbles' `main` (72404b3) already reads a
+lower-case first name and its possessive (`firstNamed`). It has the other gaps:
 
 1. It doesn't split a possessive run together with the next word.
-2. Its per-person `form` narrowing covers only coaching and corrective actions, so "exit" doesn't narrow.
-3. `which-form` reads no eight-digit date.
+2. Its per-person `form` narrowing covers only coaching and corrective actions, and it never reads a kind from the
+   request's earlier turns.
+3. `which-form` reads no eight-digit date and has no guard on the named kind.
 
 The port carries the mechanism only: roster names, template-name kinds and calendar dates, never Sunny's names or
-wording. It is offered to QA to assign to a Bubbles coder.
+wording.

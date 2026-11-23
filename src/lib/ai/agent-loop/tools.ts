@@ -597,8 +597,40 @@ export function requestTurns(
 }
 
 /** QA's Bubbles re-run (22 Nov 2026, A11): open_form / edit_form of a listed form while "Which one?" is open needs the manager's pick. */
-function whichFormRefusal(context: ToolContext, id: string, evidence: unknown, formsOnFileEvidence?: unknown): ToolResult | null {
-  const choose = (claim: unknown) => whichFormChoice({ asked: context.whichFormAsked, instanceId: id, evidence: claim, history: context.history, question: context.question, questionMessageId: context.questionMessageId });
+/**
+ * The kind of form this request names (a live manager's "show me <first>sexit", then "yes", "yes", "11202026"; Pau, 23 Nov
+ * 2026: "she clearly said exit form, but sunny at the bottom keep asking coaching or exit"). Read from the manager's own
+ * words: this message, then the manager's earlier turns back to where this request began. A request runs on while each
+ * reply in between ended in a question ("Just to confirm …?", "Which one …?"), so the answers "yes" and "11202026" keep
+ * the "exit" said before them. Each turn is read with the roster's possessives ("<first>sexit" is "<first>'s exit") and
+ * `formKindFromText`, the template-name kinds the period listings use. Null when no turn of this request names a kind.
+ */
+export function requestFormKind(
+  context: Pick<ToolContext, "question" | "history">,
+  roster: readonly Pick<RosterEmployee, "firstName" | "lastName" | "preferredFirstName">[],
+): ReturnType<typeof formKindFromText> {
+  const history = (context.history ?? []) as ChatMessage[];
+  const words = [context.question ?? ""];
+  for (let at = history.length - 1; at >= 0; at -= 1) {
+    const turn = history[at]!;
+    if (turn.role === "assistant") {
+      if (!/\?\s*$/.test(withoutMessageIdTags(String(turn.content ?? "")).trim())) break;
+      continue;
+    }
+    if (turn.role === "user") words.push(withoutMessageIdTags(String(turn.content ?? "")));
+  }
+  for (const text of words) {
+    const kind = formKindFromText(withRosterPossessives(text, roster));
+    if (kind) return kind;
+  }
+  return null;
+}
+
+async function whichFormRefusal(context: ToolContext, id: string, evidence: unknown, formsOnFileEvidence?: unknown): Promise<ToolResult | null> {
+  /* The kind this request names (`requestFormKind`): a listed form of another kind is never the pick while one of that kind is listed. */
+  const read = context.whichFormAsked ? await rosterFor(context.actor.scope) : null;
+  const kind = read ? requestFormKind(context, read.kind === "read" ? read.roster : []) : null;
+  const choose = (claim: unknown) => whichFormChoice({ asked: context.whichFormAsked, instanceId: id, evidence: claim, history: context.history, question: context.question, questionMessageId: context.questionMessageId, kindWords: kind?.templateNameWords ?? null });
   const choice = choose(evidence);
   if (choice.ok) return null;
   /*
@@ -2078,8 +2110,9 @@ export async function findPastForms(context: ToolContext, input: { employee_name
      * left is the one to open; several are listed alone.
      */
     {
-      const ownWords = [wantForm, String((input.forms_on_file_evidence as { quote?: unknown } | null | undefined)?.quote ?? ""), context.question ?? ""];
-      const kind = ownWords.map((text) => formKindFromText(withRosterPossessives(text, people))).find((found) => found !== null) ?? null;
+      const ownWords = [wantForm, String((input.forms_on_file_evidence as { quote?: unknown } | null | undefined)?.quote ?? "")];
+      /* Then the request's own turns, this message first (`requestFormKind`): "yes" after "show me <first>sexit" keeps "exit". */
+      const kind = ownWords.map((text) => formKindFromText(withRosterPossessives(text, people))).find((found) => found !== null) ?? requestFormKind(context, people);
       /* The kind's own template-name words (the database filter of the period listings), then its exclusions (`ofKind`). */
       const ofThatKind = kind ? ofKind(rows.filter((row) => kind.templateNameWords.some((word) => row.templateName.toLowerCase().includes(word))), kind) : [];
       if (ofThatKind.length > 0) rows = ofThatKind;
@@ -5953,7 +5986,7 @@ export async function editForm(
    */
   const openedThisTurn = effects.formOpened?.instanceId ?? null;
   if (id !== context.openFormId && id !== openedThisTurn && !fromShownCard) {
-    const unchosen = whichFormRefusal(context, id, (input as { choice_evidence?: unknown }).choice_evidence, input.forms_on_file_evidence);
+    const unchosen = await whichFormRefusal(context, id, (input as { choice_evidence?: unknown }).choice_evidence, input.forms_on_file_evidence);
     if (unchosen) return unchosen;
     const refused = await formOnFileRefusal(context, id, input.forms_on_file_evidence);
     if (refused) return refused;
@@ -6800,7 +6833,7 @@ export async function openForm(context: ToolContext, effects: ToolEffects, input
   const id = typeof input.instance_id === "string" ? input.instance_id.trim() : "";
   if (id === "") return { reason_code: "missing_input", error: "Give the form's instance_id (from find_past_forms)." };
   if (id !== context.openFormId) {
-    const unchosen = whichFormRefusal(context, id, input.choice_evidence, input.forms_on_file_evidence);
+    const unchosen = await whichFormRefusal(context, id, input.choice_evidence, input.forms_on_file_evidence);
     if (unchosen) return unchosen;
     const refused = await formOnFileRefusal(context, id, input.forms_on_file_evidence);
     if (refused) return refused;
