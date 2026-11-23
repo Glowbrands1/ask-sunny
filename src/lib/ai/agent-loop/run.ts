@@ -731,7 +731,11 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   /* PR 6: the turn's one read of the policy manual starts first, beside the chat's record read (`turnManual`). */
   const turn: TurnReads = {};
   turn.manual = manualFor(input.scopeId, turn);
-  const { cards: records, nameQuestions, personAsked, exitOffers, teamConfirms, whichForms, turns: turnRecords } = await readLoopRecords(input.conversationId, input.actor.subject, input.history.filter((turn) => turn.role === "user" && typeof turn.id === "string").map((turn) => turn.id));
+  const { cards: records, nameQuestions, personAsked, exitOffers, teamConfirms, whichForms, turns: turnRecords } = await readLoopRecords(input.conversationId, input.actor.subject, input.history.filter((turn) => turn.role === "user" && typeof turn.id === "string").map((turn) => turn.id), {
+    /* Port of Ask Bubbles #1079 (duplicate tab): only this tab's own records (`card-record.ts`, `ThisTab`). */
+    messageIds: input.history.filter((turn) => turn.role === "user" && typeof turn.id === "string").map((turn) => turn.id!),
+    questionKeys: input.history.filter((turn) => turn.role === "user").map((turn) => personKey(String(turn.content ?? ""))),
+  });
   const cards = cardTurns(input.history, records);
   const lastReplyIndex = input.history.findLastIndex((turn) => turn.role === "assistant" && !turn.error);
   const cardOnScreen = !input.openFormId && lastReplyIndex >= 0 ? (cards.get(lastReplyIndex) ?? null) : null;

@@ -47,7 +47,11 @@ export interface ReplayThread {
 }
 
 export interface ReplayContext {
-  thread(): ReplayThread;
+  /**
+   * A browser tab's thread. `options.conversationId`: join this conversation id (a second tab on the same chat, e.g. a
+   * duplicated tab); `options.idPrefix`: this tab's message ids (browsers mint distinct ids; default "m").
+   */
+  thread(options?: { readonly conversationId?: string; readonly idPrefix?: string }): ReplayThread & { readonly conversationId?: string };
   /** `subject`: who is signed in (default "qa-manager"), for a case with two managers. */
   as(role: string, scope: unknown, subject?: string): void;
   directory(rows: readonly DirectoryRow[]): void;
