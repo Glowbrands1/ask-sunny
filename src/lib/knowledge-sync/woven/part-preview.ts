@@ -83,7 +83,7 @@ export async function previewWovenPart(
   const connector =
     overrides.connector ??
     new WovenKnowledgeConnector({
-      client: new WovenTeamClient({ baseUrl: config.baseUrl, deadlineAt: Date.now() + 50_000 }),
+      client: new WovenTeamClient({ baseUrl: config.baseUrl, deadlineAt: Date.now() + 50_000, antiforgeryHeader: config.postAntiforgeryHeader === true }),
       credentials: config.credentials!,
       company: config.company,
     });
