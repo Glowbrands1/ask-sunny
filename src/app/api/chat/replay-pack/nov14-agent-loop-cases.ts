@@ -466,7 +466,12 @@ export const NOV14_AGENT_LOOP_CASES: ReplayCase[] = [
       expect(modelSteps.every((step) => step.input_tokens === 200 && step.output_tokens === 60 && step.cache_read_input_tokens === 1000 && step.ms >= 0)).toBe(true);
       expect(looped.stopped).toBe("reply");
       expect(looped.steps.every((step) => step.resultChars > 0 && step.ms >= 0)).toBe(true);
+      // Board f111 (QA, 23 Nov 2026): the steps stay value-free; the words the loop searched with are their own slot
+      // (`agent_loop_queries`, a sibling of `agent_loop`), so this check is unchanged and still covers every step.
       expect(JSON.stringify(looped)).not.toMatch(/Briony|Calloway|coat/i);
+      const queries = (row!.slots as { agent_loop_queries?: { step: number; tool: string; query: string }[] }).agent_loop_queries ?? [];
+      expect(queries.map((entry) => entry.tool), "the searched words are not on the trace").toEqual(["find_staff", "find_past_forms"]);
+      expect(queries.every((entry) => entry.query.length > 0 && entry.query.length <= 200)).toBe(true);
       // The model and the turn's tokens are on the row, so the monthly budget and the daily cap count it.
       expect(row!.model).toBeTruthy();
       expect(Number(row!.output_tokens)).toBe(4 * 60);
