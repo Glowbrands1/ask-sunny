@@ -88,7 +88,8 @@ export function NotificationBell({ data }: { data: BellData }) {
                       {n.title}
                       {isRead(n) ? null : <span className="sr-only"> (unread)</span>}
                     </span>
-                    {n.body ? <span className="mt-0.5 block truncate text-xs text-muted-foreground">{n.body}</span> : null}
+                    {/* Three lines, not one: a note in the body has to be readable here (owner, 23 Nov 2026). */}
+                    {n.body ? <span className="mt-0.5 line-clamp-3 text-xs break-words text-muted-foreground">{n.body}</span> : null}
                     <span className="mt-0.5 block text-[11px] text-subtle-foreground">{timeAgo(n.createdAt)}</span>
                   </span>
                 </button>

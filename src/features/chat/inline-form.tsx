@@ -6,7 +6,7 @@ import { AlertTriangle, Check, Download, ExternalLink, Loader2, PencilLine, Plus
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input, Label } from "@/components/ui/field";
+import { Input, Label, Textarea } from "@/components/ui/field";
 import { Notice } from "@/components/ui/feedback";
 import { Dialog, DialogActions, DialogContent } from "@/components/ui/overlays";
 import { FinalizedChangePanel } from "./finalized-change-panel";
@@ -284,6 +284,8 @@ export function InlineForm({
    * twice.
    */
   const [confirmingFinalize, setConfirmingFinalize] = React.useState(false);
+  /** The optional "Note to HR" typed beside "Finalize and send to HR for approval"; sent with it, cleared once sent. */
+  const [hrNote, setHrNote] = React.useState("");
 
   const call = React.useCallback(
     <T,>(url: string, init: RequestInit = {}) => formsFetch<T>(url, role, user.name, init),
@@ -531,8 +533,11 @@ export function InlineForm({
           action: "finalize",
           followUpDate: followUp || null,
           ...(acknowledgeUnverifiedPolicy ? { acknowledgeUnverifiedPolicy: true } : {}),
+          // HR APPROVAL: the "Note to HR", only when this Finalize sends the form to HR.
+          ...(toHr && hrNote.trim() ? { note: hrNote.trim() } : {}),
         }),
       });
+      setHrNote("");
       await reload();
       setAction({ kind: "idle" });
     } catch (error) {
@@ -961,6 +966,23 @@ export function InlineForm({
                 <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
                 Check the year: {yearWarningText}.
               </p>
+            ) : null}
+            {toHr ? (
+              /* HR APPROVAL: an optional note that reaches HR with the form, in their bell and the approval history. */
+              <div className="space-y-1.5">
+                <Label htmlFor={`hr-send-note-${instanceId}`} className="text-xs">
+                  Note to HR (optional)
+                </Label>
+                <Textarea
+                  id={`hr-send-note-${instanceId}`}
+                  value={hrNote}
+                  onChange={(event) => setHrNote(event.target.value)}
+                  rows={2}
+                  maxLength={4000}
+                  placeholder="Anything HR should know about this form"
+                  disabled={action.kind === "busy"}
+                />
+              </div>
             ) : null}
             <div className="flex flex-wrap items-center gap-2">
               <Button

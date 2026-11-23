@@ -172,9 +172,14 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
        * while the manager can fix it. HR's own forms finalize as before.
        */
       if (await finalizeGoesToHr(actor, loaded.instance)) {
-        const instance = await sendForHrApproval(id, actor, body.followUpDate ?? null, {
-          acknowledgeUnverifiedPolicy: body.acknowledgeUnverifiedPolicy === true,
-        });
+        const instance = await sendForHrApproval(
+          id,
+          actor,
+          body.followUpDate ?? null,
+          { acknowledgeUnverifiedPolicy: body.acknowledgeUnverifiedPolicy === true },
+          // The optional "Note to HR" typed beside the button.
+          body.note,
+        );
         return NextResponse.json({ instance, sentToHr: true });
       }
       const instance = await finalizeInstance(id, actor.id, body.followUpDate ?? null, {

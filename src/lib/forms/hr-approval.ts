@@ -65,6 +65,15 @@ function cleanNote(note: unknown): string | null {
   return trimmed.length > 0 ? trimmed.slice(0, NOTE_LIMIT) : null;
 }
 
+/**
+ * A bell's body when it carries a note: THE NOTE FIRST, then the form. The bell shows a few lines of the body, so a
+ * note written after the form line was cut off before anyone could read it (owner, 23 Nov 2026: "make it appear in
+ * notification").
+ */
+export function noteThenForm(note: string, line: string): string {
+  return `\u201c${note}\u201d \u2014 ${line}`;
+}
+
 /** "Corrective Action Form for Jane D. at Wornall" — the line every bell and list uses. */
 export function formLine(instance: Pick<InstanceRow, "templateName" | "employeeName" | "locationName">): string {
   const where = instance.locationName ? ` at ${instance.locationName}` : "";
@@ -119,10 +128,13 @@ export async function sendForHrApproval(
   actor: FormsActor,
   followUpDate: string | null,
   options: FinalizeOptions = {},
+  /** The sender's optional "Note to HR", typed beside the button: kept in the approval history and put in HR's bell. */
+  noteInput: unknown = null,
 ): Promise<InstanceRow> {
   const before = await loadInstance(instanceId);
   if (!before) throw new HrApprovalError("That form no longer exists.", 404);
   if (before.instance.status !== "draft") throw new HrApprovalError("This form is already finalized.");
+  const senderNote = cleanNote(noteInput);
   if (heldForHr(before.instance.hrApprovalState)) throw new HrApprovalError("This form is already waiting for HR approval.");
   // Anyone the route let edit this draft may send it (owner, 23 Nov 2026); they are recorded as its sender.
 
@@ -154,6 +166,8 @@ export async function sendForHrApproval(
     actor.id,
     options.acknowledgeUnverifiedPolicy === true ? "Sent with an unverified policy reference, acknowledged by the manager." : null,
   );
+  // The sender's note is its own entry, so the history reads "sent it for approval", then "added a note" with the text.
+  if (senderNote) await recordHrEvent(instanceId, "commented", actor.id, senderNote);
 
   const [approvers, creator] = await Promise.all([listHrApprovers(), displayName(actor.id)]);
   await ringBells(
@@ -163,7 +177,9 @@ export async function sendForHrApproval(
         recipientEmail: approver.email,
         kind: HR_REQUEST_KIND,
         title: "A form is waiting for your approval",
-        body: `${formLine(before.instance)}, sent by ${creator}.`,
+        body: senderNote
+          ? noteThenForm(senderNote, `${formLine(before.instance)}, sent by ${creator}.`)
+          : `${formLine(before.instance)}, sent by ${creator}.`,
         href: formHref(instanceId),
       })),
   );
@@ -242,7 +258,7 @@ export async function decideHrApproval(
         recipientEmail,
         kind: HR_DECISION_KIND,
         title,
-        body: note ? `${formLine(before.instance)}. HR's note: ${note}` : `${formLine(before.instance)}.`,
+        body: note ? noteThenForm(note, `${formLine(before.instance)}.`) : `${formLine(before.instance)}.`,
         href: formHref(instanceId),
       })),
     );
@@ -272,15 +288,18 @@ export async function commentOnHrApproval(instanceId: string, actor: FormsActor,
   await recordHrEvent(instanceId, "commented", actor.id, note);
 
   const fromHr = actor.hrApprover === true && !isCreatorOrSender(actor, loaded.instance);
-  const recipients = fromHr
-    ? await creatorAndSenderEmails(loaded.instance)
-    : (await listHrApprovers()).filter((approver) => approver.id !== actor.id).map((approver) => approver.email);
+  const [recipients, author] = await Promise.all([
+    fromHr
+      ? creatorAndSenderEmails(loaded.instance)
+      : listHrApprovers().then((approvers) => approvers.filter((approver) => approver.id !== actor.id).map((approver) => approver.email)),
+    fromHr ? Promise.resolve("HR") : displayName(actor.id),
+  ]);
   await ringBells(
     recipients.map((recipientEmail) => ({
       recipientEmail,
       kind: HR_COMMENT_KIND,
-      title: fromHr ? "HR added a note to your form" : "A manager replied on a form you are approving",
-      body: `${formLine(loaded.instance)}: ${note}`,
+      title: fromHr ? "HR added a note to your form" : `${author} added a note on a form you are approving`,
+      body: noteThenForm(note, formLine(loaded.instance)),
       href: formHref(instanceId),
     })),
   );
