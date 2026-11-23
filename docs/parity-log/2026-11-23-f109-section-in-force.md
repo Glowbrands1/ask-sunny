@@ -35,3 +35,9 @@ kept, the next section's own start, a row of another document untouched, and the
 line, a stored section that moved on); replay `nov23-manual-section-in-force-cases.ts` ("what is the policy on
 disability accommodation" with production's chunks 23–27 in place: the source card names Disability Accommodation;
 control: an immigration question still cites Immigration Law Compliance). Both fail on main.
+
+**QA's controls (23 Nov 2026), part of the port:** a chunk keeps its stored label for the text before its new heading.
+Only a chunk whose new heading is in force from its first line is relabelled whole; otherwise `sectionAfter` records
+where the new section starts, and a search hit is split there (`relabelManualRows`), with citations keyed by chunk and
+locator. Controls: chunk 121's Time Records lines stay Time Records; chunk 67's Solicitation lines stay Solicitation and
+Care and Cleaning is p.21.
