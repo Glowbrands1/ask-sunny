@@ -21,6 +21,17 @@ import {
   saveInstanceValues,
 } from "@/lib/forms/instances";
 import { reviseFinalizedForm, RevisionReasonRequiredError } from "@/lib/forms/revision-chain";
+import {
+  commentOnHrApproval,
+  decideHrApproval,
+  finalizeGoesToHr,
+  HrApprovalError,
+  hrApprovalViewFor,
+  recordHrEdit,
+  sendForHrApproval,
+  withdrawnFromHr,
+} from "@/lib/forms/hr-approval";
+import { heldForHr, isHeldForHr } from "@/lib/forms/hr-approval-rules";
 
 /**
  * One form.
@@ -56,9 +67,16 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await context.params;
-    const { loaded } = await authorizeInstance(request, id, "view");
+    const { actor, loaded } = await authorizeInstance(request, id, "view");
+    /*
+     * HR APPROVAL: the approval panel — state, waiting time, HR's notes — for the form's creator and HR only; null for
+     * every other reader. `finalizeToHr` tells the card to label its button "Finalize and send to HR for approval".
+     */
+    const hrApproval = await hrApprovalViewFor(actor, loaded.instance);
+    const finalizeToHr = await finalizeGoesToHr(actor, loaded.instance).catch(() => false);
+    const withHr = { ...loaded, ...(hrApproval ? { hrApproval } : {}), ...(finalizeToHr ? { finalizeToHr: true } : {}) };
     // CARD_CHANGE_PLAN_REBUILD_ENABLED: the Change something panel offers the Payroll deduction amount.
-    return NextResponse.json(cardChangePlanRebuildEnabled() ? { ...loaded, cardChangeAmount: true } : loaded);
+    return NextResponse.json(cardChangePlanRebuildEnabled() ? { ...withHr, cardChangeAmount: true } : withHr);
   } catch (error) {
     if (error instanceof InstanceNotVisibleError) {
       return NextResponse.json({ error: error.message }, { status: 404 });
@@ -70,7 +88,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await context.params;
-    const { actor } = await authorizeInstance(request, id, "edit");
+    const { actor, loaded: before } = await authorizeInstance(request, id, "edit");
     const body = (await request.json().catch(() => null)) as {
       values?: Record<string, string>;
       checked?: Record<string, string[]>;
@@ -78,11 +96,19 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       source?: unknown;
     } | null;
 
+    /*
+     * HR APPROVAL: HR may edit a form waiting for them (owner, 23 Nov 2026); the change is written through the one path
+     * the database lets past the hold and is recorded in the approval history the creator reads. Anybody else's save
+     * of a waiting form is refused (`HeldForHrError`).
+     */
+    const asHrApprover = actor.hrApprover === true && heldForHr(before.instance.hrApprovalState);
     const result = await saveInstanceValues(
       id,
       { values: body?.values ?? {}, checked: body?.checked ?? {} },
       actor.id,
+      { asHrApprover },
     );
+    if (asHrApprover) await recordHrEdit(id, actor);
     /*
      * CARD_CHANGE_PLAN_REBUILD_ENABLED (Pau, 28 Oct 2026): payroll deduct
      * changed from the Change something panel rebuilds the Corrective Action
@@ -109,6 +135,9 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     if (error instanceof InstanceNotVisibleError) {
       return NextResponse.json({ error: error.message }, { status: 404 });
     }
+    if (isHeldForHr(error)) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: 409 });
+    }
     return errorResponse(error, "forms/instance/save");
   }
 }
@@ -116,9 +145,11 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await context.params;
-    const { actor } = await authorizeInstance(request, id, "edit");
+    const { actor, loaded } = await authorizeInstance(request, id, "edit");
     const body = (await request.json().catch(() => null)) as {
-      action?: "finalize" | "revise" | "reevaluate";
+      action?: "finalize" | "revise" | "reevaluate" | "hr_approve" | "hr_reject" | "hr_send_back" | "hr_comment";
+      /** HR's note: required to reject or send back; the text of a comment. */
+      note?: string;
       followUpDate?: string | null;
       /**
        * The manager was shown the unverified-policy warning and chose to
@@ -135,10 +166,30 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     } | null;
 
     if (body?.action === "finalize") {
+      /*
+       * HR APPROVAL (FORMS_HR_APPROVAL_ENABLED): every form but the two coaching forms is sent to HR instead of being
+       * finalized — the same checks first, so a blank required field or an unacknowledged policy is still refused
+       * while the manager can fix it. HR's own forms finalize as before.
+       */
+      if (await finalizeGoesToHr(actor, loaded.instance)) {
+        const instance = await sendForHrApproval(id, actor, body.followUpDate ?? null, {
+          acknowledgeUnverifiedPolicy: body.acknowledgeUnverifiedPolicy === true,
+        });
+        return NextResponse.json({ instance, sentToHr: true });
+      }
       const instance = await finalizeInstance(id, actor.id, body.followUpDate ?? null, {
         acknowledgeUnverifiedPolicy: body.acknowledgeUnverifiedPolicy === true,
       });
       return NextResponse.json({ instance });
+    }
+    if (body?.action === "hr_approve" || body?.action === "hr_reject" || body?.action === "hr_send_back") {
+      const decision = body.action === "hr_approve" ? "approve" : body.action === "hr_reject" ? "reject" : "send_back";
+      const instance = await decideHrApproval(id, actor, decision, body.note);
+      return NextResponse.json({ instance, hrApproval: await hrApprovalViewFor(actor, instance) });
+    }
+    if (body?.action === "hr_comment") {
+      await commentOnHrApproval(id, actor, body.note);
+      return NextResponse.json({ hrApproval: await hrApprovalViewFor(actor, loaded.instance) });
     }
     if (body?.action === "revise" || body?.action === "reevaluate") {
       const instance = await reviseFinalizedForm(
@@ -166,6 +217,12 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      * The message tells the manager why, and that the new printout is signed
      * again; the code is what the reason dialog keys off.
      */
+    if (error instanceof HrApprovalError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    if (isHeldForHr(error)) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: 409 });
+    }
     if (error instanceof RevisionReasonRequiredError) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: 400 });
     }
@@ -227,6 +284,8 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
     const { id } = await context.params;
     const { actor } = await authorizeInstance(request, id, "manage");
     const deleted = await deleteInstance(id, { id: actor.id, role: actor.role, via: "route" });
+    // HR APPROVAL: a deleted waiting form leaves HR's bell.
+    await withdrawnFromHr(deleted);
     return NextResponse.json({
       deleted: { id: deleted.id, employeeName: deleted.employeeName },
     });
