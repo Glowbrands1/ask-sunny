@@ -414,10 +414,10 @@ class Thread {
     return payload;
   }
 
-  /** The card's Create, as the browser does it. */
-  async create(): Promise<string> {
+  /** The card's Create, as the browser does it; `salon` is the salon the manager picks on a card that asks for one. */
+  async create(salon?: string): Promise<string> {
     expect(this.proposal, "no card to create from").not.toBeNull();
-    const result = await createInlineForm({ proposal: this.proposal!, messages: this.messages, call, onCreated: () => {} });
+    const result = await createInlineForm({ proposal: salon ? { ...this.proposal!, locationId: salon } : this.proposal!, messages: this.messages, call, onCreated: () => {} });
     this.instanceId = toUuid(result.reference.instanceId);
     return this.instanceId;
   }
@@ -844,7 +844,14 @@ describe("a name accepted from the question is the card's person at Create", () 
     const thread = new Thread();
     const card = (await thread.say(first)) as { formProposal?: Card };
     expect(card.formProposal?.employeeName).toBe(typed);
-    await thread.create();
+    /*
+     * CHANGED ON PURPOSE (port of Ask Bubbles #1072, f140; QA round 2, 23 Nov 2026): a name the roster doesn't hold
+     * leaves the card asking which salon, and Create now refuses a card still asking ("Which salon is this about?")
+     * instead of saving it with no salon. So the manager picks the salon on the card first, as the browser's picker
+     * does and as the replay pack's create(salon) does. What this test is about is unchanged: Create is never refused
+     * for the typed name.
+     */
+    await thread.create(card.formProposal?.locationId ? undefined : KEARNEY);
     expect(store.form_instances[0]!.employee_name).toBe(typed);
   };
 
@@ -1038,7 +1045,12 @@ describe("a first name and a surname prefix are asked about from the roster, wit
     const later = (await thread.say("she was late on 10/20")) as { content: string; formProposal?: Card };
     expect(later.content).not.toMatch(/^(?:Is this for|Did you mean)/);
     expect(later.formProposal?.employeeName).toBe("Marisol Corvane");
-    await thread.create();
+    /*
+     * CHANGED ON PURPOSE (port of Ask Bubbles #1072, f140; QA round 2, 23 Nov 2026): this card asks which salon, and
+     * Create now refuses a card still asking instead of saving it with no salon, so the manager picks the salon on the
+     * card first, as the browser's picker does. The test is still about the card kept after "yes".
+     */
+    await thread.create(later.formProposal?.locationId ? undefined : KEARNEY);
     expect(store.form_instances[0]!.employee_name).toBe("Marisol Corvane");
   });
 
