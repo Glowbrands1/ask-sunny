@@ -46,7 +46,7 @@ import { isIsoCalendarDate } from "./form-date-answer";
 import { refreshedActionPlan } from "./ca-action-plan";
 import { blankRequiredFields, requiredFieldsMessage } from "./required-fields";
 import { getCurrentVersion, getVersion, type TemplateVersionRow } from "./repository";
-import { asHrApprovalState, editableDraft, heldForHr, withoutHeldForHr, type HrApprovalState } from "./hr-approval-rules";
+import { HELD_FOR_HR, asHrApprovalState, editableDraft, heldForHr, withoutHeldForHr, type HrApprovalState } from "./hr-approval-rules";
 
 /** The form's own Date line — the same day as `form_instances.form_date`. */
 const FORM_DATE_KEY = "form_date";
@@ -1086,7 +1086,7 @@ export class UnverifiedPolicyError extends Error {
 
 /** Thrown when somebody but HR writes to a form waiting for HR approval. */
 export class HeldForHrError extends Error {
-  readonly code = "HELD_FOR_HR";
+  readonly code = HELD_FOR_HR;
   constructor() {
     super("This form is waiting for HR approval. You can change it again if HR sends it back.");
     this.name = "HeldForHrError";

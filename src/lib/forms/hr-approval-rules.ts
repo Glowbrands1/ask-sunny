@@ -250,3 +250,10 @@ export function withoutAwaitingHr<Q extends { or(filters: string): Q }>(query: Q
 export function editableDraft(instance: { status: string; hrApprovalState?: HrApprovalState | null }): boolean {
   return instance.status === "draft" && !heldForHr(instance.hrApprovalState ?? null);
 }
+
+/** The code `HeldForHrError` (instances.ts) carries; routes recognise the refusal by it, without importing the class. */
+export const HELD_FOR_HR = "HELD_FOR_HR";
+
+export function isHeldForHr(error: unknown): error is Error & { code: typeof HELD_FOR_HR } {
+  return error instanceof Error && (error as { code?: unknown }).code === HELD_FOR_HR;
+}

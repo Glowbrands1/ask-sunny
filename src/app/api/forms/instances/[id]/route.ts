@@ -14,7 +14,6 @@ import {
   archiveInstance,
   deleteInstance,
   finalizeInstance,
-  HeldForHrError,
   RequiredFieldsBlankError,
   UnverifiedPolicyError,
   InstanceProtectedError,
@@ -32,7 +31,7 @@ import {
   sendForHrApproval,
   withdrawnFromHr,
 } from "@/lib/forms/hr-approval";
-import { heldForHr } from "@/lib/forms/hr-approval-rules";
+import { heldForHr, isHeldForHr } from "@/lib/forms/hr-approval-rules";
 
 /**
  * One form.
@@ -136,7 +135,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     if (error instanceof InstanceNotVisibleError) {
       return NextResponse.json({ error: error.message }, { status: 404 });
     }
-    if (error instanceof HeldForHrError) {
+    if (isHeldForHr(error)) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: 409 });
     }
     return errorResponse(error, "forms/instance/save");
@@ -221,7 +220,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     if (error instanceof HrApprovalError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
-    if (error instanceof HeldForHrError) {
+    if (isHeldForHr(error)) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: 409 });
     }
     if (error instanceof RevisionReasonRequiredError) {
