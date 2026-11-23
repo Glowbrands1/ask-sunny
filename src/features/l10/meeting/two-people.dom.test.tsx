@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { SaveOutcome } from "@/features/l10/data.server";
 import { MEETING_KEYS, type Roster } from "@/features/l10/lib/config";
-import type { LoadedMeeting, MeetingInfo } from "@/features/l10/lib/types";
+import type { MeetingInfo } from "@/features/l10/lib/types";
 import type { EndFn } from "./_components/Conclude";
 import { MeetingView } from "./MeetingView";
 import type { LoadFn, SaveFn } from "./useMeetingSync";
@@ -24,29 +24,7 @@ const roster: Roster = {
   ],
   leader: "Bo Lark",
 };
-const viewer = { id: "hub-user-1", label: "avery.quill@example.test", name: "Avery" };
-const loaded = (version = 3, doc: Record<string, unknown> = { attendees: [{ id: "att-avery", name: "Avery Quill", role: "Visionary", shared: true, rating: null }] }): LoadedMeeting => ({ version, updatedAt: null, doc });
 const HUB = "https://hub.example.test/meetings/stc-dm";
-
-function renderView(over: { save?: SaveFn; load?: LoadFn; initial?: LoadedMeeting; pollMs?: number; roster?: Roster; mentionPeople?: { id: string; name: string }[] } = {}) {
-  return render(
-    <MeetingView
-      info={info}
-      initial={over.initial ?? loaded()}
-      save={over.save ?? (vi.fn() as unknown as SaveFn)}
-      end={vi.fn() as unknown as EndFn}
-      load={over.load}
-      viewer={viewer}
-      roster={over.roster ?? roster}
-      mentionPeople={over.mentionPeople}
-      hubMeetingUrl={HUB}
-      pollMs={over.pollMs ?? 0}
-      debounceMs={0}
-      today="2026-11-13"
-      dateLabel="Fri, Nov 13"
-    />,
-  );
-}
 
 afterEach(() => {
   cleanup();
