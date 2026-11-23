@@ -12,7 +12,7 @@ switch to the exit form does not (QA's ruling). A card never given an account is
 
 **Not ported yet (the prior actions, U21 T7):** Bubbles' guard reads the card record's step dates (`priorDates`) and
 `priorStepDates` (`prior-step-dates.ts`), both from Bubbles #1056 (round 3: U09/U16/U21 dates), which is on no Sunny
-branch. It lands with the port of #1056 (QA routes it).
+branch. Sunny #1234 (the U09 form-dates port, head 9f50e6d) was checked: it reads prior-step dates inside propose_form only (a local `priorDates` set), with no card-record field and no `prior-step-dates.ts`, so it does not carry what the guard reads. Parked by QA (23 Nov 2026): not porting all of #1056 now; the guard lands when the card record carries the step dates.
 
 **Tests:** replay `nov23-agent-loop-card-keeps-account-cases.ts` (Bubbles' T11 wording, Sunny's roster): "Create … from
 this conversation" and a switch to Coaching with no account fail on main and pass after; controls: no account ever
