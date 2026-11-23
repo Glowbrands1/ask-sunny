@@ -1071,6 +1071,16 @@ async function rosterPrimarySalon(scope: AccessScope, id: string): Promise<strin
 }
 
 /**
+ * Port of Ask Bubbles #1072 (board f140; its U29 reading): the person's Woven salons among `choices`, Woven's primary
+ * first, then the salons the roster lists for them.
+ */
+async function wovenSalonsOf(scope: AccessScope, id: string, roster: readonly RosterEmployee[], choices: readonly string[]): Promise<string[]> {
+  const primary = await rosterPrimarySalon(scope, id);
+  const theirs = roster.find((row) => row.id === id)?.salonIds ?? [];
+  return [...new Set([...(primary ? [primary] : []), ...theirs])].filter((salon) => choices.includes(salon));
+}
+
+/**
  * The name the manager just said no to, after this chat's own "Did you mean **<A>**?" / "Is this for **<A>**?". It reads
  * the name back from the reply, so those questions keep the full name (the rules book's first-name line says so); never
  * shorten them to a first name or reply_name.
@@ -4514,12 +4524,37 @@ export async function proposeForm(
     : null;
   let salonFromWoven: string | null = null;
   if (!typedSalon && employee.id && proposal.status === "needs_location") {
+    /*
+     * Port of Ask Bubbles #1072 (board f140, its QA's round 2: R01/R19/U05–U07): Woven's primary salon alone missed a
+     * person the directory row gives no primary for, and the card asked "Which salon?" while Create saved no salon.
+     * Woven's primary salon among the choices is the card's salon, as before; with none, the person's Woven salons
+     * (`wovenSalonsOf`): exactly one among the choices is the card's salon; several still ask.
+     */
     const primary = await rosterPrimarySalon(context.actor.scope, employee.id);
-    if (primary && (proposal.authorizedLocationIds ?? []).includes(primary)) {
-      const filed = buildProposal(proposalInput([primary]));
-      if (filed.locationId === primary) {
+    const theirs = primary && (proposal.authorizedLocationIds ?? []).includes(primary) ? [primary] : await wovenSalonsOf(context.actor.scope, employee.id, read.kind === "read" ? read.roster : [], proposal.authorizedLocationIds ?? []);
+    const only = theirs.length === 1 ? theirs[0]! : null;
+    if (only) {
+      const filed = buildProposal(proposalInput([only]));
+      if (filed.locationId === only) {
         proposal = filed;
-        salonFromWoven = rosterSalonName(primary) ?? primary;
+        salonFromWoven = rosterSalonName(only) ?? only;
+      }
+    }
+  }
+  /*
+   * Port of Ask Bubbles #1072 (board f140 with U26): a FORMER employee's card (off the active roster) only offered their
+   * Woven salon (employee_salon) and relied on the model to propose again with it; when it did not, Create met a card
+   * still asking which salon. Their one Woven salon among the choices is the card's salon, as an active person's is
+   * (salon_from_woven); several still ask.
+   */
+  if (!typedSalon && !employee.id && offRosterName && proposal.status === "needs_location") {
+    const former = await inactiveMatchRow(context.actor.scope, employee.name);
+    const theirs = (former?.salonIds ?? []).filter((id) => (proposal.authorizedLocationIds ?? []).includes(id));
+    if (theirs.length === 1) {
+      const filed = buildProposal(proposalInput([theirs[0]!]));
+      if (filed.locationId === theirs[0]) {
+        proposal = filed;
+        salonFromWoven = rosterSalonName(theirs[0]!) ?? theirs[0]!;
       }
     }
   }
@@ -4616,6 +4651,18 @@ export async function proposeForm(
    */
   let whichSalon = false;
   const globalAsk = await import("@/lib/forms/global-salon-ask");
+  /*
+   * Port of Ask Bubbles #1072 (board f140): an admin's card for a person Woven lists at ONE salon was filed with no salon,
+   * and Create saved none. That one Woven salon is the card's salon (salon_from_woven); with several or none the card
+   * stays as it was (no new question for an admin).
+   */
+  if (!card.locationId && card.employeeName && employee.id && context.actor.scope?.level === "global" && !globalAsk.globalNonAdminNeedsSalon(context.actor.role, context.actor.scope)) {
+    const theirs = await wovenSalonsOf(context.actor.scope, employee.id, read.kind === "read" ? read.roster : [], appConfig().locations().map((salon) => salon.id));
+    if (theirs.length === 1) {
+      Object.assign(card, { locationId: theirs[0], locationName: rosterSalonName(theirs[0]!) ?? card.locationName, locationResolution: "resolved", authorizedLocationIds: [theirs[0]], status: card.status === "needs_location" ? "ready" : card.status });
+      salonFromWoven = rosterSalonName(theirs[0]!) ?? theirs[0]!;
+    }
+  }
   if ((await import("@/lib/config/chat-quality-flags")).globalSalonAskEnabled() && globalAsk.globalNonAdminNeedsSalon(context.actor.role, context.actor.scope) && !card.locationId && card.employeeName) {
     const named = globalAsk.salonIdNamedIn(requestWords);
     if (named) {
