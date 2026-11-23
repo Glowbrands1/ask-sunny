@@ -2537,7 +2537,14 @@ export interface PriorOnFile {
  * (`visibleInstances`), none dated after today, at most 10 (the newest). The level of each CA is read from its saved
  * form. The card's own level is never set from them: it stays the manager's.
  */
-async function finalizedPriorsOnFile(context: ToolContext, person: RosterEmployee, roster: readonly RosterEmployee[], today: string): Promise<PriorOnFile[]> {
+/*
+ * Port of Ask Bubbles #1083 (0fbdd8b; its QA's live re-run, 23 Nov 2026, U09): for an incident on 11/1 the card's Prior
+ * actions listed ten forms on file dated 11/10–11/17, all AFTER the incident. A form on file is a prior action only when
+ * it is dated before this card's incident date (`before`: the date this proposal gives, else that of this person's card
+ * proposed earlier this turn or on screen, as a re-proposal often gives none); with no incident date at all, on or before
+ * today, as before. Only finalized forms count.
+ */
+async function finalizedPriorsOnFile(context: ToolContext, person: RosterEmployee, roster: readonly RosterEmployee[], today: string, before: string | null = null): Promise<PriorOnFile[]> {
   const actor = await chatFormsActor(context.actor).catch(() => undefined);
   if (!actor) return [];
   const keys = appConfig().formKeys;
@@ -2545,7 +2552,7 @@ async function finalizedPriorsOnFile(context: ToolContext, person: RosterEmploye
   const names = fullNamesOf(person);
   const nameWords = [...new Set(names.flatMap(candidateNameWords))];
   const rows = visibleInstances(actor, await listInstances("all", 200, { ...instanceListFilterFor(actor), employeeNameWords: nameWords }).catch(() => []))
-    .filter((row) => row.status === "finalized" && kinds.has(row.templateKey) && (row.formDate ?? "") <= today)
+    .filter((row) => row.status === "finalized" && kinds.has(row.templateKey) && (row.formDate ?? "") <= today && (!before || (row.formDate ?? "") < before))
     .filter((row) => names.some((full) => samePerson(full, row.employeeName)) || sameRosterPerson(row.employeeName, displayName(person), roster))
     .sort((a, b) => (a.formDate ?? "").localeCompare(b.formDate ?? "") || a.createdAt.localeCompare(b.createdAt))
     .slice(-10);
@@ -4317,7 +4324,7 @@ export async function proposeForm(
    * own steps win. A date from a form on file counts as stated (the model may copy the line), never this incident's date.
    */
   const rosterPerson = caOnlyFields && employee.id && read.kind === "read" ? read.roster.find((row) => row.id === employee.id) ?? null : null;
-  const priorsOnFile = rosterPerson ? await finalizedPriorsOnFile(context, rosterPerson, read.kind === "read" ? read.roster : [], today) : [];
+  const priorsOnFile = rosterPerson ? await finalizedPriorsOnFile(context, rosterPerson, read.kind === "read" ? read.roster : [], today, date ?? (effects.proposal && effects.proposal.employeeName === employee.name ? effects.proposal.formDate ?? null : null) ?? ownCard?.incidentDate ?? null) : [];
   const onFileLine = priorsOnFile.length > 0 ? priorsOnFileLine(priorsOnFile) : null;
   /*
    * QA's round 2 (22 Nov 2026, U09; port of Ask Bubbles #1015): "JBA Policy Manual 1-1-2026, Verbal CA 11-1-2026. On
