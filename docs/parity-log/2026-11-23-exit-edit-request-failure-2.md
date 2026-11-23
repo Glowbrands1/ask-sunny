@@ -16,15 +16,20 @@ form: the finalized exit form and the coaching form. The earlier repro missed it
   decide what may be cleared).
 - `propose_form` (exit form): a date the manager's words give to one of the form's own date lines (last day worked,
   notice given, notice fulfilled; `readExitFacts`) is that line's date, never the form's.
-- `propose_form` (Corrective Action): the exit form's on-file rule by person, form and incident date
-  (`reason_code: "form_on_file_same_date"`): asked once, then the manager's answer decides; the same person's CA card on
-  screen is a change to it.
+- `propose_form` (Corrective Action and Coaching Form): the sibling app's same-incident mechanism and names (Bubbles
+  coder 5's `fix/same-incident-form-on-file`): a form of this kind for this person already on file for the card's
+  incident date makes no card; `reason_code: "same_incident_on_file"`, ask_exactly "<P> already has a Corrective Action
+  for <date> (<status>). Do you want to open that one, or is this a separate incident?", and a `same_incident` trace record
+  so the next turn's request starts at the question. The manager's "separate incident" (separate_incident_evidence)
+  makes the card.
+- `edit_form` (Pau, 24 Nov brief, item 4; QA's ruling): `clear_evidence` per field, and a value whose text is in this
+  message, are saved as the manager's own edit (drafts only); `stated_edits` names each field for the reply.
 - No word list: the forms' own levels, kinds, dates and the exit form's own date reader.
 
-**Open (Pau's ruling):** HR's "remove dates for notice given and notice fulfilled" and "How Employee Resigned should
-state …" on the revision are refused by the write layer (`would_blank` / `typed_by_manager`), because the live form's
-fields were typed by the manager. Replay case `nov23-exit-hr-edits-revise-the-finalized-form` is `open` until the ruling.
+**Item 4 (Pau's ruling, 23 Nov 2026):** HR's "remove dates for notice given and notice fulfilled" and "How Employee
+Resigned should state …" now apply on the revision; a field the message does not name keeps the manager's typing (control
+case `nov23-exit-edit-control-unnamed-field-untouched`).
 
 **Ask Bubbles (main 72404b3):** the same level narrowing at `tools.ts` 2222/2233–2236 (it came with the #1259 port), the
 same empty-value edit (`editForm` 6567), and the same exit form date (4957, 5724). Port the mechanism with Bubbles' own
-form names and wording, through QA. Bubbles coder 5 is doing the repeat Corrective Action guard separately.
+form names and wording, through QA. Bubbles coder 5 has the same-incident guard (Sunny matches its names); `clear_evidence` / `stated_edits` are for them to match.

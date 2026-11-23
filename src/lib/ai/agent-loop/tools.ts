@@ -67,7 +67,7 @@ import { expandPolicyQuery } from "@/lib/knowledge/policy-retrieval";
 import type { SourceCitation } from "@/types";
 import { followUpChangeAsked, followUpForCard, followUpLine, statedFollowUpDate } from "@/lib/forms/follow-up-default";
 import type { AccessScope, ChatFormProposal, ChatMessage, Role } from "@/types";
-import { accountKey, personKey, replyTurns, type CardRecord, type ExitOfferRecord, type NameQuestionRecord, type PersonAskedRecord, type TurnRecord } from "@/lib/ai/agent-loop/card-record";
+import { accountKey, personKey, replyTurns, type CardRecord, type ExitOfferRecord, type NameQuestionRecord, type PersonAskedRecord, type SameIncidentRecord, type TurnRecord } from "@/lib/ai/agent-loop/card-record";
 
 /**
  * ============================================================================
@@ -137,6 +137,8 @@ export interface ToolContext {
   /** QA (16 Nov 2026; c158, c208): every card this chat's loop made, and every "who is it for?" it asked, oldest first. */
   readonly cardRecords?: readonly CardRecord[];
   readonly personAskedRecords?: readonly PersonAskedRecord[];
+  /** Pau's review (23 Nov 2026): every "open that one, or is this a separate incident?" this chat's loop asked (`card-record.ts`). */
+  readonly sameIncidentRecords?: readonly SameIncidentRecord[];
   /** QA's code audit, coach_team C: the last reply asked the open Coaching draft's "create all?" (the server's record). */
   readonly teamConfirmAsked?: boolean;
   /** QA (#1055's follow-up): the exit-form offer the last reply's tools made (its record), or null. Never read from the reply. */
@@ -931,6 +933,8 @@ export interface ToolEffects {
    * card_on_screen offer). run.ts adds it when the model's reply left it out.
    */
   replyMustAsk?: string;
+  /** Pau's review (23 Nov 2026): propose_form asked whether this person's form on file for this date is meant (no card made). */
+  sameIncidentAsked?: { templateKey: string; employeeKey: string; date: string };
   /**
    * QA (16 Nov 2026; Runner 2's c163 T3): this turn asked the manager "Did you mean <A>?" (close_spelling_not_confirmed or
    * name_correction_did_you_mean): the roster ids offered and the question. A card for an offered person waits for the
@@ -2987,8 +2991,48 @@ function quoteNamesField(quote: string, label: string): boolean {
   return labelWords.length > 0 && named.length >= Math.ceil(labelWords.length / 2);
 }
 
-/** The words the same-date question starts with; a reply holding them already asked it (asked once). */
-const sameDateOnFileMark = (formName: string, date: string) => `already has a ${formName} on file for ${date}`;
+/**
+ * ============================================================================
+ * THE SAME INCIDENT ALREADY ON FILE (Pau's review via QA, 23 Nov 2026; Failure 2 item 3; the sibling app's mechanism)
+ * ============================================================================
+ *
+ * <P> had two Corrective Actions dated 11/13 on file (a draft and a finalized one); the AI never said one already existed.
+ * This person's forms of this card's kind (as find_past_forms reads them: the forms this manager may open), drafts and
+ * finalized, not archived and not revised, dated this card's incident date. The open form being edited is not another one.
+ */
+export interface SameDayOnFile {
+  readonly id: string;
+  readonly form: string;
+  readonly status: "draft" | "finalized";
+  readonly formDate: string;
+  readonly finalizedAt: string | null;
+}
+
+async function sameDayFormsOnFile(context: ToolContext, person: RosterEmployee, roster: readonly RosterEmployee[], templateKey: string, formDate: string): Promise<SameDayOnFile[]> {
+  const actor = await chatFormsActor(context.actor).catch(() => undefined);
+  if (!actor) return [];
+  const names = fullNamesOf(person);
+  const nameWords = [...new Set(names.flatMap(candidateNameWords))];
+  return visibleInstances(actor, await listInstances("all", 200, { ...instanceListFilterFor(actor), employeeNameWords: nameWords, formDateFrom: formDate, formDateTo: formDate }).catch(() => []))
+    .filter((row) => row.templateKey === templateKey && row.formDate === formDate && !row.archivedAt && (row.status === "draft" || row.status === "finalized") && row.id !== context.openFormId)
+    .filter((row) => names.some((full) => samePerson(full, row.employeeName)) || sameRosterPerson(row.employeeName, displayName(person), roster))
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    .map((row) => ({ id: row.id, form: row.templateName, status: row.status as "draft" | "finalized", formDate: row.formDate!, finalizedAt: row.finalizedAt ?? null }));
+}
+
+/** "<P> already has a Corrective Action for 11/18 (finalized 11/19). Do you want to open that one, or is this a separate incident?" */
+export function sameDayOnFileQuestion(name: string, formName: string, onFile: readonly SameDayOnFile[]): string {
+  const md = (iso: string | null) => {
+    const found = /^\d{4}-(\d{2})-(\d{2})/.exec(iso ?? "");
+    return found ? `${found[1]}/${found[2]}` : null;
+  };
+  const kind = formName.replace(/\s+Form$/i, "");
+  const states = onFile.map((form) => (form.status === "finalized" ? (md(form.finalizedAt) ? `finalized ${md(form.finalizedAt)}` : "finalized") : "a draft"));
+  const day = md(onFile[0]!.formDate);
+  const which = onFile.length === 1 ? "that one" : "one of those";
+  const has = onFile.length === 1 ? `a ${kind} for ${day} (${states[0]})` : `${onFile.length} ${kind}s for ${day} (${states.join("; ")})`;
+  return `${name} already has ${has}. Do you want to open ${which}, or is this a separate incident?`;
+}
 
 async function exitFormsOnFile(context: ToolContext, name: string, exitKey: string, formDate: string | null = null): Promise<{ status: string; date: string; salon: string | null }[]> {
   const actor = await chatFormsActor(context.actor).catch(() => null);
@@ -3463,6 +3507,7 @@ export async function proposeForm(
     person_evidence?: unknown;
     exit_evidence?: unknown;
     new_form_evidence?: unknown;
+    separate_incident_evidence?: unknown;
     same_card_evidence?: unknown;
     form_change_evidence?: unknown;
     request_evidence?: unknown;
@@ -4140,6 +4185,8 @@ export async function proposeForm(
   const requestStarts = new Set([
     ...(context.cardRecords ?? []).filter(isThisCard).map((record) => record.messageId),
     ...(context.personAskedRecords ?? []).filter((record) => record.templateKey === template.key).map((record) => record.messageId),
+    /* Pau's review (23 Nov 2026): this person's same-incident question for this form starts the request, as the card's record does. */
+    ...(context.sameIncidentRecords ?? []).filter((record) => record.templateKey === template.key && Boolean(employee.id) && record.employeeKey === personKey(employee.id!)).map((record) => record.messageId),
     ...whoAskedTurns,
     ...nameAskedTurns,
   ].filter((id): id is string => Boolean(id)));
@@ -5155,32 +5202,28 @@ export async function proposeForm(
    * reply showing that person's own card).
    */
   /*
-   * Failure 2, item 3 (Pau's review via QA, 23 Nov 2026): the same person had Corrective Actions of 11/13 twice on file
-   * (a draft and a finalized one). The exit form's rule (exit_on_file, above), for a Corrective Action by person, form and
-   * incident date: with one on file for this person dated the card's date (any status but a replaced original or an
-   * archived one), the card is not made; the reply says so and offers to open it or start a new one for that date. Asked
-   * once: when the previous reply put that question (the app's own words), the manager's answer decides. The same
-   * person's CA card already on screen is a change to that card, never asked. Form data; no word list.
+   * Failure 2, item 3 (Pau's review via QA, 23 Nov 2026; the sibling app's mechanism and names): a Corrective Action or
+   * Coaching card for a person and incident date that already has that form on file (draft or finalized) is not made
+   * until the manager answers: the reply says so plainly and asks whether to open it or whether this is a separate
+   * incident. The manager's own words that it is a separate incident (separate_incident_evidence, a quote of this
+   * request) build the card; a card already on screen for this person, form and date was asked about before. Never a
+   * word list: the forms on file and the date decide.
    */
-  if (template.key === appConfig().formKeys.corrective && card.formDate) {
-    const shownCa = context.cardOnScreen ?? context.earlierCard ?? null;
-    const sameCaOnScreen = shownCa?.templateKey === template.key &&
-      ((employee.id && shownCa.employeeKey === personKey(employee.id)) || (!shownCa.employeeKey && shownCa.nameKey === personKey(employee.name)));
-    const formName = template.name ?? "Corrective Action Form";
-    const shownDate = /^(\d{4})-(\d{2})-(\d{2})$/.test(card.formDate) ? `${card.formDate.slice(5, 7)}/${card.formDate.slice(8, 10)}/${card.formDate.slice(0, 4)}` : card.formDate;
-    const lastReply = [...(context.history as ChatMessage[])].reverse().find((turn) => turn.role === "assistant");
-    const askedBefore = typeof lastReply?.content === "string" && lastReply.content.includes(sameDateOnFileMark(formName, shownDate));
-    if (!sameCaOnScreen && !askedBefore) {
-      const onFile = await exitFormsOnFile(context, employee.name, template.key, card.formDate);
-      if (onFile.length > 0) {
-        const first = employee.name.trim().split(/\s+/)[0] || employee.name;
-        const listed = onFile.map((form) => `${form.status}${form.salon ? ` at ${form.salon}` : ""}`).join("; ");
-        return {
-          forms_on_file: onFile.map((form) => ({ status: form.status, date: form.date, ...(form.salon ? { [locationWord()]: form.salon } : {}) })),
-          ask_exactly: `${first} ${sameDateOnFileMark(formName, shownDate)} (${listed}). Do you want me to open it so you can make the changes (a filed form stays as it is until the new version is saved), or start a new ${formName} for that date?`,
-          reason_code: "form_on_file_same_date", error: `${employee.name} already has a ${formName} on file for ${shownDate}, so no card was made: a second one for the same incident date would duplicate their HR record. End your reply with ask_exactly, exactly, once. If the manager wants it opened or changed, call find_past_forms (employee_name, form, date, open: true) and then edit_form on that form; never propose_form for it. Only if they say to start a new one, propose_form again.`,
-        };
-      }
+  const sameDayKinds = new Set([appConfig().formKeys.corrective, appConfig().formKeys.coaching]);
+  const onScreenSameDay = sameCardOnScreen(context.cardOnScreen, template.key, employee) && (context.cardOnScreen?.incidentDate ?? null) === card.formDate;
+  const separateStated = answerEvidence(context, input.separate_incident_evidence, "request", evidencePerson, { requestTurnIds }).ok;
+  const sameDayPerson = employee.id && read.kind === "read" ? read.roster.find((row) => row.id === employee.id) ?? null : null;
+  if (sameDayKinds.has(template.key) && card.formDate && sameDayPerson && !onScreenSameDay && !separateStated) {
+    const onFile = await sameDayFormsOnFile(context, sameDayPerson, read.kind === "read" ? read.roster : [], template.key, card.formDate);
+    if (onFile.length > 0) {
+      const ask = sameDayOnFileQuestion(replyNameFor(card.employeeName ?? employee.name, read.kind === "read" ? read.roster : [], extractEmployeeNames(managerTurns(context)), employee.id ?? null), card.templateName ?? template.name, onFile);
+      effects.replyMustAsk = ask;
+      effects.sameIncidentAsked = { templateKey: template.key, employeeKey: personKey(employee.id!), date: card.formDate };
+      return {
+        same_incident_on_file: onFile.map((form) => ({ instance_id: form.id, form: form.form, status: form.status, form_date: form.formDate, finalized_at: form.finalizedAt })),
+        reason_code: "same_incident_on_file", error: `${employee.name} already has ${onFile.length === 1 ? "this form" : "these forms"} on file for ${card.formDate}. The card was not made and Create is held. Say so and end your reply with ask_exactly, exactly. If the manager then wants that form, open it (open_form with its instance_id); if they say this is a separate incident, propose the card again with separate_incident_evidence (their words).`,
+        ask_exactly: ask,
+      };
     }
   }
   /* QA (c163 T3): this turn asked whether the manager meant this person; the card waits for their answer (no guessing). */

@@ -33,6 +33,8 @@ const T1 =
   "make thes edits on rhea cotter exit Hi Kara,\nPlease make the following edits and resubmit for approval: \n\n    Remove dates for notice given and notice fulfilled. Dates should only be entered when the Submitted & Fulfilled Notice box is checked.\n\n    How Employee Resigned should state: On dd/mm/yyyy Rhea gave verbal notice of her immediate resignation to Kara Wexley, Assistant Salon Director\n    Additional Details should read: Rhea voluntarily terminated her employment effective immediately and provided no other details regarding her resignation";
 const T2 = "make  an exit form then";
 const T3 = "her last day worked was 11/17/2026. she forfeit her bonus and drops to minium wage";
+/** The manager's answer to the same-incident question (invented). */
+const SEPARATE = "it's a separate incident";
 const T4 = "what happended should be Rhea voluntarily terminated her employment effective immediately and provided no other details regarding her resignation";
 
 type Row = Record<string, unknown>;
@@ -309,7 +311,7 @@ export const NOV23_EXIT_ON_FILE_NEVER_DUPLICATED_CASES: ReplayCase[] = [
   ...(["2026-11-16", "2026-11-22"] as const).map((day): ReplayCase => ({
     id: day === "2026-11-16" ? "nov23-ca-same-incident-date-says-one-is-on-file" : "nov23-ca-other-incident-date-card-made",
     title: day === "2026-11-16"
-      ? "Failure 2, item 3: a Corrective Action for the same person and the same incident date as one on file (finalized 11/16): no card; the reply says one is on file for 11/16 and offers to open it; \"start a new one\" then makes the card"
+      ? "Failure 2, item 3: a Corrective Action for the same person and the same incident date as one on file (finalized 11/16): no card; the reply says she already has one for 11/16 and asks open that one or a separate incident; \"it's a separate incident\" then makes the card"
       : "Failure 2, item 3, control: a Corrective Action for the same person on another incident date (11/22) is made at once",
     report: REPORT,
     status: "fixed",
@@ -330,6 +332,7 @@ export const NOV23_EXIT_ON_FILE_NEVER_DUPLICATED_CASES: ReplayCase[] = [
           input: {
             template_key: "dpoa", employee_id: RHEA.id, person_evidence: evidenceFrom(view, "rhea cotter", view.turns.filter((turn) => turn.role === "user").length > 1 ? 1 : 0),
             incident_date: `${day.slice(5, 7)}/${day.slice(8, 10)}/2026`, observation: "Rhea was late to open.",
+            ...(said(view) === SEPARATE ? { separate_incident_evidence: evidenceFrom(view, SEPARATE) } : {}),
             warning_level: "verbal", level_evidence: evidenceFrom(view, "a verbal CA", view.turns.filter((turn) => turn.role === "user").length > 1 ? 1 : 0),
           },
         };
@@ -340,10 +343,10 @@ export const NOV23_EXIT_ON_FILE_NEVER_DUPLICATED_CASES: ReplayCase[] = [
         expect(thread.proposal?.templateKey, JSON.stringify(outs.at(-1)).slice(0, 600)).toBe("dpoa");
         return;
       }
-      expect(outs.at(-1)?.reason_code, JSON.stringify(outs.at(-1)).slice(0, 600)).toBe("form_on_file_same_date");
+      expect(outs.at(-1)?.reason_code, JSON.stringify(outs.at(-1)).slice(0, 600)).toBe("same_incident_on_file");
       expect(thread.proposal, "a second Corrective Action card for the same incident date").toBeFalsy();
-      expect(reply.content).toMatch(/already has a Corrective Action Form on file for 11\/16\/2026 \(finalized/);
-      await thread.say("start a new one");
+      expect(reply.content).toBe("Rhea already has a Corrective Action for 11/16 (finalized). Do you want to open that one, or is this a separate incident?");
+      await thread.say(SEPARATE);
       expect(thread.proposal?.templateKey, `the manager's answer did not make the card:\n${JSON.stringify(outs.at(-1)).slice(0, 600)}`).toBe("dpoa");
     },
   })),

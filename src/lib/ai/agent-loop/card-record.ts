@@ -142,6 +142,24 @@ export interface PersonAskedRecord extends PersonAskedSlot {
 }
 
 /*
+ * THE SAME-INCIDENT QUESTION RECORD (Pau's review, 23 Nov 2026, via QA; the same mechanism as the sibling app's): a turn
+ * whose propose_form found this person's form of this kind already on file for the card's incident date asked "open that
+ * one, or is this a separate incident?" and made no card. It writes `slots.agent_loop.same_incident = { templateKey,
+ * employeeKey, date }`, so the next turn's request starts at the message the question answered (as a card's or "who is it
+ * for?" record does). One-way keys only.
+ */
+export interface SameIncidentSlot {
+  readonly templateKey: string;
+  readonly employeeKey: string;
+  readonly date: string;
+}
+
+export interface SameIncidentRecord extends SameIncidentSlot {
+  readonly messageId: string | null;
+  readonly questionKey?: string | null;
+}
+
+/*
  * THE EXIT OFFER RECORD (QA, 20 Nov 2026; #1055's follow-up): a turn whose tools offered the Employee Exit Form for a
  * person (the exit refusals' "Want the … for <name>?", or a termination card, after which the rules book offers it)
  * writes `slots.agent_loop.exit_offer = { employeeKey, nameKey }`, one-way keys only. The next turn's "yes" is a yes to
@@ -173,7 +191,7 @@ export interface TeamConfirmRecord extends TeamConfirmSlot {
   readonly questionKey?: string | null;
 }
 
-type TraceRow = { message_id: string | null; slots: { agent_loop?: { card?: unknown; name_question?: unknown; person_asked?: unknown; exit_offer?: unknown; team_confirm?: unknown; which_form?: unknown; steps?: unknown; question_key?: unknown } } | null };
+type TraceRow = { message_id: string | null; slots: { agent_loop?: { card?: unknown; name_question?: unknown; person_asked?: unknown; same_incident?: unknown; exit_offer?: unknown; team_confirm?: unknown; which_form?: unknown; steps?: unknown; question_key?: unknown } } | null };
 
 /** The turn's one-way key of the manager's message (`question_key`), to find that message when its id does not match. */
 const questionKeyOf = (row: TraceRow): string | null => (typeof row.slots?.agent_loop?.question_key === "string" ? row.slots.agent_loop.question_key : null);
@@ -192,8 +210,8 @@ export interface TurnRecord {
   readonly card: boolean;
 }
 
-type LoopRecords = { cards: CardRecord[]; nameQuestions: NameQuestionRecord[]; personAsked: PersonAskedRecord[]; exitOffers: ExitOfferRecord[]; teamConfirms: TeamConfirmRecord[]; whichForms: WhichFormRecord[]; turns: TurnRecord[] };
-const NO_RECORDS = (): LoopRecords => ({ cards: [], nameQuestions: [], personAsked: [], exitOffers: [], teamConfirms: [], whichForms: [], turns: [] });
+type LoopRecords = { cards: CardRecord[]; nameQuestions: NameQuestionRecord[]; personAsked: PersonAskedRecord[]; sameIncidents: SameIncidentRecord[]; exitOffers: ExitOfferRecord[]; teamConfirms: TeamConfirmRecord[]; whichForms: WhichFormRecord[]; turns: TurnRecord[] };
+const NO_RECORDS = (): LoopRecords => ({ cards: [], nameQuestions: [], personAsked: [], sameIncidents: [], exitOffers: [], teamConfirms: [], whichForms: [], turns: [] });
 
 /**
  * Port of Ask Bubbles #1079 (its QA, 23 Nov 2026, the duplicate-tab finding): the open chat's id is in the address
@@ -265,6 +283,12 @@ export async function readLoopRecords(conversationId: string | undefined, userId
       personAsked: rows.flatMap((row) => {
         const asked = row.slots?.agent_loop?.person_asked as Partial<PersonAskedSlot> | undefined;
         return asked && typeof asked.templateKey === "string" ? [{ templateKey: asked.templateKey, messageId: row.message_id, questionKey: questionKeyOf(row) }] : [];
+      }),
+      sameIncidents: rows.flatMap((row) => {
+        const asked = row.slots?.agent_loop?.same_incident as Partial<SameIncidentSlot> | undefined;
+        return asked && typeof asked.templateKey === "string" && typeof asked.employeeKey === "string" && typeof asked.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(asked.date)
+          ? [{ templateKey: asked.templateKey, employeeKey: asked.employeeKey, date: asked.date, messageId: row.message_id, questionKey: questionKeyOf(row) }]
+          : [];
       }),
       teamConfirms: rows.flatMap((row) => {
         const asked = row.slots?.agent_loop?.team_confirm as Partial<TeamConfirmSlot> | undefined;
