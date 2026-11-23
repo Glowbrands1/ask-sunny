@@ -735,15 +735,20 @@ describe("the ranked leaderboard", () => {
     expect(row("MO St Joseph").textContent).toContain("Not counting");
   });
 
-  it("ranks by this week on request", () => {
-    draw({ tab: "leaderboard", locations: board });
+  /*
+   * Pau, Nov 2026: "for google reviews can you make it monthly not weekly …
+   * i mean salon leaderboard". The board ranks by the month only: no week
+   * toggle, no This week column, and each salon links to its month.
+   */
+  it("is monthly only: no week toggle, no This week figure", () => {
+    const { container } = draw({ tab: "leaderboard", locations: board });
 
-    fireEvent.click(screen.getByRole("button", { name: "Rank by this week" }));
-
-    expect(ranking()[0]).toEqual({ salon: "NE Lincoln 27th Street", rank: "Rank 1" });
-    expect(screen.getByRole("button", { name: "Rank by this week" }).getAttribute("aria-pressed")).toBe(
-      "true",
-    );
+    expect(screen.queryByRole("button", { name: /Rank by/ })).toBeNull();
+    const list = screen.getByRole("list", { name: "Salons ranked by qualifying reviews month to date" });
+    expect(list.textContent).not.toMatch(/this week/i);
+    expect(within(list).queryByText("+5")).toBeNull();
+    expect(container.textContent).not.toContain("This week");
+    expect(screen.getByRole("link", { name: "NE Lincoln 27th Street" }).getAttribute("href")).toContain("week=month");
   });
 
   it("filters by status, counting each one", () => {

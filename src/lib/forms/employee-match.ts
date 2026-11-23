@@ -262,7 +262,28 @@ function firstNames(employee: RosterEmployee): string[] {
  *   "Kaitlyn" with two                       confirm, both offered
  *   "Zelda Quinn"                            none — kept as typed
  */
+/** A trailing possessive on the typed name's last word ("Brindle's", "Brindle’s"): grammar, never part of a name. */
+const POSSESSIVE = /['’]s$/i;
+
+/**
+ * The typed name without a trailing possessive, ONLY when that is the name the roster matches (the 266-chat run's
+ * 053/116/117/138/237/239, QA 22 Nov 2026: "Odalys Brindle's" missed the roster and was carded with the "'s"). The
+ * name as typed is kept when it matches exactly itself, when it has no possessive ("Ross" is a surname), or when the
+ * name without it matches nobody.
+ */
+export function possessiveRead(typed: string, roster: readonly RosterEmployee[]): string {
+  const trimmed = typed.trim();
+  if (!POSSESSIVE.test(trimmed) || roster.length === 0) return typed;
+  const bare = trimmed.replace(POSSESSIVE, "").trim();
+  if (!bare || matchName(trimmed, roster).kind === "exact") return typed;
+  return matchName(bare, roster).kind === "none" ? typed : bare;
+}
+
 export function matchEmployeeName(typed: string, roster: readonly RosterEmployee[]): NameMatch {
+  return matchName(possessiveRead(typed, roster), roster);
+}
+
+function matchName(typed: string, roster: readonly RosterEmployee[]): NameMatch {
   if (roster.length === 0) return { kind: "unchecked" };
   const words = normalize(typed).split(" ").filter(Boolean);
   if (words.length === 0) return { kind: "none" };
