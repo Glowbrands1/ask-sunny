@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
+import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
+
 import { TEMPLATE_SEEDS } from "./library";
 import {
   HR_APPROVAL_FLAG,
@@ -66,6 +68,13 @@ describe("which forms wait for HR — every template in the library, by name", (
     const shared = TEMPLATE_SEEDS.filter((seed) => seed.layoutFamily === "coaching" && seed.requiredPermission !== "create_coaching_form");
     expect(shared.map((seed) => seed.name).sort()).toEqual(["Demotion Form", "Position Transfer Form"]);
     for (const seed of shared) expect(templateRoutesToHr(seed.requiredPermission)).toBe(true);
+  });
+
+  it("the HR approver is a District Manager: that role holds every routed template's permission, so approve, edit and send back never answer 403", () => {
+    // HR's decisions go through authorizeInstance(..., "edit"), which checks the template's own permission.
+    for (const seed of TEMPLATE_SEEDS.filter((candidate) => templateRoutesToHr(candidate.requiredPermission))) {
+      expect(hasPermission(DEFAULT_PERMISSION_MATRIX, "district_manager", seed.requiredPermission as never), seed.name).toBe(true);
+    }
   });
 
   it("an unknown or missing permission goes to HR (fails toward review, never past it)", () => {
