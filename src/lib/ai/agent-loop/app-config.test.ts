@@ -39,6 +39,10 @@ import { rulesBookText } from "./rules-book";
  * follow_up_on_create (say the follow-up date Create sets; never deny a follow-up the form will have). It reads the same
  * under every config; nothing else changed.
  *
+ * Re-taken on purpose on 22 Nov 2026 (the 266-chat run's 039/241, QA's step 3): the Card replies line for the account
+ * now reads its label from card.account_label, the form's own (Details of Coaching on a coaching form), never
+ * "Observation of Offense" on every incident card. It reads the same under every config; nothing else changed.
+ *
  * Re-taken on purpose on 22 Nov 2026 (port from Ask Bubbles 1b34db2, A11): one Forms on file line was added after
  * which_form_question: an answer that gives changes is not a pick; open_form and edit_form need choice_evidence; ask
  * again. It reads the same under every config; nothing else changed.
@@ -168,6 +172,12 @@ import { rulesBookText } from "./rules-book";
  * Re-taken on purpose on 23 Nov 2026 (board f039, the pages the AI can read): one line was added to Business data, after
  * the first: the app pages the AI can read and the tool for each, written from the config's page list
  * (`src/config/ai-readable-pages.ts`). A config with no page list has no such line; nothing else changed.
+ *
+ *
+ * Re-taken on purpose on 21 Nov 2026 (Pau: a search of past forms by topic, FORM_TOPIC_SEARCH_ENABLED): one Replies line
+ * was added: forms on file about a topic ("any forms about cash handling at my <place>s this month?", "who's been written
+ * up for dress code?") call find_past_forms with about and no employee_name, list each form as given, say the counts, and
+ * "showing N of M". It uses the config's place word; nothing else changed.
  */
 
 const fixture = (name: string): string => readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), "utf8");
