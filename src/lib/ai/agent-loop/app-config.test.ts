@@ -48,6 +48,11 @@ import { rulesBookText } from "./rules-book";
  * another title, and card.job_title is read back for job_title_as_you_said. It reads the same under every config;
  * nothing else changed.
  *
+ * Re-taken on purpose on 23 Nov 2026 (the 266-chat run's 115, QA's item 14 (a)): one Forms on file line says the date
+ * an employee signed the JBA Policy Manual is kept only on each Corrective Action's own box, how to read it (find_past_forms,
+ * read_form the latest, say which form) and what to say when none has it. It reads the same under every config; nothing
+ * else changed.
+ *
  * Re-taken on purpose on 22 Nov 2026 (the 266-chat run's 039/241, QA's step 3): the Card replies line for the account
  * now reads its label from card.account_label, the form's own (Details of Coaching on a coaching form), never
  * "Observation of Offense" on every incident card. It reads the same under every config; nothing else changed.
