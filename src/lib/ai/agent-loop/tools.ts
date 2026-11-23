@@ -3802,6 +3802,19 @@ export async function proposeForm(
     whatHappened = (await import("@/lib/forms/short-name")).withCorrectedSpelling(whatHappened, employee.name, nameCorrectedFrom !== null ? [nameCorrectedFrom] : [], rosterSpellingOf(employee.id ?? null, read.kind === "read" ? read.roster : [])).text;
     const short = replyNameFor(employee.name, read.kind === "read" ? read.roster : [], extractEmployeeNames(managerTurns(context)), employee.id ?? null);
     whatHappened = (await import("@/lib/forms/short-name")).withShortName(whatHappened, employee.name, short).text;
+    /*
+     * Port from the sibling app (its QA's live re-run, 23 Nov 2026): the account names the card's person by their OTHER own
+     * first name (the roster's legal one while the card shows the preferred, or the reverse). It is this person, held by
+     * nobody else on the staff list: it becomes the card's short name, so the pronoun pass and Create's drafter read one person.
+     */
+    const ownRow = employee.id && read.kind === "read" ? read.roster.find((row) => row.id === employee.id) : undefined;
+    if (ownRow && read.kind === "read") {
+      const shortFirst = (short.trim().split(/\s+/)[0] ?? "").toLowerCase();
+      const firstsOf = (row: { firstName?: string | null; preferredFirstName?: string | null }) => [row.firstName, row.preferredFirstName].map((first) => (first ?? "").trim()).filter(Boolean);
+      const others = [...new Set(firstsOf(ownRow).filter((first) => first.toLowerCase() !== shortFirst))].filter((first) =>
+        !read.roster.some((row) => row.id !== ownRow.id && firstsOf(row).some((name) => name.toLowerCase() === first.toLowerCase())));
+      if (others.length > 0) whatHappened = (await import("@/lib/forms/short-name")).withOwnOtherFirstNames(whatHappened, others, ownRow.lastName ?? "", short).text;
+    }
   }
   /* The incident's own words (this person's turns, read below) are checked against the account once they are known. */
   const asked = managerContext(context.history as ChatMessage[], { id: context.questionMessageId, content: context.question });
