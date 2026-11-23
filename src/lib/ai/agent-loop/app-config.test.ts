@@ -204,6 +204,12 @@ import { rulesBookText } from "./rules-book";
  * under this reply: … it held: …]" says it held, and proposing it again passes every value it held with only the
  * manager's change. It reads the same under every config; nothing else changed.
  *
+ * Re-taken on purpose on 23 Nov 2026 (port of Ask Bubbles #1081, its tester's A9): one line was added after the "If
+ * find_staff returns several people with the name" line: the which-one question is asked once (find_staff's ask_exactly,
+ * the short one when asked_before), nothing is said to be kept on a card that does not exist, no pronoun is used for an
+ * unsettled person, and a surname, full name or salon picks the person and the card is proposed at once with the account.
+ * It reads the same under every config; nothing else changed.
+ *
  * Re-taken on purpose on 21 Nov 2026 (Pau: a search of past forms by topic, FORM_TOPIC_SEARCH_ENABLED): one Replies line
  * was added: forms on file about a topic ("any forms about cash handling at my <place>s this month?", "who's been written
  * up for dress code?") call find_past_forms with about and no employee_name, list each form as given, say the counts, and

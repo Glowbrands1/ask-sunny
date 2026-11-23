@@ -5,6 +5,7 @@ import type { ChatMessage } from "@/types";
 
 import { personKey, replyTurns, type NameQuestionRecord } from "./card-record";
 import { holdsPhrase } from "./evidence";
+import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
 
 /**
  * ============================================================================
@@ -39,7 +40,7 @@ export interface AnsweredNameQuestion {
   readonly latest: boolean;
   /** The person the answer confirmed, and how; null when it confirmed nobody. */
   readonly confirmed: RosterEmployee | null;
-  readonly by: "yes" | "full_name" | "correction" | null;
+  readonly by: "yes" | "full_name" | "correction" | "surname" | "salon" | null;
   /** No manager turn has answered it yet (QA, c163): the question is still waiting, and its person is not settled. */
   readonly open?: boolean;
   /** The name the question was about, as the manager typed it (found in their earlier words by the record's key), or null. */
@@ -83,6 +84,33 @@ function confirmsIn(answer: string, record: NameQuestionRecord, offered: readonl
       return differ.length === 1 && said.has(own[differ[0]!]!);
     }));
     if (corrected.length === 1) return { confirmed: corrected[0]!, by: "correction" };
+  }
+  /*
+   * Port of Ask Bubbles #1081 (its tester's A9: two staff share a first name; its QA's ruling (b), 23 Nov 2026): with
+   * several people offered, the answer names one of them by what only that person has: their surname, or a salon only they
+   * are at (as the salon reader reads it, or a part of the person's own salon name as whole words). Read from the people
+   * the question offered, never a list of phrasings.
+   */
+  if (offered.length > 1) {
+    const sameSurname = (a: RosterEmployee, b: RosterEmployee) => a.lastName.trim().toLowerCase() === b.lastName.trim().toLowerCase();
+    const surname = offered.filter((person) => person.lastName.trim() !== "" && holdsPhrase(answer, person.lastName) && offered.filter((other) => sameSurname(other, person)).length === 1);
+    if (surname.length === 1) return { confirmed: surname[0]!, by: "surname" };
+    const salons = new Set(readSalonMentions(answer).flatMap((mention) => [...mention.salonIds]));
+    /*
+     * Sunny's salon names lead with the state ("NE Kearney", "NE Lincoln O Street"), where Bubbles' store names end with it
+     * ("Bellevue, NE"): the name, the name without its leading state, and each trailing run of its words ("O Street",
+     * "Lincoln O Street"), as whole words. Only a part one offered person's salon has picks them (`atSalon` below).
+     */
+    const salonParts = (id: string) => {
+      const name = (rosterSalonName(id) ?? "").trim();
+      const words = name.replace(/^[A-Z]{2}\s+/, "").split(/\s+/).filter(Boolean);
+      return [name, ...words.map((_word, at) => words.slice(at).join(" "))].map((part) => part.trim()).filter((part) => part.length >= 3);
+    };
+    /* A part another offered person's salon also has ("Street" of two Lincoln salons) names neither. */
+    const partsOf = (person: RosterEmployee) => person.salonIds.flatMap((id) => salonParts(id).map((part) => part.toLowerCase()));
+    const ownParts = (person: RosterEmployee) => partsOf(person).filter((part) => !offered.some((other) => other !== person && partsOf(other).includes(part)));
+    const atSalon = offered.filter((person) => person.salonIds.some((id) => salons.has(id)) || ownParts(person).some((part) => holdsPhrase(answer, part)));
+    if (atSalon.length === 1) return { confirmed: atSalon[0]!, by: "salon" };
   }
   return { confirmed: null, by: null };
 }
