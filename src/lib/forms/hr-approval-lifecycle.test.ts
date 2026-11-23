@@ -202,8 +202,44 @@ describe("the round trip", () => {
     await expect(finalizeInstance(instance.id, CREATOR, null, { acknowledgeUnverifiedPolicy: true })).rejects.toBeInstanceOf(HeldForHrError);
   });
 
-  it("only the manager who created the form sends it", async () => {
-    const instance = await policyReview();
-    await expect(sendForHrApproval(instance.id, theirDm, null, { acknowledgeUnverifiedPolicy: true })).rejects.toThrow(/Only the manager who created/);
+  /*
+   * ANYONE WHO MAY EDIT THE DRAFT SENDS IT (owner, 23 Nov 2026: "Anyone who can open the draft can send it, and the
+   * sender and the person who started it both see the status and Colene's note"). An Assistant's draft, sent by
+   * their Salon Director.
+   */
+  it("an Assistant's draft sent by their Salon Director: both see it and HR's answer, both get the bell, either resends", async () => {
+    const assistant: FormsActor = { id: "asd-marigold", role: "assistant_salon_director", verified: true, scope: null, visibility: null, hrApprover: false };
+    extra.app_users!.push({ id: "asd-marigold", email: "marigold@example.com", display_name: "Marigold", status: "active" });
+    const instance = await createInstance({
+      templateKey: "policy-review", variantKey: null, employeeName: "Juniper Calloway", employeeRole: null,
+      locationId: "loc-wornall", locationName: "KC Wornall", createdBy: "asd-marigold", source: "manual", formDate: "2026-11-23",
+    });
+    const sent = await sendForHrApproval(instance.id, manager, null, { acknowledgeUnverifiedPolicy: true });
+    expect(sent.hrApprovalRequestedBy).toBe(CREATOR);
+    expect(sent.createdBy).toBe("asd-marigold");
+
+    const { hiddenWhileAwaitingHr } = await import("./hr-approval-rules");
+    expect(hiddenWhileAwaitingHr(assistant, sent)).toBe(false);
+    expect(hiddenWhileAwaitingHr(manager, sent)).toBe(false);
+    expect(hiddenWhileAwaitingHr(hr, sent)).toBe(false);
+    expect(hiddenWhileAwaitingHr(theirDm, sent)).toBe(true);
+
+    await decideHrApproval(instance.id, hr, "send_back", "Add the policy section number.");
+    for (const email of ["marigold@example.com", "thistle@example.com"]) {
+      expect(bells(email).map((bell) => bell.title), email).toContain("HR sent your form back for changes");
+    }
+    for (const reader of [assistant, manager]) {
+      const view = await hrApprovalViewFor(reader, (await loadInstance(instance.id))!.instance);
+      expect(view?.history.find((entry) => entry.action === "changes_requested")?.note).toBe("Add the policy section number.");
+    }
+    expect(await hrApprovalViewFor(theirDm, (await loadInstance(instance.id))!.instance)).toBeNull();
+    expect((await readHrApprovalsFor("asd-marigold", true)).kind).toBe("manager");
+
+    // Either may resend. The sender is whoever resent last, so here the Assistant (creator and sender) and HR see it,
+    // and the Salon Director, no longer its sender, does not while it waits.
+    const resent = await sendForHrApproval(instance.id, assistant, null, { acknowledgeUnverifiedPolicy: true });
+    expect(resent.hrApprovalRequestedBy).toBe("asd-marigold");
+    expect(hiddenWhileAwaitingHr(assistant, resent)).toBe(false);
+    expect(hiddenWhileAwaitingHr(manager, resent)).toBe(true);
   });
 });

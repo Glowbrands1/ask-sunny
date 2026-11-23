@@ -976,7 +976,7 @@ export function InlineForm({
               </Button>
               <span className="text-xs text-subtle-foreground">
                 {toHr
-                  ? "Sends this form to HR. It is finalized when HR approves it; until then only you and HR can see it."
+                  ? "Sends this form to HR. It is finalized when HR approves it; until then only you, the person who started it, and HR can see it."
                   : loaded.instance.revisesInstanceId
                   ? "Freezes these values and replaces the finalized original. Signatures are signed on paper afterwards."
                   : "Freezes these values. Signatures are signed on paper afterwards."}

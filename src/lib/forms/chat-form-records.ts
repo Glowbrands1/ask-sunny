@@ -415,13 +415,13 @@ function describeRow(row: InstanceRow, today: string, viewerId?: string | null):
   if (state !== "drafted" && state !== "untracked") parts.push(`follow-up: ${FOLLOW_UP_LABEL[state]}`);
   if (row.archivedAt) parts.push("archived");
   /*
-   * HR APPROVAL. A form HR has not approved reaches this list only for its creator and HR (`hiddenWhileAwaitingHr`),
-   * so its state is said here. "Approved by HR" is said only to the manager who created it: everybody else reads an
+   * HR APPROVAL. A form HR has not approved reaches this list only for its creator, its sender and HR
+   * (`hiddenWhileAwaitingHr`), so its state is said here. "Approved by HR" is said only to its creator and sender: everybody else reads an
    * approved form as an ordinary finalized one (owner, 23 Nov 2026).
    */
   if (awaitingHr(row.hrApprovalState)) {
     parts.push(`HR approval: ${HR_STATE_LABEL[row.hrApprovalState!].toLowerCase()} — not on file until HR approves it`);
-  } else if (row.hrApprovalState === "approved" && viewerId && row.createdBy === viewerId) {
+  } else if (row.hrApprovalState === "approved" && viewerId && (row.createdBy === viewerId || row.hrApprovalRequestedBy === viewerId)) {
     parts.push("HR approval: approved by HR");
   }
   parts.push(...createdByPart(row, viewerId));

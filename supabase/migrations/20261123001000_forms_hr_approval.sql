@@ -8,7 +8,7 @@
 -- or sends it back for changes, each with a note, and may edit it meanwhile.
 --
 -- WHO KNOWS IT EXISTS. While a form is not yet approved, only the manager who
--- created it and HR may see it at all — not their District or Regional Manager,
+-- created it, whoever sent it, and HR may see it at all — not their District or Regional Manager,
 -- not an administrator. The code enforces that (`hr-approval.ts`); the overview
 -- view gains the state so lists can be narrowed before their limit.
 --
@@ -51,6 +51,9 @@ revoke all on public.form_hr_approvers from anon, authenticated;
 alter table public.form_instances
   add column if not exists hr_approval_state text,
   add column if not exists hr_approval_requested_at timestamptz,
+  -- Who pressed "Finalize and send for approval" last: anyone who may edit the draft may send it (owner, 23 Nov
+  -- 2026), and the sender, like the creator, sees the form while it waits and HR's answer.
+  add column if not exists hr_approval_requested_by text,
   add column if not exists hr_approval_follow_up_date date,
   add column if not exists hr_approval_decided_at timestamptz,
   add column if not exists hr_approval_decided_by text;
@@ -227,7 +230,8 @@ select
   lower(extensions.unaccent(i.employee_name)) as employee_name_folded,
   i.hr_approval_state,
   i.hr_approval_requested_at,
-  t.required_permission
+  t.required_permission,
+  i.hr_approval_requested_by
 from public.form_instances i
 join public.form_templates t on t.id = i.template_id
 join public.form_template_versions v on v.id = i.template_version_id;

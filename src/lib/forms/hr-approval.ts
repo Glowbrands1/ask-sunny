@@ -9,6 +9,7 @@ import {
   HR_STATE_LABEL,
   awaitingHr,
   heldForHr,
+  isCreatorOrSender,
   hrApprovalEnabled,
   isOverdue,
   mayReadHrDecision,
@@ -123,9 +124,7 @@ export async function sendForHrApproval(
   if (!before) throw new HrApprovalError("That form no longer exists.", 404);
   if (before.instance.status !== "draft") throw new HrApprovalError("This form is already finalized.");
   if (heldForHr(before.instance.hrApprovalState)) throw new HrApprovalError("This form is already waiting for HR approval.");
-  if (before.instance.createdBy !== actor.id) {
-    throw new HrApprovalError("Only the manager who created this form can send it for approval.", 403);
-  }
+  // Anyone the route let edit this draft may send it (owner, 23 Nov 2026); they are recorded as its sender.
 
   finalizePreflight(before, options);
 
@@ -136,6 +135,7 @@ export async function sendForHrApproval(
       hr_approval_state: "pending",
       hr_approval_requested_at: now,
       hr_approval_follow_up_date: followUpDate,
+      hr_approval_requested_by: actor.id,
       hr_approval_decided_at: null,
       hr_approval_decided_by: null,
     })
@@ -227,28 +227,36 @@ export async function decideHrApproval(
   await recordHrEvent(instanceId, action, actor.id, note);
   await clearRequestBells(instanceId);
 
-  const creatorEmail = await accountEmail(before.instance.createdBy);
-  if (creatorEmail) {
+  // The creator and the sender, once each when they are the same person.
+  const decisionRecipients = await creatorAndSenderEmails(before.instance);
+  if (decisionRecipients.length > 0) {
     const title =
       decision === "approve"
         ? "HR approved your form"
         : decision === "reject"
           ? "HR rejected your form"
           : "HR sent your form back for changes";
-    await ringBells([
-      {
-        recipientEmail: creatorEmail,
+    await ringBells(
+      decisionRecipients.map((recipientEmail) => ({
+        recipientEmail,
         kind: HR_DECISION_KIND,
         title,
         body: note ? `${formLine(before.instance)}. HR's note: ${note}` : `${formLine(before.instance)}.`,
         href: formHref(instanceId),
-      },
-    ]);
+      })),
+    );
   }
   return instance;
 }
 
-/** A note from HR or from the form's creator. The other one's bell rings. */
+/** The emails of the form's creator and its sender, without duplicates. */
+async function creatorAndSenderEmails(instance: Pick<InstanceRow, "createdBy" | "hrApprovalRequestedBy">): Promise<string[]> {
+  const ids = [...new Set([instance.createdBy, instance.hrApprovalRequestedBy].filter((id): id is string => Boolean(id)))];
+  const emails = await Promise.all(ids.map((id) => accountEmail(id)));
+  return [...new Set(emails.filter((email): email is string => Boolean(email)))];
+}
+
+/** A note from HR, or from the form's creator or sender. HR's note rings the creator and the sender; theirs rings HR. */
 export async function commentOnHrApproval(instanceId: string, actor: FormsActor, noteInput: unknown): Promise<void> {
   const loaded = await loadInstance(instanceId);
   if (!loaded) throw new HrApprovalError("That form no longer exists.", 404);
@@ -258,9 +266,9 @@ export async function commentOnHrApproval(instanceId: string, actor: FormsActor,
 
   await recordHrEvent(instanceId, "commented", actor.id, note);
 
-  const fromHr = actor.hrApprover === true && actor.id !== loaded.instance.createdBy;
+  const fromHr = actor.hrApprover === true && !isCreatorOrSender(actor, loaded.instance);
   const recipients = fromHr
-    ? [await accountEmail(loaded.instance.createdBy)].filter((email): email is string => Boolean(email))
+    ? await creatorAndSenderEmails(loaded.instance)
     : (await listHrApprovers()).filter((approver) => approver.id !== actor.id).map((approver) => approver.email);
   await ringBells(
     recipients.map((recipientEmail) => ({
@@ -312,7 +320,7 @@ export interface HrApprovalView {
 
 /**
  * The approval panel for this reader, or null — for everybody but the form's
- * creator and HR, whatever the form's state, so nobody else learns there was
+ * creator, its sender and HR, whatever the form's state, so nobody else learns there was
  * an approval at all.
  */
 export async function hrApprovalViewFor(actor: FormsActor, instance: InstanceRow, now: Date = new Date()): Promise<HrApprovalView | null> {
@@ -325,10 +333,16 @@ export async function hrApprovalViewFor(actor: FormsActor, instance: InstanceRow
     .order("created_at", { ascending: true })
     .limit(200);
   if (error) throw new Error(`Could not read the approval history: ${error.message}`);
-  const creatorName = await displayName(instance.createdBy);
-  const history = ((data ?? []) as { action: string; actor: string; note: string | null; created_at: string }[]).map((row) => ({
+  // HR is named "HR"; the creator and anyone who sent it are named by their directory name.
+  const rows = (data ?? []) as { action: string; actor: string; note: string | null; created_at: string }[];
+  const approverIds = new Set((await listHrApprovers()).map((approver) => approver.id));
+  const names = new Map<string, string>();
+  for (const id of new Set(rows.map((row) => row.actor))) {
+    if (id !== actor.id && !approverIds.has(id)) names.set(id, await displayName(id));
+  }
+  const history = rows.map((row) => ({
     action: row.action,
-    by: row.actor === actor.id ? "You" : row.actor === instance.createdBy ? creatorName : "HR",
+    by: row.actor === actor.id ? "You" : approverIds.has(row.actor) ? "HR" : (names.get(row.actor) ?? "HR"),
     note: row.note,
     at: row.created_at,
   }));
@@ -432,13 +446,13 @@ export interface MyHrFormRow {
   requestedAt: string | null;
 }
 
-/** The forms this manager sent to HR that are not approved yet, newest first. Only ever their own. */
+/** The forms this manager created or sent to HR that are not approved yet, newest first. Only ever theirs. */
 export async function listMyFormsWithHr(actor: FormsActor): Promise<MyHrFormRow[]> {
   if (!hrApprovalEnabled() || !actor.verified) return [];
   const { data, error } = await getSupabaseAdmin()
     .from("form_instance_overview")
     .select("id, template_name, employee_name, location_name, hr_approval_state, hr_approval_requested_at")
-    .eq("created_by", actor.id)
+    .or(`created_by.eq."${actor.id}",hr_approval_requested_by.eq."${actor.id}"`)
     .in("hr_approval_state", ["pending", "changes_requested", "rejected"])
     .eq("status", "draft")
     .order("hr_approval_requested_at", { ascending: false })
@@ -487,7 +501,7 @@ export async function readHrApprovalsFor(subject: string, verified: boolean, now
   const approved = await supabase
     .from("form_instance_overview")
     .select("id, template_name, employee_name, location_name, hr_approval_state, hr_approval_requested_at")
-    .eq("created_by", subject)
+    .or(`created_by.eq."${subject}",hr_approval_requested_by.eq."${subject}"`)
     .eq("hr_approval_state", "approved")
     .gte("updated_at", since)
     .order("updated_at", { ascending: false })

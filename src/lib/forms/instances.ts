@@ -103,6 +103,8 @@ export interface InstanceRow {
    */
   hrApprovalState: HrApprovalState | null;
   hrApprovalRequestedAt: string | null;
+  /** Who last sent it to HR (anyone who may edit the draft may); they see it while it waits, as its creator does. */
+  hrApprovalRequestedBy: string | null;
 }
 
 export interface InstanceValueRow {
@@ -151,6 +153,7 @@ function mapInstance(row: Record<string, unknown>): InstanceRow {
     updatedAt: String(row.updated_at),
     hrApprovalState: asHrApprovalState(row.hr_approval_state),
     hrApprovalRequestedAt: (row.hr_approval_requested_at as string | null | undefined) ?? null,
+    hrApprovalRequestedBy: (row.hr_approval_requested_by as string | null | undefined) ?? null,
   };
 }
 
@@ -250,7 +253,8 @@ export interface InstanceListFilter {
    */
   templateNameWords?: string[];
   /**
-   * HR APPROVAL: leave out every form waiting for HR (pending, sent back, rejected) except those this account created.
+   * HR APPROVAL: leave out every form waiting for HR (pending, sent back, rejected) except those this account created
+   * or sent.
    * Set by `instanceListFilterFor` for everyone but HR while FORMS_HR_APPROVAL_ENABLED is on. Leaves `locationIds`
    * as it is, so an unrestricted reader stays unrestricted otherwise.
    */
@@ -296,7 +300,7 @@ export async function listInstances(
     if (dateTo) query = query.lte("form_date", dateTo);
     if (hideAwaitingHrFor) {
       query = query.or(
-        `hr_approval_state.is.null,hr_approval_state.eq.approved,created_by.eq."${hideAwaitingHrFor}"`,
+        `hr_approval_state.is.null,hr_approval_state.eq.approved,created_by.eq."${hideAwaitingHrFor}",hr_approval_requested_by.eq."${hideAwaitingHrFor}"`,
       );
     }
     // `archived_at` is presentation, not status — see the migration. The active

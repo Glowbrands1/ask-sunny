@@ -20,10 +20,11 @@ import { envFlag } from "@/lib/config/chat-quality-flags";
  * the chat does not call it filed, and there is no final PDF.
  *
  * WHO KNOWS IT EXISTS (owner, 23 Nov 2026: "only me and HR can see its
- * waiting and im the only one to see HR's note or approval"). While a form
- * is pending, sent back or rejected, only the manager who created it and HR may
- * see it at all — not their District or Regional Manager, not an administrator.
- * HR's notes and decision are served only to the creator and HR, ever.
+ * waiting and im the only one to see HR's note or approval"; and later the same
+ * day: anyone who can open the draft may send it, and the sender sees it too).
+ * While a form is pending, sent back or rejected, only the manager who created
+ * it, whoever sent it, and HR may see it at all — not their District or Regional Manager, not an administrator.
+ * HR's notes and decision are served only to the creator, the sender and HR, ever.
  *
  * FORMS_HR_APPROVAL_ENABLED turns the step on. Off, Finalize finalizes as it
  * always did. A form already carrying an approval state stays hidden by the
@@ -84,20 +85,28 @@ export interface HrReader {
  */
 export function hiddenWhileAwaitingHr(
   reader: HrReader,
-  instance: { createdBy: string; hrApprovalState?: HrApprovalState | null },
+  instance: { createdBy: string; hrApprovalState?: HrApprovalState | null; hrApprovalRequestedBy?: string | null },
 ): boolean {
   if (!awaitingHr(instance.hrApprovalState ?? null)) return false;
-  if (instance.createdBy === reader.id) return false;
+  if (isCreatorOrSender(reader, instance)) return false;
   return reader.hrApprover !== true;
 }
 
-/** Whether this reader may see HR's decision and notes on this form: its creator and HR, nobody else. */
+/**
+ * The form's creator, or whoever sent it to HR (owner, 23 Nov 2026: "anyone who can open the draft can send it, and
+ * the sender and the person who started it both see the status and Colene's note").
+ */
+export function isCreatorOrSender(reader: HrReader, instance: { createdBy: string; hrApprovalRequestedBy?: string | null }): boolean {
+  return instance.createdBy === reader.id || (Boolean(instance.hrApprovalRequestedBy) && instance.hrApprovalRequestedBy === reader.id);
+}
+
+/** Whether this reader may see HR's decision and notes on this form: its creator, its sender and HR, nobody else. */
 export function mayReadHrDecision(
   reader: HrReader,
-  instance: { createdBy: string; hrApprovalState?: HrApprovalState | null },
+  instance: { createdBy: string; hrApprovalState?: HrApprovalState | null; hrApprovalRequestedBy?: string | null },
 ): boolean {
   if (!instance.hrApprovalState) return false;
-  return instance.createdBy === reader.id || reader.hrApprover === true;
+  return isCreatorOrSender(reader, instance) || reader.hrApprover === true;
 }
 
 export const HR_STATE_LABEL: Record<HrApprovalState, string> = {

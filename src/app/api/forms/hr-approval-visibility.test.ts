@@ -28,12 +28,16 @@ const SENT_BACK = "22222222-2222-4222-8222-222222222222";
 const REJECTED = "33333333-3333-4333-8333-333333333333";
 const APPROVED = "44444444-4444-4444-8444-444444444444";
 const ORDINARY = "55555555-5555-4555-8555-555555555555";
+/** An Assistant's draft, sent to HR by the Wornall salon director (the "creator" viewer below). */
+const SENT_FOR_ASSISTANT = "66666666-6666-4666-8666-666666666666";
 
 interface Row {
   id: string;
   createdBy: string;
   status: "draft" | "finalized";
   hrApprovalState: "pending" | "changes_requested" | "rejected" | "approved" | null;
+  /** Who sent it to HR; defaults to its creator. */
+  requestedBy?: string;
 }
 
 let rows: Row[] = [];
@@ -69,6 +73,7 @@ function instanceRow(row: Row) {
     updatedAt: "2026-11-20T12:00:00Z",
     hrApprovalState: row.hrApprovalState,
     hrApprovalRequestedAt: row.hrApprovalState ? "2026-11-20T15:00:00Z" : null,
+    hrApprovalRequestedBy: row.hrApprovalState ? (row.requestedBy ?? row.createdBy) : null,
   };
 }
 
@@ -197,6 +202,7 @@ beforeEach(() => {
     { id: REJECTED, createdBy: CREATOR, status: "draft", hrApprovalState: "rejected" },
     { id: APPROVED, createdBy: CREATOR, status: "finalized", hrApprovalState: "approved" },
     { id: ORDINARY, createdBy: "sd-wornall-2", status: "finalized", hrApprovalState: null },
+    { id: SENT_FOR_ASSISTANT, createdBy: "asd-wornall", status: "draft", hrApprovalState: "pending", requestedBy: CREATOR },
   ];
   vi.resetModules();
 });
@@ -219,7 +225,8 @@ afterEach(() => {
 });
 
 const ON = { flag: true };
-const NOT_APPROVED = [WAITING, SENT_BACK, REJECTED];
+/** Every form that is waiting: the creator viewer created the first three and sent the fourth. */
+const NOT_APPROVED = [WAITING, SENT_BACK, REJECTED, SENT_FOR_ASSISTANT];
 
 describe("a form waiting for HR, by every route, for every viewer", () => {
   it.each(Object.keys(VIEWERS) as Viewer[])("%s", async (viewer) => {
