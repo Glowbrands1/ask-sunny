@@ -410,7 +410,17 @@ export function levelFormWords(formName: string): string[] {
  */
 export function quoteNamesForm(text: string, template: { readonly name: string; readonly shortName?: string | null }): boolean {
   const spaced = (value: string) => value.replace(/[-‐-―]+/g, " ");
-  const names = [template.name, template.shortName ?? ""].map((name) => spaced(name).replace(/\s+form\s*$/i, "").trim()).filter(Boolean);
+  /*
+   * Port of Ask Bubbles #1082 (309ec42; QA, 23 Nov 2026, the exit-lock gap): a name with alternatives ("Resignation/Exit
+   * Form") answers to each of them with its last word ("Resignation Form", "Exit Form"): the name's own shape, never a list
+   * of words.
+   */
+  const alternatives = (name: string): string[] => {
+    const found = /^(.+?)\s+(\S+)\s*$/.exec(name);
+    if (!found || !found[1]!.includes("/")) return [name];
+    return [name, ...found[1]!.split("/").map((part) => `${part.trim()} ${found[2]}`)];
+  };
+  const names = [template.name, template.shortName ?? ""].flatMap(alternatives).map((name) => spaced(name).replace(/\s+form\s*$/i, "").trim()).filter(Boolean);
   const initials = names.map((name) => name.split(/\s+/)).filter((parts) => parts.length > 1).map((parts) => parts.map((part) => part[0]).join(""));
   /* Whole words, any case and spacing (holdsPhrase needs 3 characters, and "CA" is two). */
   const said = ` ${foldName(withoutMessageIdTags(spaced(text))).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim()} `;
@@ -3694,7 +3704,6 @@ export async function proposeForm(
       const before = await lockedForm(context, employee);
       if (before && before.templateKey !== template.key) switchedFrom = { templateName: before.templateName, created: before.created };
     }
-    const exitAsked = template.key === appConfig().formKeys.exit && verifyEvidence(input.exit_evidence, thisTurn, { thisTurnOnly: true }).ok;
     /*
      * BOARD f108 (QA handoff, 22 Nov 2026: the form lock trusts the AI's quote). A real quote of this turn was enough to
      * switch the open card's form, whatever it said: "she said she'd be late again" made the CA a Coaching card. To leave
@@ -3707,6 +3716,13 @@ export async function proposeForm(
       const reply = thisTurn.length >= 2 ? thisTurn[thisTurn.length - 2]! : null;
       return reply?.role === "assistant" && quoteNamesForm(reply.content, template);
     };
+    /*
+     * Port of Ask Bubbles #1082 (QA, 23 Nov 2026, the exit-lock gap): a switch to the exit form passed on any real quote of
+     * this turn as exit_evidence, so "she told me she is thinking about quitting" made the CA on screen an exit card. It
+     * needs what every other form change needs: the quote names the exit form, or this turn answers the app's own offer of
+     * it (`lockLeft`).
+     */
+    const exitAsked = template.key === appConfig().formKeys.exit && verifyEvidence(input.exit_evidence, thisTurn, { thisTurnOnly: true }).ok && lockLeft(input.exit_evidence);
     if (!(asksNewForm && lockLeft(input.new_form_evidence)) && !(changeAsked && lockLeft(input.form_change_evidence)) && !exitAsked) {
       const locked = await lockedForm(context, employee);
       if (locked && locked.templateKey !== template.key) {
