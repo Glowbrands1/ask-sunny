@@ -23,7 +23,7 @@ type Out = { card?: { prior_actions?: string | null }; facts?: { prior_steps_lef
 export const NOV22_AGENT_LOOP_PRIOR_ACTIONS_KEEP_GOOD_STEPS_CASES: ReplayCase[] = [
   {
     id: "nov22-r2-u09-good-prior-step-kept",
-    title: "U09: T2 \"JBA Policy Manual 1-1-2026, Verbal CA 11-1-2026. On 11-1-26 <P> violated …\": the manual step of 1-1-2026 stays on the card's Prior actions; only the Verbal CA dated the incident's day is left off, with its reason",
+    title: "U09: T2 \"JBA Policy Manual 1-1-2026, Verbal CA 11-1-2026. On 11-1-26 <P> violated …\": both steps the manager dated stay on the card's Prior actions: the manual of 1-1-2026 and the Verbal CA of 11-1-2026, though that is also the incident's day",
     report: REPORT,
     status: "fixed",
     fixFlags: ["AGENT_LOOP_ENABLED"],
@@ -45,8 +45,14 @@ export const NOV22_AGENT_LOOP_PRIOR_ACTIONS_KEEP_GOOD_STEPS_CASES: ReplayCase[] 
       await thread.say(T2);
       const result = model.views.flatMap((view) => view.results.filter((entry) => entry.tool === "propose_form")).at(-1)?.output as Out;
       expect(result?.card?.prior_actions ?? "", `the good step was dropped:\n${JSON.stringify(result).slice(0, 600)}`).toMatch(/JBA Policy Manual — 01\/01\/2026/);
-      expect(result?.card?.prior_actions ?? "", "the step dated the incident's day stayed").not.toMatch(/11\/01\/2026/);
-      expect(result?.facts?.prior_steps_left_off?.[0]?.step ?? "", "the left-off step is not named").toMatch(/Verbal CA/);
+      /*
+       * CHANGED ON PURPOSE (port of Ask Bubbles #1045, its QA's live round-2 re-run, 22 Nov 2026, U09: "the stated prior is
+       * NOT listed"): the Verbal CA's date is the incident's day, but the manager typed it right after the step ("Verbal CA
+       * 11-1-2026"), so it is that step's own date and stays on the card (`datedByManagerForStep`). This case used to expect
+       * it left off.
+       */
+      expect(result?.card?.prior_actions ?? "", `the Verbal CA the manager dated is not on the card:\n${JSON.stringify(result).slice(0, 600)}`).toMatch(/Verbal CA — 11\/01\/2026/);
+      expect(result?.facts?.prior_steps_left_off ?? [], "a stated step was left off").toEqual([]);
     },
   },
 ];
