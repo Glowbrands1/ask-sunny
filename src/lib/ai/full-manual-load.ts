@@ -1,5 +1,6 @@
 import "server-only";
 
+import { withSectionsInForce } from "@/lib/forms/official-policy-manual";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
 import {
@@ -90,7 +91,8 @@ async function readChunks(documentId: string, version: number): Promise<FullManu
     for (const row of rows) chunks.push(manualChunkFromRow(row));
     if (rows.length < pageSize) break;
   }
-  return chunks;
+  /* Board f109: each chunk labelled with the section in force, read from the manual's own headings. */
+  return withSectionsInForce(chunks);
 }
 
 export async function loadFullManualContext(input: {
