@@ -15,8 +15,7 @@ export type SyncStatus =
   | { kind: "empty" } // nothing saved yet, nothing edited
   | { kind: "saved" }
   | { kind: "saving" }
-  | { kind: "failed"; message: string }
-  | { kind: "conflict" };
+  | { kind: "failed"; message: string };
 
 /** The save-status line, in plain words (shared by every page that edits a meeting document). */
 export function statusText(s: SyncStatus): string {
@@ -29,16 +28,7 @@ export function statusText(s: SyncStatus): string {
       return "Saving…";
     case "failed":
       return `Not saved: ${s.message}`;
-    case "conflict":
-      return "Someone else changed this: choose below";
   }
-}
-
-export interface Conflict {
-  /** Places where both people changed the same thing, in plain words. */
-  places: string[];
-  mine: MeetingDoc;
-  theirs: MeetingDoc;
 }
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
@@ -53,7 +43,6 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 export function useMeetingSync({ meetingKey, initial, save, load, serverTime, pollMs = 4000, debounceMs = 800 }: { meetingKey: string; initial: LoadedMeeting; save: SaveFn; load?: LoadFn; serverTime?: number; pollMs?: number; debounceMs?: number }) {
   const [doc, setDoc] = useState<MeetingDoc>(() => readDoc(initial.doc));
   const [status, setStatus] = useState<SyncStatus>({ kind: initial.version === 0 ? "empty" : "saved" });
-  const [conflict, setConflict] = useState<Conflict | null>(null);
   const [tick, setTick] = useState(0);
 
   const docRef = useRef<MeetingDoc>(doc);
@@ -69,19 +58,18 @@ export function useMeetingSync({ meetingKey, initial, save, load, serverTime, po
     if (typeof t === "number") skewRef.current = t - Date.now();
   }, []);
   const serverNow = useCallback(() => Date.now() + skewRef.current, []);
-  const conflictRef = useRef<Conflict | null>(null);
 
   const edit = useCallback((fn: (d: MeetingDoc) => MeetingDoc) => {
     const next = fn(docRef.current);
     docRef.current = next;
     setDoc(next);
     // From the moment something changes, the page must not claim it is saved.
-    setStatus((s) => (s.kind === "conflict" ? s : { kind: "saving" }));
+    setStatus({ kind: "saving" });
     setTick((t) => t + 1);
   }, []);
 
   const flush = useCallback(async () => {
-    if (savingRef.current || conflictRef.current) return;
+    if (savingRef.current) return;
     const sent = docRef.current;
     if (same(sent, baseRef.current.doc)) {
       setStatus({ kind: "saved" }); // edited back to what is already saved
@@ -106,23 +94,15 @@ export function useMeetingSync({ meetingKey, initial, save, load, serverTime, po
       return;
     }
     if (res.kind === "stale") {
+      // Anyone can edit at the same time and nothing ever pauses the meeting (the owner, 23 Nov 2026: "allow anyone editing
+      // at the same time"). Their changes and mine are merged item by item; where we changed the very same value, mine
+      // (the latest save) wins. Saved on top of theirs right away.
       const remote = readDoc(res.latest.doc);
-      const base = baseRef.current.doc;
-      const theirsFirst = mergeThreeWay(base, docRef.current, remote, "", "remote");
-      const mineFirst = mergeThreeWay(base, docRef.current, remote, "", "local");
-      const merged = readDoc(theirsFirst.merged as Record<string, unknown>);
+      const merged = readDoc(mergeThreeWay(baseRef.current.doc, docRef.current, remote, "", "local").merged as Record<string, unknown>);
       baseRef.current = { version: res.latest.version, doc: remote };
       docRef.current = merged;
       setDoc(merged);
-      if (theirsFirst.conflicts.length === 0) {
-        setTick((t) => t + 1); // their changes and mine are both in: save again on top of theirs
-        return;
-      }
-      // Only the clashing values differ between the two choices; everything else is already merged.
-      const c = { places: theirsFirst.conflicts, mine: readDoc(mineFirst.merged as Record<string, unknown>), theirs: merged };
-      conflictRef.current = c;
-      setConflict(c);
-      setStatus({ kind: "conflict" });
+      setTick((t) => t + 1);
       return;
     }
     setStatus({ kind: "failed", message: res.message });
@@ -140,7 +120,7 @@ export function useMeetingSync({ meetingKey, initial, save, load, serverTime, po
     if (!load || !pollMs) return;
     let stopped = false;
     const pull = async () => {
-      const clean = () => !savingRef.current && !conflictRef.current && same(docRef.current, baseRef.current.doc);
+      const clean = () => !savingRef.current && same(docRef.current, baseRef.current.doc);
       if (!clean()) return;
       let res: Awaited<ReturnType<LoadFn>>;
       try {
@@ -166,33 +146,17 @@ export function useMeetingSync({ meetingKey, initial, save, load, serverTime, po
     };
   }, [load, meetingKey, pollMs, noteServerTime]);
 
-  const resolveConflict = useCallback((choice: "mine" | "theirs") => {
-    const c = conflictRef.current;
-    if (!c) return;
-    conflictRef.current = null;
-    setConflict(null);
-    const next = choice === "mine" ? c.mine : c.theirs;
-    docRef.current = next;
-    setDoc(next);
-    if (choice === "mine") {
-      setStatus({ kind: "saving" });
-      setTick((t) => t + 1);
-    } else {
-      setStatus({ kind: "saved" });
-    }
-  }, []);
-
   const retry = useCallback(() => void flush(), [flush]);
 
   /** Saves now and says whether everything on the page is saved. */
   const flushNow = useCallback(async () => {
     while (savingRef.current) await new Promise((r) => setTimeout(r, 25));
     await flush();
-    return !conflictRef.current && same(docRef.current, baseRef.current.doc);
+    return same(docRef.current, baseRef.current.doc);
   }, [flush]);
 
   // Leaving with a change that is not saved yet asks first.
-  const unsaved = status.kind === "saving" || status.kind === "failed" || status.kind === "conflict";
+  const unsaved = status.kind === "saving" || status.kind === "failed";
   useEffect(() => {
     if (!unsaved) return;
     const warn = (e: BeforeUnloadEvent) => e.preventDefault();
@@ -200,5 +164,5 @@ export function useMeetingSync({ meetingKey, initial, save, load, serverTime, po
     return () => window.removeEventListener("beforeunload", warn);
   }, [unsaved]);
 
-  return { doc, edit, status, conflict, resolveConflict, retry, flushNow, serverNow };
+  return { doc, edit, status, retry, flushNow, serverNow };
 }
