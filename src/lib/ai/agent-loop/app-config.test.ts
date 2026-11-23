@@ -35,6 +35,10 @@ import { rulesBookText } from "./rules-book";
  * and the Business data rules one line for it (administrators only). Neither names the app, place, staff system or form
  * key; nothing else changed.
  *
+ * Re-taken on purpose on 23 Nov 2026 (Pau, AI Training -> Assignments): the tool list gained read_ai_assignments and
+ * the Business data rules one line for it (only the tracker's named people). Neither names the app, place, staff
+ * system or form key; nothing else changed.
+ *
  * Re-taken on purpose on 20 Nov 2026 (f048b, QA's live 23a): one Card replies line was added for propose_form's
  * follow_up_on_create (say the follow-up date Create sets; never deny a follow-up the form will have). It reads the same
  * under every config; nothing else changed.

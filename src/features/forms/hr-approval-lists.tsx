@@ -42,7 +42,24 @@ function hrHref(id: string): string {
   return `/forms/hr-approval/${id}`;
 }
 
-export function HrApprovalTabs({ active, pending, overdue }: { active: "all" | "hr"; pending: number; overdue: number }) {
+/**
+ * Form Monitoring's views. THE SIBLING APP'S APPROVALS ARE A TAB HERE, NOT A LINK AWAY (owner, 23 Nov 2026: "i dont
+ * want the sunny approval in a different page and link, just a tab pls"). "<sibling> approvals (N)" sits next to
+ * Pending HR approval and lists, on this page, the forms waiting for this approver in the sibling app, read from its
+ * server. Its name is the one that server answered with, never spelled here; while it cannot be read the tab says
+ * "Other app approvals". `sibling: null` (no shared secret) hides it.
+ */
+export function HrApprovalTabs({
+  active,
+  pending,
+  overdue,
+  sibling = null,
+}: {
+  active: "all" | "hr" | "sibling";
+  pending: number;
+  overdue: number;
+  sibling?: { name: string | null; pending: number | null } | null;
+}) {
   const tab = (selected: boolean) =>
     `inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs ${
       selected ? "border-foreground bg-foreground text-background" : "border-border text-muted-foreground hover:text-foreground"
@@ -52,44 +69,26 @@ export function HrApprovalTabs({ active, pending, overdue }: { active: "all" | "
       <Link href="/forms/monitoring" className={tab(active === "all")} aria-current={active === "all" ? "page" : undefined}>
         All forms
       </Link>
-      <Link href="/forms/monitoring?view=hr" className={tab(active === "hr")} aria-current={active === "hr" ? "page" : undefined}>
+      <Link
+        href="/forms/monitoring?view=hr"
+        className={tab(active === "hr")}
+        aria-current={active === "hr" ? "page" : undefined}
+        data-testid="hr-pending-tab"
+      >
         Pending HR approval ({pending})
         {overdue > 0 ? <span className="font-semibold text-status-attention">· {overdue} overdue</span> : null}
       </Link>
-    </nav>
-  );
-}
-
-/**
- * ONE SUB-TAB PER APP on HR's tab (owner, 23 Nov 2026: "1 tab for sunny 1 tab for bubbles"). The sibling's name is the
- * one its own server answered with, never spelled here; while it cannot be read the tab says "Other app".
- */
-export function HrAppTabs({
-  active,
-  thisApp,
-  sibling,
-}: {
-  active: "this" | "sibling";
-  thisApp: { name: string; pending: number };
-  sibling: { name: string | null; pending: number | null };
-}) {
-  const tab = (selected: boolean) =>
-    `inline-flex items-center gap-1.5 rounded-[var(--radius-sm)] border-b-2 px-2 pb-1.5 text-sm ${
-      selected ? "border-foreground font-semibold text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
-    }`;
-  return (
-    <nav aria-label="HR approval by app" className="mb-3 flex flex-wrap gap-4 border-b border-border" data-testid="hr-app-tabs">
-      <Link href="/forms/monitoring?view=hr" className={tab(active === "this")} aria-current={active === "this" ? "page" : undefined}>
-        {thisApp.name} ({thisApp.pending})
-      </Link>
-      <Link
-        href="/forms/monitoring?view=hr&app=sibling"
-        className={tab(active === "sibling")}
-        aria-current={active === "sibling" ? "page" : undefined}
-      >
-        {sibling.name ?? "Other app"}
-        {sibling.pending === null ? "" : ` (${sibling.pending})`}
-      </Link>
+      {sibling ? (
+        <Link
+          href="/forms/monitoring?view=hr&app=sibling"
+          className={tab(active === "sibling")}
+          aria-current={active === "sibling" ? "page" : undefined}
+          data-testid="sibling-approvals-tab"
+          data-waiting={(sibling.pending ?? 0) > 0 ? "true" : "false"}
+        >
+          {sibling.name ?? "Other app"} approvals{sibling.pending === null ? "" : ` (${sibling.pending})`}
+        </Link>
+      ) : null}
     </nav>
   );
 }
@@ -101,6 +100,8 @@ export interface SiblingHrQueueListRow {
   requestedAt: string | null;
   waiting: string;
   overdue: boolean;
+  /** Sent back, and the manager replied since: the sibling counts it as needing HR's decision. */
+  managerReplied?: boolean;
   href: string;
 }
 
@@ -147,8 +148,8 @@ export function SiblingHrQueueList({
                 </p>
               </div>
               <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
-                <Badge tone={row.state === "pending" ? "accent" : "outline"} size="sm">
-                  {STATE_WORDS[row.state]}
+                <Badge tone={row.state === "pending" || row.managerReplied === true ? "accent" : "outline"} size="sm">
+                  {row.managerReplied === true ? "Manager replied to changes" : STATE_WORDS[row.state]}
                 </Badge>
                 {row.state === "pending" ? <span className="text-xs text-subtle-foreground">{row.waiting}</span> : null}
                 {row.overdue ? (

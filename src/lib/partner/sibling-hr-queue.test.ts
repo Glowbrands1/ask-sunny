@@ -102,6 +102,7 @@ describe("what this app answers the sibling", () => {
       requestedAt: "2026-11-23T14:00:00Z",
       waiting: "Sent today",
       overdue: false,
+      managerReplied: false,
       path: `/forms/hr-approval/${id}`,
     });
     // No account id, no value of the form.
@@ -124,6 +125,17 @@ describe("what this app answers the sibling", () => {
     await waitingForm();
     expect((await hrQueueForPartner("%@example.com")).approver).toBe(false);
     expect((await hrQueueForPartner("hr_wren@example.com")).approver).toBe(false);
+  });
+});
+
+describe("a form the manager replied to after HR sent it back, in the sibling's answer", () => {
+  it("is read as sent, so this app's tab counts it; an older sibling's answer reads as not replied", () => {
+    const path = "/forms/hr-approval/0b6f1c1e-2a8d-4c55-9a10-5f3b6c7d8e9f";
+    const parsed = parseSiblingHrAnswer(
+      { app: "Sibling App", approver: true, forms: [{ line: "replied", state: "changes_requested", managerReplied: true, path }, { line: "older sibling", state: "changes_requested", path }] },
+      "https://sibling.test",
+    );
+    expect(parsed.status === "ok" && parsed.forms.map((form) => form.managerReplied)).toEqual([true, false]);
   });
 });
 

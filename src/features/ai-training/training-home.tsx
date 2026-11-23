@@ -14,14 +14,16 @@ import { Input } from "@/components/ui/field";
 import { PageHeader, PageShell } from "@/components/ui/layout";
 import { groupTrackLessons, trackCounts } from "@/lib/ai-training/catalog";
 import { splitSections } from "@/lib/ai-training/markdown";
+import type { AssignmentTracker } from "@/lib/ai-training/assignments";
 import type { TrainingCatalog, TrainingPage, TrainingSubmission } from "@/lib/ai-training/types";
 import { cn } from "@/lib/utils/cn";
 
+import { AssignmentTrackerPanel } from "./assignment-tracker";
 import { ModuleTitle } from "./module-title";
 import { SubmissionList } from "./submission-list";
 import { TrainingMarkdown } from "./training-markdown";
 
-const TABS = ["training", "policy", "best-practices", "submissions"] as const;
+const TABS = ["training", "policy", "best-practices", "submissions", "assignments"] as const;
 type Tab = (typeof TABS)[number];
 
 export interface TrainingHomeData {
@@ -32,19 +34,31 @@ export interface TrainingHomeData {
   mine: TrainingSubmission[];
 }
 
+/** The Assignments tab's data: present only for the tracker's named people (`canSeeAssignmentTracker`). */
+export interface TrainingAssignmentsData {
+  tracker: AssignmentTracker | null;
+  /** The business date the statuses are worked out on (YYYY-MM-DD). */
+  today: string;
+  problem: string | null;
+}
+
 export function TrainingHome({
   isAdmin,
   problem,
   data,
+  assignments = null,
 }: {
   isAdmin: boolean;
   problem: string | null;
   data: TrainingHomeData | null;
+  /** Null hides the Assignments tab entirely. */
+  assignments?: TrainingAssignmentsData | null;
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
-  const tab: Tab = (TABS as readonly string[]).includes(params.get("tab") ?? "") ? (params.get("tab") as Tab) : "training";
+  const asked = params.get("tab") ?? "";
+  const tab: Tab = (TABS as readonly string[]).includes(asked) && (asked !== "assignments" || assignments) ? (asked as Tab) : "training";
 
   function setParam(key: string, value: string | null) {
     const next = new URLSearchParams(params.toString());
@@ -90,6 +104,7 @@ export function TrainingHome({
               <TabsTrigger value="submissions">
                 My submissions{data.mine.length ? ` (${data.mine.length})` : ""}
               </TabsTrigger>
+              {assignments ? <TabsTrigger value="assignments">Assignments</TabsTrigger> : null}
             </TabsList>
             <TabsContent value="training">
               <Catalog
@@ -118,6 +133,17 @@ export function TrainingHome({
                 />
               )}
             </TabsContent>
+            {assignments ? (
+              <TabsContent value="assignments">
+                {assignments.tracker ? (
+                  <AssignmentTrackerPanel tracker={assignments.tracker} today={assignments.today} />
+                ) : (
+                  <Notice tone="attention" title="The assignment tracker is unavailable">
+                    {assignments.problem ?? "Nothing to show yet."}
+                  </Notice>
+                )}
+              </TabsContent>
+            ) : null}
           </Tabs>
         </>
       )}

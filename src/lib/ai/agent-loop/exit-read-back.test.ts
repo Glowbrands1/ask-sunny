@@ -41,4 +41,20 @@ describe("exit read-back: the Details reader's lines, and a turn with no card", 
     expect(exitReadBackMismatch(reply, [], true)).toEqual(['exit field "Reason for Resignation" (Second job.)']);
     expect(withoutUnsavedExitLines(reply, [], true)).toBe("- **Last Day Worked:** November 23, 2026\n\nPress **Create draft** when it looks right.");
   });
+
+});
+
+/* QA (23 Nov 2026, nov22-u22-exit-unsaved-lines-twice-left-out): the opening and an unsaved line on one line. */
+describe("exit read-back: only the unsaved sentence leaves", () => {
+  const readBack = exitReadBack({ dateLines: [], account: "Perpetua messaged back that she was quitting effective immediately.", termination: false });
+
+  it("an unsaved line on the opening's line leaves alone; the opening stays", () => {
+    const reply = "**Perpetua Lindqvist** shows as no longer active in Woven; I've used the name as you typed it.\n\nHere's the Resignation/Exit Form for **Perpetua**. **Date that notice was given:** 11/14/2026\n\n**Additional Details:** Perpetua messaged back that she was quitting effective immediately.";
+    expect(withoutUnsavedExitLines(reply, readBack)).toBe("**Perpetua Lindqvist** shows as no longer active in Woven; I've used the name as you typed it.\n\nHere's the Resignation/Exit Form for **Perpetua**.\n\n**Additional Details:** Perpetua messaged back that she was quitting effective immediately.");
+  });
+
+  it("a bulleted unsaved line leaves whole; the next line stays", () => {
+    const reply = "- **Date that notice was given:** 11/14/2026\n- **Additional Details:** Perpetua messaged back that she was quitting effective immediately.";
+    expect(withoutUnsavedExitLines(reply, readBack)).toBe("- **Additional Details:** Perpetua messaged back that she was quitting effective immediately.");
+  });
 });

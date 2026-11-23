@@ -519,7 +519,7 @@ export interface HrDecidedRow extends MyHrFormRow {
 export type SiblingHrRead =
   | null
   | "unavailable"
-  | { app: string; approver: boolean; forms: { line: string; from: string; state: HrApprovalState; requestedAt: string | null; waiting: string; overdue: boolean }[] };
+  | { app: string; approver: boolean; forms: { line: string; from: string; state: HrApprovalState; requestedAt: string | null; waiting: string; overdue: boolean; managerReplied: boolean }[] };
 
 async function siblingHrReadFor(subject: string): Promise<SiblingHrRead> {
   try {
@@ -533,7 +533,7 @@ async function siblingHrReadFor(subject: string): Promise<SiblingHrRead> {
     return {
       app: sibling.app,
       approver: sibling.approver,
-      forms: sibling.forms.map(({ line, from, state, requestedAt, waiting, overdue }) => ({ line, from, state, requestedAt, waiting, overdue })),
+      forms: sibling.forms.map(({ line, from, state, requestedAt, waiting, overdue, managerReplied }) => ({ line, from, state, requestedAt, waiting, overdue, managerReplied })),
     };
   } catch {
     return "unavailable";

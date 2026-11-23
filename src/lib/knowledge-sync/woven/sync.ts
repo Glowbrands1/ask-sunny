@@ -101,7 +101,7 @@ function gate(config: WovenKnowledgeConfig): Extract<WovenRunOutcome, { status: 
 
 function buildConnector(config: WovenKnowledgeConfig, startedAt: number): WovenKnowledgeConnector {
   return new WovenKnowledgeConnector({
-    client: new WovenTeamClient({ baseUrl: config.baseUrl, deadlineAt: startedAt + REQUEST_BUDGET_MS }),
+    client: new WovenTeamClient({ baseUrl: config.baseUrl, deadlineAt: startedAt + REQUEST_BUDGET_MS, antiforgeryHeader: config.postAntiforgeryHeader === true }),
     credentials: config.credentials!,
     company: config.company,
   });
@@ -150,7 +150,7 @@ export async function testWovenConnection(overrides: { config?: WovenKnowledgeCo
   const config = overrides.config ?? readWovenKnowledgeConfig();
   const closed = gate(config);
   if (closed) return closed;
-  const client = overrides.client ?? new WovenTeamClient({ baseUrl: config.baseUrl, deadlineAt: Date.now() + 60_000 });
+  const client = overrides.client ?? new WovenTeamClient({ baseUrl: config.baseUrl, deadlineAt: Date.now() + 60_000, antiforgeryHeader: config.postAntiforgeryHeader === true });
   const connector = new WovenKnowledgeConnector({ client, credentials: config.credentials!, company: config.company });
   try {
     const info = await connector.connect();

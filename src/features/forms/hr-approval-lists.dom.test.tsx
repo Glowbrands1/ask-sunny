@@ -2,27 +2,37 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { HrAppTabs, SiblingHrQueueList } from "./hr-approval-lists";
+import { HrApprovalTabs, SiblingHrQueueList } from "./hr-approval-lists";
 
 /**
- * Owner, 23 Nov 2026: "just make a 1 tab for sunny 1 tab for bubbles". HR's tab has one sub-tab per app; the
- * sibling's list opens each form in the sibling app, where it is approved. Invented names.
+ * Owner, 23 Nov 2026: "just make a 1 tab for sunny 1 tab for bubbles", then, of a link to the sibling's own page: "i
+ * dont want the sunny approval in a different page and link, just a tab pls". The sibling app's approvals are a tab
+ * next to Pending HR approval, listed on this page; each form then opens in the sibling app, where it is approved.
+ * Invented names.
  */
 
 afterEach(cleanup);
 
-describe("one tab per app", () => {
-  it("names each app with its count; the sibling's name is the one it answered with", () => {
-    render(<HrAppTabs active="sibling" thisApp={{ name: "This App", pending: 2 }} sibling={{ name: "Sibling App", pending: 1 }} />);
-    expect(screen.getByRole("link", { name: "This App (2)" }).getAttribute("href")).toBe("/forms/monitoring?view=hr");
-    const sibling = screen.getByRole("link", { name: "Sibling App (1)" });
+describe("the sibling app's approvals are a tab, not a link away", () => {
+  it("sits next to Pending HR approval, with the name the sibling answered with and its count, on this page", () => {
+    render(<HrApprovalTabs active="sibling" pending={2} overdue={0} sibling={{ name: "Sibling App", pending: 1 }} />);
+    const links = screen.getAllByRole("link");
+    expect(links.map((link) => link.textContent)).toEqual(["All forms", "Pending HR approval (2)", "Sibling App approvals (1)"]);
+    const sibling = screen.getByTestId("sibling-approvals-tab");
+    // In this app, in this tab: no other address, no new window.
     expect(sibling.getAttribute("href")).toBe("/forms/monitoring?view=hr&app=sibling");
+    expect(sibling.getAttribute("target")).toBeNull();
     expect(sibling.getAttribute("aria-current")).toBe("page");
+    expect(screen.getByTestId("hr-pending-tab").getAttribute("aria-current")).toBeNull();
+    expect(screen.queryByText(/↗/)).toBeNull();
   });
 
-  it("while the sibling cannot be read, its tab says Other app, with no count", () => {
-    render(<HrAppTabs active="this" thisApp={{ name: "This App", pending: 0 }} sibling={{ name: null, pending: null }} />);
-    expect(screen.getByRole("link", { name: "Other app" })).toBeTruthy();
+  it("while the sibling cannot be read, it says Other app approvals, with no count; without the shared secret, no tab", () => {
+    render(<HrApprovalTabs active="hr" pending={0} overdue={0} sibling={{ name: null, pending: null }} />);
+    expect(screen.getByTestId("sibling-approvals-tab").textContent).toBe("Other app approvals");
+    cleanup();
+    render(<HrApprovalTabs active="hr" pending={0} overdue={0} sibling={null} />);
+    expect(screen.queryByTestId("sibling-approvals-tab")).toBeNull();
   });
 });
 

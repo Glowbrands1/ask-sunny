@@ -27,9 +27,8 @@ import {
 } from "@/lib/forms/instance-scope";
 import { pageFormsAccess } from "@/lib/forms/page-scope";
 import type { Permission } from "@/types";
-import { HrApprovalTabs, HrAppTabs, HrQueueList, MyFormsWithHr, SiblingHrQueueList } from "@/features/forms/hr-approval-lists";
+import { HrApprovalTabs, HrQueueList, MyFormsWithHr, SiblingHrQueueList } from "@/features/forms/hr-approval-lists";
 import { fetchSiblingHrQueue, type SiblingHrQueue } from "@/lib/partner/sibling-hr-queue";
-import { ACTIVE_BRAND } from "@/lib/brand";
 import { hrQueueSummary, listHrQueue, listMyFormsWithHr, type HrQueueRow, type MyHrFormRow } from "@/lib/forms/hr-approval";
 
 export const metadata: Metadata = { title: "Form Monitoring" };
@@ -101,22 +100,21 @@ export default async function FormMonitoringPage({
   let hrSummary: { pending: number; overdue: number } | null = null;
   let myWithHr: MyHrFormRow[] = [];
   /*
-   * THE SIBLING APP'S QUEUE (owner, 23 Nov 2026: "1 tab for sunny 1 tab for bubbles"): on HR's tab only, for a
-   * verified HR approver, asked of the sibling's server with this identity's email (`fetchSiblingHrQueue`). "off"
-   * (no shared secret) shows no sub-tabs at all.
+   * THE SIBLING APP'S QUEUE, AS A TAB (owner, 23 Nov 2026: "1 tab for sunny 1 tab for bubbles"; then, of a link to the
+   * sibling's page: "i dont want the sunny approval in a different page and link, just a tab pls"). For a verified HR
+   * approver, asked of the sibling's server with this identity's email (`fetchSiblingHrQueue`), on every view so the
+   * tab carries its count; listed here, on `?view=hr&app=sibling`. "off" (no shared secret) shows no tab.
    */
   let sibling: SiblingHrQueue = { status: "off" };
   const siblingView = hrView && requestedApp === "sibling";
   try {
     if (isHr) {
-      hrSummary = await hrQueueSummary(access.actor);
-      if (hrView) {
-        const email = access.actor.verified && identity?.verified === true && identity.email ? identity.email : null;
-        [hrQueue, sibling] = await Promise.all([
-          listHrQueue(access.actor),
-          email ? fetchSiblingHrQueue(email) : Promise.resolve<SiblingHrQueue>({ status: "off" }),
-        ]);
-      }
+      const email = access.actor.verified && identity?.verified === true && identity.email ? identity.email : null;
+      [hrSummary, hrQueue, sibling] = await Promise.all([
+        hrQueueSummary(access.actor),
+        hrView ? listHrQueue(access.actor) : Promise.resolve<HrQueueRow[]>([]),
+        email ? fetchSiblingHrQueue(email) : Promise.resolve<SiblingHrQueue>({ status: "off" }),
+      ]);
     }
     myWithHr = await listMyFormsWithHr(access.actor);
   } catch {
@@ -201,20 +199,25 @@ export default async function FormMonitoringPage({
 
         <FormsAccessNotice permission="view_form_monitoring" />
 
-        {hrSummary ? <HrApprovalTabs active={hrView ? "hr" : "all"} pending={hrSummary.pending} overdue={hrSummary.overdue} /> : null}
-        {!hrView ? <MyFormsWithHr rows={myWithHr} /> : null}
-
-        {hrView && sibling.status !== "off" ? (
-          <HrAppTabs
-            active={siblingView ? "sibling" : "this"}
-            thisApp={{ name: ACTIVE_BRAND.productName, pending: hrQueue.filter((row) => row.state === "pending").length }}
+        {hrSummary ? (
+          <HrApprovalTabs
+            active={siblingView ? "sibling" : hrView ? "hr" : "all"}
+            pending={hrSummary.pending}
+            overdue={hrSummary.overdue}
             sibling={
-              sibling.status === "ok"
-                ? { name: sibling.app, pending: sibling.forms.filter((row) => row.state === "pending").length }
-                : { name: null, pending: null }
+              sibling.status === "off"
+                ? null
+                : sibling.status === "ok"
+                  ? {
+                      name: sibling.app,
+                      // Waiting for this approver, or sent back and replied to since: what the sibling counts.
+                      pending: sibling.approver ? sibling.forms.filter((row) => row.state === "pending" || row.managerReplied).length : 0,
+                    }
+                  : { name: null, pending: null }
             }
           />
         ) : null}
+        {!hrView ? <MyFormsWithHr rows={myWithHr} /> : null}
 
         {hrView && siblingView && sibling.status !== "off" ? (
           <SiblingHrQueueList queue={sibling} />
