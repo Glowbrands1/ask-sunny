@@ -165,6 +165,11 @@ import { rulesBookText } from "./rules-book";
  * exit_dates line: an exit card's reads_back is the only exit lines the reply reads back, every one is saved at Create,
  * and a detail added after the card reaches the form only through propose_form. It reads the same under every config;
  * nothing else changed.
+ * Re-taken on purpose on 23 Nov 2026 (port of Ask Bubbles #1081, its tester's A9): one line was added after the "If
+ * find_staff returns several people with the name" line: the which-one question is asked once (find_staff's ask_exactly,
+ * the short one when asked_before), nothing is said to be kept on a card that does not exist, no pronoun is used for an
+ * unsettled person, and a surname, full name or salon picks the person and the card is proposed at once with the account.
+ * It reads the same under every config; nothing else changed.
  */
 
 const fixture = (name: string): string => readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), "utf8");
