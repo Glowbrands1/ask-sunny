@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { withoutTopicPrefix } from "@/lib/forms/coaching-topic-prefix";
 import { keptPlanSteps, withPlanSteps } from "@/lib/forms/stated-plan-steps";
 import { statedPlanStepsEnabled } from "@/lib/config/chat-quality-flags";
-import { READERS_LINE_HEADINGS } from "@/lib/forms/readers-line-headings";
 import { loopWriteUpSections } from "@/lib/forms/loop-write-up-sections";
 import { withAccountFactsKept } from "@/lib/forms/account-facts-kept";
 import { TERMINATION_OPTION, withTerminationPlan } from "@/lib/forms/termination-stated";
@@ -412,7 +411,7 @@ async function readOfficialPolicyManual(
 
 /** SPEND_GUARD_ALL_CALLS_ENABLED: this route's Claude calls are counted (`ai/spend-meter.ts`). Off, as before. */
 
-/* QA f071 / c259: the headings whose saved Policy Violated keeps "<box> — <section>" are `READERS_LINE_HEADINGS` (forms/readers-line-headings.ts). */
+/* QA f071 / c259: the headings filed under another box are `READERS_LINE_HEADINGS` (forms/readers-line-headings.ts); since Pau's 23 Nov 2026 ruling their saved Policy Violated is the card's line too, page included. */
 
 /**
  * Port from the sibling app (its QA's live re-run, 23 Nov 2026, A1): the topic a loop card's policy line names after
@@ -2932,9 +2931,11 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
        * QA f071 (20 Nov 2026, live item 15): a card citing "Late Opening Policy, JBA Policy Manual p.15" saved Policy
        * Violated "Attendance Policy — Late Opening", so the card and the form showed two labels. The card's line is the
        * saved Policy Violated whether or not a Type of Offense label names its heading; the box is left as set above.
-       * Except the headings in `READERS_LINE_HEADINGS`, which keep the readers' "<box> — <section>".
+       * Port from the sibling app (Pau's ruling, 23 Nov 2026, via QA: "add the page everywhere"): the headings in
+       * `READERS_LINE_HEADINGS` (Time Records) kept the readers' "<box> — <section>" and dropped the card's ", JBA Policy
+       * Manual p.<n>"; since c259 the card's line names the box itself, so it is saved for them too. Supersedes f071.
        */
-      if (cardLine && !READERS_LINE_HEADINGS.has(loopCardHeading.trim().toLowerCase()) && fields.some((field) => field.key === "policy_violated")) {
+      if (cardLine && fields.some((field) => field.key === "policy_violated")) {
         draftedPayload.values = { ...draftedPayload.values, policy_violated: cardLine };
       }
     }
