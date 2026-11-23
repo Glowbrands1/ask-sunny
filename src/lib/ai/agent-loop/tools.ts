@@ -824,6 +824,8 @@ const NOT_ASKED = "Forms on file are looked at only when the manager asks about 
 /** What the turn's tools produced for the reply: the card and the edit, when there were any. */
 export interface ToolEffects {
   proposal: ChatFormProposal | null;
+  /** Port of Ask Bubbles #1077 (Pau's round 3, U35 run a): propose_form already sent back a call that would drop the card on screen's account. */
+  cardAccountAsked?: boolean;
   /**
    * QA (16 Nov 2026, the live re-run of #1067): a question code decided that the reply must end with (find_past_forms'
    * card_on_screen offer). run.ts adds it when the model's reply left it out.
@@ -3547,6 +3549,26 @@ export async function proposeForm(
   if (sameCardOther && !(typeof input.what_happened === "string" && input.what_happened.trim())) {
     return {
       error: `The manager asked for the ${template.name} on screen for ${employee.name}. Propose ${employee.name}'s card again now with what_happened: that card's account exactly as this chat shows it (the Observation of the earlier card), with ${employee.name}'s name in place of the earlier person's, and same_card_evidence again. Never ask what happened; never copy a level or a payroll answer.`, reason_code: "same_card_account_missing",
+    };
+  }
+  /*
+   * THE CARD ON SCREEN KEEPS ITS ACCOUNT (port of Ask Bubbles #1077, 1d211cf; Pau's round 3 there, U35 T11): "Create a
+   * Corrective Action Form from this conversation." re-proposed this person's card on screen with no what_happened; the
+   * account is read from the request's own words, which hold none, so the Observation the card showed was wiped and the
+   * reply asked what happened again. The model's history shows a card reply only as "[card shown …]", so it is told here:
+   * with this person's card on screen (by roster id, name, or the name this call corrects), made with an account (its
+   * record's account key), a call with no account goes back once. A switch between the account forms carries the
+   * account; a switch to the exit form does not (its account is how and when they left). A card never given an account
+   * is made as before.
+   */
+  const hasAccount = typeof input.what_happened === "string" && input.what_happened.trim() !== "";
+  const cardShown = context.cardOnScreen ?? null;
+  const samePersonCard = Boolean(cardShown && ((employee.id && cardShown.employeeKey === personKey(employee.id)) || cardShown.nameKey === personKey(employee.name) || (nameCorrectedFrom !== null && cardShown.nameKey === personKey(nameCorrectedFrom))));
+  const sameAccountForm = Boolean(cardShown && (cardShown.templateKey === template.key || (ACCOUNT_FORMS.has(cardShown.templateKey) && ACCOUNT_FORMS.has(template.key))));
+  if (!hasAccount && !sameCardOther && !effects.cardAccountAsked && Boolean(cardShown?.accountKey) && samePersonCard && sameAccountForm) {
+    effects.cardAccountAsked = true;
+    return {
+      reason_code: "card_account_missing", error: `${employee.name}'s ${cardShown?.templateName ?? template.name} on screen has an account of what happened, and this call gave none, so the card would lose it. Propose the card again now with what_happened: the manager's account from the earlier turns of this chat, in their words, with anything this message adds. Never ask the manager what happened again.`,
     };
   }
   const copiedFromCard = sameCardOther;
