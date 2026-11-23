@@ -115,6 +115,36 @@ export function mayReadHrDecision(
   return isCreatorOrSender(reader, instance) || reader.hrApprover === true;
 }
 
+/**
+ * ============================================================================
+ * APPROVE FROM "SENT BACK", ONCE THE MANAGER HAS REPLIED (Pau, via QA, 23 Nov 2026)
+ * ============================================================================
+ *
+ * "when manager replies in note, there should be approve button here": HR need not wait for the manager to finalize
+ * again. A form HR sent back for changes may be approved once its creator or a sender has added a note AFTER HR's
+ * latest send-back; the approval is the same one as from pending (finalized and approved in one write). A form sent
+ * back with no reply yet, a rejected form, or a reply older than the latest send-back is not approvable this way.
+ */
+export interface HrApprovalEventFact {
+  readonly action: string;
+  readonly actor: string;
+  readonly at: string;
+}
+
+export function approvableFromSentBack(
+  instance: { createdBy: string; hrApprovalState?: HrApprovalState | null; hrApprovalRequestedBy?: string | null; hrApprovalSenders?: readonly string[] },
+  events: readonly HrApprovalEventFact[],
+): boolean {
+  if (instance.hrApprovalState !== "changes_requested") return false;
+  const ordered = [...events].sort((a, b) => a.at.localeCompare(b.at));
+  let sentBackAt = -1;
+  ordered.forEach((event, index) => {
+    if (event.action === "changes_requested") sentBackAt = index;
+  });
+  if (sentBackAt < 0) return false;
+  return ordered.slice(sentBackAt + 1).some((event) => event.action === "commented" && isCreatorOrSender({ id: event.actor }, instance));
+}
+
 export const HR_STATE_LABEL: Record<HrApprovalState, string> = {
   pending: "Waiting for HR approval",
   changes_requested: "Sent back by HR for changes",

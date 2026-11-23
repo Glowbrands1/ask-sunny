@@ -170,6 +170,8 @@ export type HrApprovalsRead =
         requestedAt: string | null;
         waiting: string;
         overdue: boolean;
+        /** Sent back, and the manager has replied since: HR may approve it now (Pau, via QA, 23 Nov 2026). */
+        managerReplied?: boolean;
       }[];
       /**
        * The same approver's queue in the sibling app (`siblingHrReadFor`): null when the link is not configured,
@@ -632,10 +634,17 @@ export async function readHrApprovals(context: DataToolContext, deps: DataToolDe
       source: hrApprovalsSource(),
       reader: "HR approver",
       waiting_for_you: read.queue
-        .filter((row) => row.state === "pending")
-        .map((row) => ({ form: untrusted(row.line, hrApprovalsSource()), from: row.createdByName, sent: formatBusinessTime(row.requestedAt) ?? row.requestedAt, waiting: row.waiting, overdue: row.overdue })),
+        .filter((row) => row.state === "pending" || row.managerReplied === true)
+        .map((row) => ({
+          form: untrusted(row.line, hrApprovalsSource()),
+          from: row.createdByName,
+          ...(row.managerReplied ? { state: "manager replied to changes: you can approve it, or send it back again with a note" } : {}),
+          sent: formatBusinessTime(row.requestedAt) ?? row.requestedAt,
+          waiting: row.waiting,
+          overdue: row.overdue,
+        })),
       sent_back_or_rejected: read.queue
-        .filter((row) => row.state !== "pending")
+        .filter((row) => row.state !== "pending" && row.managerReplied !== true)
         .map((row) => ({ form: untrusted(row.line, hrApprovalsSource()), from: row.createdByName, state: row.state === "rejected" ? "rejected" : "sent back for changes" })),
       note: "List the forms waiting for this HR approver, oldest first, saying which are overdue (waited more than one business day). They approve, send back or reject each one from Pending HR approval in " + appConfig().formsPageName + ".",
       ...siblingHrSection(read.sibling ?? null),

@@ -1,67 +1,87 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+import * as React from "react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { HrApprovalTabs, SiblingHrQueueList } from "./hr-approval-lists";
+import { HrApprovalTabs, HrQueueList, type HrQueueListRow } from "./hr-approval-lists";
 
 /**
- * Owner, 23 Nov 2026: "just make a 1 tab for sunny 1 tab for bubbles", then, of a link to the sibling's own page: "i
- * dont want the sunny approval in a different page and link, just a tab pls". The sibling app's approvals are a tab
- * next to Pending HR approval, listed on this page; each form then opens in the sibling app, where it is approved.
- * Invented names.
+ * Form Monitoring's HR tab (Pau, via QA, 23 Nov 2026):
+ *   - "HR sent a CA back, the manager replied with a note, and HR's list still shows ... 'Sent back for changes'.
+ *     Meanwhile the tab says 'Pending HR approval (0)' even though the row is listed." The row now reads "Manager replied
+ *     to changes", and the tab's number is exactly the rows under "Needs your decision".
+ *   - "its so small pending approval, make it red button and animated shaking if theres a pending".
+ * Invented forms and people.
  */
 
-afterEach(cleanup);
+afterEach(() => cleanup());
 
-describe("the sibling app's approvals are a tab, not a link away", () => {
-  it("sits next to Pending HR approval, with the name the sibling answered with and its count, on this page", () => {
-    render(<HrApprovalTabs active="sibling" pending={2} overdue={0} sibling={{ name: "Sibling App", pending: 1 }} />);
-    const links = screen.getAllByRole("link");
-    expect(links.map((link) => link.textContent)).toEqual(["All forms", "Pending HR approval (2)", "Sibling App approvals (1)"]);
-    const sibling = screen.getByTestId("sibling-approvals-tab");
-    // In this app, in this tab: no other address, no new window.
-    expect(sibling.getAttribute("href")).toBe("/forms/monitoring?view=hr&app=sibling");
-    expect(sibling.getAttribute("target")).toBeNull();
-    expect(sibling.getAttribute("aria-current")).toBe("page");
-    expect(screen.getByTestId("hr-pending-tab").getAttribute("aria-current")).toBeNull();
-    expect(screen.queryByText(/↗/)).toBeNull();
-  });
-
-  it("while the sibling cannot be read, it says Other app approvals, with no count; without the shared secret, no tab", () => {
-    render(<HrApprovalTabs active="hr" pending={0} overdue={0} sibling={{ name: null, pending: null }} />);
-    expect(screen.getByTestId("sibling-approvals-tab").textContent).toBe("Other app approvals");
-    cleanup();
-    render(<HrApprovalTabs active="hr" pending={0} overdue={0} sibling={null} />);
-    expect(screen.queryByTestId("sibling-approvals-tab")).toBeNull();
-  });
+const row = (id: string, state: HrQueueListRow["state"], managerReplied = false): HrQueueListRow => ({
+  id,
+  line: `Corrective Action Form for Invented Person ${id} at KC Wornall`,
+  createdByName: "Marigold",
+  state,
+  requestedAt: "2026-11-23T15:00:00Z",
+  waiting: "Sent today",
+  overdue: false,
+  managerReplied,
 });
 
-describe("the sibling app's forms", () => {
-  const form = {
-    line: "Exit Form for Marlowe Fenwick at Invented Place",
-    from: "Ines",
-    state: "pending" as const,
-    requestedAt: "2026-11-23T14:00:00Z",
-    waiting: "Sent today",
-    overdue: true,
-    href: "https://sibling.test/forms/hr-approval/0b6f1c1e-2a8d-4c55-9a10-5f3b6c7d8e9f",
-  };
+const decideCount = () => within(screen.getByTestId("hr-queue-decide")).queryAllByRole("listitem").length;
 
-  it("each form opens its review page in the sibling app, where it is approved", () => {
-    render(<SiblingHrQueueList queue={{ status: "ok", app: "Sibling App", approver: true, forms: [form] }} />);
-    expect(screen.getByRole("link", { name: /Exit Form for Marlowe Fenwick/ }).getAttribute("href")).toBe(form.href);
-    expect(screen.getByText(/Each form opens in Sibling App, where you approve, send back or reject it/)).toBeTruthy();
-    expect(screen.getByText("Overdue")).toBeTruthy();
+describe("HR's list on Form Monitoring", () => {
+  it("a sent-back form the manager replied to reads \"Manager replied to changes\" and sits under Needs your decision", () => {
+    render(<HrQueueList rows={[row("a", "changes_requested", true)]} />);
+    const decide = screen.getByTestId("hr-queue-decide");
+    expect(within(decide).getByText("Manager replied to changes")).toBeTruthy();
+    expect(within(decide).getByRole("heading").textContent).toBe("Needs your decision (1)");
+    expect(screen.queryByText("Sent back for changes")).toBeNull();
   });
 
-  it("says so when nothing waits, when this account is not HR there, and when the sibling did not answer", () => {
-    render(<SiblingHrQueueList queue={{ status: "ok", app: "Sibling App", approver: true, forms: [] }} />);
-    expect(screen.getByText("No forms are waiting for your approval in Sibling App.")).toBeTruthy();
+  it("the tab's number matches the rows under Needs your decision, in every state", () => {
+    const cases: { rows: HrQueueListRow[]; pending: number }[] = [
+      { rows: [row("w", "pending")], pending: 1 },
+      { rows: [row("s", "changes_requested")], pending: 0 },
+      { rows: [row("r", "changes_requested", true)], pending: 1 },
+      { rows: [row("w", "pending"), row("s", "changes_requested"), row("r", "changes_requested", true), row("x", "rejected")], pending: 2 },
+    ];
+    for (const { rows, pending } of cases) {
+      render(
+        <>
+          <HrApprovalTabs active="hr" pending={pending} overdue={0} />
+          <HrQueueList rows={rows} />
+        </>,
+      );
+      expect(screen.getByTestId("hr-pending-tab").textContent).toContain(`Pending HR approval (${pending})`);
+      expect(decideCount(), JSON.stringify(rows.map((entry) => [entry.state, entry.managerReplied]))).toBe(pending);
+      const onManager = screen.queryByTestId("hr-queue-on-manager");
+      expect(onManager ? within(onManager).queryAllByRole("listitem").length : 0).toBe(rows.length - pending);
+      cleanup();
+    }
+  });
+
+  it("with anything pending, the tab is a red button that shakes; with nothing, the ordinary tab", () => {
+    render(<HrApprovalTabs active="all" pending={2} overdue={1} />);
+    const urgent = screen.getByTestId("hr-pending-tab");
+    expect(urgent.getAttribute("data-urgent")).toBe("true");
+    expect(urgent.className).toContain("hr-pending-shake");
+    expect(urgent.className).toContain("bg-status-failed");
+    expect(urgent.textContent).toContain("1 overdue");
     cleanup();
-    render(<SiblingHrQueueList queue={{ status: "ok", app: "Sibling App", approver: false, forms: [] }} />);
-    expect(screen.getByTestId("sibling-hr-queue-not-approver").textContent).toMatch(/not set up as the HR approver in Sibling App/);
-    cleanup();
-    render(<SiblingHrQueueList queue={{ status: "error" }} />);
-    expect(screen.getByTestId("sibling-hr-queue-error")).toBeTruthy();
+
+    render(<HrApprovalTabs active="all" pending={0} overdue={0} />);
+    const calm = screen.getByTestId("hr-pending-tab");
+    expect(calm.getAttribute("data-urgent")).toBe("false");
+    expect(calm.className).not.toContain("hr-pending-shake");
+    expect(calm.className).not.toContain("bg-status-failed");
+  });
+
+  it("the shake is off under prefers-reduced-motion", () => {
+    const css = readFileSync(join(process.cwd(), "src", "app", "globals.css"), "utf8");
+    expect(css).toMatch(/@keyframes hr-pending-shake/);
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.hr-pending-shake \{\s*animation: none;/);
   });
 });

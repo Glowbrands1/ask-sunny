@@ -46,10 +46,7 @@ export interface PartnerHrForm {
   requestedAt: string | null;
   waiting: string;
   overdue: boolean;
-  /**
-   * Sent back, and the manager replied since: it needs HR's decision again ("Manager replied to changes"). This app
-   * answers false until its own queue tells the two apart (#1288 adds that here); the sibling's answer is read as sent.
-   */
+  /** Sent back, and the manager replied since: it needs HR's decision again ("Manager replied to changes"). */
   managerReplied: boolean;
   /** The review page's path in the app that owns the form: `/forms/hr-approval/<id>`. */
   path: string;
@@ -88,7 +85,7 @@ export async function hrQueueForPartner(emailInput: unknown, now: Date = new Dat
       requestedAt: row.requestedAt,
       waiting: row.waiting,
       overdue: row.overdue,
-      managerReplied: false,
+      managerReplied: row.managerReplied === true,
       path: `/forms/hr-approval/${row.id}`,
     })),
   };
