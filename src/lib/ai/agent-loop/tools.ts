@@ -224,7 +224,24 @@ async function formsOnFileAskedFor(context: ToolContext, evidence: unknown, pers
       const pair = `${word} ${all[at + 1] ?? ""}`.trim();
       return at + 1 < all.length && !rosterNames.some((name) => samePerson(name, pair) && !names.some((own) => samePerson(own, name))) && closelySpelledEmployee(pair, [person]) === person;
     });
-  if (namedIn(asked.said)) return { ok: true };
+  /*
+   * Ask Bubbles coder 2's finding (via QA, 22 Nov 2026): "show me <last>s forms" was refused as someone else's forms. A
+   * last name alone names the one roster person who has it (roster data, no word list); a last name two people share
+   * names nobody. It only lets THIS person's forms through: a last name is not read as naming someone else, since a
+   * surname can be an everyday word ("open her account").
+   */
+  const soleLastNameHolder = (text: string): (typeof roster)[number] | null => {
+    for (const word of text.split(/[^\p{L}'’-]+/u).map((part) => part.replace(/['’]s$/i, "").toLowerCase()).filter(Boolean)) {
+      const holdersOfWord = roster.filter((row) => (row.lastName ?? "").trim().toLowerCase() === word);
+      if (holdersOfWord.length === 1) return holdersOfWord[0]!;
+    }
+    return null;
+  };
+  const lastNameIsThisPerson = (text: string) => {
+    const holder = soleLastNameHolder(text);
+    return holder !== null && holders.length === 1 && holder.id === holders[0]!.id;
+  };
+  if (namedIn(asked.said) || lastNameIsThisPerson(asked.said)) return { ok: true };
   const namesSomeone = (text: string) => rosterNames.some((name) => mentionsPerson(text, name, rosterNames)) || extractEmployeeNames(text).length > 0;
   /* QA's re-review (fix 1): the quoted message names someone else, so no fallback lets this person's forms through. */
   if (namesSomeone(asked.said)) return { ok: false, reason: "evidence_other_person", reasonCode: "privacy_not_this_person" };
@@ -241,7 +258,7 @@ async function formsOnFileAskedFor(context: ToolContext, evidence: unknown, pers
     if (replyText && names.some((name) => holdsPhrase(replyText, name))) return { ok: true };
   }
   const antecedent = asked.before.find(namesSomeone);
-  if (antecedent !== undefined && namedIn(antecedent)) return { ok: true };
+  if (antecedent !== undefined && (namedIn(antecedent) || lastNameIsThisPerson(antecedent))) return { ok: true };
   // PR 2: the card on screen, by the server's card record (its person's roster id, or the key of a typed name), never the reply's text.
   const onScreen = context.cardOnScreen;
   if (onScreen && ((onScreen.employeeKey !== null && holders.some((row) => personKey(row.id) === onScreen.employeeKey)) || (onScreen.employeeKey === null && onScreen.nameKey === personKey(person)))) return { ok: true };
