@@ -48,6 +48,8 @@ const KNOWN = new Set([
   "name_answer_keeps_form", "close_spelling_not_confirmed",
   // Added on purpose (QA, 16 Nov 2026; Runner 2's c014 T6): a heading on a non-CA card that the manager never named for it.
   "policy_not_for_this_card",
+  // Added on purpose (Pau's job-title rule via QA, 23 Nov 2026): a job_title with no instruction quoted, or said beside the name.
+  "job_title_not_instructed",
   // QA (16 Nov 2026, live group E): an edit asked for a form type with forms on file and another card on screen.
   "edit_asked_forms_on_file",
   // QA item 7 (20 Nov 2026): another form proposed for the open card's person with no words asking for it.

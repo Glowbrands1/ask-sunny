@@ -39,6 +39,11 @@ import { rulesBookText } from "./rules-book";
  * follow_up_on_create (say the follow-up date Create sets; never deny a follow-up the form will have). It reads the same
  * under every config; nothing else changed.
  *
+ * Re-taken on purpose on 23 Nov 2026 (Pau's job-title rule via QA): a Card replies line for the job title (Woven's by
+ * default; an explicit instruction with job_title_evidence overrides it; job_title_as_you_said), title_differs offers
+ * another title, and card.job_title is read back for job_title_as_you_said. It reads the same under every config;
+ * nothing else changed.
+ *
  * Re-taken on purpose on 22 Nov 2026 (port from Ask Bubbles 1b34db2, A11): one Forms on file line was added after
  * which_form_question: an answer that gives changes is not a pick; open_form and edit_form need choice_evidence; ask
  * again. It reads the same under every config; nothing else changed.
