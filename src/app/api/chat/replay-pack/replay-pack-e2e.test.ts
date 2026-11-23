@@ -902,9 +902,14 @@ class Thread {
   }
 
   /** The card's Create, as the browser does it. */
-  async create(): Promise<string> {
+  /**
+   * `salon`: the salon the manager picks on the card before Create, as the browser's salon picker does (port of Ask
+   * Bubbles #1072, board f140: Create on a card that still asks which salon saves nothing, so a case that means to save
+   * one picks it).
+   */
+  async create(salon?: string): Promise<string> {
     expect(this.proposal, "no card to create from").not.toBeNull();
-    const result = await createInlineForm({ proposal: this.proposal!, messages: this.messages, call, onCreated: () => {} });
+    const result = await createInlineForm({ proposal: salon ? { ...this.proposal!, locationId: salon } : this.proposal!, messages: this.messages, call, onCreated: () => {} });
     this.instanceId = toUuid(result.reference.instanceId);
     return this.instanceId;
   }
