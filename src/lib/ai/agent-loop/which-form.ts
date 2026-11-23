@@ -71,7 +71,21 @@ function picksByDate(quote: string, entry: WhichFormEntry, all: readonly WhichFo
   if (!iso) return false;
   const own = { month: Number(iso[2]), day: Number(iso[3]), year: Number(iso[1]) };
   if (all.every((other) => other.date === entry.date)) return false;
-  return readDates(quote).some((said) => sameDate(said, own));
+  return [...readDates(quote), ...runTogetherDates(quote)].some((said) => sameDate(said, own));
+}
+
+/**
+ * A date typed as eight digits with nothing between them ("11202026", a live manager's answer to "which one?", Pau's
+ * review, 23 Nov 2026): month, day and four-digit year, read only when they make a real calendar date.
+ */
+function runTogetherDates(quote: string): { month: number; day: number; year: number }[] {
+  return [...quote.matchAll(/(?<!\d)(\d{2})(\d{2})(\d{4})(?!\d)/g)].flatMap((match) => {
+    const month = Number(match[1]);
+    const day = Number(match[2]);
+    const year = Number(match[3]);
+    const real = month >= 1 && month <= 12 && day >= 1 && year >= 2000 && year <= 2099 && day <= new Date(Date.UTC(year, month, 0)).getUTCDate();
+    return real ? [{ month, day, year }] : [];
+  });
 }
 
 /** "2", "#2", "number 2": the form's place in the list, as a number standing alone (never part of a date). */

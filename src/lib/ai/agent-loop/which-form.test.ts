@@ -47,3 +47,22 @@ describe("whichFormChoice (A11)", () => {
     expect(formKey("F-1")).toBe(formKey("f-1"));
   });
 });
+
+describe("whichFormChoice: a date typed as eight digits (a live manager's \"11202026\", Pau's review, 23 Nov 2026)", () => {
+  const exits = [
+    { instance_id: "x-1", form: "Resignation/Exit Form", status: "finalized", form_date: "2026-11-20", salon: "NE Kearney" },
+    { instance_id: "x-2", form: "Resignation/Exit Form", status: "finalized", form_date: "2026-10-02", salon: "NE Kearney" },
+  ];
+  const listed: WhichFormRecord = { forms: exits.map(whichFormEntry), messageId: "m1" };
+  const pick = (id: string, said: string) => whichFormChoice({ asked: listed, instanceId: id, evidence: { message_id: "m2", quote: said }, history, question: said, questionMessageId: "m2" });
+
+  it("\"11202026\" picks the form dated 11/20/2026, and only it", () => {
+    expect(pick("x-1", "11202026")).toEqual({ ok: true });
+    expect(pick("x-2", "11202026")).toMatchObject({ ok: false, reason_code: "which_form_not_chosen" });
+  });
+
+  it("eight digits that are no calendar date pick nothing", () => {
+    expect(pick("x-1", "13202026")).toMatchObject({ ok: false });
+    expect(pick("x-1", "11312026")).toMatchObject({ ok: false });
+  });
+});

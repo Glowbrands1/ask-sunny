@@ -217,7 +217,20 @@ export function formsOnFileAsked(context: Pick<ToolContext, "question" | "histor
  */
 export function withRosterPossessives(text: string, roster: readonly Pick<RosterEmployee, "firstName" | "lastName" | "preferredFirstName">[]): string {
   const names = new Set(roster.flatMap((row) => [row.firstName, row.preferredFirstName ?? "", row.lastName]).map((name) => name.trim().toLowerCase()).filter((name) => /^[\p{L}'-]+$/u.test(name)));
-  return text.replace(/(?<![\p{L}'-])([\p{L}'-]+?)s(?![\p{L}'-])/gu, (word, stem: string) => (names.has(stem.toLowerCase()) && !names.has(word.toLowerCase()) ? `${stem}'s` : word));
+  const spaced = text.replace(/(?<![\p{L}'-])([\p{L}'-]+?)s(?![\p{L}'-])/gu, (word, stem: string) => (names.has(stem.toLowerCase()) && !names.has(word.toLowerCase()) ? `${stem}'s` : word));
+  /*
+   * A live manager's "show me <first>sexit" (Pau's review, 23 Nov 2026): the possessive typed with no apostrophe AND no
+   * space before the next word. A word that starts with a roster person's name, then "s", then three or more letters, and
+   * is not itself a roster name, is that name's possessive and the word after it ("<First>'s exit"). Roster names only.
+   */
+  return spaced.replace(/(?<![\p{L}'-])[\p{L}'-]{5,}(?![\p{L}'-])/gu, (word) => {
+    if (names.has(word.toLowerCase())) return word;
+    for (let at = word.length - 4; at >= 2; at -= 1) {
+      const stem = word.slice(0, at);
+      if (word[at]?.toLowerCase() === "s" && names.has(stem.toLowerCase())) return `${stem}'s ${word.slice(at + 1)}`;
+    }
+    return word;
+  });
 }
 
 async function formsOnFileAskedFor(context: ToolContext, evidence: unknown, person: string): Promise<{ ok: true } | { ok: false; reason: string; reasonCode: string }> {
@@ -256,7 +269,21 @@ async function formsOnFileAskedFor(context: ToolContext, evidence: unknown, pers
     const holder = soleLastNameHolder(text);
     return holder !== null && holders.length === 1 && holder.id === holders[0]!.id;
   };
-  if (namedIn(asked.said) || lastNameIsThisPerson(asked.said)) return { ok: true };
+  /*
+   * A live manager's "show me <first>sexit" (Pau's review, 23 Nov 2026): a first name typed in lower case ("<first>'s
+   * exit" once the possessive is read) was never read as a name, so her own forms stayed closed, turn after turn. A first
+   * or preferred name, as a whole word in any case, names the one roster person who has it (roster data, no word list); a
+   * first name two people share names nobody here. Like the last name above, it only lets THIS person's forms through.
+   */
+  const firstNameIsThisPerson = (text: string) => {
+    if (holders.length !== 1) return false;
+    const own = holders[0]!;
+    const firsts = [own.firstName, own.preferredFirstName ?? ""].map((name) => name.trim().toLowerCase()).filter((name) => /^[\p{L}'-]+$/u.test(name));
+    const shared = (name: string) => roster.some((row) => row.id !== own.id && [row.firstName, row.preferredFirstName ?? ""].some((other) => other.trim().toLowerCase() === name));
+    const said = new Set(text.toLowerCase().split(/[^\p{L}'’-]+/u).map((part) => part.replace(/['’]s$/i, "")).filter(Boolean));
+    return firsts.some((name) => said.has(name) && !shared(name));
+  };
+  if (namedIn(asked.said) || lastNameIsThisPerson(asked.said) || firstNameIsThisPerson(asked.said)) return { ok: true };
   const namesSomeone = (text: string) => rosterNames.some((name) => mentionsPerson(text, name, rosterNames)) || extractEmployeeNames(text).length > 0;
   /* QA's re-review (fix 1): the quoted message names someone else, so no fallback lets this person's forms through. */
   if (namesSomeone(asked.said)) return { ok: false, reason: "evidence_other_person", reasonCode: "privacy_not_this_person" };
@@ -284,7 +311,7 @@ async function formsOnFileAskedFor(context: ToolContext, evidence: unknown, pers
     if (asked.index < current.index && replyNames(turns[current.index - 1]) && !sinceCited.some((turn) => namesSomeone(withoutMessageIdTags(turn.content)))) return { ok: true };
   }
   const antecedent = asked.before.find(namesSomeone);
-  if (antecedent !== undefined && (namedIn(antecedent) || lastNameIsThisPerson(antecedent))) return { ok: true };
+  if (antecedent !== undefined && (namedIn(antecedent) || lastNameIsThisPerson(antecedent) || firstNameIsThisPerson(antecedent))) return { ok: true };
   // PR 2: the card on screen, by the server's card record (its person's roster id, or the key of a typed name), never the reply's text.
   const onScreen = context.cardOnScreen;
   if (onScreen && ((onScreen.employeeKey !== null && holders.some((row) => personKey(row.id) === onScreen.employeeKey)) || (onScreen.employeeKey === null && onScreen.nameKey === personKey(person)))) return { ok: true };
@@ -2041,6 +2068,21 @@ export async function findPastForms(context: ToolContext, input: { employee_name
       const ca = /\bca\b|corrective|write[- ]?up|warning|verbal|written/.test(wantForm);
       const narrowed = rows.filter((row) => (followUp ? /follow/i.test(row.templateName) : true) && (coaching ? /coach/i.test(row.templateName) && !/follow/i.test(row.templateName) : true) && (ca ? /corrective/i.test(row.templateName) || row.templateKey === appConfig().formKeys.corrective : true));
       if (narrowed.length > 0) rows = narrowed;
+    }
+    /*
+     * A live manager's "show me <first>sexit" (Pau's review, 23 Nov 2026): Sunny listed all 11 of her forms, twice, and the
+     * one Resignation/Exit Form on file never opened. The kind of form the request names, read against the forms' own
+     * template names (`formKindFromText`'s template-name words and `ofKind`: the same reader as the period listings), keeps only forms of that kind:
+     * from the model's `form`, or else from the manager's own words (the quote that asked, then this message), with a
+     * possessive typed with no apostrophe or space read as one ("<first>sexit" is "<first>'s exit"). One form of that kind
+     * left is the one to open; several are listed alone.
+     */
+    {
+      const ownWords = [wantForm, String((input.forms_on_file_evidence as { quote?: unknown } | null | undefined)?.quote ?? ""), context.question ?? ""];
+      const kind = ownWords.map((text) => formKindFromText(withRosterPossessives(text, people))).find((found) => found !== null) ?? null;
+      /* The kind's own template-name words (the database filter of the period listings), then its exclusions (`ofKind`). */
+      const ofThatKind = kind ? ofKind(rows.filter((row) => kind.templateNameWords.some((word) => row.templateName.toLowerCase().includes(word))), kind) : [];
+      if (ofThatKind.length > 0) rows = ofThatKind;
     }
     const iso = typeof input.date === "string" ? isoDate(input.date, today) : null;
     const wantDate = iso ? { month: Number(iso.slice(5, 7)), day: Number(iso.slice(8, 10)), year: /\d{4}|\/\d{2}$/.test(String(input.date)) ? Number(iso.slice(0, 4)) : null } : undefined;
