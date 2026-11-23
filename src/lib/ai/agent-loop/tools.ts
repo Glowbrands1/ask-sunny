@@ -824,6 +824,8 @@ const NOT_ASKED = "Forms on file are looked at only when the manager asks about 
 /** What the turn's tools produced for the reply: the card and the edit, when there were any. */
 export interface ToolEffects {
   proposal: ChatFormProposal | null;
+  /** U24 (port of Ask Bubbles #1061): the exit type(s) this turn's exit card ticks, by the form's labels, for the reply's "Filed as" line. */
+  exitTicks?: readonly string[];
   /**
    * QA (16 Nov 2026, the live re-run of #1067): a question code decided that the reply must end with (find_past_forms'
    * card_on_screen offer). run.ts adds it when the model's reply left it out.
@@ -4724,6 +4726,16 @@ export async function proposeForm(
   if (card.exitReadBack) card.exitReadBack = (await import("./exit-read-back")).exitReadBack({ dateLines: await exitDateLines(requestWords, today, Boolean(exitTermination)), account: card.issue ?? null, termination: Boolean(exitTermination), detailLines: await exitDetailReadLines(requestWords, today, Boolean(exitTermination)) });
   effects.proposal = card;
   effects.proposalEmployeeId = employee.id ?? null;
+  /*
+   * U24 (port of Ask Bubbles #1061, its QA's flaky check): with the type stated the card ticked it, but one live reply of
+   * five read back every reads_back line and never the type (exit_ticks is a separate rules-book line the model can
+   * skip). The ticks are the card's own facts: run.ts adds their "Filed as" line when the reply names none of them. They
+   * are NOT put in reads_back: Bubbles' live check saw its rehire case lose its reads_back with that, so the model's
+   * input is unchanged. A termination's tick stays with exit_termination's own line. Only after effects.proposal is set:
+   * an await before it lets a parallel propose_form pass the one-card check too.
+   */
+  const cardTicks = await exitCardTicks(template.key === appConfig().formKeys.exit, Boolean(exitTermination), requestWords, today, exitHow?.option ?? null);
+  effects.exitTicks = cardTicks.exit_ticks ?? [];
   const personId = typeof input.employee_id === "string" ? input.employee_id.trim() : "";
   /*
    * THE CARD'S FACTS (Pau, 14 Nov 2026: "code may refuse or inform, never rewrite"; the code-check audit's batch A).
@@ -4904,7 +4916,7 @@ export async function proposeForm(
      * QA item 17 (20 Nov 2026): the exit form's required last day worked, asked on the card when the manager has not said
      * it, as the Corrective Action asks its level (the rules book's exit_unset line). A termination's effective date is it.
      */
-    ...(await exitCardTicks(template.key === appConfig().formKeys.exit, Boolean(exitTermination), requestWords, today, exitHow?.option ?? null)),
+    ...cardTicks,
     ...(exitTermination ? { exit_termination: { form_label: "Immediate involuntary separation", effective: exitTermination.date, ...(exitTermination.dated_today ? { dated_today: true } : {}) } } : {}),
     ...(jobTitleTyped ? { job_title_from_your_words: card.employeeRole } : {}),
     ...(whichSalon ? { which_salon: true } : {}),

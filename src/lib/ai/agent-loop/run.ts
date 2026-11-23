@@ -1627,6 +1627,16 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   const asksForChange = /\bchange\b[^.!?\n]*\?/i.test(content);
   if (effects.replyMustAsk && !content.includes(effects.replyMustAsk) && !asksForChange) content = `${content.trim()}\n\n${effects.replyMustAsk}`.trim();
   /*
+   * U24 (port of Ask Bubbles #1061, its QA's flaky check): a reply for this turn's exit card that names none of the types
+   * the card ticks gets the card's own "Filed as" line after its opening paragraph (the card's facts, never the manager's
+   * words). The model's input is unchanged.
+   */
+  const exitTicks = effects.proposal?.templateKey === appConfig().formKeys.exit ? (effects.exitTicks ?? []) : [];
+  if (exitTicks.length > 0 && !exitTicks.some((label) => content.toLowerCase().includes(label.toLowerCase()))) {
+    const [opening, ...rest] = content.trim().split(/\n{2,}/);
+    content = [opening, `Filed as: ${exitTicks.join(", ")}.`, ...rest].join("\n\n");
+  }
+  /*
    * STARTER_FOLLOW_UP_EXAMPLE_ENABLED (QA's live re-test of #1127, 20 Nov 2026): the same step as the regular chat's. When
    * one of the app's own home starters is the chat's first message and the reply asks who or which, it ends with one
    * example answer. Keyed to the app's starter texts (never the manager's own words), like replyMustAsk above.
