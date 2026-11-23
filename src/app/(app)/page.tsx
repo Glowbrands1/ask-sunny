@@ -31,6 +31,8 @@ import {
   configuredExcludedNames,
   isProductionRecord,
 } from "@/lib/forms/production-records";
+import { HrOverviewCard } from "@/features/forms/hr-approval-lists";
+import { hrQueueSummary } from "@/lib/forms/hr-approval";
 
 export const metadata: Metadata = {
   title: "Overview",
@@ -182,9 +184,13 @@ export default async function OverviewPage() {
    * the page — the shell streams first and the figures arrive behind a skeleton
    * that holds the card's dimensions.
    */
+  /* HR APPROVAL: the approver's count of forms waiting for them, overdue marked. Nobody else gets the card. */
+  const hrSummary = await hrQueueSummary((await pageFormsAccess(identity)).actor).catch(() => null);
+
   return (
     <OverviewScreen
       followUps={followUps}
+      hrApprovalCard={hrSummary ? <HrOverviewCard pending={hrSummary.pending} overdue={hrSummary.overdue} /> : undefined}
       performanceOverview={
         <Suspense fallback={<PerformanceOverviewSkeleton />}>
           <PerformanceOverview />

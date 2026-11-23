@@ -165,6 +165,10 @@ import { rulesBookText } from "./rules-book";
  * exit_dates line: an exit card's reads_back is the only exit lines the reply reads back, every one is saved at Create,
  * and a detail added after the card reaches the form only through propose_form. It reads the same under every config;
  * nothing else changed.
+ * Re-taken on purpose on 23 Nov 2026 (HR approval of forms, owner request; CLAUDE.md rule 5): the tool list gained
+ * read_hr_approvals, and "Forms on file and privacy" gained one line: a form waiting for HR is not on file, and HR
+ * approval answers come only from read_hr_approvals, which lists only the asker's own forms. It reads the same under
+ * every config; nothing else changed.
  */
 
 const fixture = (name: string): string => readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), "utf8");

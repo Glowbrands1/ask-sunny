@@ -10,6 +10,7 @@ import { Input, Label } from "@/components/ui/field";
 import { Notice } from "@/components/ui/feedback";
 import { Dialog, DialogActions, DialogContent } from "@/components/ui/overlays";
 import { FinalizedChangePanel } from "./finalized-change-panel";
+import { HrApprovalPanel, type HrApprovalPanelView } from "@/features/forms/hr-approval-panel";
 import { downloadFormPdf, formsFetch, FormsFetchError } from "@/features/forms/forms-fetch";
 import { onFormUpdate } from "./form-update-events";
 import {
@@ -149,6 +150,12 @@ interface LoadedInstance {
   events: { kind: string; actor: string; createdAt: string; detail?: Record<string, unknown> }[];
   /** CARD_CHANGE_PLAN_REBUILD_ENABLED: the Change something panel offers the Payroll deduction amount. */
   cardChangeAmount?: boolean;
+  /**
+   * HR APPROVAL (FORMS_HR_APPROVAL_ENABLED): the approval panel, sent by the server only to the form's creator and HR.
+   * `finalizeToHr`: this reader's Finalize sends the form to HR instead ("Finalize and send for approval").
+   */
+  hrApproval?: HrApprovalPanelView;
+  finalizeToHr?: boolean;
 }
 
 type SaveState =
@@ -365,7 +372,15 @@ export function InlineForm({
     loaded.instance.variantKey,
   ).some((field) => field.semantics === "follow_up_timeframe");
   const prefilling = prefill.kind === "running";
-  const readOnly = finalized || prefilling;
+  /*
+   * HR APPROVAL: a form waiting for HR is read-only for its creator; HR may edit it (`canEdit`) before deciding.
+   * `toHr`: this Finalize sends the form to HR, so the button and the confirmation say so.
+   */
+  const hrApproval = loaded.hrApproval ?? null;
+  const heldForHr = hrApproval?.state === "pending" && !hrApproval.canEdit;
+  const hrReviewing = hrApproval?.state === "pending" && hrApproval.canEdit;
+  const toHr = loaded.finalizeToHr === true;
+  const readOnly = finalized || prefilling || heldForHr;
   const notice = prefillNoticeFor(prefill, loaded);
   const reviewNotice = reviewConversationNoticeFor(loaded, prefilling);
   const policyNotice = policyVerificationNoticeFor(loaded, prefilling);
@@ -653,6 +668,9 @@ export function InlineForm({
         <Badge tone={finalized ? "outline" : "accent"} size="sm">
           {revised ? "Revised" : finalized ? "Finalized" : "Draft"}
         </Badge>
+        {hrApproval && !finalized ? (
+          <span className="text-xs text-subtle-foreground">{hrApproval.label}</span>
+        ) : null}
         {!finalized && loaded.instance.revisesInstanceId ? (
           <span className="text-xs text-subtle-foreground">New draft of a finalized form</span>
         ) : null}
@@ -933,6 +951,9 @@ export function InlineForm({
                 </Button>
               ) : null}
             </div>
+          ) : heldForHr || hrReviewing ? (
+            /* HR APPROVAL: no Finalize while the form waits — HR decides in the approval panel below. */
+            null
           ) : (
             <>
             {yearWarnings.length > 0 ? (
@@ -951,16 +972,29 @@ export function InlineForm({
                 {action.kind === "busy" && action.what === "finalize" ? (
                   <Loader2 className="animate-spin" />
                 ) : null}
-                Finalize
+                {toHr ? "Finalize and send for approval" : "Finalize"}
               </Button>
               <span className="text-xs text-subtle-foreground">
-                {loaded.instance.revisesInstanceId
+                {toHr
+                  ? "Sends this form to HR. It is finalized when HR approves it; until then only you and HR can see it."
+                  : loaded.instance.revisesInstanceId
                   ? "Freezes these values and replaces the finalized original. Signatures are signed on paper afterwards."
                   : "Freezes these values. Signatures are signed on paper afterwards."}
               </span>
             </div>
             </>
           )}
+
+          {hrApproval ? (
+            <HrApprovalPanel
+              instanceId={instanceId}
+              view={hrApproval}
+              call={(url, init) => call(url, init)}
+              onChanged={async () => {
+                await reload();
+              }}
+            />
+          ) : null}
 
           {action.kind === "error" ? (
             <p className="flex items-start gap-1 text-xs text-status-attention">
@@ -1038,11 +1072,13 @@ export function InlineForm({
       >
         {confirmingFinalize ? (
           <DialogContent
-            title="Finalize this form?"
+            title={toHr ? "Send this form for HR approval?" : "Finalize this form?"}
             description={`${loaded.instance.templateName} · ${loaded.instance.employeeName}`}
           >
             <p className="text-[13px] leading-relaxed text-muted-foreground">
-              {loaded.instance.revisesInstanceId
+              {toHr
+                ? "HR reviews it and approves, sends it back for changes, or rejects it. You cannot change it while HR has it. It is finalized when HR approves it."
+                : loaded.instance.revisesInstanceId
                 ? "Its values are frozen and it replaces the finalized original. To change it afterwards, edit it as a new draft. Signatures are signed on paper."
                 : "Its values are frozen. To change it afterwards, edit it as a new draft. Signatures are signed on paper."}
             </p>
@@ -1064,7 +1100,7 @@ export function InlineForm({
                 {action.kind === "busy" && action.what === "finalize" ? (
                   <Loader2 className="animate-spin" />
                 ) : null}
-                Yes, finalize
+                {toHr ? "Yes, send to HR" : "Yes, finalize"}
               </Button>
             </DialogActions>
           </DialogContent>
