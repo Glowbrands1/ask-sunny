@@ -840,13 +840,24 @@ class Thread {
        */
       const unquoted = (payload.content ?? "").replace(/"[^"\n]*"|“[^”\n]*”/g, "");
       const own = (cardShown.employeeName ?? "").toLowerCase().split(/\s+/);
-      const judged = unquoted
-        .split(/(?<=[.!?])\s+|\n+/)
-        .filter((sentence) => {
+      /*
+       * Changed on purpose (22 Nov 2026, port of Ask Bubbles #1053, two people of one pronoun kind): the app now keeps a
+       * pronoun whose nearest named person of its kind is someone else, named in an EARLIER sentence too ("… her coworker
+       * <B>. She was giving her an attitude"). So a sentence is also left out of the judgement when an earlier sentence of
+       * the reply names another person whom the manager's message names as well (never the card's person).
+       */
+      const isOther = (named: string) => !named.toLowerCase().split(/\s+/).every((word) => own.includes(word));
+      const sentences = unquoted.split(/(?<=[.!?])\s+|\n+/);
+      const managerNamed = (named: string) => question.toLowerCase().includes(named.toLowerCase());
+      const judged = sentences
+        .filter((sentence, index) => {
           const pronoun = /\b(?:he|him|his|she|her|hers|himself|herself|they|them|their)\b/i.exec(sentence);
           if (!pronoun) return true;
           const before = sentence.slice(0, pronoun.index).replace(/\*\*/g, "");
-          return !extractEmployeeNames(before).some((named) => !named.toLowerCase().split(/\s+/).every((word) => own.includes(word)));
+          if (extractEmployeeNames(before).some(isOther)) return false;
+          const earlier = sentences.slice(0, index).join(" ").replace(/\*\*/g, "");
+          const fullNames = [...earlier.matchAll(/\b\p{Lu}\p{Ll}+ \p{Lu}\p{Ll}+\b/gu)].map((match) => match[0]);
+          return ![...extractEmployeeNames(earlier), ...fullNames].some((named) => isOther(named) && managerNamed(named));
         })
         .join("\n");
       expect(personPronoun(judged), `a pronoun for the card's person:\n${payload.content}`).toBeNull();

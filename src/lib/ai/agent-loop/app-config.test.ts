@@ -180,6 +180,11 @@ import { rulesBookText } from "./rules-book";
  * termination's "terminated for <x>" as a reason too, says exit_reason is passed on a resignation or a termination, and
  * never to offer to add a reason the model can pass. It reads the same under every config; nothing else changed.
  *
+ * Re-taken on purpose on 22 Nov 2026 (port from Ask Bubbles #1053, U23 T7): the reword_paused line and the "New facts
+ * with a reword ask" line now give "I can't reword the whole account, but I can change any line you give me — tell me
+ * what to change." instead of "Rewording isn't available yet …", and never "not available yet". Rewording stays paused.
+ * It reads the same under every config; nothing else changed.
+ *
  * Re-taken on purpose on 21 Nov 2026 (Pau: a search of past forms by topic, FORM_TOPIC_SEARCH_ENABLED): one Replies line
  * was added: forms on file about a topic ("any forms about cash handling at my <place>s this month?", "who's been written
  * up for dress code?") call find_past_forms with about and no employee_name, list each form as given, say the counts, and
