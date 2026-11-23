@@ -12,6 +12,7 @@ import {
 } from "./instances";
 import { authorizeLocation, authorizedSalonIds } from "./location-scope";
 import { hiddenAsPrivate } from "./private-creators";
+import { hiddenWhileAwaitingHr, hrApprovalEnabled } from "./hr-approval-rules";
 import { getTemplateByKey } from "./repository";
 import type { Permission } from "@/types";
 
@@ -90,6 +91,8 @@ export function actorMaySeeInstance(
 ): boolean {
   // PRIVATE_CREATOR_FORMS: before every other rule, global and preview included. See `private-creators.ts`.
   if (hiddenAsPrivate(actor, instance, options)) return false;
+  // HR APPROVAL: a form HR has not approved exists only for its creator and HR — administrators and preview included.
+  if (hiddenWhileAwaitingHr(actor, instance)) return false;
   // Demo: unverified identity, no scope, no enforcement. See `location-scope`.
   const visibility = actor.visibility;
   if (!visibility) return true;
@@ -161,12 +164,19 @@ export function actorMaySeeInstance(
  * closed.
  */
 export function instanceListFilterFor(actor: FormsActor): InstanceListFilter | undefined {
+  /*
+   * HR APPROVAL, NARROWED BEFORE THE LIMIT: a form waiting for HR that this actor did not create is not read at all,
+   * for every reader but HR — global and preview included. Only while the flag is on, which is also what says the
+   * migration that adds the column has been applied; `actorMaySeeInstance` re-checks every row either way.
+   */
+  const hideAwaitingHr = hrApprovalEnabled() && actor.hrApprover !== true ? { hideAwaitingHrExceptCreatedBy: actor.id } : {};
   // Preview and global: unrestricted, one ordered bounded read.
   const visibility = actor.visibility;
-  if (!visibility) return undefined;
-  if (visibility.level === "global") return undefined;
+  if (!visibility) return Object.keys(hideAwaitingHr).length > 0 ? hideAwaitingHr : undefined;
+  if (visibility.level === "global") return Object.keys(hideAwaitingHr).length > 0 ? hideAwaitingHr : undefined;
 
   return {
+    ...hideAwaitingHr,
     /*
      * EMPTY FOR DISTRICT AND REGION, which is how they fail closed on
      * location-bearing rows: `authorizedSalonIds` returns nothing for any level
