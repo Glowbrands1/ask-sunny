@@ -177,15 +177,30 @@ function nameQuestionView(context: ToolContext, roster: readonly RosterEmployee[
  */
 const PRIVACY_WINDOW = 3;
 
-export function formsOnFileAsked(context: Pick<ToolContext, "question" | "history" | "questionMessageId">, evidence: unknown): { ok: true; said: string; before: string[] } | { ok: false; reason: string } {
+export function formsOnFileAsked(context: Pick<ToolContext, "question" | "history" | "questionMessageId">, evidence: unknown): { ok: true; said: string; before: string[]; index: number } | { ok: false; reason: string } {
   const turns = identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId);
-  const check = verifyEvidence(evidence, turns);
+  let check = verifyEvidence(evidence, turns);
+  /*
+   * Port of Ask Bubbles #1059 (its QA's follow-up, 22 Nov 2026, both apps): the evidence for a forms request may be the
+   * app's own question ("… Is that the one you mean?") that the manager's message being answered now replies to. Only
+   * that question, the turn right before this message, and only with its quote really in it; the ask is then the
+   * manager's reply. The app's turns carry no id the model sees, so the model quotes them under the id of the manager's
+   * message that answers them.
+   */
+  if (!check.ok && (check.reason === "evidence_not_manager_turn" || check.reason === "evidence_quote_not_found")) {
+    const claim = readEvidence(evidence);
+    const current = turns.at(-1);
+    const asking = current && current.index > 0 ? turns[current.index - 1] : undefined;
+    const cites = claim !== null && current !== undefined && (claim.message_id === current.id || claim.message_id === asking?.id);
+    if (cites && current && asking?.role === "assistant" && holdsPhrase(asking.content, claim!.quote)) check = { ok: true, turn: current };
+  }
   if (!check.ok) return { ok: false, reason: check.reason };
+  const cited = check.turn;
   const recent = turns.filter((turn) => turn.role === "user").slice(-PRIVACY_WINDOW);
-  if (!recent.some((turn) => turn.id === check.turn.id)) return { ok: false, reason: "evidence_not_this_turn" };
+  if (!recent.some((turn) => turn.id === cited.id)) return { ok: false, reason: "evidence_not_this_turn" };
   // The manager's earlier turns, nearest first: a turn that names nobody ("has she had a ca before?") is about the person last named.
-  const before = turns.filter((turn) => turn.role === "user" && turn.index < check.turn.index).reverse().map((turn) => withoutMessageIdTags(turn.content));
-  return { ok: true, said: withoutMessageIdTags(check.turn.content), before };
+  const before = turns.filter((turn) => turn.role === "user" && turn.index < cited.index).reverse().map((turn) => withoutMessageIdTags(turn.content));
+  return { ok: true, said: withoutMessageIdTags(cited.content), before, index: cited.index };
 }
 
 /**
@@ -252,10 +267,21 @@ async function formsOnFileAskedFor(context: ToolContext, evidence: unknown, pers
    */
   {
     const turns = identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId);
-    const check = verifyEvidence(evidence, turns);
-    const asking = check.ok ? turns[check.turn.index - 1] : undefined;
-    const replyText = asking?.role === "assistant" ? withoutMessageIdTags(asking.content).replace(/[*_]/g, "") : "";
-    if (replyText && names.some((name) => holdsPhrase(replyText, name))) return { ok: true };
+    const replyNames = (turn: IdentifiedTurn | undefined) => {
+      const replyText = turn?.role === "assistant" ? withoutMessageIdTags(turn.content).replace(/[*_]/g, "") : "";
+      return replyText !== "" && names.some((name) => holdsPhrase(replyText, name));
+    };
+    if (replyNames(turns[asked.index - 1])) return { ok: true };
+    /*
+     * Port of Ask Bubbles #1059 (its QA's follow-up, 22 Nov 2026; 1 in 6 live runs): the model quoted the manager's
+     * earlier request ("pull up the ca … for the girl who was late …", naming nobody) rather than the "yes please" that
+     * answered the app's "… for <P> … Is that the one you mean?". The same request: the app's own question right before
+     * the message being answered now names this person, and no manager turn from the cited one to now names anyone, so
+     * the ask is about them. The person only ever comes from the app's own question.
+     */
+    const current = turns.at(-1)!;
+    const sinceCited = turns.filter((turn) => turn.role === "user" && turn.index >= asked.index);
+    if (asked.index < current.index && replyNames(turns[current.index - 1]) && !sinceCited.some((turn) => namesSomeone(withoutMessageIdTags(turn.content)))) return { ok: true };
   }
   const antecedent = asked.before.find(namesSomeone);
   if (antecedent !== undefined && (namedIn(antecedent) || lastNameIsThisPerson(antecedent))) return { ok: true };
