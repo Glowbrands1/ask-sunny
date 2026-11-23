@@ -17,9 +17,8 @@ import { evidenceFrom, lastResult, loopStandIn, type LoopDecision } from "./loop
  * first letter changed>", new close spellings with <P> the staff list's only close candidate, each asked "Did you mean
  * **<P>**?" again.
  *
- * Sunny reads T4 "fix her last name <surname>" as no answer: reading a typo corrected to the offered name as a yes is Ask
- * Bubbles' U35(a) (#1040), not ported yet. So the fix case confirms at T4 with the plain "yes" Sunny reads today, and the
- * tester's verbatim T4 is an open case until U35(a) is ported.
+ * The fix case confirms at T4 with a plain "yes"; the tester's verbatim T4 "fix her last name <surname>" confirms too since
+ * Ask Bubbles' U35(a) (#1040) is ported (`nov22-agent-loop-u35a-did-you-mean-once-cases.ts`).
  *
  * Mechanism (`tools.ts`, find_staff's close-spelling branch): when the staff list's only close candidate is a person the
  * manager already confirmed in this chat (any spelling, from the question records) and this message is no "no", that person
@@ -87,5 +86,6 @@ export const NOV22_AGENT_LOOP_U35A_CONFIRMED_PERSON_CASES: ReplayCase[] = [
     const reply = await thread.say("no, not her, sabine lcuero bastida");
     expect(reply.content, "a \"no\" was read as the confirmed person").toMatch(/Did you mean \*\*Sabine Lucero Bastida\*\*\?/);
   }),
-  loopCase("nov22-u35a-verbatim-correction-confirms", "u35a verbatim: T4 \"fix her last name bastida\" (the typo corrected to the offered name) confirms Sabine Lucero Bastida, and T6/T8's close spellings never ask again", { open: "Sunny does not read a typo corrected to the offered name (\"fix her last name <surname>\") as a yes: Ask Bubbles' U35(a), #1040 (28ba69dd), is not ported yet" }, (t) => closeSpellingsAfterConfirm(t, T4_VERBATIM)),
+  /* Fixed on purpose (22 Nov 2026): Ask Bubbles' U35(a), #1040 (28ba69dd), is now ported (`confirmed-spelling.ts`: the word that corrects the typo to the offered name confirms the person), so the tester's verbatim T4 confirms. */
+  loopCase("nov22-u35a-verbatim-correction-confirms", "u35a verbatim: T4 \"fix her last name bastida\" (the typo corrected to the offered name) confirms Sabine Lucero Bastida, and T6/T8's close spellings never ask again", "fixed", (t) => closeSpellingsAfterConfirm(t, T4_VERBATIM)),
 ];
