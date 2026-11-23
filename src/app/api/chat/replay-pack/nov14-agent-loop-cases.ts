@@ -469,6 +469,11 @@ export const NOV14_AGENT_LOOP_CASES: ReplayCase[] = [
       // Board f111 (QA, 23 Nov 2026): the steps stay value-free; the words the loop searched with are their own slot
       // (`agent_loop_queries`, a sibling of `agent_loop`), so this check is unchanged and still covers every step.
       expect(JSON.stringify(looped)).not.toMatch(/Briony|Calloway|coat/i);
+      // QA, 23 Nov 2026 (the live duplicate exit form): the find_past_forms step says what the read returned, value-free:
+      // the count per form kind, the total and the path. The no-names check above covers it too.
+      const readStep = (looped.steps as { tool: string; forms_read?: { path: string; by_kind: Record<string, number>; total?: number } }[]).find((step) => step.tool === "find_past_forms");
+      expect(readStep?.forms_read?.path, "the find_past_forms step does not say what the read returned").toBeDefined();
+      expect(Object.values(readStep?.forms_read?.by_kind ?? {}).every((count) => Number.isInteger(count) && count > 0)).toBe(true);
       const queries = (row!.slots as { agent_loop_queries?: { step: number; tool: string; query: string }[] }).agent_loop_queries ?? [];
       expect(queries.map((entry) => entry.tool), "the searched words are not on the trace").toEqual(["find_staff", "find_past_forms"]);
       expect(queries.every((entry) => entry.query.length > 0 && entry.query.length <= 200)).toBe(true);
