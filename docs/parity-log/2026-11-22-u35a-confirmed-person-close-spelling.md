@@ -22,3 +22,6 @@ U35(a) is ported.
 control passes before and after; the verbatim case is open.
 
 **Live harness:** not run here (the session's permission check refused the key); QA runs Sunny's live set.
+
+**Update (22 Nov 2026):** U35(a), Ask Bubbles #1040, is now ported (`2026-11-22-u35a-did-you-mean-once.md`). The verbatim
+T4 confirms, and `nov22-u35a-verbatim-correction-confirms` is fixed.

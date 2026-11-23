@@ -182,7 +182,7 @@ export const NOV15_AGENT_LOOP_SILENT_FAILURE_CASES: ReplayCase[] = [
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "Wren Halloway" } };
         if (/professional tone/.test(said)) {
           if (!proposed) return { tool: "propose_form", input: { payroll_evidence: evidenceFrom(view), template_key: "dpoa", employee_id: WREN.id, what_happened: all, payroll_deduct: "no" } };
-          return { text: `Here's the Corrective Action Form for **Wren Halloway**, with all three examples.\n\n**Observation of Offense:** ${all}\n\nRewording isn't available yet. Tell me exactly what to change and I'll update it.` };
+          return { text: `Here's the Corrective Action Form for **Wren Halloway**, with all three examples.\n\n**Observation of Offense:** ${all}\n\nI can't reword the whole account, but I can change any line you give me — tell me what to change.` };
         }
         if (!proposed) return { tool: "propose_form", input: { payroll_evidence: evidenceFrom(view), template_key: "dpoa", employee_id: WREN.id, what_happened: first, ...(/no payroll/.test(said) ? { payroll_deduct: "no" } : {}) } };
         return { text: `Here's the Corrective Action Form for **Wren Halloway**.\n\n**Observation of Offense:** ${first}` };
@@ -192,7 +192,8 @@ export const NOV15_AGENT_LOOP_SILENT_FAILURE_CASES: ReplayCase[] = [
       await thread.say("ca for wren halloway, she left the front desk unattended on 11/10, no payroll deduct");
       const reply = await thread.say("she also skipped the bed sanitation on 11/11. on 11/12 she left early without telling anyone. take what i said but use it in a more professional tone");
       expect(thread.proposal?.issue ?? "", `an example was dropped:\n${reply.content}`).toMatch(/front desk[\s\S]*bed sanitation[\s\S]*left early/);
-      expect(reply.content, "the rewording part was not declined").toMatch(/Rewording isn't available yet/);
+      /* Changed on purpose (22 Nov 2026, port of Ask Bubbles #1053, U23 T7): the rules book's reword_paused line is now this. */
+      expect(reply.content, "the rewording part was not declined").toMatch(/I can't reword the whole account/);
       expect(reply.content, "payroll was asked again").not.toMatch(/payroll deduct (?:isn't set|applicable\?)|tell me if (?:payroll|it) applies/i);
     },
   },
