@@ -1,5 +1,6 @@
 import { EXIT_METHOD_LABELS } from "@/lib/forms/exit-details";
 import { cardLines, historyReply, withoutAppNotes, withoutCardLines } from "./card-lines";
+import { withCardOpening } from "./card-opening";
 import { exitReadBackMismatch, withoutUnsavedExitLines } from "./exit-read-back";
 import "server-only";
 
@@ -1597,6 +1598,8 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     fullNamesShortened = short.replaced;
   }
   if (offRosterNames.size === 1 && text) text = withFullOffRosterName(text, [...offRosterNames][0]!, appConfig().staffSystem);
+  /* Port of Ask Bubbles #1098 (its QA's u22 live records): a reply with this turn's card that names no form opens with the card's own opening. */
+  if (effects.proposal && text) text = withCardOpening(text, effects.proposal.templateName, replyNames.size === 1 ? [...replyNames][0]! : effects.proposal.employeeName);
   const cardSlot: CardSlot | null = effects.proposal
     ? { proposalId: effects.proposal.proposalId, employeeKey: effects.proposalEmployeeId ? personKey(effects.proposalEmployeeId) : null, nameKey: effects.proposal.employeeName ? personKey(effects.proposal.employeeName) : null, templateKey: effects.proposal.templateKey, templateName: effects.proposal.templateName ?? null, ...(effects.proposalAsked?.length ? { asked: effects.proposalAsked } : {}), ...(effects.proposalLevel ? { level: effects.proposalLevel } : {}), ...(effects.proposalPayroll ? { payroll: effects.proposalPayroll } : {}), ...(effects.proposalPayroll === "yes" && effects.proposalPayrollAmount ? { payrollAmount: effects.proposalPayrollAmount } : {}), ...(effects.proposal.policyLine ? { policyLine: effects.proposal.policyLine } : {}), ...(effects.proposalAccountKey ? { accountKey: effects.proposalAccountKey } : {}), ...(effects.proposal.formDate ? { incidentDate: effects.proposal.formDate } : {}), ...(effects.proposal.subject === "team" && effects.proposal.status === "needs_location" ? { teamNeedsLocation: true } : {}), ...(effects.proposal.subject === "team" && !effects.proposal.locationId ? { teamNoSalon: true } : {}) }
     : null;

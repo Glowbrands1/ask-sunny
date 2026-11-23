@@ -71,6 +71,9 @@ interface LabelledLine {
   readonly label: string;
   readonly value: string;
   readonly line: string;
+  /** Where the label and its value sit in the line (U22 twice: only that sentence leaves, never the line's others). */
+  readonly start: number;
+  readonly end: number;
 }
 
 /* B6: a label anywhere in the line ("Noted the reason — **Reason for Resignation:** Second job."), its value up to the next bold label. */
@@ -80,7 +83,7 @@ function labelledLines(reply: string): LabelledLine[] {
     for (const match of line.matchAll(/\*\*([^*]+?)\*\*:?\s*([^*]*)/g)) {
       const said = flat(match[1]!.replace(/:\s*$/, ""));
       const label = EXIT_CARD_LABELS.find((known) => flat(known) === said);
-      if (label) out.push({ label: SAME_FIELD.get(label) ?? label, value: match[2]!.trim(), line });
+      if (label) out.push({ label: SAME_FIELD.get(label) ?? label, value: match[2]!.trim(), line, start: match.index, end: match.index + match[0].length });
     }
   }
   return out;
@@ -112,9 +115,29 @@ export function exitReadBackMismatch(reply: string, readBack: readonly string[] 
   return unsaved(reply, readBack, onScreenOnly).map((line) => `exit field "${line.label}" (${line.value.slice(0, 80)})`);
 }
 
-/** The reply without the lines the card does not save. */
+/**
+ * The reply without what the card does not save. QA (23 Nov 2026, nov22-u22-exit-unsaved-lines-twice-left-out): the live
+ * reply wrote its opening and an unsaved line on one line ("Here's the Resignation/Exit Form for **<P>**. **Date that notice
+ * was given:** 11/14/2026"); the whole line left, so the reply opened on "<P> shows as no longer active …" with no form
+ * named. Only the sentence holding the unsaved label leaves, from that sentence's start to the end of its value; the
+ * line's other sentences stay, and a line with nothing else left goes.
+ */
 export function withoutUnsavedExitLines(reply: string, readBack: readonly string[] | null | undefined, onScreenOnly = false): string {
   if (!readBack) return reply;
-  const drop = new Set(unsaved(reply, readBack, onScreenOnly).map((line) => line.line));
-  return reply.split("\n").filter((line) => !drop.has(line)).join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  const cuts = new Map<string, LabelledLine[]>();
+  for (const said of unsaved(reply, readBack, onScreenOnly)) cuts.set(said.line, [...(cuts.get(said.line) ?? []), said]);
+  const kept = reply.split("\n").flatMap((line) => {
+    const here = cuts.get(line);
+    if (!here) return [line];
+    let rest = line;
+    for (const said of [...here].sort((a, b) => b.start - a.start)) {
+      const before = rest.slice(0, said.start);
+      const sentence = before.search(/(?:^|[.!?]\s+)[^.!?]*$/);
+      const from = sentence <= 0 ? (/^\s*(?:[-*•]|\d+[.)])\s+/.exec(before)?.[0].length ?? 0) : sentence + (/^[.!?]\s+/.exec(before.slice(sentence))?.[0].length ?? 0);
+      rest = rest.slice(0, from) + rest.slice(said.end);
+    }
+    rest = rest.replace(/[ \t]{2,}/g, " ").trimEnd();
+    return /[\p{L}\p{N}]/u.test(rest.replace(/^\s*(?:[-*•]|\d+[.)])\s+/, "")) ? [rest] : [];
+  });
+  return kept.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
