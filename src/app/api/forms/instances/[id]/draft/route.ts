@@ -295,6 +295,7 @@ import {
   resolveFormDate,
 } from "@/lib/forms/form-date-grounding";
 import { unreadDayBrief, unreadDayNotice, unreadIncidentDay } from "@/lib/forms/unread-day-date";
+import { heldForHr } from "@/lib/forms/hr-approval-rules";
 
 /**
  * POST /api/forms/instances/[id]/draft
@@ -437,6 +438,13 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
     if (loaded.instance.status !== "draft") {
       return NextResponse.json(
         { error: "This form is finalized. Create a revision to change it." },
+        { status: 409 },
+      );
+    }
+    // HR APPROVAL: a form waiting for HR is changed only by HR until they send it back.
+    if (heldForHr(loaded.instance.hrApprovalState)) {
+      return NextResponse.json(
+        { error: "This form is waiting for HR approval. You can change it again if HR sends it back.", code: "HELD_FOR_HR" },
         { status: 409 },
       );
     }
@@ -2832,6 +2840,29 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
     /* HOTFIX (QA, 17 Nov 2026): the card cited "Other — <topic>": the form's own Other box is ticked beside any other. */
     if (cardOther && !(draftedPayload.checked.offense_type ?? []).includes("other")) {
       draftedPayload.checked = { ...draftedPayload.checked, offense_type: [...(draftedPayload.checked.offense_type ?? []), "other"] };
+    }
+    /*
+     * QA's item 9 (2) (22 Nov 2026; Ask Bubbles' R21): a Coaching Form whose card cited "Other — <topic>" was saved with no
+     * Type of Coaching ticked and no Other topic. The form's own Other box is ticked and its topic is the card's, as the
+     * Corrective Action's above; a topic the manager typed on the form is kept. Keyed on the version's own fields.
+     */
+    const coachingOther =
+      isCoachingFamily &&
+      cardPolicyToDraftEnabled() &&
+      typeof body.cardOther === "string" &&
+      body.cardOther.trim() !== "" &&
+      body.cardOther.trim().length <= 120 &&
+      (groups.find((group) => group.key === "coaching_topics")?.options.some((option) => option.key === "other") ?? false) &&
+      fields.some((field) => field.key === "other_topic")
+        ? body.cardOther.trim()
+        : null;
+    if (coachingOther) {
+      if (!(draftedPayload.checked.coaching_topics ?? []).includes("other")) {
+        draftedPayload.checked = { ...draftedPayload.checked, coaching_topics: [...(draftedPayload.checked.coaching_topics ?? []), "other"] };
+      }
+      if (!keeps("other_topic") && !(draftedPayload.values.other_topic ?? "").trim()) {
+        draftedPayload.values = { ...draftedPayload.values, other_topic: coachingOther };
+      }
     }
     /*
      * NO DATE THE MANAGER DID NOT STATE (Pau's ruling via QA, 17 Nov 2026; c094's "On October 22, 2026, …" with no date

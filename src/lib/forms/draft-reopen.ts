@@ -7,6 +7,7 @@ import { draftReuseOwnOnlyEnabled } from "@/lib/config/chat-quality-flags";
 
 import { keepSameChat, type SameChat } from "./draft-same-chat";
 import { DUPLICATE_DRAFT_WINDOW_HOURS, loadInstance, type InstanceRow } from "./instances";
+import { withoutAwaitingHr, withoutHeldForHr } from "./hr-approval-rules";
 
 /**
  * DRAFT_REUSE_OWN_ONLY_ENABLED: whether a draft read back from the database
@@ -104,13 +105,15 @@ export async function findResentDraft(input: ResentDraftWanted): Promise<Instanc
   if (templateError || !template) return null;
 
   const since = new Date((input.now ?? new Date()).getTime() - DUPLICATE_DRAFT_WINDOW_HOURS * 3_600_000);
-  const { data, error } = await supabase
+  const { data, error } = await withoutHeldForHr(
+    supabase
     .from("form_instances")
     .select("id, employee_name, location_id, created_at, form_date")
     .eq("template_id", template.id)
     .eq("created_by", input.createdBy)
     .eq("source", "ask_sunny")
     .eq("status", "draft")
+    )
     .gte("created_at", since.toISOString())
     .order("created_at", { ascending: false })
     .limit(25);
@@ -202,6 +205,8 @@ export async function findOpenIncidentDraft(input: ResentDraftWanted): Promise<I
     .order("created_at", { ascending: false })
     .limit(20);
   if (ownOnly) query = query.eq("created_by", input.createdBy);
+  // HR APPROVAL: not limited to the reader's own forms, so every form HR has not approved is left out.
+  query = withoutAwaitingHr(query);
   if (input.formDate) query = query.eq("form_date", input.formDate);
   const { data, error } = await query;
   if (error || !Array.isArray(data)) return null;

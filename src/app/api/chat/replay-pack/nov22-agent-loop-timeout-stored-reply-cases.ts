@@ -32,7 +32,9 @@ export const NOV22_AGENT_LOOP_TIMEOUT_STORED_REPLY_CASES: ReplayCase[] = [
       const before = process.env.AI_MAIN_TIMEOUT_MS;
       process.env.AI_MAIN_TIMEOUT_MS = "5000";
       try {
-        t.loopModel!(loopStandIn(() => ({ stall: true })));
+        // QA's live run (22 Nov 2026): the real model answered in time, so the stall never happened. The point is the app's
+        // own timeout path, so the stalling stand-in is kept in live runs too (`scripted`).
+        t.loopModel!(loopStandIn(() => ({ stall: true })), { scripted: true });
         const reply = await t.thread().say(T4);
         expect(reply.content, "the timed-out turn has no reply").toMatch(/nothing was changed/i);
         expect(reply.content, "the reply promises it will work next time").not.toMatch(/try again|next time|in a moment/i);

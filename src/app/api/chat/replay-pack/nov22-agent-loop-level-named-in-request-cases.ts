@@ -19,6 +19,9 @@ const REPORT = "Port from Ask Bubbles (#1028; its QA's round 2, U16): \"create a
 const T1 = "put up the verbal CA for Remy Calder";
 const T2 = "create a verbal CA for Remy Calder with all the same information given";
 const RULE = /A request that names the level itself is that level's evidence/;
+const LIVE = process.env.AGENT_LOOP_LIVE === "1";
+/** A reply sentence that says the LEVEL is not set (a payroll question is not one). */
+const levelNotSet = (reply: string) => reply.split(/(?<=[.!?;])\s+|\n+/).filter((sentence) => /\blevel\b/i.test(sentence) && /\b(?:isn't|aren't|is not|are not|not)\s+set\b/i.test(sentence));
 
 export const NOV22_AGENT_LOOP_LEVEL_NAMED_IN_REQUEST_CASES: ReplayCase[] = [
   {
@@ -43,7 +46,10 @@ export const NOV22_AGENT_LOOP_LEVEL_NAMED_IN_REQUEST_CASES: ReplayCase[] = [
       await thread.say(T1);
       const reply = await thread.say(T2);
       expect(thread.proposal?.warningLevel, `the card lost the level the request named:\n${reply.content}`).toBe("verbal");
-      expect(reply.content).not.toMatch(/isn't set/i);
+      // QA's live run (22 Nov 2026): the card had Verbal and the reply's "isn't set" was payroll's ("Payroll deduct isn't
+      // set; tell me if it applies."). The bug is the LEVEL said to be unset; the stand-in's whole-reply check stays on its run.
+      expect(levelNotSet(reply.content), `the reply says the level isn't set:\n${reply.content}`).toEqual([]);
+      if (!LIVE) expect(reply.content).not.toMatch(/isn't set/i);
     },
   },
 ];
