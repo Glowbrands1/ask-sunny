@@ -38,7 +38,8 @@ vi.mock("@/lib/supabase/server", () => ({ getSupabaseAdmin: () => fakeSupabase(s
 
 const { ensureTemplateLibrary } = await import("./repository");
 const { createInstance, loadInstance } = await import("./instances");
-const { sendForHrApproval, decideHrApproval, commentOnHrApproval, hrApprovalViewFor, HrApprovalError } = await import("./hr-approval");
+const { sendForHrApproval, decideHrApproval, commentOnHrApproval, hrApprovalViewFor, HrApprovalError, listHrQueue, hrQueueSummary, needsHrDecision } =
+  await import("./hr-approval");
 const { actorMaySeeInstance } = await import("./instance-scope");
 
 const CREATOR = "sd-marigold";
@@ -220,5 +221,55 @@ describe("approvableFromSentBack (the rule)", () => {
     const events = [{ action: "changes_requested", actor: HR, at: at(2) }, { action: "commented", actor: CREATOR, at: at(3) }];
     expect(approvableFromSentBack({ ...instance, hrApprovalState: "rejected" }, events)).toBe(false);
     expect(approvableFromSentBack({ ...instance, hrApprovalState: "pending" }, events)).toBe(false);
+  });
+});
+
+describe("HR's list: \"Manager replied to changes\", and the count matches the rows that need HR (Pau)", () => {
+  it("one form in each state: waiting, sent back, sent back and replied to, rejected", async () => {
+    const waiting = await policyReview();
+    tick();
+    await sendForHrApproval(waiting.id, manager, null, { acknowledgeUnverifiedPolicy: true });
+    const noReply = await sentBack(false);
+    const replied = await sentBack(true);
+    const rejected = await policyReview();
+    tick();
+    await sendForHrApproval(rejected.id, manager, null, { acknowledgeUnverifiedPolicy: true });
+    tick();
+    await decideHrApproval(rejected.id, hr, "reject", "Not a policy review.");
+    tick();
+    await commentOnHrApproval(rejected.id, manager, "Understood.");
+
+    const rows = await listHrQueue(hr);
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    expect(byId.get(waiting.id)).toMatchObject({ state: "pending", managerReplied: false });
+    expect(byId.get(noReply.id)).toMatchObject({ state: "changes_requested", managerReplied: false });
+    expect(byId.get(replied.id)).toMatchObject({ state: "changes_requested", managerReplied: true });
+    // A rejected form is not approvable from a reply (Pau named only "sent back").
+    expect(byId.get(rejected.id)).toMatchObject({ state: "rejected", managerReplied: false });
+
+    // The ones needing HR come first: waiting, then replied to; then the ones waiting on the manager.
+    expect(rows.slice(0, 2).map((row) => row.id)).toEqual([waiting.id, replied.id]);
+    const summary = await hrQueueSummary(hr);
+    expect(summary?.pending, "Pending HR approval (N) is not the rows that need HR").toBe(rows.filter(needsHrDecision).length);
+    expect(summary?.pending).toBe(2);
+  });
+
+  it("Pau's report: one sent-back form, the manager replied — the tab counts it (it read 0 with the row listed)", async () => {
+    await sentBack(true);
+    const rows = await listHrQueue(hr);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.managerReplied).toBe(true);
+    expect((await hrQueueSummary(hr))?.pending).toBe(1);
+  });
+
+  it("control: sent back with no reply is listed for HR but not counted; once HR approves it, it leaves the list", async () => {
+    const waiting = await sentBack(false);
+    expect((await listHrQueue(hr)).map((row) => row.id)).toEqual([waiting.id]);
+    expect((await hrQueueSummary(hr))?.pending).toBe(0);
+    await commentOnHrApproval(waiting.id, manager, REPLY_NOTE);
+    expect((await hrQueueSummary(hr))?.pending).toBe(1);
+    await decideHrApproval(waiting.id, hr, "approve", undefined);
+    expect(await listHrQueue(hr)).toEqual([]);
+    expect((await hrQueueSummary(hr))?.pending).toBe(0);
   });
 });

@@ -414,6 +414,16 @@ export interface HrQueueRow {
   requestedAt: string | null;
   waiting: string;
   overdue: boolean;
+  /**
+   * Sent back for changes, and its manager has replied with a note since (Pau, via QA, 23 Nov 2026): the row reads
+   * "Manager replied to changes", counts in Pending HR approval, and HR may approve it (`approvableFromSentBack`).
+   */
+  managerReplied: boolean;
+}
+
+/** A row that needs HR's decision now: waiting for them, or sent back and replied to. What "Pending HR approval (N)" counts. */
+export function needsHrDecision(row: Pick<HrQueueRow, "state" | "managerReplied">): boolean {
+  return row.state === "pending" || row.managerReplied;
 }
 
 /**
@@ -425,7 +435,7 @@ export async function listHrQueue(actor: FormsActor, now: Date = new Date()): Pr
   if (!hrApprovalEnabled() || actor.hrApprover !== true) return [];
   const { data, error } = await getSupabaseAdmin()
     .from("form_instance_overview")
-    .select("id, template_name, employee_name, location_name, created_by, hr_approval_state, hr_approval_requested_at")
+    .select("id, template_name, employee_name, location_name, created_by, hr_approval_state, hr_approval_requested_at, hr_approval_requested_by, hr_approval_senders")
     .in("hr_approval_state", ["pending", "changes_requested", "rejected"])
     .eq("status", "draft")
     .order("hr_approval_requested_at", { ascending: true })
@@ -439,7 +449,31 @@ export async function listHrQueue(actor: FormsActor, now: Date = new Date()): Pr
     created_by: string;
     hr_approval_state: HrApprovalState;
     hr_approval_requested_at: string | null;
+    hr_approval_requested_by: string | null;
+    hr_approval_senders: string[] | null;
   }[];
+  /* Which sent-back forms the manager has replied to since (one read for all of them). */
+  const replied = new Set<string>();
+  const sentBack = rows.filter((row) => row.hr_approval_state === "changes_requested");
+  if (sentBack.length > 0) {
+    const { data: eventData, error: eventError } = await getSupabaseAdmin()
+      .from("form_hr_approval_events")
+      .select("instance_id, action, actor, created_at")
+      .in("instance_id", sentBack.map((row) => row.id))
+      .order("created_at", { ascending: true })
+      .limit(5000);
+    if (eventError) throw new Error(`Could not read the approval history: ${eventError.message}`);
+    const byForm = new Map<string, { action: string; actor: string; at: string }[]>();
+    for (const event of (eventData ?? []) as { instance_id: string; action: string; actor: string; created_at: string }[]) {
+      const list = byForm.get(event.instance_id) ?? [];
+      list.push({ action: event.action, actor: event.actor, at: event.created_at });
+      byForm.set(event.instance_id, list);
+    }
+    for (const row of sentBack) {
+      const facts = { createdBy: row.created_by, hrApprovalState: row.hr_approval_state, hrApprovalRequestedBy: row.hr_approval_requested_by, hrApprovalSenders: row.hr_approval_senders ?? [] };
+      if (approvableFromSentBack(facts, byForm.get(row.id) ?? [])) replied.add(row.id);
+    }
+  }
   const creators = [...new Set(rows.map((row) => row.created_by))];
   const names = new Map<string, string>();
   if (creators.length > 0) {
@@ -448,7 +482,9 @@ export async function listHrQueue(actor: FormsActor, now: Date = new Date()): Pr
       if (user.display_name) names.set(user.id, user.display_name);
     }
   }
-  const order: Record<HrApprovalState, number> = { pending: 0, changes_requested: 1, rejected: 2, approved: 3 };
+  // Waiting for HR first, then sent back and replied to (both need HR now), then the ones waiting on the manager.
+  const order = (row: { state: HrApprovalState; managerReplied: boolean }) =>
+    row.state === "pending" ? 0 : row.managerReplied ? 1 : row.state === "changes_requested" ? 2 : row.state === "rejected" ? 3 : 4;
   return rows
     .map((row) => ({
       id: row.id,
@@ -462,8 +498,9 @@ export async function listHrQueue(actor: FormsActor, now: Date = new Date()): Pr
       requestedAt: row.hr_approval_requested_at,
       waiting: waitingLabel(row.hr_approval_requested_at, now),
       overdue: row.hr_approval_state === "pending" && isOverdue(row.hr_approval_requested_at, now),
+      managerReplied: replied.has(row.id),
     }))
-    .sort((a, b) => order[a.state] - order[b.state]);
+    .sort((a, b) => order(a) - order(b));
 }
 
 /** HR's count for the Overview card and the tab badge. */
@@ -471,7 +508,11 @@ export async function hrQueueSummary(actor: FormsActor, now: Date = new Date()):
   if (!hrApprovalEnabled() || actor.hrApprover !== true) return null;
   try {
     const rows = await listHrQueue(actor, now);
-    const pending = rows.filter((row) => row.state === "pending");
+    /*
+     * Pau (via QA, 23 Nov 2026): the tab read "Pending HR approval (0)" with a sent-back form the manager had replied to
+     * listed under it. The number is every row that needs HR's decision now: waiting for them, or replied to.
+     */
+    const pending = rows.filter(needsHrDecision);
     return { pending: pending.length, overdue: pending.filter((row) => row.overdue).length };
   } catch {
     return null;
