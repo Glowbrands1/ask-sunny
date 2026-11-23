@@ -185,6 +185,10 @@ import { rulesBookText } from "./rules-book";
  * what to change." instead of "Rewording isn't available yet …", and never "not available yet". Rewording stays paused.
  * It reads the same under every config; nothing else changed.
  *
+ * Re-taken on purpose on 22 Nov 2026 (port from Ask Bubbles #1048, A7): one line was added before the salon_from_woven
+ * line: salon_said is the manager's own words for the card's salon, so the reply never calls them unrecognised or says
+ * the staff system placed the card. It reads the same under every config; nothing else changed.
+ *
  * Re-taken on purpose on 21 Nov 2026 (Pau: a search of past forms by topic, FORM_TOPIC_SEARCH_ENABLED): one Replies line
  * was added: forms on file about a topic ("any forms about cash handling at my <place>s this month?", "who's been written
  * up for dress code?") call find_past_forms with about and no employee_name, list each form as given, say the counts, and

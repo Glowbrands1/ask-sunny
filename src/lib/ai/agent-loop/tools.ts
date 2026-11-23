@@ -1029,6 +1029,8 @@ export interface ToolEffects {
   exitOffered?: { employeeId: string | null; name: string };
   /** find_staff ran this turn: a person was named, so a card without one is not "nobody named" (item 6). */
   staffLookedUp?: boolean;
+  /** Port of Ask Bubbles #1048 (A7): a card this turn was filed at the employee's roster salon (salon_from_woven), so the reply may say so. */
+  salonFromWoven?: boolean;
   /** Fix batch items 4 and 3: this turn's last "Did you mean" (the roster ids offered, the name typed), for the record. */
   nameQuestion?: { offeredIds: string[]; typed: string; offeredNames?: string[]; asksFullName?: boolean; templateKey?: string };
   /** QA (16 Nov 2026): propose_form ran for a form this turn, so a form is chosen (find_staff may ask the name). */
@@ -5222,6 +5224,26 @@ export async function proposeForm(
     .filter(({ name }) => !holdsWeekday(name))
     .slice(0, 3)
     .map(({ name, sentence }) => ({ name: untrusted(name), sentence: untrusted(sentence) }));
+  /*
+   * Port of Ask Bubbles #1048 (its QA's live round 3, 22 Nov 2026, A7): the card was filed at the salon the manager named
+   * by a name other than the salon's own, and the reply said "where <staff system> lists <P>'s salon (<words> isn't one I
+   * recognize …)": nothing told the model the manager's words were that salon. The shortest run of the request's own words
+   * that the app's salon reader reads as the card's salon, and only that salon (Sunny's reader gives no matched text, so
+   * the words are found by asking it). The salon reader decides; any salon phrase, never a word list.
+   */
+  const salonSaidOf = (): string | null => {
+    if (!card.locationId) return null;
+    const tokens = requestWords.split(/\s+/).map((token) => token.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "")).filter(Boolean);
+    for (let length = 1; length <= 4; length += 1) {
+      for (let at = 0; at + length <= tokens.length; at += 1) {
+        const phrase = tokens.slice(at, at + length).join(" ");
+        const mentions = readSalonMentions(`at ${phrase}`);
+        if (mentions.length === 1 && mentions[0]!.salonIds.length === 1 && mentions[0]!.salonIds[0] === card.locationId) return phrase;
+      }
+    }
+    return null;
+  };
+  const salonSaid = salonSaidOf();
   const facts = {
     /* fix-name, live s10: the card's name changed from → to, so the reply can say so (the person may be another roster person, by exact match). */
     ...(nameCorrectedFrom !== null ? { name_corrected: { from: nameCorrectedFrom, to: employee.name } } : {}),
@@ -5325,7 +5347,13 @@ export async function proposeForm(
       const primary = await rosterPrimarySalon(context.actor.scope, employee.id);
       return primary && (card.authorizedLocationIds ?? []).includes(primary) ? { employee_salon: rosterSalonName(primary) ?? primary } : {};
     })()),
-    ...(salonFromWoven ? { salon_from_woven: salonFromWoven } : {}),
+    /* Port of Ask Bubbles #1048 (A7): the manager's own words for the card's salon win over "where <staff system> lists" (salon_said, below). */
+    ...(salonFromWoven && !salonSaid ? ((effects.salonFromWoven = true), { salon_from_woven: salonFromWoven }) : {}),
+    /*
+     * Port of Ask Bubbles #1048 (its QA's live round 3, 22 Nov 2026, A7): the words the salon reader read as the card's
+     * salon are named (salon_said), so the reply says the card is filed there because the manager said so.
+     */
+    ...(salonSaid && card.locationId ? { salon_said: { said: salonSaid, salon: salonLabel(card.locationId) } } : {}),
     ...(copiedFromCard
       ? {
           copied_from_card: copiedLevel || copiedPayroll
