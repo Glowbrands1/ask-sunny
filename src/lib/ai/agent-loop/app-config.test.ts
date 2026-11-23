@@ -171,6 +171,11 @@ import { rulesBookText } from "./rules-book";
  * Re-taken on purpose on 22 Nov 2026 (port from Ask Bubbles #1052, l6): the same exit_unset line now names a
  * termination's "terminated for <x>" as a reason too, says exit_reason is passed on a resignation or a termination, and
  * never to offer to add a reason the model can pass. It reads the same under every config; nothing else changed.
+ *
+ * Re-taken on purpose on 21 Nov 2026 (Pau: a search of past forms by topic, FORM_TOPIC_SEARCH_ENABLED): one Replies line
+ * was added: forms on file about a topic ("any forms about cash handling at my <place>s this month?", "who's been written
+ * up for dress code?") call find_past_forms with about and no employee_name, list each form as given, say the counts, and
+ * "showing N of M". It uses the config's place word; nothing else changed.
  */
 
 const fixture = (name: string): string => readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), "utf8");
