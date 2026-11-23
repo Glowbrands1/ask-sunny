@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/server";
 
 import { loadInstance, type InstanceRow } from "./instances";
 import { isProposalId } from "./proposal-id";
+import { withoutHeldForHr } from "./hr-approval-rules";
 
 /**
  * One draft per conversation and proposal.
@@ -24,12 +25,14 @@ export async function findConversationProposalDraft(input: {
   if (!isProposalId(input.proposalId) || !input.conversationKey) return null;
   const supabase = getSupabaseAdmin();
   const since = new Date((input.now ?? new Date()).getTime() - WINDOW_MS).toISOString();
-  const { data, error } = await supabase
+  const { data, error } = await withoutHeldForHr(
+    supabase
     .from("form_instances")
     .select("id")
     .eq("created_by", input.createdBy)
     .eq("source", "ask_sunny")
     .eq("status", "draft")
+    )
     .gte("created_at", since)
     .order("created_at", { ascending: false })
     .limit(25);

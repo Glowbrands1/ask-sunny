@@ -1221,6 +1221,13 @@ describe("new flags default off and wrappers are inert", () => {
           // invitation Continue page and its form. Off, the page never shows Continue.
           ":(exclude)src/app/auth/invite-continue/page.tsx",
           ":(exclude)src/features/auth/invite-continue-form.tsx",
+          // HR approval of forms (owner request, 23 Nov 2026, both apps): the approval panel, HR's tab and Overview
+          // card, the manager's "Your forms with HR" list, and the review page. Behind FORMS_HR_APPROVAL_ENABLED:
+          // off, the server sends no approval data, so none of them renders and the page answers 404.
+          ":(exclude)src/features/forms/hr-approval-panel.tsx",
+          ":(exclude)src/features/forms/hr-approval-lists.tsx",
+          ":(exclude)src/features/forms/hr-approval-screen.tsx",
+          ":(exclude)src/app/(app)/forms/hr-approval/**",
           // Import's "belongs to another account" line (QA, 31 Oct 2026, both apps): shown only
           // when the server declines a chat as another account's, i.e. only with
           // CHAT_IMPORT_OWN_ONLY_ENABLED on. Off, the server never declines that way, so it never shows.
