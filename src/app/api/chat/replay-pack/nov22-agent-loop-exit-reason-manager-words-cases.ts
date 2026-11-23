@@ -15,6 +15,7 @@ import { evidenceFrom, lastResult, loopStandIn, type LoopDecision } from "./loop
  */
 
 const FLAG = "AGENT_LOOP_ENABLED";
+const LIVE = process.env.AGENT_LOOP_LIVE === "1";
 const SAID = "exit form for Rowan Kestrel, terminated for job abandonment, not eligible for rehire";
 
 export const NOV22_AGENT_LOOP_EXIT_REASON_MANAGER_WORDS_CASES: ReplayCase[] = [
@@ -49,7 +50,13 @@ export const NOV22_AGENT_LOOP_EXIT_REASON_MANAGER_WORDS_CASES: ReplayCase[] = [
       const checked = t.checked(id);
       const saved = JSON.stringify({ values, checked });
       expect(checked.resignation_type ?? [], `not a termination (the case proves nothing):\n${saved}`).toContain("immediate_involuntary_separation");
-      expect(values.resignation_reason ?? "", saved).toMatch(/^terminated for job abandonment\.?$/i);
+      /*
+       * QA's live runs (22 Nov 2026, 2 of 3 failed): the saved "Rowan was terminated for job abandonment." is right; the
+       * check was anchored, so the model's subject failed it. The bug is the reason without the manager's words
+       * ("job abandonment" alone). The stand-in's exact reason is asserted on its own run.
+       */
+      expect(values.resignation_reason ?? "", saved).toMatch(/terminated for job abandonment/i);
+      if (!LIVE) expect(values.resignation_reason ?? "", saved).toMatch(/^terminated for job abandonment\.?$/i);
       expect(checked.eligible_for_rehire ?? [], saved).toEqual(["no"]);
     },
   },

@@ -21,6 +21,7 @@ import { evidenceFrom, lastResult, loopStandIn, type LoopDecision, type LoopView
  */
 
 const FLAG = "AGENT_LOOP_ENABLED";
+const LIVE = process.env.AGENT_LOOP_LIVE === "1";
 const REPORT = "Port from the sibling app (its QA's live re-test, 21 Nov 2026, A5, loop on): \"Card issue line has no subject: \\\"Opening <place> late on 10-1-26.\\\"\"";
 const SAID = "create verbal ca for remy calder for opening the salon late on 10-1-26. previous coaching is jba policy manual 1-1-26. payroll deduct DOES apply and state $25 will be payroll deducted";
 
@@ -69,7 +70,10 @@ export const NOV21_AGENT_LOOP_ISSUE_HAS_SUBJECT_CASES: ReplayCase[] = [
       const card = reply.formProposal as ChatFormProposal | undefined;
       expect(card, "no card was made (the case proves nothing)").toBeTruthy();
       expect(card?.issue, `the issue line:\n${card?.issue}`).toBe("Remy opened the salon late on 10/1/26.");
-      expect(model.views.flatMap(proposals).some((output) => output.reason_code === "account_no_subject"), "the subjectless account was never handed back").toBe(true);
+      // QA's live run (22 Nov 2026): the real model wrote the subject the first time ("Remy opened the salon late on
+      // 10/1/26."), so nothing was handed back. The issue line above is what the manager sees; the hand-back is the
+      // stand-in's path (its first account has no subject) and is asserted there.
+      if (!LIVE) expect(model.views.flatMap(proposals).some((output) => output.reason_code === "account_no_subject"), "the subjectless account was never handed back").toBe(true);
     },
   },
 ];
