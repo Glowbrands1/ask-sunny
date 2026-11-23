@@ -199,6 +199,11 @@ import { rulesBookText } from "./rules-book";
  * line: salon_said is the manager's own words for the card's salon, so the reply never calls them unrecognised or says
  * the staff system placed the card. It reads the same under every config; nothing else changed.
  *
+ * Re-taken on purpose on 23 Nov 2026 (port from Ask Bubbles #1058, U21 round 3): one line was added after the "changes
+ * THAT card" line: a propose_form call is the whole card; the card on screen is what the history's latest "[card shown
+ * under this reply: … it held: …]" says it held, and proposing it again passes every value it held with only the
+ * manager's change. It reads the same under every config; nothing else changed.
+ *
  * Re-taken on purpose on 21 Nov 2026 (Pau: a search of past forms by topic, FORM_TOPIC_SEARCH_ENABLED): one Replies line
  * was added: forms on file about a topic ("any forms about cash handling at my <place>s this month?", "who's been written
  * up for dress code?") call find_past_forms with about and no employee_name, list each form as given, say the counts, and

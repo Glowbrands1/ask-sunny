@@ -1322,7 +1322,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
           ...cardMismatch(claims, onScreen),
           ...exitReadBackMismatch(reply, exitOnScreenOnly ? [] : null, true),
           ...(noCardThisTurn() ? cardLines(reply).map((line) => `card line "${line.label}"`) : []),
-          ...(noCardThisTurn() && /\[app note:/i.test(reply) ? ["card line (an app note copied from an earlier card reply)"] : []),
+          ...(noCardThisTurn() && /\[(?:app note|card shown under this reply):/i.test(reply) ? ["card line (an app note copied from an earlier card reply)"] : []),
         ];
       };
       const reviewed = stoppedAt === "reply" && !effects.formUpdate && !effects.formOpened && !input.openFormId && cardShownNow();
