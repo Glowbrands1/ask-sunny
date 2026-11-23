@@ -62,6 +62,9 @@ const store: FakeStore = {
   chat_context_summaries: [],
   // Board f066 (20 Nov 2026): the deletion record, written by the fake as the BEFORE DELETE trigger writes it.
   form_instance_deletions: [],
+  // AI Training -> Assignments (23 Nov 2026): the AI assignment tracker read_ai_assignments reads.
+  ai_assignment_people: [],
+  ai_assignment_marks: [],
   // HR approval (23 Nov 2026, migration 20261123001000): the approver list, the approval history, the 6 AM reminder's
   // record, the bell, and the user directory the bell and the queue read names and emails from.
   form_hr_approvers: [],
