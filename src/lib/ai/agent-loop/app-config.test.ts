@@ -39,6 +39,11 @@ import { rulesBookText } from "./rules-book";
  * follow_up_on_create (say the follow-up date Create sets; never deny a follow-up the form will have). It reads the same
  * under every config; nothing else changed.
  *
+ * Re-taken on purpose on 23 Nov 2026 (the 266-chat run's 115, QA's item 14 (a)): one Forms on file line says the date
+ * an employee signed the JBA Policy Manual is kept only on each Corrective Action's own box, how to read it (find_past_forms,
+ * read_form the latest, say which form) and what to say when none has it. It reads the same under every config; nothing
+ * else changed.
+ *
  * Re-taken on purpose on 22 Nov 2026 (port from Ask Bubbles 1b34db2, A11): one Forms on file line was added after
  * which_form_question: an answer that gives changes is not a pick; open_form and edit_form need choice_evidence; ask
  * again. It reads the same under every config; nothing else changed.
