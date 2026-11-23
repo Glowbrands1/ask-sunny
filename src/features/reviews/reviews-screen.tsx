@@ -46,6 +46,7 @@ import {
 import { WindowTag } from "./review-goal-parts";
 import { ReviewGoalTable } from "./reviews-goal-table";
 import { ReviewsLeaderboard } from "./reviews-leaderboard";
+import { leaderboardPeriodOf } from "@/lib/reviews/leaderboard-period";
 import { ReviewsMonthlyTable } from "./reviews-monthly-table";
 import type { MonthlyProgress } from "@/lib/reviews/monthly-progress";
 import { ReviewsTabs } from "./reviews-tabs";
@@ -329,6 +330,7 @@ export function ReviewsScreen({
         locations={snapshot.locationOptions}
         weekStarts={snapshot.weekStarts}
         controls={CONTROLS_BY_TAB[filters.tab]}
+        periodsOnly={filters.tab === "leaderboard"}
       />
 
       <div className="flex min-w-0 flex-col gap-5 px-5 py-5 pb-7 sm:px-6">
@@ -354,6 +356,7 @@ export function ReviewsScreen({
           <LeaderboardView
             filters={filters}
             snapshot={snapshot}
+            monthly={monthly ?? null}
             canManageAnchors={canManageAnchors}
           />
         ) : null}
@@ -586,10 +589,12 @@ function RecordsView({
 function LeaderboardView({
   filters,
   snapshot,
+  monthly,
   canManageAnchors,
 }: {
   filters: ReviewFilters;
   snapshot: ReviewsSnapshot;
+  monthly: MonthlyProgress | null;
   canManageAnchors: boolean;
 }) {
   const { locations, goal } = snapshot;
@@ -606,8 +611,18 @@ function LeaderboardView({
         }
       />
       <p className="-mt-2 text-[11.5px] text-muted-foreground">
-        Ranked by qualifying reviews this month. The goal is {goal.target} per salon in{" "}
-        {formatGoalMonth(goal)}; salons on the same count share a rank.
+        {leaderboardPeriodOf(filters.week) === "month" ? (
+          <>
+            Ranked by qualifying reviews this month. The goal is {goal.target} per salon in{" "}
+            {formatGoalMonth(goal)}; salons on the same count share a rank.
+          </>
+        ) : (
+          <>
+            Ranked by qualifying reviews over the period chosen in Period, against{" "}
+            {goal.target} a month for each month it covers; salons on the same count share a
+            rank.
+          </>
+        )}
       </p>
 
       {snapshot.awaitingAnchor.length > 0 ? (
@@ -621,6 +636,7 @@ function LeaderboardView({
         locations={locations}
         filters={filters}
         goal={goal}
+        monthly={monthly}
         canManageAnchors={canManageAnchors}
       />
 

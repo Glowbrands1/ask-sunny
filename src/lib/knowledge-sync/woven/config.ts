@@ -28,6 +28,11 @@ export const WOVEN_TEAM_USERNAME_ENV = "WOVEN_TEAM_USERNAME";
 export const WOVEN_TEAM_PASSWORD_ENV = "WOVEN_TEAM_PASSWORD";
 export const WOVEN_TEAM_COMPANY_ENV = "WOVEN_TEAM_COMPANY";
 export const WOVEN_TEAM_BASE_URL_ENV = "WOVEN_TEAM_BASE_URL";
+/**
+ * Every content POST carries the page's anti-forgery token in a header (the
+ * content lists answered HTTP 400 from 19 Nov 2026; see `contract.ts`). Default off.
+ */
+export const WOVEN_POST_ANTIFORGERY_HEADER_ENABLED_ENV = "WOVEN_POST_ANTIFORGERY_HEADER_ENABLED";
 
 export interface WovenTeamCredentials {
   username: string;
@@ -42,6 +47,8 @@ export interface WovenKnowledgeConfig {
   credentials: WovenTeamCredentials | null;
   missingCredentials: string[];
   problems: string[];
+  /** WOVEN_POST_ANTIFORGERY_HEADER_ENABLED: content POSTs carry the page's anti-forgery token in a header. Absent or false: none. */
+  postAntiforgeryHeader?: boolean;
   /**
    * Whether a PREVIEW (dry run) may fall back to an in-memory store when the
    * knowledge-sync tables are not installed. Never in a Vercel Production
@@ -126,6 +133,7 @@ export function readWovenKnowledgeConfig(env: Env = process.env): WovenKnowledge
     credentials: missingCredentials.length === 0 ? { username, password } : null,
     missingCredentials,
     problems,
+    postAntiforgeryHeader: readFlag(env, WOVEN_POST_ANTIFORGERY_HEADER_ENABLED_ENV),
     previewTestModeAllowed: previewTestModeAllowed(env),
   };
 }

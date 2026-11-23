@@ -1,5 +1,6 @@
 import { EXIT_METHOD_LABELS } from "@/lib/forms/exit-details";
 import { cardLines, historyReply, withoutAppNotes, withoutCardLines } from "./card-lines";
+import { withCardOpening } from "./card-opening";
 import { exitReadBackMismatch, withoutUnsavedExitLines } from "./exit-read-back";
 import "server-only";
 
@@ -18,7 +19,7 @@ import { authorizedSalonIds } from "@/lib/forms/location-scope";
 import { rosterSalonName } from "@/lib/forms/salon-mention";
 import type { ChatFormProposal, ChatMessage } from "@/types";
 
-import { finishChatTrace, openChatTrace } from "../chat-trace";
+import { finishChatTrace, openChatTrace, redactTraceText } from "../chat-trace";
 import { chatTraceDraft } from "../chat-trace-store";
 import { AiError } from "../errors";
 import { noteModelCall } from "../model-failure";
@@ -544,6 +545,8 @@ function buildAgentLoopTools(config: AppConfig, planSteps = false) {
           },
           required: ["message_id", "quote", "kind"],
         },
+        form_asked_evidence: evidence("Optional. Only when the manager typed a form's name or title (\"the coaching form\"), whether or not the library has it: their words naming it. Leave it out for a request that describes what to do without a form's title. propose_form checks a title against the form you chose."),
+        instead_of_asked: { type: "boolean", description: "True only when the form the manager named is not in the library and this form is the one you offer in its place (the manager agreed, or you say so). The card then says so; never swap silently." },
         new_form_evidence: evidence("Only when this message asks for another or a new form (a second form for the person on the open draft, or a new request after an earlier card): its words."),
         form_change_evidence: evidence("Only when this message asks for the card on screen to be a different form for the same incident (\"make it a CA instead\", or the manager's yes to your offer of the other form): its words."),
         policy: { type: "string", description: "Always on a Corrective Action, Coaching or Follow-Up Coaching card (Pau, 17 Nov 2026), the heading that fits THIS card's own account, never one copied from another form's card. The one JBA Policy Manual heading that fits what happened, exactly. \"Other — <short topic>\" only for Must See Behaviors, a cleaning or sanitation duty left undone, or an incident no section covers; or both, \"<heading>; Other — <topic>\" (a cleaning duty beside another offense), as the rules book says." },
@@ -722,6 +725,25 @@ export async function runAgentTurn(input: AgentTurnInput): Promise<AskResponse> 
   return finishChatTrace(draft, () => loop(input), { awaitWrite: true });
 }
 
+/** Board f111: a searched query is kept to this many characters. */
+const QUERY_CAP = 200;
+
+/** Board f111: the words a search tool was given, joined; null for a tool that searches nothing. */
+export function searchedWords(tool: string, args: unknown): string | null {
+  const input = (args ?? {}) as Record<string, unknown>;
+  const text = (key: string) => (typeof input[key] === "string" ? String(input[key]).trim() : "");
+  const fields: Record<string, readonly string[]> = {
+    find_staff: ["name"],
+    find_past_forms: ["employee_name", "form", "date", "date_from", "date_to"],
+    read_policy: ["heading"],
+    search_knowledge: ["query"],
+  };
+  const keys = fields[tool];
+  if (!keys) return null;
+  const parts = keys.map((key) => (text(key) ? `${key}: ${text(key)}` : "")).filter(Boolean);
+  return parts.length > 0 ? parts.join("; ") : null;
+}
+
 async function loop(input: AgentTurnInput): Promise<AskResponse> {
   /*
    * A CARD IS OPEN (Pau, 15:00Z 14 Nov 2026: a mid-form question is answered and the open card stays): the last reply
@@ -777,6 +799,14 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   const noop = input.openFormId ? await import("@/lib/forms/form-noop-reply") : null;
   const openBefore = noop && input.openFormId ? await noop.formBeforeTurn(input.openFormId, input.request) : null;
   const steps: AgentLoopStep[] = [];
+  /*
+   * Board f111 (QA, 23 Nov 2026): the words the loop searched with, for later checks: find_staff's name, find_past_forms'
+   * person, form and dates, read_policy's heading, search_knowledge's query. A slot of their own
+   * (`slots.agent_loop_queries`): `steps` stays value-free. Each passes `redactTraceText` and is capped at 200 characters;
+   * they come from the manager's own messages, which the same row already holds (`original_query`). Never written to the
+   * repository: no fixture is generated from them.
+   */
+  const queries: { step: number; tool: string; query: string }[] = [];
   const replyNames = new Set<string>();
   const offRosterNames = new Set<string>();
   /* The tools this turn called so far (the hand-backs' too), for the item 7 check below. */
@@ -870,6 +900,8 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   };
   /* One tool call, timed and counted for the trace: its name, ms and result size; never its values. */
   const runTool = async (step: number, name: string, args: unknown): Promise<ToolResult> => {
+    const searched = searchedWords(name, args);
+    if (searched) queries.push({ step, tool: name, query: redactTraceText(searched).slice(0, QUERY_CAP) });
     const started = performance.now();
     let result: ToolResult;
     let toolCalls = 0;
@@ -1566,6 +1598,8 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     fullNamesShortened = short.replaced;
   }
   if (offRosterNames.size === 1 && text) text = withFullOffRosterName(text, [...offRosterNames][0]!, appConfig().staffSystem);
+  /* Port of Ask Bubbles #1098 (its QA's u22 live records): a reply with this turn's card that names no form opens with the card's own opening. */
+  if (effects.proposal && text) text = withCardOpening(text, effects.proposal.templateName, replyNames.size === 1 ? [...replyNames][0]! : effects.proposal.employeeName);
   const cardSlot: CardSlot | null = effects.proposal
     ? { proposalId: effects.proposal.proposalId, employeeKey: effects.proposalEmployeeId ? personKey(effects.proposalEmployeeId) : null, nameKey: effects.proposal.employeeName ? personKey(effects.proposal.employeeName) : null, templateKey: effects.proposal.templateKey, templateName: effects.proposal.templateName ?? null, ...(effects.proposalAsked?.length ? { asked: effects.proposalAsked } : {}), ...(effects.proposalLevel ? { level: effects.proposalLevel } : {}), ...(effects.proposalPayroll ? { payroll: effects.proposalPayroll } : {}), ...(effects.proposalPayroll === "yes" && effects.proposalPayrollAmount ? { payrollAmount: effects.proposalPayrollAmount } : {}), ...(effects.proposal.policyLine ? { policyLine: effects.proposal.policyLine } : {}), ...(effects.proposalAccountKey ? { accountKey: effects.proposalAccountKey } : {}), ...(effects.proposal.formDate ? { incidentDate: effects.proposal.formDate } : {}), ...(effects.proposal.subject === "team" && effects.proposal.status === "needs_location" ? { teamNeedsLocation: true } : {}), ...(effects.proposal.subject === "team" && !effects.proposal.locationId ? { teamNoSalon: true } : {}) }
     : null;
@@ -1586,6 +1620,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     trace.slots = {
       ...(trace.slots ?? {}),
       agent_loop: { question_key: personKey(input.question), ...(cardSlot ? { card: cardSlot } : {}), ...(nameQuestionSlot ? { name_question: nameQuestionSlot } : {}), ...(personAskedSlot ? { person_asked: personAskedSlot } : {}), ...(exitOfferSlot ? { exit_offer: exitOfferSlot } : {}), ...(teamConfirmSlot ? { team_confirm: teamConfirmSlot } : {}), ...(whichFormSlot ? { which_form: whichFormSlot } : {}), steps, model_steps: modelSteps, model_calls: modelCalls, ...(turn.manualRead ? { manual_read: turn.manualRead } : {}), step_limit: limit, steps_used: stepNumber - 1 + hiddenCalls, ...(toolModelCalls > 0 ? { tool_model_calls: toolModelCalls } : {}), stopped: stoppedAt, ms: latencyMs, first_token_ms: firstTokenMs, ...(selfReview ? { self_review: selfReview } : {}), ...(draftReview ? { draft_review: draftReview } : {}), ...(levelReview ? { level_review: levelReview } : {}), ...(honestyReview ? { honesty_review: honestyReview } : {}), ...(replyUnwrapped ? { reply_unwrapped: true } : {}), ...(retriesBlocked > 0 ? { stop_retrying: retriesBlocked } : {}), ...(repeatsReused > 0 ? { repeat_calls_reused: repeatsReused } : {}), ...(pronounsReplaced > 0 ? { pronouns_replaced: pronounsReplaced } : {}), ...(fullNamesShortened > 0 ? { full_names_shortened: fullNamesShortened } : {}) },
+      ...(queries.length > 0 ? { agent_loop_queries: queries } : {}),
     };
   }
 
