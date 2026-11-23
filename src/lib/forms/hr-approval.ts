@@ -136,6 +136,7 @@ export async function sendForHrApproval(
       hr_approval_requested_at: now,
       hr_approval_follow_up_date: followUpDate,
       hr_approval_requested_by: actor.id,
+      hr_approval_senders: [...new Set([...before.instance.hrApprovalSenders, actor.id])],
       hr_approval_decided_at: null,
       hr_approval_decided_by: null,
     })
@@ -249,9 +250,13 @@ export async function decideHrApproval(
   return instance;
 }
 
-/** The emails of the form's creator and its sender, without duplicates. */
-async function creatorAndSenderEmails(instance: Pick<InstanceRow, "createdBy" | "hrApprovalRequestedBy">): Promise<string[]> {
-  const ids = [...new Set([instance.createdBy, instance.hrApprovalRequestedBy].filter((id): id is string => Boolean(id)))];
+/** The emails of the form's creator and everyone who has sent it, without duplicates. */
+async function creatorAndSenderEmails(
+  instance: Pick<InstanceRow, "createdBy" | "hrApprovalRequestedBy" | "hrApprovalSenders">,
+): Promise<string[]> {
+  const ids = [
+    ...new Set([instance.createdBy, instance.hrApprovalRequestedBy, ...instance.hrApprovalSenders].filter((id): id is string => Boolean(id))),
+  ];
   const emails = await Promise.all(ids.map((id) => accountEmail(id)));
   return [...new Set(emails.filter((email): email is string => Boolean(email)))];
 }
@@ -447,12 +452,15 @@ export interface MyHrFormRow {
 }
 
 /** The forms this manager created or sent to HR that are not approved yet, newest first. Only ever theirs. */
+/** An account id as it may appear inside a PostgREST filter; anything else reads nothing. */
+const SAFE_ID = /^[A-Za-z0-9:_-]{1,120}$/;
+
 export async function listMyFormsWithHr(actor: FormsActor): Promise<MyHrFormRow[]> {
-  if (!hrApprovalEnabled() || !actor.verified) return [];
+  if (!hrApprovalEnabled() || !actor.verified || !SAFE_ID.test(actor.id)) return [];
   const { data, error } = await getSupabaseAdmin()
     .from("form_instance_overview")
     .select("id, template_name, employee_name, location_name, hr_approval_state, hr_approval_requested_at")
-    .or(`created_by.eq."${actor.id}",hr_approval_requested_by.eq."${actor.id}"`)
+    .or(`created_by.eq."${actor.id}",hr_approval_senders.cs.{"${actor.id}"}`)
     .in("hr_approval_state", ["pending", "changes_requested", "rejected"])
     .eq("status", "draft")
     .order("hr_approval_requested_at", { ascending: false })
@@ -489,7 +497,7 @@ export async function readHrApprovalsFor(subject: string, verified: boolean, now
   | { kind: "hr"; queue: HrQueueRow[] }
   | { kind: "manager"; forms: HrDecidedRow[] }
 > {
-  if (!hrApprovalEnabled() || !verified || !subject) return { kind: "off" };
+  if (!hrApprovalEnabled() || !verified || !subject || !SAFE_ID.test(subject)) return { kind: "off" };
   const { resolveHrApprover } = await import("./hr-approval-approvers");
   const hrApprover = await resolveHrApprover(subject);
   const actor: FormsActor = { id: subject, role: null, verified: true, scope: null, visibility: null, hrApprover };
@@ -501,7 +509,7 @@ export async function readHrApprovalsFor(subject: string, verified: boolean, now
   const approved = await supabase
     .from("form_instance_overview")
     .select("id, template_name, employee_name, location_name, hr_approval_state, hr_approval_requested_at")
-    .or(`created_by.eq."${subject}",hr_approval_requested_by.eq."${subject}"`)
+    .or(`created_by.eq."${subject}",hr_approval_senders.cs.{"${subject}"}`)
     .eq("hr_approval_state", "approved")
     .gte("updated_at", since)
     .order("updated_at", { ascending: false })

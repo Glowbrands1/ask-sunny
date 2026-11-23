@@ -105,6 +105,8 @@ export interface InstanceRow {
   hrApprovalRequestedAt: string | null;
   /** Who last sent it to HR (anyone who may edit the draft may); they see it while it waits, as its creator does. */
   hrApprovalRequestedBy: string | null;
+  /** Everyone who has ever sent it to HR, first send first; each keeps seeing it while it waits. */
+  hrApprovalSenders: string[];
 }
 
 export interface InstanceValueRow {
@@ -154,6 +156,7 @@ function mapInstance(row: Record<string, unknown>): InstanceRow {
     hrApprovalState: asHrApprovalState(row.hr_approval_state),
     hrApprovalRequestedAt: (row.hr_approval_requested_at as string | null | undefined) ?? null,
     hrApprovalRequestedBy: (row.hr_approval_requested_by as string | null | undefined) ?? null,
+    hrApprovalSenders: Array.isArray(row.hr_approval_senders) ? (row.hr_approval_senders as unknown[]).map(String) : [],
   };
 }
 
@@ -300,7 +303,7 @@ export async function listInstances(
     if (dateTo) query = query.lte("form_date", dateTo);
     if (hideAwaitingHrFor) {
       query = query.or(
-        `hr_approval_state.is.null,hr_approval_state.eq.approved,created_by.eq."${hideAwaitingHrFor}",hr_approval_requested_by.eq."${hideAwaitingHrFor}"`,
+        `hr_approval_state.is.null,hr_approval_state.eq.approved,created_by.eq."${hideAwaitingHrFor}",hr_approval_senders.cs.{"${hideAwaitingHrFor}"}`,
       );
     }
     // `archived_at` is presentation, not status — see the migration. The active

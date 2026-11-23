@@ -421,7 +421,7 @@ function describeRow(row: InstanceRow, today: string, viewerId?: string | null):
    */
   if (awaitingHr(row.hrApprovalState)) {
     parts.push(`HR approval: ${HR_STATE_LABEL[row.hrApprovalState!].toLowerCase()} — not on file until HR approves it`);
-  } else if (row.hrApprovalState === "approved" && viewerId && (row.createdBy === viewerId || row.hrApprovalRequestedBy === viewerId)) {
+  } else if (row.hrApprovalState === "approved" && viewerId && (row.createdBy === viewerId || row.hrApprovalRequestedBy === viewerId || row.hrApprovalSenders.includes(viewerId))) {
     parts.push("HR approval: approved by HR");
   }
   parts.push(...createdByPart(row, viewerId));

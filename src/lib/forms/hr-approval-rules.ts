@@ -85,7 +85,7 @@ export interface HrReader {
  */
 export function hiddenWhileAwaitingHr(
   reader: HrReader,
-  instance: { createdBy: string; hrApprovalState?: HrApprovalState | null; hrApprovalRequestedBy?: string | null },
+  instance: { createdBy: string; hrApprovalState?: HrApprovalState | null; hrApprovalRequestedBy?: string | null; hrApprovalSenders?: readonly string[] },
 ): boolean {
   if (!awaitingHr(instance.hrApprovalState ?? null)) return false;
   if (isCreatorOrSender(reader, instance)) return false;
@@ -96,14 +96,20 @@ export function hiddenWhileAwaitingHr(
  * The form's creator, or whoever sent it to HR (owner, 23 Nov 2026: "anyone who can open the draft can send it, and
  * the sender and the person who started it both see the status and Colene's note").
  */
-export function isCreatorOrSender(reader: HrReader, instance: { createdBy: string; hrApprovalRequestedBy?: string | null }): boolean {
-  return instance.createdBy === reader.id || (Boolean(instance.hrApprovalRequestedBy) && instance.hrApprovalRequestedBy === reader.id);
+export function isCreatorOrSender(
+  reader: HrReader,
+  instance: { createdBy: string; hrApprovalRequestedBy?: string | null; hrApprovalSenders?: readonly string[] },
+): boolean {
+  if (instance.createdBy === reader.id) return true;
+  if (instance.hrApprovalRequestedBy && instance.hrApprovalRequestedBy === reader.id) return true;
+  // Everyone who has ever sent it, not only the latest (owner, 23 Nov 2026: the Salon Director keeps seeing it).
+  return (instance.hrApprovalSenders ?? []).includes(reader.id);
 }
 
 /** Whether this reader may see HR's decision and notes on this form: its creator, its sender and HR, nobody else. */
 export function mayReadHrDecision(
   reader: HrReader,
-  instance: { createdBy: string; hrApprovalState?: HrApprovalState | null; hrApprovalRequestedBy?: string | null },
+  instance: { createdBy: string; hrApprovalState?: HrApprovalState | null; hrApprovalRequestedBy?: string | null; hrApprovalSenders?: readonly string[] },
 ): boolean {
   if (!instance.hrApprovalState) return false;
   return isCreatorOrSender(reader, instance) || reader.hrApprover === true;

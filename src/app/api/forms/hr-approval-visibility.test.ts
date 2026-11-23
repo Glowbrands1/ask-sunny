@@ -74,6 +74,7 @@ function instanceRow(row: Row) {
     hrApprovalState: row.hrApprovalState,
     hrApprovalRequestedAt: row.hrApprovalState ? "2026-11-20T15:00:00Z" : null,
     hrApprovalRequestedBy: row.hrApprovalState ? (row.requestedBy ?? row.createdBy) : null,
+    hrApprovalSenders: row.hrApprovalState ? [row.requestedBy ?? row.createdBy] : [],
   };
 }
 

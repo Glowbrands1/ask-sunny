@@ -35,7 +35,7 @@ vi.mock("@/lib/supabase/server", () => ({ getSupabaseAdmin: () => fakeSupabase(s
 
 const { ensureTemplateLibrary } = await import("./repository");
 const { createInstance, loadInstance, saveInstanceValues, finalizeInstance, HeldForHrError } = await import("./instances");
-const { sendForHrApproval, decideHrApproval, commentOnHrApproval, hrApprovalViewFor, finalizeGoesToHr, listHrQueue, readHrApprovalsFor, recordHrEdit, HrApprovalError } =
+const { sendForHrApproval, decideHrApproval, commentOnHrApproval, hrApprovalViewFor, finalizeGoesToHr, listHrQueue, listMyFormsWithHr, readHrApprovalsFor, recordHrEdit, HrApprovalError } =
   await import("./hr-approval");
 
 const CREATOR = "sd-thistle";
@@ -235,11 +235,22 @@ describe("the round trip", () => {
     expect(await hrApprovalViewFor(theirDm, (await loadInstance(instance.id))!.instance)).toBeNull();
     expect((await readHrApprovalsFor("asd-marigold", true)).kind).toBe("manager");
 
-    // Either may resend. The sender is whoever resent last, so here the Assistant (creator and sender) and HR see it,
-    // and the Salon Director, no longer its sender, does not while it waits.
+    // Either may resend. Everyone who has ever sent it keeps seeing it (owner, 23 Nov 2026: the Salon Director who
+    // sent it still sees it after the Assistant resends); the salon's DM still sees nothing.
     const resent = await sendForHrApproval(instance.id, assistant, null, { acknowledgeUnverifiedPolicy: true });
     expect(resent.hrApprovalRequestedBy).toBe("asd-marigold");
+    expect(resent.hrApprovalSenders).toEqual([CREATOR, "asd-marigold"]);
     expect(hiddenWhileAwaitingHr(assistant, resent)).toBe(false);
-    expect(hiddenWhileAwaitingHr(manager, resent)).toBe(true);
+    expect(hiddenWhileAwaitingHr(manager, resent)).toBe(false);
+    expect(hiddenWhileAwaitingHr(theirDm, resent)).toBe(true);
+    // Both still read it among their own forms with HR, and both get HR's next decision.
+    for (const reader of [assistant, manager]) {
+      expect((await listMyFormsWithHr(reader)).map((row) => row.id), reader.id).toContain(instance.id);
+    }
+    expect(await listMyFormsWithHr(theirDm)).toEqual([]);
+    await decideHrApproval(instance.id, hr, "approve", null);
+    for (const email of ["marigold@example.com", "thistle@example.com"]) {
+      expect(bells(email).map((bell) => bell.title), email).toContain("HR approved your form");
+    }
   });
 });
