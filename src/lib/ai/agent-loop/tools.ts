@@ -881,7 +881,7 @@ const staffSystem = (): string => appConfig().staffSystem;
 export const WHICH_FORM_QUESTION = "Which one should I open?";
 
 /** G4 follow-up: the fact beside which_form_question; the rules book's Open lines say the same. */
-export const singleOutNote = (): string => "Compare these forms with the manager's words in this request. If their words fit exactly one (its " + locationWord() + ", \"no " + locationWord() + "\", its status, its date or its form), open_form that one now and say which in one line; ask which_form_question only when several still fit.";
+export const singleOutNote = (): string => "Compare these forms with the manager's words in this request. If their words fit exactly one (its level, its " + locationWord() + ", \"no " + locationWord() + "\", its status, its date or its form), open_form that one now and say which in one line; ask which_form_question only when several still fit.";
 
 
 const NOT_ASKED = "Forms on file are looked at only when the manager asks about them (company privacy rule), shown by forms_on_file_evidence: the id of the manager's message that asks and their exact words from it. If they asked, call again with it; if not, work from what they said and never mention other forms.";
@@ -1901,21 +1901,33 @@ export async function findPastForms(context: ToolContext, input: { employee_name
     rows = rows.filter((row) => !(row.status === "revised" && rows.some((other) => other.revisesInstanceId === row.id)));
     /* The manager's own words for it: the model's form and about, and the quote of the message that asked (forms_on_file_evidence). */
     const askedQuote = typeof (input.forms_on_file_evidence as { quote?: unknown } | null | undefined)?.quote === "string" ? String((input.forms_on_file_evidence as { quote: string }).quote) : "";
-    const askedWords = new Set([...words(wantForm), ...words(typeof input.about === "string" ? input.about : ""), ...words(askedQuote)]);
-    if (askedWords.size > 0 && rows.length > 1 && rows.length <= 20) {
-      const levels = await Promise.all(rows.map(async (row) => ({
-        row,
-        ticked: await authorizeInstance(context.request, row.id, "view")
+    /*
+     * U16 again (QA, 23 Nov 2026; Sunny's live set and Bubbles' live re-run): "put up the verbal CA for <P>" answered "none
+     * specify 'verbal' so I can't single one out" over 7 forms, while the same forms read as "Corrective Action Form,
+     * Verbal Warning" elsewhere. The words read are also the manager's own message (not only what the model quoted), and
+     * each Corrective Action's level, from its own Type of Warning on the form, is on its row and in its choice line, so
+     * the level the manager named singles it out. Form data; no word list.
+     */
+    const askedWords = new Set([...words(wantForm), ...words(typeof input.about === "string" ? input.about : ""), ...words(askedQuote), ...words(withoutMessageIdTags(context.question))]);
+    const levelLabel: Record<string, string> = { verbal: "Verbal Warning", written: "Written Warning", termination: "Termination", demotion: "Demotion" };
+    const levelOf = new Map<string, string[]>();
+    if (rows.length <= 20) {
+      await Promise.all(rows.filter((row) => row.templateKey === appConfig().formKeys.corrective).map(async (row) => {
+        const ticked = await authorizeInstance(context.request, row.id, "view")
           .then(({ loaded }) => loaded.values.filter((value) => value.fieldKey === "warning_type").flatMap((value) => value.checked ?? []))
-          .catch(() => [] as string[]),
-      })));
-      const named = levels.filter((entry) => entry.ticked.some((key) => askedWords.has(key.toLowerCase())));
-      if (named.length > 0 && named.length < levels.length) rows = named.map((entry) => entry.row);
+          .catch(() => [] as string[]);
+        levelOf.set(row.id, ticked);
+      }));
     }
+    if (askedWords.size > 0 && rows.length > 1 && levelOf.size > 0) {
+      const named = rows.filter((row) => (levelOf.get(row.id) ?? []).some((key) => askedWords.has(key.toLowerCase())));
+      if (named.length > 0 && named.length < rows.length) rows = named;
+    }
+    const levelText = (id: string) => (levelOf.get(id) ?? []).map((key) => levelLabel[key] ?? key).join(", ") || null;
     const described = Boolean(wantForm || wantDate || about.length > 0);
     /* Item 18 (Pau via QA): each form's `choice` line says what tells it apart (`formChoices`); the reply lists them as given. */
     const listed = rows.slice(0, 20);
-    const choices = formChoices(listed);
+    const choices = formChoices(listed, (row) => levelText(row.id));
     const forms = listed
       .map((row) => ({
         instance_id: row.id,
@@ -1926,6 +1938,7 @@ export async function findPastForms(context: ToolContext, input: { employee_name
         form_date: row.formDate,
         /* G4 follow-up (QA, 15 Nov 2026): "no salon" in words, so the manager's "the one with no salon" can single it out. */
         salon: salonLabel(row.locationId, row.locationName) ?? `no ${locationWord()}`,
+        ...(levelText(row.id) ? { level: levelText(row.id) } : {}),
         choice: choices.get(row)!,
         ...(row.archivedAt ? { archived: true } : {}),
       }));
@@ -2741,7 +2754,7 @@ export function priorsOnFileLine(priors: readonly PriorOnFile[]): string {
  * date, the moment it was created (business time). Every which-one list (find_past_forms, the card-on-screen question)
  * uses these lines.
  */
-function formChoices<Row extends { templateName: string; status: string; formDate?: string | null; locationId?: string | null; locationName?: string | null; createdAt: string }>(listed: readonly Row[]): Map<Row, string> {
+function formChoices<Row extends { templateName: string; status: string; formDate?: string | null; locationId?: string | null; locationName?: string | null; createdAt: string }>(listed: readonly Row[], levelOf: (row: Row) => string | null = () => null): Map<Row, string> {
   const usDay = (iso: string | null | undefined) => {
     const found = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso ?? "");
     return found ? `${found[2]}/${found[3]}/${found[1]}` : null;
@@ -2751,6 +2764,8 @@ function formChoices<Row extends { templateName: string; status: string; formDat
     const created = twin ? formatBusinessTime(row.createdAt, { year: true }) : null;
     const line = [
       row.templateName,
+      /* U16 (QA, 23 Nov 2026): a Corrective Action's level, from its own Type of Warning, tells it apart. */
+      ...(levelOf(row) ? [levelOf(row)!] : []),
       row.status,
       usDay(row.formDate) ? `dated ${usDay(row.formDate)}` : "no date",
       salonLabel(row.locationId ?? null, row.locationName ?? null) ?? `no ${locationWord()}`,
