@@ -2007,11 +2007,24 @@ function headingKey(text: string): string {
   return text.toLowerCase().replace(/\bpolicy\b/g, "").replace(/[^a-z0-9]+/g, " ").trim();
 }
 
+/*
+ * Port of Ask Bubbles #1058 (its QA's live round 3, 22 Nov 2026, U21 T7 and T12): the model passed the policy as the card
+ * shows it ("<section> — <heading>", or with ", <manual> p.<n>"), and it was not_a_heading; when the model did not try
+ * again, the reply cited a policy the card did not hold ("That change isn't on the card yet: policy"). The card's own policy
+ * line is read back as its heading: the asked text as given, else without its trailing ", <manual> p.<n>", else the heading
+ * after its last " — ". Read by the line's shape, never a word list.
+ */
 function headingOf(headings: readonly string[], asked: string): string | null {
   const key = headingKey;
-  const wanted = key(asked);
-  if (wanted === "") return null;
-  return headings.find((heading) => key(heading) === wanted) ?? null;
+  const unpaged = asked.replace(/,\s*[^,]*\bp\.\s*\d+\s*$/i, "").trim();
+  const last = unpaged.split(/\s+—\s+/).at(-1)!.trim();
+  for (const candidate of [asked, unpaged, last]) {
+    const wanted = key(candidate);
+    if (wanted === "") continue;
+    const found = headings.find((heading) => key(heading) === wanted);
+    if (found) return found;
+  }
+  return null;
 }
 
 export async function readPolicy(context: ToolContext, input: { heading?: unknown }, effects?: ToolEffects): Promise<ToolResult> {
@@ -4225,7 +4238,16 @@ export async function proposeForm(
   const sameIncidentAskedAgain = asksNewForm && screenDate !== null && latestDates.some((given) => monthDayToIso(given, today) === screenDate);
   const carriedLevel = caOnlyFields && (!asksNewForm || sameIncidentAskedAgain) ? (carriedRecord?.level ?? null) : null;
   const copiedLevel = !(askedLevel && levelCheck?.ok) && !carriedLevel && sameFormAsked && caOnlyFields ? (sameCardOf?.level ?? null) : null;
-  const level = askedLevel && levelCheck?.ok ? askedLevel : (carriedLevel ?? copiedLevel);
+  /*
+   * Port of Ask Bubbles #1058 (its QA's live round 3, U21 T10): T8 copied Verbal and payroll No onto <P>'s card; T9 "no i
+   * want this to be a corrective action for a new person now", T10 "make this for <P> instead of <A>" asked for that card
+   * again (same_card_evidence), and its level and payroll were dropped: T9 had started a new request, so no record carried.
+   * The card the manager's words ask for, when it is this person's own (the server's record: form and person keys), is the
+   * same card shown again: it keeps its level and payroll. Another person's card still copies them only with "the same …".
+   */
+  const ownCardAsked = Boolean(sameCardOf && !sameCardOther && caOnlyFields);
+  const ownCardLevel = !(askedLevel && levelCheck?.ok) && !carriedLevel && !copiedLevel && ownCardAsked ? (sameCardOf?.level ?? null) : null;
+  const level = askedLevel && levelCheck?.ok ? askedLevel : (carriedLevel ?? copiedLevel ?? ownCardLevel);
   /*
    * Fix batch item 7 (QA's targeted re-run, c163: a bare "yes" after "Payroll deduct and warning level aren't set" set
    * payroll). The card on screen asked two things in one line (its record's `asked`), and this message is one word, quoted
@@ -4275,6 +4297,11 @@ export async function proposeForm(
   if (payroll === null && !answerUnclear && payrollRecord?.payroll) {
     payroll = payrollRecord.payroll;
     if (payroll === "yes" && !amount && payrollRecord.payrollAmount) amount = payrollRecord.payrollAmount;
+  }
+  /* Port of Ask Bubbles #1058 (U21 T10): this person's own card asked for again keeps its payroll answer, as its level (`ownCardAsked`). */
+  if (payroll === null && !answerUnclear && ownCardAsked && payrollFields && sameCardOf?.payroll) {
+    payroll = sameCardOf.payroll;
+    if (payroll === "yes" && !amount && sameCardOf.payrollAmount) amount = sameCardOf.payrollAmount;
   }
   let copiedPayroll: "yes" | "no" | null = null;
   if (payroll === null && !answerUnclear && sameFormAsked && payrollFields && sameCardOf?.payroll) {
