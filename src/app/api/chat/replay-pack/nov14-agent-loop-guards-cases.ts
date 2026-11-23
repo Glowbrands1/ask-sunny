@@ -313,7 +313,8 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       expect(earlier, "the model was shown an app note it could copy").not.toContain("[app note:");
       /* Changed on purpose (QA's live retest of #1147, 20 Nov 2026): the card's own account names the person, never a pronoun. */
       /* Changed on purpose (#1198, QA2's live R3, 21 Nov 2026): Tamsin is already named in the sentence, so her station is "the station", as the saved write-up writes it. */
-      expect(thread.proposal?.issue ?? "").toMatch(/Tamsin also left the station early/);
+      /* CHANGED ON PURPOSE (port of Ask Bubbles #1075; QA's ruling, 22 Nov 2026, Pau's round 3 U23, option B in the card/reply pass only): the first possessive of the named person keeps its owner. Was /Tamsin also left the station early/ (the saved write-up keeps "the station"). */
+      expect(thread.proposal?.issue ?? "").toMatch(/Tamsin also left Tamsin's station early/);
     },
   },
   {

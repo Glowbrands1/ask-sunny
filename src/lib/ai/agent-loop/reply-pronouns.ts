@@ -18,10 +18,15 @@
  * examples are this module's unit tests.
  */
 
-const ALWAYS = /\b(?:he|him|his|she|her|hers|himself|herself)\b/gi;
+/*
+ * Reflexives (himself, herself, themself) are never replaced (port from the sibling app, its QA's live re-run, 23 Nov 2026:
+ * "did not clean up after themself" became "… after <name>", the person the object of their own action), as the saved
+ * write-up never replaces them (`employee-reference.ts`).
+ */
+const ALWAYS = /\b(?:he|him|his|she|her|hers)\b/gi;
 /** they/them in a person's place: someone told, asked, thanked; someone who quit, worked, said; "themself". */
 const THEY_PERSON =
-  /\b(?:tell|ask|let|remind|give|call|text|email|meet|thank|inform|notify|pay|schedule|fire|terminate|coach)\s+them\b|\bthey(?:'re|'ve|'ll|'d)?\s+(?:were|are|was|is|have|had|will|would|quit|resigned|left|worked|said|did|can|should|need|gave|told|missed|came)\b|\bthemsel(?:f|ves)\b/gi;
+  /\b(?:tell|ask|let|remind|give|call|text|email|meet|thank|inform|notify|pay|schedule|fire|terminate|coach)\s+them\b|\bthey(?:'re|'ve|'ll|'d)?\s+(?:were|are|was|is|have|had|will|would|quit|resigned|left|worked|said|did|can|should|need|gave|told|missed|came)\b/gi;
 /** A verb that reports what someone asked, said or wrote (in Sunny's reply): the clause after it is reported speech. */
 const REPORTING = /\b(?:asked|asking|told|telling|said|saying|stated|stating|reminded|reminding|messaged|messaging|texted|texting|emailed|wrote|writing|replied|replying|explained|explaining|claimed|claiming|admitted|admitting|wanted\s+to\s+know)\b/;
 /** Words that make "they/them" the form's fields or the card, when they come before it in the sentence. */
@@ -245,7 +250,16 @@ export function withoutPersonPronouns(
     const notReported = !REPORTING.test(clauseBefore.toLowerCase());
     /* Only an object ("show her team", "team her new puppy"): never one opening a clause ("and her shift …") or after "with"/"of". */
     const opensClause = clauseBefore.trim() === "" || /\b(?:and|but|or|so|then|with|of)[ \t]+$/i.test(clauseBefore);
-    if (again && owns && word !== "hers" && (afterPreposition || (notReported && !opensClause))) {
+    /*
+     * Port of Ask Bubbles #1075 (9ce649e; QA's ruling, 22 Nov 2026, Pau's round 3 U23: "her personal life" became "the
+     * personal life"): the first possessive of the person already named keeps its owner ("<Name>'s"); "the" only after a
+     * place or time preposition (item 19: the closed set just above) or once this sentence already said whose ("show
+     * <P>'s team the new puppy"). QA's ruling (B): this is the chat's card and reply only; the saved write-up keeps HR's
+     * design (`employee-reference.ts`, 3 Oct 2026), so the two may now differ on a possessive, by design.
+     */
+    const sentenceStart = at - sentenceBefore(reply, at).length;
+    const ownerSaid = new RegExp(`${possessive(display).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}])`, "iu").test(sentenceBefore(reply, at)) || edits.some((edit) => edit.from >= sentenceStart && edit.from < at && edit.text === possessive(display));
+    if (again && owns && word !== "hers" && (afterPreposition || (ownerSaid && notReported && !opensClause))) {
       edits.push({ from: at, to: end, text: match[0][0] === match[0][0]!.toUpperCase() ? "The" : "the" });
       continue;
     }
