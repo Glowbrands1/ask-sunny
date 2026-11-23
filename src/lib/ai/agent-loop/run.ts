@@ -554,6 +554,8 @@ function buildAgentLoopTools(config: AppConfig, planSteps = false) {
         },
         incident_date: { type: "string", description: "YYYY-MM-DD, the " + place + "'s local date." },
         level_evidence: evidence("With warning_level verbal or written: the manager message and the words from it that state this form's level, from the message being answered or the one before it. A request that names the level (\"a verbal CA\", \"create a written\") states it: quote those words. \"She was written up before\" is not this form's level."),
+        job_title: { type: "string", description: "Only when the manager tells you which job title to put on this form (\"no, use Shift Lead\", \"put her title as Key Holder\"): that title. Never a title they only used to refer to the person (\"my shift lead Remy\"); left out, the card uses " + config.staffSystem + "'s title." },
+        job_title_evidence: evidence("With job_title: the manager message from this request and their words from it that tell you the form's title, holding the title."),
         payroll_evidence: evidence("With payroll_deduct: the manager message and the words from it that answer whether payroll deduct applies: the message being answered, or an answer that came right after your reply showing THIS person's card (never another person's answer)."),
         warning_level: { type: "string", enum: ["verbal", "written", "termination"], description: "Only when the manager stated it for this form. termination: only when the rules book's Termination lines say this form is one." },
         exit_type: { type: "string", enum: ["resignation", "termination"], description: "Employee Exit Form only: which the rules book's Exit lines say this exit is." },
