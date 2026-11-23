@@ -84,7 +84,7 @@ async function policyReview() {
 const bells = (to: string) => extra.app_notifications!.filter((row) => row.recipient_email === to);
 
 describe("which Finalize goes to HR", () => {
-  it("a manager's Policy Review does; their Coaching Form does not; HR's own form does not; off, nothing does", async () => {
+  it("a manager's Policy Review does; their Coaching Form does not; HR's own form does not; with no approver, or off, nothing does", async () => {
     const instance = await policyReview();
     expect(await finalizeGoesToHr(manager, instance)).toBe(true);
     const coaching = await createInstance({
@@ -93,6 +93,12 @@ describe("which Finalize goes to HR", () => {
     });
     expect(await finalizeGoesToHr(manager, coaching)).toBe(false);
     expect(await finalizeGoesToHr(hr, instance)).toBe(false);
+    // No active approver: nobody could approve it, so Finalize finalizes as before (owner, 23 Nov 2026).
+    extra.form_hr_approvers = [{ app_user_id: HR, revoked_at: "2026-11-23T00:00:00Z" }];
+    expect(await finalizeGoesToHr(manager, instance)).toBe(false);
+    extra.form_hr_approvers = [];
+    expect(await finalizeGoesToHr(manager, instance)).toBe(false);
+    extra.form_hr_approvers = [{ app_user_id: HR, revoked_at: null }];
     delete process.env.FORMS_HR_APPROVAL_ENABLED;
     expect(await finalizeGoesToHr(manager, instance)).toBe(false);
   });

@@ -71,7 +71,7 @@ export function formLine(instance: Pick<InstanceRow, "templateName" | "employeeN
 }
 
 /**
- * Whether this actor's Finalize sends the form to HR instead. Off with the flag;
+ * Whether this actor's Finalize sends the form to HR instead. Off with the flag, and while no active approver exists;
  * never for the two coaching forms; never for an HR approver's own form (owner:
  * "her own forms skip this step"); never for a preview identity, which no HR
  * account could answer.
@@ -79,6 +79,11 @@ export function formLine(instance: Pick<InstanceRow, "templateName" | "employeeN
 export async function finalizeGoesToHr(actor: FormsActor, instance: InstanceRow): Promise<boolean> {
   if (!hrApprovalEnabled() || !actor.verified || actor.hrApprover === true) return false;
   if (instance.status !== "draft") return false;
+  /*
+   * NO APPROVER, NO HOLD. With the flag on and nobody on `form_hr_approvers` (or the list unreadable), a form sent to
+   * HR would wait with nobody able to approve it — so Finalize finalizes as before until an approver exists.
+   */
+  if ((await listHrApprovers()).length === 0) return false;
   // By the template's id, which every form row carries: the template's own permission decides (`templateRoutesToHr`).
   const { data, error } = await getSupabaseAdmin()
     .from("form_templates")
