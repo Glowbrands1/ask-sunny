@@ -4140,7 +4140,18 @@ export async function proposeForm(
   const copiedFromAnotherForm = policyHeading !== null && (context.cardRecords ?? []).some((record) => record.templateKey !== template.key && typeof record.policyLine === "string" && record.policyLine.toLowerCase().includes(policyHeading!.toLowerCase()));
   /* Pau, 17 Nov: coaching always has policy and page: the forms whose cards always cite a manual heading (or Other). */
   const policyForms = new Set([appConfig().formKeys.corrective, appConfig().formKeys.coaching, appConfig().formKeys.followUpCoaching]);
-  const policyNotForThisCard = template.key !== appConfig().formKeys.corrective && policyHeading !== null && copiedFromAnotherForm && !managerNamed && !(topicFits ?? []).some((heading) => headingKey(heading) === headingKey(policyHeading!));
+  /*
+   * QA's ruling on item 9 (22 Nov 2026; the 266-chat run's 203, Ask Bubbles' R21): the 16 Nov ruling stands, and the
+   * heading THIS card's own account fits stays: the topic reader on the account, the manual's dress-code headings for a
+   * dress-code account, or the heading the account itself names ("Late Opening."). Read from the manual's headings, never
+   * from a word list.
+   */
+  const ownAccountFits = (heading: string) =>
+    Boolean(whatHappened) &&
+    ((topicHeadings(whatHappened) ?? []).some((fit) => headingKey(fit) === headingKey(heading)) ||
+      (manual ? (dressCodeFit(whatHappened, manual.headings) ?? []).some((fit) => headingKey(fit) === headingKey(heading)) : false) ||
+      headingTypedIn(whatHappened, heading) !== null);
+  const policyNotForThisCard = template.key !== appConfig().formKeys.corrective && policyHeading !== null && copiedFromAnotherForm && !managerNamed && !(topicFits ?? []).some((heading) => headingKey(heading) === headingKey(policyHeading!)) && !ownAccountFits(policyHeading);
   /* The heading is left off; an "Other — <topic>" beside it (after "; ") stays, as #1068's rules decide it. */
   if (policyNotForThisCard) policyLine = policyLine && policyLine.includes("; ") ? policyLine.split("; ").slice(1).join("; ") : null;
   const otherPart = askedOther || (/^other\b/i.test(askedPolicy) ? askedPolicy : "");
@@ -4148,6 +4159,29 @@ export async function proposeForm(
     const topic = otherPart.replace(/^other\s*[—:-]?\s*/i, "").trim() || cleaning || whatHappened.slice(0, 120);
     const other = topic ? `Other — ${topic}` : "Other";
     policyLine = policyLine ? `${policyLine}; ${other}` : other;
+  }
+  /*
+   * QA's item 9 (1) (22 Nov 2026; Ask Bubbles' R21 T3): a bare "Yes" answered "tell me if you'd like a different policy
+   * cited, or none" (a question that offers no yes / no), and the card then cited "Other — Dress Code". A bare yes changes
+   * the card on screen's policy only to one the chat's own data gives: the manager named it (or a close spelling of it,
+   * the app's own "Did you mean"), the topic reader or the card's own account fits it, or it is the Other the rules keep
+   * (Must See Behaviors, a cleaning duty left undone). Read with the existing readers; no word list.
+   */
+  const bareYes = AFFIRMATIVE.test(withoutMessageIdTags(context.question));
+  const shownCard = context.cardOnScreen?.templateKey === template.key ? context.cardOnScreen : null;
+  if (bareYes && shownCard && (policyLine ?? null) !== (shownCard.policyLine ?? null) && policyLine !== null) {
+    const fitsHeading = (heading: string) =>
+      managerNamed ||
+      (topicFits ?? []).some((fit) => headingKey(fit) === headingKey(heading)) ||
+      ownAccountFits(heading) ||
+      (manual ? namedPolicies(requestWords).some((named) => closeHeadingReading(named.phrase, manual.headings).candidates.some((candidate) => headingKey(candidate) === headingKey(heading))) : false);
+    const headingSupported = cardHeadings.every(fitsHeading);
+    const otherSupported = !otherPart || otherIsTheRule;
+    if (!headingSupported || !otherSupported) {
+      return {
+        reason_code: "yes_sets_no_policy", error: `The manager's "${withoutMessageIdTags(context.question).trim()}" answers no question about which policy: nothing in this chat gives "${policyLine}". Keep the card's policy as it was (propose nothing new) and ask which policy they want cited, by name.`,
+      };
+    }
   }
 
   /* Payroll deduct, only as the manager stated it. */
