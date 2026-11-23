@@ -170,6 +170,11 @@ import { rulesBookText } from "./rules-book";
  * the short one when asked_before), nothing is said to be kept on a card that does not exist, no pronoun is used for an
  * unsettled person, and a surname, full name or salon picks the person and the card is proposed at once with the account.
  * It reads the same under every config; nothing else changed.
+ *
+ * Re-taken on purpose on 21 Nov 2026 (Pau: a search of past forms by topic, FORM_TOPIC_SEARCH_ENABLED): one Replies line
+ * was added: forms on file about a topic ("any forms about cash handling at my <place>s this month?", "who's been written
+ * up for dress code?") call find_past_forms with about and no employee_name, list each form as given, say the counts, and
+ * "showing N of M". It uses the config's place word; nothing else changed.
  */
 
 const fixture = (name: string): string => readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), "utf8");

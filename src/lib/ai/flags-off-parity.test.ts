@@ -698,6 +698,8 @@ const NEW_FLAGS = [
   "FORMS_ON_FILE_COUNTS_ENABLED",
   // coding B: CARD_PERSON_THIS_REQUEST (the outside audit's wrong-person risk, 21 Nov 2026; default off).
   "CARD_PERSON_THIS_REQUEST_ENABLED",
+  // coding G: FORM_TOPIC_SEARCH (Pau, 21 Nov 2026; default off).
+  "FORM_TOPIC_SEARCH_ENABLED",
 ] as const;
 
 const PROTECTED = [
