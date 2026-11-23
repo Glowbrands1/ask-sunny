@@ -41,3 +41,21 @@ describe("replyWithShortName (the reply)", () => {
     expect(replyWithShortName("Using **Test Testy** from your staff list.", "Test Testy", "Test", "Corrective Action Form").replaced).toBe(0);
   });
 });
+
+describe("withOwnOtherFirstNames (port from the sibling app, its QA's live re-run 23 Nov 2026)", () => {
+  it("the legal first name in the account becomes the card's short name, so one person is named", async () => {
+    const { withOwnOtherFirstNames } = await import("./short-name");
+    const out = withOwnOtherFirstNames("On 11/14 Velmara worked 50 minutes over the scheduled shift and did not clean up after themself.", ["Velmara"], "Pellwood", "Brisenne");
+    expect(out.text).toBe("On 11/14 Brisenne worked 50 minutes over the scheduled shift and did not clean up after themself.");
+  });
+
+  it("the full other name with the surname, and text in quotes left as written", async () => {
+    const { withOwnOtherFirstNames } = await import("./short-name");
+    expect(withOwnOtherFirstNames("Velmara Pellwood said \"ask Velmara\" and left.", ["Velmara"], "Pellwood", "Brisenne").text).toBe("Brisenne said \"ask Velmara\" and left.");
+  });
+
+  it("a longer name that starts with the other first name is someone else", async () => {
+    const { withOwnOtherFirstNames } = await import("./short-name");
+    expect(withOwnOtherFirstNames("Velmaradine covered the shift.", ["Velmara"], "Pellwood", "Brisenne").text).toBe("Velmaradine covered the shift.");
+  });
+});

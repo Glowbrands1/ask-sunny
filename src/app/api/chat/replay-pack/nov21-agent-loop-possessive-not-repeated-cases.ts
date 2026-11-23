@@ -14,6 +14,7 @@ import { evidenceFrom, lastResult, loopStandIn, type LoopDecision } from "./loop
  */
 
 const FLAG = "AGENT_LOOP_ENABLED";
+const LIVE = process.env.AGENT_LOOP_LIVE === "1";
 const REPORT = "QA2's live R3 on cdb2ddc2 (21 Nov 2026): the reply and the card repeated \"Test's team Test's new puppy\"";
 const SAID = "coaching for Remy Calder, she came into the salon to show her team her new puppy";
 const ACCOUNT = "Remy came into the salon to show her team her new puppy.";
@@ -23,7 +24,7 @@ const ACCOUNT_TOLD = "Her shift lead, Corin Vale, told her to go home and she re
 export const NOV21_AGENT_LOOP_POSSESSIVE_NOT_REPEATED_CASES: ReplayCase[] = [
   {
     id: "nov21-possessive-not-repeated-reply-and-card",
-    title: `QA2's R3: "${SAID}": the reply and the card's issue read "to show the team the new puppy", never "Remy's team Remy's new puppy"`,
+    title: `QA2's R3: "${SAID}": the reply and the card's issue read "to show Remy's team the new puppy", never "Remy's team Remy's new puppy"`,
     report: REPORT,
     status: "fixed",
     fixFlags: [FLAG],
@@ -53,7 +54,8 @@ export const NOV21_AGENT_LOOP_POSSESSIVE_NOT_REPEATED_CASES: ReplayCase[] = [
       for (const [where, text] of [["reply", reply.content], ["card issue", issue]] as const) {
         expect(text, `${where} repeats the possessive:\n${text}`).not.toMatch(/Remy's team Remy's/);
         expect(text, `${where} keeps a pronoun:\n${text}`).not.toMatch(/\bher\b/);
-        expect(text, `${where}:\n${text}`).toMatch(/to show the team the new puppy/);
+        /* CHANGED ON PURPOSE (port of Ask Bubbles #1075; QA's ruling, 22 Nov 2026, Pau's round 3 U23, option B in the card/reply pass only): the first possessive keeps its owner, the second is "the"; the saved write-up keeps HR's "the team". Was /to show the team the new puppy/. */
+        expect(text, `${where}:\n${text}`).toMatch(/to show Remy's team the new puppy/);
       }
     },
   },
@@ -88,7 +90,15 @@ export const NOV21_AGENT_LOOP_POSSESSIVE_NOT_REPEATED_CASES: ReplayCase[] = [
       expect(issue, "the card has no issue (the case proves nothing)").toMatch(/go home/);
       for (const [where, text] of [["reply", reply.content], ["card issue", issue]] as const) {
         expect(text, `${where} keeps a pronoun:\n${text}`).not.toMatch(/\b(?:her|she)\b/i);
-        expect(text, `${where}:\n${text}`).toMatch(/The shift lead, Corin Vale, told Remy to go home and Remy refused/);
+        /*
+         * QA's live run (22 Nov 2026): "When shift lead Corin Vale told Remy to go home, Remy refused." is right, in other
+         * words. The bug was the repeated possessive and the pronouns; any wording that names the lead and Remy plainly
+         * holds. The stand-in's exact sentence is asserted on its own run.
+         */
+        expect(text, `${where} repeats the possessive:\n${text}`).not.toMatch(/Remy's shift lead|Remy's\s+\w+\s+Remy's/);
+        expect(text, `${where}:\n${text}`).toMatch(/Corin Vale[^.]*told Remy to go home/);
+        expect(text, `${where}:\n${text}`).toMatch(/Remy refused/);
+        if (!LIVE) expect(text, `${where}:\n${text}`).toMatch(/The shift lead, Corin Vale, told Remy to go home and Remy refused/);
       }
     },
   },
