@@ -101,6 +101,7 @@ export const AGENT_LOOP_TOTAL_MS = 100_000;
 /** QA's audit (item 14b): how long a stopped turn waits for a tool still saving (less when the route has less left). */
 export const TOOL_SETTLE_MS = 5_000;
 
+import { pagesToolLine } from "@/config/ai-readable-pages";
 import { LOOP_FAILED_REPLY, STEP_LIMIT_REPLY } from "./replies";
 import { fieldLabel, readableValue } from "./saved-diff";
 
@@ -473,7 +474,7 @@ function buildAgentLoopTools(config: AppConfig, planSteps = false) {
   },
   {
     name: "find_past_forms",
-    description: "List the forms on file (" + config.formsPageName + ") for one employee, or, with no employee_name, every form of a kind or period (\"who got a CA this month?\": form and date_from/date_to). Only when the manager asks about forms on file or history; never otherwise.",
+    description: "List the forms on file (" + config.formsPageName + ") for one employee, or, with no employee_name, every form of a kind or period (\"who got a CA this month?\": form and date_from/date_to). Only when the manager asks about forms on file or history; never otherwise." + pagesToolLine(config.readablePages, "find_past_forms"),
     input_schema: object({
       employee_name: { type: "string", description: "The employee the manager named. Leave it out for a list of every form of a kind or period." },
       form: { type: "string", description: "The form the manager named (\"coaching\", \"CA\"), if any." },

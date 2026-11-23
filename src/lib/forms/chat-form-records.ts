@@ -596,6 +596,9 @@ export interface FormRecordsActor {
   scope: AccessScope | null;
 }
 
+/** The permission the chat's reads of the forms on file check: Form Monitoring's own (`ai-readable-pages.test.ts`). */
+export const FORM_RECORDS_PERMISSION = "view_form_monitoring" as const;
+
 /**
  * The chat caller as Form Monitoring reads under them, or null when they may
  * not read it at all. Fails closed: no verified identity, no read. Throws only
@@ -603,7 +606,7 @@ export interface FormRecordsActor {
  */
 export async function chatFormsActor(actor: FormRecordsActor): Promise<FormsActor | null> {
   if (!actor.verified || !actor.subject || !actor.role || !actor.scope) return null;
-  if (!hasPermission(DEFAULT_PERMISSION_MATRIX, actor.role, "view_form_monitoring")) return null;
+  if (!hasPermission(DEFAULT_PERMISSION_MATRIX, actor.role, FORM_RECORDS_PERMISSION)) return null;
   const visibility = await resolveFormsVisibility({
     subject: actor.subject,
     role: actor.role,
@@ -650,7 +653,7 @@ export async function loadFormRecords(input: {
   // Fails closed: no verified identity, no read. Chat is live-only, so this is
   // the ordinary state of a signed-in manager.
   if (!actor.verified || !actor.subject || !actor.role || !actor.scope) return null;
-  if (!hasPermission(DEFAULT_PERMISSION_MATRIX, actor.role, "view_form_monitoring")) return null;
+  if (!hasPermission(DEFAULT_PERMISSION_MATRIX, actor.role, FORM_RECORDS_PERMISSION)) return null;
 
   const today = input.today ?? businessToday();
   const viewerId = input.markCreator ? actor.subject : null;
