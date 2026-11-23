@@ -17,7 +17,7 @@ import { CURRENT_MESSAGE_ID, holdsPhrase, identifiedTurns, readEvidence, verifyE
 import { personNamedInRequest, requestStart } from "./person-in-request";
 import { keptFormDate } from "./kept-form-date";
 import { answeredNameQuestions, answerNamesSomeoneElse, everKeptOrUsedTyped, isConfirmedSpelling, latestTurnAnswersFor, latestTurnConfirms, latestTurnKeepsOrUsesTyped, latestTurnKeepsTyped, spellingKeysConfirmedFor, spellingKeysConfirmedForName, type NameQuestionView } from "./confirmed-spelling";
-import { AFFIRMATIVE, displayName, editDistance, matchEmployeeName, nameConfirmationQuestion, readNameConfirmation, rosterSpellingOf, type RosterEmployee } from "@/lib/forms/employee-match";
+import { AFFIRMATIVE, displayName, editDistance, matchEmployeeName, nameConfirmationQuestion, possessiveRead, readNameConfirmation, rosterSpellingOf, type RosterEmployee } from "@/lib/forms/employee-match";
 import { offRosterTyped } from "@/lib/forms/roster-only-names";
 import { detectTemplateIntent } from "@/lib/forms/template-intent";
 import { checkboxGroupsForVariant, parseFormDocument } from "@/lib/forms/document";
@@ -177,15 +177,30 @@ function nameQuestionView(context: ToolContext, roster: readonly RosterEmployee[
  */
 const PRIVACY_WINDOW = 3;
 
-export function formsOnFileAsked(context: Pick<ToolContext, "question" | "history" | "questionMessageId">, evidence: unknown): { ok: true; said: string; before: string[] } | { ok: false; reason: string } {
+export function formsOnFileAsked(context: Pick<ToolContext, "question" | "history" | "questionMessageId">, evidence: unknown): { ok: true; said: string; before: string[]; index: number } | { ok: false; reason: string } {
   const turns = identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId);
-  const check = verifyEvidence(evidence, turns);
+  let check = verifyEvidence(evidence, turns);
+  /*
+   * Port of Ask Bubbles #1059 (its QA's follow-up, 22 Nov 2026, both apps): the evidence for a forms request may be the
+   * app's own question ("… Is that the one you mean?") that the manager's message being answered now replies to. Only
+   * that question, the turn right before this message, and only with its quote really in it; the ask is then the
+   * manager's reply. The app's turns carry no id the model sees, so the model quotes them under the id of the manager's
+   * message that answers them.
+   */
+  if (!check.ok && (check.reason === "evidence_not_manager_turn" || check.reason === "evidence_quote_not_found")) {
+    const claim = readEvidence(evidence);
+    const current = turns.at(-1);
+    const asking = current && current.index > 0 ? turns[current.index - 1] : undefined;
+    const cites = claim !== null && current !== undefined && (claim.message_id === current.id || claim.message_id === asking?.id);
+    if (cites && current && asking?.role === "assistant" && holdsPhrase(asking.content, claim!.quote)) check = { ok: true, turn: current };
+  }
   if (!check.ok) return { ok: false, reason: check.reason };
+  const cited = check.turn;
   const recent = turns.filter((turn) => turn.role === "user").slice(-PRIVACY_WINDOW);
-  if (!recent.some((turn) => turn.id === check.turn.id)) return { ok: false, reason: "evidence_not_this_turn" };
+  if (!recent.some((turn) => turn.id === cited.id)) return { ok: false, reason: "evidence_not_this_turn" };
   // The manager's earlier turns, nearest first: a turn that names nobody ("has she had a ca before?") is about the person last named.
-  const before = turns.filter((turn) => turn.role === "user" && turn.index < check.turn.index).reverse().map((turn) => withoutMessageIdTags(turn.content));
-  return { ok: true, said: withoutMessageIdTags(check.turn.content), before };
+  const before = turns.filter((turn) => turn.role === "user" && turn.index < cited.index).reverse().map((turn) => withoutMessageIdTags(turn.content));
+  return { ok: true, said: withoutMessageIdTags(cited.content), before, index: cited.index };
 }
 
 /**
@@ -224,7 +239,24 @@ async function formsOnFileAskedFor(context: ToolContext, evidence: unknown, pers
       const pair = `${word} ${all[at + 1] ?? ""}`.trim();
       return at + 1 < all.length && !rosterNames.some((name) => samePerson(name, pair) && !names.some((own) => samePerson(own, name))) && closelySpelledEmployee(pair, [person]) === person;
     });
-  if (namedIn(asked.said)) return { ok: true };
+  /*
+   * Ask Bubbles coder 2's finding (via QA, 22 Nov 2026): "show me <last>s forms" was refused as someone else's forms. A
+   * last name alone names the one roster person who has it (roster data, no word list); a last name two people share
+   * names nobody. It only lets THIS person's forms through: a last name is not read as naming someone else, since a
+   * surname can be an everyday word ("open her account").
+   */
+  const soleLastNameHolder = (text: string): (typeof roster)[number] | null => {
+    for (const word of text.split(/[^\p{L}'’-]+/u).map((part) => part.replace(/['’]s$/i, "").toLowerCase()).filter(Boolean)) {
+      const holdersOfWord = roster.filter((row) => (row.lastName ?? "").trim().toLowerCase() === word);
+      if (holdersOfWord.length === 1) return holdersOfWord[0]!;
+    }
+    return null;
+  };
+  const lastNameIsThisPerson = (text: string) => {
+    const holder = soleLastNameHolder(text);
+    return holder !== null && holders.length === 1 && holder.id === holders[0]!.id;
+  };
+  if (namedIn(asked.said) || lastNameIsThisPerson(asked.said)) return { ok: true };
   const namesSomeone = (text: string) => rosterNames.some((name) => mentionsPerson(text, name, rosterNames)) || extractEmployeeNames(text).length > 0;
   /* QA's re-review (fix 1): the quoted message names someone else, so no fallback lets this person's forms through. */
   if (namesSomeone(asked.said)) return { ok: false, reason: "evidence_other_person", reasonCode: "privacy_not_this_person" };
@@ -235,13 +267,24 @@ async function formsOnFileAskedFor(context: ToolContext, evidence: unknown, pers
    */
   {
     const turns = identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId);
-    const check = verifyEvidence(evidence, turns);
-    const asking = check.ok ? turns[check.turn.index - 1] : undefined;
-    const replyText = asking?.role === "assistant" ? withoutMessageIdTags(asking.content).replace(/[*_]/g, "") : "";
-    if (replyText && names.some((name) => holdsPhrase(replyText, name))) return { ok: true };
+    const replyNames = (turn: IdentifiedTurn | undefined) => {
+      const replyText = turn?.role === "assistant" ? withoutMessageIdTags(turn.content).replace(/[*_]/g, "") : "";
+      return replyText !== "" && names.some((name) => holdsPhrase(replyText, name));
+    };
+    if (replyNames(turns[asked.index - 1])) return { ok: true };
+    /*
+     * Port of Ask Bubbles #1059 (its QA's follow-up, 22 Nov 2026; 1 in 6 live runs): the model quoted the manager's
+     * earlier request ("pull up the ca … for the girl who was late …", naming nobody) rather than the "yes please" that
+     * answered the app's "… for <P> … Is that the one you mean?". The same request: the app's own question right before
+     * the message being answered now names this person, and no manager turn from the cited one to now names anyone, so
+     * the ask is about them. The person only ever comes from the app's own question.
+     */
+    const current = turns.at(-1)!;
+    const sinceCited = turns.filter((turn) => turn.role === "user" && turn.index >= asked.index);
+    if (asked.index < current.index && replyNames(turns[current.index - 1]) && !sinceCited.some((turn) => namesSomeone(withoutMessageIdTags(turn.content)))) return { ok: true };
   }
   const antecedent = asked.before.find(namesSomeone);
-  if (antecedent !== undefined && namedIn(antecedent)) return { ok: true };
+  if (antecedent !== undefined && (namedIn(antecedent) || lastNameIsThisPerson(antecedent))) return { ok: true };
   // PR 2: the card on screen, by the server's card record (its person's roster id, or the key of a typed name), never the reply's text.
   const onScreen = context.cardOnScreen;
   if (onScreen && ((onScreen.employeeKey !== null && holders.some((row) => personKey(row.id) === onScreen.employeeKey)) || (onScreen.employeeKey === null && onScreen.nameKey === personKey(person)))) return { ok: true };
@@ -367,7 +410,17 @@ export function levelFormWords(formName: string): string[] {
  */
 export function quoteNamesForm(text: string, template: { readonly name: string; readonly shortName?: string | null }): boolean {
   const spaced = (value: string) => value.replace(/[-‐-―]+/g, " ");
-  const names = [template.name, template.shortName ?? ""].map((name) => spaced(name).replace(/\s+form\s*$/i, "").trim()).filter(Boolean);
+  /*
+   * Port of Ask Bubbles #1082 (309ec42; QA, 23 Nov 2026, the exit-lock gap): a name with alternatives ("Resignation/Exit
+   * Form") answers to each of them with its last word ("Resignation Form", "Exit Form"): the name's own shape, never a list
+   * of words.
+   */
+  const alternatives = (name: string): string[] => {
+    const found = /^(.+?)\s+(\S+)\s*$/.exec(name);
+    if (!found || !found[1]!.includes("/")) return [name];
+    return [name, ...found[1]!.split("/").map((part) => `${part.trim()} ${found[2]}`)];
+  };
+  const names = [template.name, template.shortName ?? ""].flatMap(alternatives).map((name) => spaced(name).replace(/\s+form\s*$/i, "").trim()).filter(Boolean);
   const initials = names.map((name) => name.split(/\s+/)).filter((parts) => parts.length > 1).map((parts) => parts.map((part) => part[0]).join(""));
   /* Whole words, any case and spacing (holdsPhrase needs 3 characters, and "CA" is two). */
   const said = ` ${foldName(withoutMessageIdTags(spaced(text))).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim()} `;
@@ -728,11 +781,33 @@ function statedStepCount(words: string): number | null {
  * Batch G2 (item 4): why the model's prior actions cannot be kept, or null. A date in them must be one the manager typed
  * and never this incident's date; a stated count must be kept ("Written warning (2), dates not given").
  */
+/*
+ * Port of Ask Bubbles #1045 (QA's live round-2 re-run, 22 Nov 2026, U09): "JBA Policy Manual 1-1-2026, Verbal CA 11-1-2026.
+ * On 11-1-26 <P> violated …": the Verbal CA's own date is the incident's date, so the step was left off as "this incident's
+ * date". A date the manager typed in the same clause right after the step's own words ("Verbal CA 11-1-2026") is that
+ * step's date, even when it is also the incident's; the model copying the incident's date onto an older step has no step
+ * word before it ("On 11-1-26 <P> violated"). Read from the clause's words, never a list of step names.
+ */
+function datedByManagerForStep(step: string, date: ReturnType<typeof readDates>[number], requestWords: string): boolean {
+  const stepWords = new Set(withoutDates(step).toLowerCase().match(/[a-z]{3,}/g) ?? []);
+  if (stepWords.size === 0) return false;
+  for (const said of readDates(requestWords)) {
+    if (!sameDate(said, date)) continue;
+    let from = 0;
+    for (let at = requestWords.indexOf(said.text, from); at >= 0; at = requestWords.indexOf(said.text, from)) {
+      const clause = requestWords.slice(0, at).split(/[.;\n,]/).at(-1) ?? "";
+      if ((clause.toLowerCase().match(/[a-z]{3,}/g) ?? []).some((word) => stepWords.has(word))) return true;
+      from = at + said.text.length;
+    }
+  }
+  return false;
+}
+
 export function priorActionsProblem(priorActions: string, requestWords: string, incidentDate: string | null): { reason: string; count_said?: number } | null {
   const typed = readDates(requestWords);
   for (const date of readDates(priorActions)) {
     const iso = date.year !== null ? `${date.year}-${String(date.month).padStart(2, "0")}-${String(date.day).padStart(2, "0")}` : null;
-    if (incidentDate && (iso === incidentDate || (iso === null && Number(incidentDate.slice(5, 7)) === date.month && Number(incidentDate.slice(8, 10)) === date.day))) {
+    if (incidentDate && (iso === incidentDate || (iso === null && Number(incidentDate.slice(5, 7)) === date.month && Number(incidentDate.slice(8, 10)) === date.day)) && !datedByManagerForStep(priorActions, date, requestWords)) {
       return { reason: `${date.text} is this incident's date, not an earlier step's` };
     }
     if (!typed.some((said) => sameDate(said, date))) return { reason: `${date.text} is not a date the manager gave for an earlier step` };
@@ -816,7 +891,7 @@ const staffSystem = (): string => appConfig().staffSystem;
 export const WHICH_FORM_QUESTION = "Which one should I open?";
 
 /** G4 follow-up: the fact beside which_form_question; the rules book's Open lines say the same. */
-export const singleOutNote = (): string => "Compare these forms with the manager's words in this request. If their words fit exactly one (its " + locationWord() + ", \"no " + locationWord() + "\", its status, its date or its form), open_form that one now and say which in one line; ask which_form_question only when several still fit.";
+export const singleOutNote = (): string => "Compare these forms with the manager's words in this request. If their words fit exactly one (its level, its " + locationWord() + ", \"no " + locationWord() + "\", its status, its date or its form), open_form that one now and say which in one line; ask which_form_question only when several still fit.";
 
 
 const NOT_ASKED = "Forms on file are looked at only when the manager asks about them (company privacy rule), shown by forms_on_file_evidence: the id of the manager's message that asks and their exact words from it. If they asked, call again with it; if not, work from what they said and never mention other forms.";
@@ -824,6 +899,8 @@ const NOT_ASKED = "Forms on file are looked at only when the manager asks about 
 /** What the turn's tools produced for the reply: the card and the edit, when there were any. */
 export interface ToolEffects {
   proposal: ChatFormProposal | null;
+  /** U24 (port of Ask Bubbles #1061): the exit type(s) this turn's exit card ticks, by the form's labels, for the reply's "Filed as" line. */
+  exitTicks?: readonly string[];
   /**
    * QA (16 Nov 2026, the live re-run of #1067): a question code decided that the reply must end with (find_past_forms'
    * card_on_screen offer). run.ts adds it when the model's reply left it out.
@@ -1098,10 +1175,12 @@ const ALSO_ASK_ACCOUNT = "If so, tell me what happened.";
 export const FIND_STAFF_LIMIT = 10;
 
 export async function findStaff(context: ToolContext, input: { name?: unknown; person_evidence?: unknown }, effects?: ToolEffects): Promise<ToolResult> {
-  const typed = typeof input.name === "string" ? withoutJobTitle(input.name) : "";
-  if (typed === "") return { reason_code: "missing_input", error: "Give the name to look for." };
+  const asGiven = typeof input.name === "string" ? withoutJobTitle(input.name) : "";
+  if (asGiven === "") return { reason_code: "missing_input", error: "Give the name to look for." };
   if (effects) effects.staffLookedUp = true;
   const read = await rosterFor(context.actor.scope);
+  /* The 266-chat run's possessive names (QA, 22 Nov 2026): "<First> <Last>'s" is looked up as the name the roster matches. */
+  const typed = read.kind === "read" ? possessiveRead(asGiven, read.roster) : asGiven;
   if (read.kind === "failed") return { reason_code: "roster_failed", error: ROSTER_FAILED };
   if (read.kind === "unchecked") return { unchecked: true, note: ROSTER_UNCHECKED };
   /*
@@ -1204,8 +1283,20 @@ export async function findStaff(context: ToolContext, input: { name?: unknown; p
      * asks). The card's person is used only on an exact full name (legal or preferred), which never reaches this branch,
      * or after the manager confirms: a "yes" to the Did-you-mean, after which the model looks up the confirmed name.
      */
+    /*
+     * u35a (port of Ask Bubbles #1055; its coder's live run 2, 22 Nov 2026): the manager confirmed <P> (no card yet: no
+     * account), then new close spellings with <P> the only close candidate ("… <P, two letters swapped>", "<P, first letter
+     * changed>") each asked "Did you mean **<P>**?" again. The manager already confirmed that person in this chat (any
+     * spelling, from the question records): a close spelling with them alone as its candidate is them. A "no" still asks.
+     */
+    const confirmedPerson = close.kind === "confirm" && close.candidates.length === 1 && !saidNo && spellingKeysConfirmedFor(nameQuestionView(context, read.roster), close.candidates[0]!.employee.id).length > 0
+      ? close.candidates[0]!
+      : null;
+    if (confirmedPerson) {
+      return { matches: [staffRow(confirmedPerson.employee)], confirmed_by_manager: { name: confirmedPerson.name, answer: "confirmed" }, note: `The manager already confirmed ${confirmedPerson.name} in this chat; "${typed}" is a close spelling of them. Do not ask again: use ${confirmedPerson.name}.` };
+    }
     const nearMissNever = (await import("@/lib/config/chat-quality-flags")).nearMissNeverSeatedEnabled();
-    const onCard = !nearMissNever && close.kind === "confirm" && close.candidates.length === 1 && !saidNo
+    const onCard =!nearMissNever && close.kind === "confirm" && close.candidates.length === 1 && !saidNo
       ? context.history.some((turn) => turn.role === "assistant" && typeof turn.content === "string" && turn.content.includes(close.candidates[0]!.name))
       : false;
     if (onCard && close.kind === "confirm") {
@@ -1609,8 +1700,92 @@ async function findFormsInPeriod(context: ToolContext, input: { form?: unknown; 
   }
 }
 
+/*
+ * ============================================================================
+ * FORMS ON FILE BY TOPIC (FORM_TOPIC_SEARCH_ENABLED; Pau, 21 Nov 2026)
+ * ============================================================================
+ *
+ * "Any forms about cash handling at my salons this month?", "who's been written up for dress code?". With a topic
+ * (about) and no employee, every form this manager may see in Form Monitoring is read (the same read and visibility
+ * filter as a period list: chatFormsActor, instanceListFilterFor, visibleInstances; an assistant salon director sees
+ * only their own forms, as there), narrowed by the period and kind of form when given, and kept when its SAVED TEXT
+ * holds every word of the topic (`forms/form-topic-search.ts`). Only when the manager asked about forms on file
+ * (forms_on_file_evidence). Counts come from code; the list is capped and says "N of M".
+ */
+const TOPIC_LIST_LIMIT = 25;
+
+async function findFormsByTopic(context: ToolContext, input: { form?: unknown; date_from?: unknown; date_to?: unknown; about?: unknown; forms_on_file_evidence?: unknown; include_archived?: unknown }): Promise<ToolResult> {
+  const asked = formsOnFileAsked(context, input.forms_on_file_evidence);
+  if (!asked.ok) return privacyRefusal(asked.reason, undefined, context);
+  const search = await import("@/lib/forms/form-topic-search");
+  const topic = search.topicWords(String(input.about ?? ""));
+  if (topic.length === 0) return { reason_code: "missing_input", error: "Give the topic in the manager's words (\"cash handling\", \"dress code\"), or the employee's name." };
+  const today = context.today || businessToday();
+  const range = formDateRangeFromInput(input.date_from, input.date_to, today);
+  const kind = typeof input.form === "string" ? formKindFromText(input.form) : null;
+  const actor = await chatFormsActor(context.actor).catch(() => undefined);
+  if (actor === undefined) return { reason_code: "read_failed", error: `${appConfig().formsPageName} could not be read just now. Say so; do not say there are no forms.` };
+  if (actor === null) return { reason_code: "scope", error: `This manager's role cannot view ${appConfig().formsPageName}, so past forms cannot be searched.` };
+  try {
+    const read = await listInstances("all", PERIOD_READ_LIMIT, {
+      ...instanceListFilterFor(actor),
+      ...(range ? { formDateFrom: range.from, formDateTo: range.to } : {}),
+      ...(kind ? { templateNameWords: kind.templateNameWords } : {}),
+    });
+    /* Exactly the forms this manager may see in Form Monitoring: never wider (the saved text is read for these ids only). */
+    const visible = ofKind(visibleInstances(actor, read), kind).filter(onFileKept(input));
+    const saved = await search.readFormTopicText(visible.map((row) => row.id));
+    const matched = visible
+      .filter((row) => search.matchesTopic(saved.get(row.id)?.text ?? "", topic))
+      .sort((a, b) => (b.formDate ?? "").localeCompare(a.formDate ?? "") || a.employeeName.localeCompare(b.employeeName));
+    const listed = matched.slice(0, TOPIC_LIST_LIMIT);
+    const complete = read.length < PERIOD_READ_LIMIT;
+    /* Counts by code, over every matching form (never only the listed ones); a person is their name as filed. */
+    const tally = (keys: string[]) => Object.fromEntries([...keys.reduce((map, key) => map.set(key, (map.get(key) ?? 0) + 1), new Map<string, number>())].sort(([a], [b]) => a.localeCompare(b)));
+    const counts = {
+      total: matched.length,
+      people: new Set(matched.map((row) => words(row.employeeName).join(" "))).size,
+      by_form: tally(matched.map((row) => row.templateName)),
+    };
+    return {
+      topic: topic.join(" "),
+      period: range ? { from: range.from, to: range.to } : null,
+      form_kind: kind?.label ?? null,
+      searched: visible.length,
+      forms: listed.map((row) => {
+        const text = saved.get(row.id);
+        return {
+          instance_id: row.id,
+          form: row.templateName,
+          employee: search.firstNameOf(row.employeeName),
+          form_date: row.formDate,
+          status: row.status,
+          salon: salonLabel(row.locationId, row.locationName) ?? `no ${locationWord()}`,
+          policy: text?.policy ?? (text?.offense.length ? text.offense.join(", ") : null),
+          level: text?.level ?? null,
+          ...(row.archivedAt ? { archived: true } : {}),
+        };
+      }),
+      counts,
+      listed: listed.length,
+      of: matched.length,
+      complete,
+      note: `${matched.length === 0 ? `No form this manager can see mentions ${topic.join(" ")} in what it says${range ? " in that period" : ""}. Say so plainly.` : `Forms whose saved text mentions ${topic.join(" ")}, newest first.`} Numbers come only from counts (total, people, by_form): copy them, never count rows yourself.${matched.length > listed.length ? ` Showing ${listed.length} of ${matched.length}: say so, and that ${appConfig().formsPageName} has the rest.` : ""}${complete ? "" : ` More than ${PERIOD_READ_LIMIT} forms were in range: only the newest ${PERIOD_READ_LIMIT} were searched. Say so.`} Name each person by first name only. A draft is not on file.`,
+    };
+  } catch {
+    return { reason_code: "read_failed", error: `${appConfig().formsPageName} could not be read just now. Say so; do not say there are no forms.` };
+  }
+}
+
 export async function findPastForms(context: ToolContext, input: { employee_name?: unknown; form?: unknown; date?: unknown; date_from?: unknown; date_to?: unknown; about?: unknown; forms_on_file_evidence?: unknown; open?: unknown; include_archived?: unknown }, effects?: ToolEffects): Promise<ToolResult> {
   const typed = typeof input.employee_name === "string" ? input.employee_name.trim() : "";
+  /* FORM_TOPIC_SEARCH_ENABLED (Pau, 21 Nov 2026): a topic with no employee searches every visible form's saved text. */
+  const topicAsked = typed === "" && input.open !== true && typeof input.about === "string" && input.about.trim() !== "";
+  if (topicAsked) {
+    const { formTopicSearchEnabled } = await import("@/lib/config/chat-quality-flags");
+    if (formTopicSearchEnabled()) return findFormsByTopic(context, input);
+    if (!(input.date_from || input.date_to || input.form)) return { reason_code: "topic_search_off", error: `Searching forms on file by topic is not available yet. Say so in one line, and that ${appConfig().formsPageName} lists forms by person, kind and date.` };
+  }
   if (typed === "" && input.open !== true && (input.date_from || input.date_to || input.form)) return findFormsInPeriod(context, input);
   if (typed === "") return { reason_code: "missing_input", error: "Give the employee's name." };
   const asked = await formsOnFileAskedFor(context, input.forms_on_file_evidence, typed);
@@ -1736,21 +1911,33 @@ export async function findPastForms(context: ToolContext, input: { employee_name
     rows = rows.filter((row) => !(row.status === "revised" && rows.some((other) => other.revisesInstanceId === row.id)));
     /* The manager's own words for it: the model's form and about, and the quote of the message that asked (forms_on_file_evidence). */
     const askedQuote = typeof (input.forms_on_file_evidence as { quote?: unknown } | null | undefined)?.quote === "string" ? String((input.forms_on_file_evidence as { quote: string }).quote) : "";
-    const askedWords = new Set([...words(wantForm), ...words(typeof input.about === "string" ? input.about : ""), ...words(askedQuote)]);
-    if (askedWords.size > 0 && rows.length > 1 && rows.length <= 20) {
-      const levels = await Promise.all(rows.map(async (row) => ({
-        row,
-        ticked: await authorizeInstance(context.request, row.id, "view")
+    /*
+     * U16 again (QA, 23 Nov 2026; Sunny's live set and Bubbles' live re-run): "put up the verbal CA for <P>" answered "none
+     * specify 'verbal' so I can't single one out" over 7 forms, while the same forms read as "Corrective Action Form,
+     * Verbal Warning" elsewhere. The words read are also the manager's own message (not only what the model quoted), and
+     * each Corrective Action's level, from its own Type of Warning on the form, is on its row and in its choice line, so
+     * the level the manager named singles it out. Form data; no word list.
+     */
+    const askedWords = new Set([...words(wantForm), ...words(typeof input.about === "string" ? input.about : ""), ...words(askedQuote), ...words(withoutMessageIdTags(context.question))]);
+    const levelLabel: Record<string, string> = { verbal: "Verbal Warning", written: "Written Warning", termination: "Termination", demotion: "Demotion" };
+    const levelOf = new Map<string, string[]>();
+    if (rows.length <= 20) {
+      await Promise.all(rows.filter((row) => row.templateKey === appConfig().formKeys.corrective).map(async (row) => {
+        const ticked = await authorizeInstance(context.request, row.id, "view")
           .then(({ loaded }) => loaded.values.filter((value) => value.fieldKey === "warning_type").flatMap((value) => value.checked ?? []))
-          .catch(() => [] as string[]),
-      })));
-      const named = levels.filter((entry) => entry.ticked.some((key) => askedWords.has(key.toLowerCase())));
-      if (named.length > 0 && named.length < levels.length) rows = named.map((entry) => entry.row);
+          .catch(() => [] as string[]);
+        levelOf.set(row.id, ticked);
+      }));
     }
+    if (askedWords.size > 0 && rows.length > 1 && levelOf.size > 0) {
+      const named = rows.filter((row) => (levelOf.get(row.id) ?? []).some((key) => askedWords.has(key.toLowerCase())));
+      if (named.length > 0 && named.length < rows.length) rows = named;
+    }
+    const levelText = (id: string) => (levelOf.get(id) ?? []).map((key) => levelLabel[key] ?? key).join(", ") || null;
     const described = Boolean(wantForm || wantDate || about.length > 0);
     /* Item 18 (Pau via QA): each form's `choice` line says what tells it apart (`formChoices`); the reply lists them as given. */
     const listed = rows.slice(0, 20);
-    const choices = formChoices(listed);
+    const choices = formChoices(listed, (row) => levelText(row.id));
     const forms = listed
       .map((row) => ({
         instance_id: row.id,
@@ -1761,6 +1948,7 @@ export async function findPastForms(context: ToolContext, input: { employee_name
         form_date: row.formDate,
         /* G4 follow-up (QA, 15 Nov 2026): "no salon" in words, so the manager's "the one with no salon" can single it out. */
         salon: salonLabel(row.locationId, row.locationName) ?? `no ${locationWord()}`,
+        ...(levelText(row.id) ? { level: levelText(row.id) } : {}),
         choice: choices.get(row)!,
         ...(row.archivedAt ? { archived: true } : {}),
       }));
@@ -2537,7 +2725,14 @@ export interface PriorOnFile {
  * (`visibleInstances`), none dated after today, at most 10 (the newest). The level of each CA is read from its saved
  * form. The card's own level is never set from them: it stays the manager's.
  */
-async function finalizedPriorsOnFile(context: ToolContext, person: RosterEmployee, roster: readonly RosterEmployee[], today: string): Promise<PriorOnFile[]> {
+/*
+ * Port of Ask Bubbles #1083 (0fbdd8b; its QA's live re-run, 23 Nov 2026, U09): for an incident on 11/1 the card's Prior
+ * actions listed ten forms on file dated 11/10–11/17, all AFTER the incident. A form on file is a prior action only when
+ * it is dated before this card's incident date (`before`: the date this proposal gives, else that of this person's card
+ * proposed earlier this turn or on screen, as a re-proposal often gives none); with no incident date at all, on or before
+ * today, as before. Only finalized forms count.
+ */
+async function finalizedPriorsOnFile(context: ToolContext, person: RosterEmployee, roster: readonly RosterEmployee[], today: string, before: string | null = null): Promise<PriorOnFile[]> {
   const actor = await chatFormsActor(context.actor).catch(() => undefined);
   if (!actor) return [];
   const keys = appConfig().formKeys;
@@ -2545,7 +2740,7 @@ async function finalizedPriorsOnFile(context: ToolContext, person: RosterEmploye
   const names = fullNamesOf(person);
   const nameWords = [...new Set(names.flatMap(candidateNameWords))];
   const rows = visibleInstances(actor, await listInstances("all", 200, { ...instanceListFilterFor(actor), employeeNameWords: nameWords }).catch(() => []))
-    .filter((row) => row.status === "finalized" && kinds.has(row.templateKey) && (row.formDate ?? "") <= today)
+    .filter((row) => row.status === "finalized" && kinds.has(row.templateKey) && (row.formDate ?? "") <= today && (!before || (row.formDate ?? "") < before))
     .filter((row) => names.some((full) => samePerson(full, row.employeeName)) || sameRosterPerson(row.employeeName, displayName(person), roster))
     .sort((a, b) => (a.formDate ?? "").localeCompare(b.formDate ?? "") || a.createdAt.localeCompare(b.createdAt))
     .slice(-10);
@@ -2576,7 +2771,7 @@ export function priorsOnFileLine(priors: readonly PriorOnFile[]): string {
  * date, the moment it was created (business time). Every which-one list (find_past_forms, the card-on-screen question)
  * uses these lines.
  */
-function formChoices<Row extends { templateName: string; status: string; formDate?: string | null; locationId?: string | null; locationName?: string | null; createdAt: string }>(listed: readonly Row[]): Map<Row, string> {
+function formChoices<Row extends { templateName: string; status: string; formDate?: string | null; locationId?: string | null; locationName?: string | null; createdAt: string }>(listed: readonly Row[], levelOf: (row: Row) => string | null = () => null): Map<Row, string> {
   const usDay = (iso: string | null | undefined) => {
     const found = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso ?? "");
     return found ? `${found[2]}/${found[3]}/${found[1]}` : null;
@@ -2586,6 +2781,8 @@ function formChoices<Row extends { templateName: string; status: string; formDat
     const created = twin ? formatBusinessTime(row.createdAt, { year: true }) : null;
     const line = [
       row.templateName,
+      /* U16 (QA, 23 Nov 2026): a Corrective Action's level, from its own Type of Warning, tells it apart. */
+      ...(levelOf(row) ? [levelOf(row)!] : []),
       row.status,
       usDay(row.formDate) ? `dated ${usDay(row.formDate)}` : "no date",
       salonLabel(row.locationId ?? null, row.locationName ?? null) ?? `no ${locationWord()}`,
@@ -3023,12 +3220,26 @@ export function withoutNamedSalon(account: string, salonId: string): string {
    * R13 (QA's Bubbles round 2, 22 Nov 2026): "At Dodge, NE on 10/16/26 Testy …" lost "At Dodge" and kept "NE on …". A
    * ", <word>" right after the phrase that is a word of that store's own name (its state) is the phrase's too.
    */
-  const withState = account.replace(/(^|[\s,;])(?:at|in)\s+((?:[A-Za-z0-9'’-]+\s+){0,4}[A-Za-z0-9'’-]+)\s*,\s*([A-Za-z]{2,})(?![A-Za-z0-9'’-])(\.?)/gi, (whole, before: string, phrase: string, tail: string, dot: string, offset: number) =>
-    nameWords.has(tail.toLowerCase()) && isThatSalon(phrase) ? (offset === 0 ? "" : `${before.replace(/\s+$/, "")}${dot}`) : whole);
+  /*
+   * QA's live run on Sunny main (22 Nov 2026): "at Kearney, NE. location." came back as "At Kearney, NE location, on …"
+   * and left "Location, on …". Words after the state up to the phrase's own comma or full stop that are all words of the
+   * phrase (the salon's name, or the place words `isThatSalon` already reads the phrase with) are the phrase's too.
+   */
+  const ofThePhrase = (words: string) => words.trim() !== "" && words.trim().toLowerCase().split(/\s+/).every((word) => nameWords.has(word) || filler.has(word));
+  const withState = account.replace(/(^|[\s,;])(?:at|in)\s+((?:[A-Za-z0-9'’-]+\s+){0,4}[A-Za-z0-9'’-]+)\s*,\s*([A-Za-z]{2,})(?![A-Za-z0-9'’-])(\.?)(?:((?:\s+[A-Za-z'’]+){1,3})(\s*[,.;!?]|(?=\s*$)))?/gi, (whole, before: string, phrase: string, tail: string, dot: string, after: string | undefined, closer: string | undefined, offset: number) => {
+    if (!nameWords.has(tail.toLowerCase()) || !isThatSalon(phrase)) return whole;
+    const lead = offset === 0 ? "" : before.replace(/\s+$/, "");
+    if (after !== undefined && ofThePhrase(after)) {
+      // The phrase's own closing comma goes with it (the sentence reads on); a sentence's end stays, once.
+      const end = (closer ?? "").trim();
+      return offset === 0 ? "" : `${lead}${/[.!?;]/.test(end) ? end : ""}`;
+    }
+    return offset === 0 ? `${after ?? ""}${closer ?? ""}`.trimStart() : `${lead}${dot}${after ?? ""}${closer ?? ""}`;
+  });
   const out = withState.replace(/(^|[\s,;])(?:at|in)\s+((?:[A-Za-z0-9'’-]+\s+){0,4}[A-Za-z0-9'’-]+)(?=\s*(?:[,.;!?]|$))(,?)/gi, (whole, before: string, phrase: string, comma: string) =>
     isThatSalon(phrase) ? (before.trim() === "" ? "" : before.replace(/\s+$/, "")) + (comma && before.trim() !== "" ? comma : "") : whole);
   if (out === account) return account;
-  const tidy = out.replace(/\s+([,.;!?])/g, "$1").replace(/[ \t]{2,}/g, " ").replace(/^[\s,;]+/, "").trim();
+  const tidy = out.replace(/\s+([,.;!?])/g, "$1").replace(/[ \t]{2,}/g, " ").replace(/^[\s,.;]+/, "").trim();
   return tidy.charAt(0).toUpperCase() + tidy.slice(1);
 }
 
@@ -3254,7 +3465,8 @@ export async function proposeForm(
   if (read.kind === "read") {
     const id = typeof input.employee_id === "string" ? input.employee_id.trim() : "";
     const person = id ? read.roster.find((row) => row.id === id) : undefined;
-    const rawTyped = typeof input.employee_name === "string" ? tidyTypedName(input.employee_name) : "";
+    /* The 266-chat run's possessive names (QA, 22 Nov 2026): a trailing 's leaves only when the name without it is the one the roster matches. */
+    const rawTyped = typeof input.employee_name === "string" ? possessiveRead(tidyTypedName(input.employee_name), read.roster) : "";
     const titleless = withoutJobTitle(rawTyped);
     /* R14: "Test Employee", the exact full name the manager typed, is a name; its last word is not a title to strip. */
     const typed = titleless !== rawTyped && words(titleless).length === 1 && typedFullNameOf(titleless, requestTurnsText(context, read.roster))?.toLowerCase() === rawTyped.toLowerCase() ? rawTyped : titleless;
@@ -3499,7 +3711,6 @@ export async function proposeForm(
       const before = await lockedForm(context, employee);
       if (before && before.templateKey !== template.key) switchedFrom = { templateName: before.templateName, created: before.created };
     }
-    const exitAsked = template.key === appConfig().formKeys.exit && verifyEvidence(input.exit_evidence, thisTurn, { thisTurnOnly: true }).ok;
     /*
      * BOARD f108 (QA handoff, 22 Nov 2026: the form lock trusts the AI's quote). A real quote of this turn was enough to
      * switch the open card's form, whatever it said: "she said she'd be late again" made the CA a Coaching card. To leave
@@ -3512,6 +3723,13 @@ export async function proposeForm(
       const reply = thisTurn.length >= 2 ? thisTurn[thisTurn.length - 2]! : null;
       return reply?.role === "assistant" && quoteNamesForm(reply.content, template);
     };
+    /*
+     * Port of Ask Bubbles #1082 (QA, 23 Nov 2026, the exit-lock gap): a switch to the exit form passed on any real quote of
+     * this turn as exit_evidence, so "she told me she is thinking about quitting" made the CA on screen an exit card. It
+     * needs what every other form change needs: the quote names the exit form, or this turn answers the app's own offer of
+     * it (`lockLeft`).
+     */
+    const exitAsked = template.key === appConfig().formKeys.exit && verifyEvidence(input.exit_evidence, thisTurn, { thisTurnOnly: true }).ok && lockLeft(input.exit_evidence);
     if (!(asksNewForm && lockLeft(input.new_form_evidence)) && !(changeAsked && lockLeft(input.form_change_evidence)) && !exitAsked) {
       const locked = await lockedForm(context, employee);
       if (locked && locked.templateKey !== template.key) {
@@ -3584,6 +3802,19 @@ export async function proposeForm(
     whatHappened = (await import("@/lib/forms/short-name")).withCorrectedSpelling(whatHappened, employee.name, nameCorrectedFrom !== null ? [nameCorrectedFrom] : [], rosterSpellingOf(employee.id ?? null, read.kind === "read" ? read.roster : [])).text;
     const short = replyNameFor(employee.name, read.kind === "read" ? read.roster : [], extractEmployeeNames(managerTurns(context)), employee.id ?? null);
     whatHappened = (await import("@/lib/forms/short-name")).withShortName(whatHappened, employee.name, short).text;
+    /*
+     * Port from the sibling app (its QA's live re-run, 23 Nov 2026): the account names the card's person by their OTHER own
+     * first name (the roster's legal one while the card shows the preferred, or the reverse). It is this person, held by
+     * nobody else on the staff list: it becomes the card's short name, so the pronoun pass and Create's drafter read one person.
+     */
+    const ownRow = employee.id && read.kind === "read" ? read.roster.find((row) => row.id === employee.id) : undefined;
+    if (ownRow && read.kind === "read") {
+      const shortFirst = (short.trim().split(/\s+/)[0] ?? "").toLowerCase();
+      const firstsOf = (row: { firstName?: string | null; preferredFirstName?: string | null }) => [row.firstName, row.preferredFirstName].map((first) => (first ?? "").trim()).filter(Boolean);
+      const others = [...new Set(firstsOf(ownRow).filter((first) => first.toLowerCase() !== shortFirst))].filter((first) =>
+        !read.roster.some((row) => row.id !== ownRow.id && firstsOf(row).some((name) => name.toLowerCase() === first.toLowerCase())));
+      if (others.length > 0) whatHappened = (await import("@/lib/forms/short-name")).withOwnOtherFirstNames(whatHappened, others, ownRow.lastName ?? "", short).text;
+    }
   }
   /* The incident's own words (this person's turns, read below) are checked against the account once they are known. */
   const asked = managerContext(context.history as ChatMessage[], { id: context.questionMessageId, content: context.question });
@@ -4005,7 +4236,18 @@ export async function proposeForm(
   const copiedFromAnotherForm = policyHeading !== null && (context.cardRecords ?? []).some((record) => record.templateKey !== template.key && typeof record.policyLine === "string" && record.policyLine.toLowerCase().includes(policyHeading!.toLowerCase()));
   /* Pau, 17 Nov: coaching always has policy and page: the forms whose cards always cite a manual heading (or Other). */
   const policyForms = new Set([appConfig().formKeys.corrective, appConfig().formKeys.coaching, appConfig().formKeys.followUpCoaching]);
-  const policyNotForThisCard = template.key !== appConfig().formKeys.corrective && policyHeading !== null && copiedFromAnotherForm && !managerNamed && !(topicFits ?? []).some((heading) => headingKey(heading) === headingKey(policyHeading!));
+  /*
+   * QA's ruling on item 9 (22 Nov 2026; the 266-chat run's 203, Ask Bubbles' R21): the 16 Nov ruling stands, and the
+   * heading THIS card's own account fits stays: the topic reader on the account, the manual's dress-code headings for a
+   * dress-code account, or the heading the account itself names ("Late Opening."). Read from the manual's headings, never
+   * from a word list.
+   */
+  const ownAccountFits = (heading: string) =>
+    Boolean(whatHappened) &&
+    ((topicHeadings(whatHappened) ?? []).some((fit) => headingKey(fit) === headingKey(heading)) ||
+      (manual ? (dressCodeFit(whatHappened, manual.headings) ?? []).some((fit) => headingKey(fit) === headingKey(heading)) : false) ||
+      headingTypedIn(whatHappened, heading) !== null);
+  const policyNotForThisCard = template.key !== appConfig().formKeys.corrective && policyHeading !== null && copiedFromAnotherForm && !managerNamed && !(topicFits ?? []).some((heading) => headingKey(heading) === headingKey(policyHeading!)) && !ownAccountFits(policyHeading);
   /* The heading is left off; an "Other — <topic>" beside it (after "; ") stays, as #1068's rules decide it. */
   if (policyNotForThisCard) policyLine = policyLine && policyLine.includes("; ") ? policyLine.split("; ").slice(1).join("; ") : null;
   const otherPart = askedOther || (/^other\b/i.test(askedPolicy) ? askedPolicy : "");
@@ -4013,6 +4255,29 @@ export async function proposeForm(
     const topic = otherPart.replace(/^other\s*[—:-]?\s*/i, "").trim() || cleaning || whatHappened.slice(0, 120);
     const other = topic ? `Other — ${topic}` : "Other";
     policyLine = policyLine ? `${policyLine}; ${other}` : other;
+  }
+  /*
+   * QA's item 9 (1) (22 Nov 2026; Ask Bubbles' R21 T3): a bare "Yes" answered "tell me if you'd like a different policy
+   * cited, or none" (a question that offers no yes / no), and the card then cited "Other — Dress Code". A bare yes changes
+   * the card on screen's policy only to one the chat's own data gives: the manager named it (or a close spelling of it,
+   * the app's own "Did you mean"), the topic reader or the card's own account fits it, or it is the Other the rules keep
+   * (Must See Behaviors, a cleaning duty left undone). Read with the existing readers; no word list.
+   */
+  const bareYes = AFFIRMATIVE.test(withoutMessageIdTags(context.question));
+  const shownCard = context.cardOnScreen?.templateKey === template.key ? context.cardOnScreen : null;
+  if (bareYes && shownCard && (policyLine ?? null) !== (shownCard.policyLine ?? null) && policyLine !== null) {
+    const fitsHeading = (heading: string) =>
+      managerNamed ||
+      (topicFits ?? []).some((fit) => headingKey(fit) === headingKey(heading)) ||
+      ownAccountFits(heading) ||
+      (manual ? namedPolicies(requestWords).some((named) => closeHeadingReading(named.phrase, manual.headings).candidates.some((candidate) => headingKey(candidate) === headingKey(heading))) : false);
+    const headingSupported = cardHeadings.every(fitsHeading);
+    const otherSupported = !otherPart || otherIsTheRule;
+    if (!headingSupported || !otherSupported) {
+      return {
+        reason_code: "yes_sets_no_policy", error: `The manager's "${withoutMessageIdTags(context.question).trim()}" answers no question about which policy: nothing in this chat gives "${policyLine}". Keep the card's policy as it was (propose nothing new) and ask which policy they want cited, by name.`,
+      };
+    }
   }
 
   /* Payroll deduct, only as the manager stated it. */
@@ -4317,7 +4582,7 @@ export async function proposeForm(
    * own steps win. A date from a form on file counts as stated (the model may copy the line), never this incident's date.
    */
   const rosterPerson = caOnlyFields && employee.id && read.kind === "read" ? read.roster.find((row) => row.id === employee.id) ?? null : null;
-  const priorsOnFile = rosterPerson ? await finalizedPriorsOnFile(context, rosterPerson, read.kind === "read" ? read.roster : [], today) : [];
+  const priorsOnFile = rosterPerson ? await finalizedPriorsOnFile(context, rosterPerson, read.kind === "read" ? read.roster : [], today, date ?? (effects.proposal && effects.proposal.employeeName === employee.name ? effects.proposal.formDate ?? null : null) ?? ownCard?.incidentDate ?? null) : [];
   const onFileLine = priorsOnFile.length > 0 ? priorsOnFileLine(priorsOnFile) : null;
   /*
    * QA's round 2 (22 Nov 2026, U09; port of Ask Bubbles #1015): "JBA Policy Manual 1-1-2026, Verbal CA 11-1-2026. On
@@ -4328,6 +4593,30 @@ export async function proposeForm(
   const priorActionsRefused = priorSplit ? (priorSplit.kept === null ? priorSplit.problem : null) : null;
   const priorStepsLeftOff = priorSplit && priorSplit.kept !== null && priorSplit.dropped.length > 0 ? priorSplit.dropped : [];
   const keptPriorActions = priorSplit?.kept ?? null;
+  /*
+   * Port of Ask Bubbles #1045 (QA's live round-2 re-run, 22 Nov 2026, U09; the tester's card): the account read "On 11/1/26
+   * <P> violated care and cleaning of facilities policy (JBA Policy Manual 1/1/2026)." That parenthesis is a prior step the
+   * card keeps (its date and a word of it), not this incident: it leaves the account. Read from the kept steps' own text,
+   * never a word list.
+   */
+  if (keptPriorActions && whatHappened) {
+    const steps = keptPriorActions.split(/\s*(?:;|\n)\s*/).filter((step) => step.trim() !== "");
+    const lettersOf = (text: string) => withoutDates(text).toLowerCase().match(/[a-z]{3,}/g) ?? [];
+    const unstepped = whatHappened
+      .replace(/\s*\(([^()]*)\)/g, (whole, inner: string) => {
+        const dates = readDates(inner);
+        if (dates.length === 0) return whole;
+        const said = lettersOf(inner);
+        const isStep = steps.some((step) => {
+          const own = new Set(lettersOf(step));
+          return dates.every((date) => readDates(step).some((stepDate) => sameDate(stepDate, date))) && said.some((word) => own.has(word));
+        });
+        return isStep ? "" : whole;
+      })
+      .replace(/\s+([.,;])/g, "$1")
+      .trim();
+    if (unstepped !== "") whatHappened = unstepped;
+  }
   const priorActions = priorActionsRefused ? null : (keptPriorActions ?? (statedSteps.length === 0 ? onFileLine : null));
   /*
    * QA's production audit (20 Nov 2026): "I need a verbal CA wrote up for <A>. I need the JBA policy for dress code
@@ -4724,6 +5013,16 @@ export async function proposeForm(
   if (card.exitReadBack) card.exitReadBack = (await import("./exit-read-back")).exitReadBack({ dateLines: await exitDateLines(requestWords, today, Boolean(exitTermination)), account: card.issue ?? null, termination: Boolean(exitTermination), detailLines: await exitDetailReadLines(requestWords, today, Boolean(exitTermination)) });
   effects.proposal = card;
   effects.proposalEmployeeId = employee.id ?? null;
+  /*
+   * U24 (port of Ask Bubbles #1061, its QA's flaky check): with the type stated the card ticked it, but one live reply of
+   * five read back every reads_back line and never the type (exit_ticks is a separate rules-book line the model can
+   * skip). The ticks are the card's own facts: run.ts adds their "Filed as" line when the reply names none of them. They
+   * are NOT put in reads_back: Bubbles' live check saw its rehire case lose its reads_back with that, so the model's
+   * input is unchanged. A termination's tick stays with exit_termination's own line. Only after effects.proposal is set:
+   * an await before it lets a parallel propose_form pass the one-card check too.
+   */
+  const cardTicks = await exitCardTicks(template.key === appConfig().formKeys.exit, Boolean(exitTermination), requestWords, today, exitHow?.option ?? null);
+  effects.exitTicks = cardTicks.exit_ticks ?? [];
   const personId = typeof input.employee_id === "string" ? input.employee_id.trim() : "";
   /*
    * THE CARD'S FACTS (Pau, 14 Nov 2026: "code may refuse or inform, never rewrite"; the code-check audit's batch A).
@@ -4904,7 +5203,7 @@ export async function proposeForm(
      * QA item 17 (20 Nov 2026): the exit form's required last day worked, asked on the card when the manager has not said
      * it, as the Corrective Action asks its level (the rules book's exit_unset line). A termination's effective date is it.
      */
-    ...(await exitCardTicks(template.key === appConfig().formKeys.exit, Boolean(exitTermination), requestWords, today, exitHow?.option ?? null)),
+    ...cardTicks,
     ...(exitTermination ? { exit_termination: { form_label: "Immediate involuntary separation", effective: exitTermination.date, ...(exitTermination.dated_today ? { dated_today: true } : {}) } } : {}),
     ...(jobTitleTyped ? { job_title_from_your_words: card.employeeRole } : {}),
     ...(whichSalon ? { which_salon: true } : {}),
@@ -4962,6 +5261,8 @@ export async function proposeForm(
       job_title: card.employeeRole ?? null,
       form_date: card.formDate ?? null,
       observation: card.issue ?? null,
+      /* The 266-chat run's 039/241 (QA, 22 Nov 2026): the account's label is the form's own (Details of Coaching on a coaching form). */
+      account_label: await accountLabelOf(template.currentVersion?.document),
       /*
        * QA (20 Nov 2026, board row f060): the Corrective-Action-only fields are on a Corrective Action card's result only.
        * On a Coaching card they came back null, and the model read the nulls as "Payroll deduct and warning level aren't
@@ -5134,6 +5435,8 @@ export async function coachTeam(context: ToolContext, effects: ToolEffects, inpu
       ...(teamSalonAsked(card) ? { choose_salon_from: teamSalonChoices(card), salon_question: teamSalonQuestion(), salon_note: teamSalonNote() } : {}),
       form_date: card.formDate ?? null,
       observation: card.issue ?? null,
+      /* The 266-chat run's 039/241 (QA, 22 Nov 2026): the account's label is the form's own (Details of Coaching on a coaching form). */
+      account_label: await accountLabelOf(template.currentVersion?.document),
       create_offered: card.supportsInlineDraft,
     },
     facts: { team_card: true },
@@ -5991,6 +6294,16 @@ function directEditFix(loaded: { readonly version: { readonly document: unknown 
 }
 
 /** The form's own field keys, from its template document. */
+/** The label of the form's own account field (Observation of Offense, Details of Coaching, …), read from its template. */
+async function accountLabelOf(document: unknown): Promise<string | null> {
+  try {
+    const { fieldsForVariant, interpolate, parseFormDocument } = await import("@/lib/forms/document");
+    const field = fieldsForVariant(parseFormDocument(document), null).find((entry) => entry.key === "observation" || entry.key === "coaching_details");
+    return field ? interpolate(field.label, null) : null;
+  } catch {
+    return null;
+  }
+}
 function documentFieldKeys(document: unknown): Set<string> {
   return new Set([...JSON.stringify(document ?? {}).matchAll(/"key":"([a-z0-9_]+)"/g)].map((match) => match[1]!));
 }

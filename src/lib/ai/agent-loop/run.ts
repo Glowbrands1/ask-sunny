@@ -474,14 +474,14 @@ function buildAgentLoopTools(config: AppConfig, planSteps = false) {
   },
   {
     name: "find_past_forms",
-    description: "List the forms on file (" + config.formsPageName + ") for one employee, or, with no employee_name, every form of a kind or period (\"who got a CA this month?\": form and date_from/date_to). Only when the manager asks about forms on file or history; never otherwise.",
+    description: "List the forms on file (" + config.formsPageName + ") for one employee, or, with no employee_name, every form of a kind or period (\"who got a CA this month?\": form and date_from/date_to), or every form about a topic (\"any forms about cash handling this month?\", \"who's been written up for dress code?\": about, with form and dates if given). Only when the manager asks about forms on file or history; never otherwise.",
     input_schema: object({
       employee_name: { type: "string", description: "The employee the manager named. Leave it out for a list of every form of a kind or period." },
       form: { type: "string", description: "The form the manager named (\"coaching\", \"CA\"), if any." },
       date: { type: "string", description: "The form's date as the manager gave it (\"10/31\"), if any." },
       date_from: { type: "string", description: "First form date of a period the manager asked about (\"this month\": the 1st), YYYY-MM-DD, if any." },
       date_to: { type: "string", description: "Last form date of that period (\"this month\": today), YYYY-MM-DD, if any." },
-      about: { type: "string", description: "Words the manager used about the form (\"" + examples.formAbout + "\"), if any." },
+      about: { type: "string", description: "Words the manager used about the form (\"" + examples.formAbout + "\"), if any. With no employee_name, the topic to search every form's saved text for (\"cash handling\", \"dress code\")." },
       forms_on_file_evidence: FORMS_ON_FILE_EVIDENCE,
       open: { type: "boolean", description: "true when the manager asks to open, edit or see one form on file (not a list of what is on file)." },
       include_archived: { type: "boolean", description: "true only when the manager asks for archived forms. Finalized forms are listed archived or not; this adds archived drafts." },
@@ -732,7 +732,11 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   /* PR 6: the turn's one read of the policy manual starts first, beside the chat's record read (`turnManual`). */
   const turn: TurnReads = {};
   turn.manual = manualFor(input.scopeId, turn);
-  const { cards: records, nameQuestions, personAsked, exitOffers, teamConfirms, whichForms, turns: turnRecords } = await readLoopRecords(input.conversationId, input.actor.subject, input.history.filter((turn) => turn.role === "user" && typeof turn.id === "string").map((turn) => turn.id));
+  const { cards: records, nameQuestions, personAsked, exitOffers, teamConfirms, whichForms, turns: turnRecords } = await readLoopRecords(input.conversationId, input.actor.subject, input.history.filter((turn) => turn.role === "user" && typeof turn.id === "string").map((turn) => turn.id), {
+    /* Port of Ask Bubbles #1079 (duplicate tab): only this tab's own records (`card-record.ts`, `ThisTab`). */
+    messageIds: input.history.filter((turn) => turn.role === "user" && typeof turn.id === "string").map((turn) => turn.id!),
+    questionKeys: input.history.filter((turn) => turn.role === "user").map((turn) => personKey(String(turn.content ?? ""))),
+  });
   const cards = cardTurns(input.history, records);
   const lastReplyIndex = input.history.findLastIndex((turn) => turn.role === "assistant" && !turn.error);
   const cardOnScreen = !input.openFormId && lastReplyIndex >= 0 ? (cards.get(lastReplyIndex) ?? null) : null;
@@ -974,6 +978,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   const [templates, manual] = await Promise.all([templateChoices(input.actor.role), turnManual(context)]);
   const dynamic = agentLoopSystem({
     cardOpen: cardOpenAtStart,
+    cardOpenForm: cardOnScreen?.templateName ?? null,
     managerName: input.actor.displayName,
     role: input.actor.role,
     salons: authorizedSalonIds(input.actor.scope).map((id) => salonLabel(id)!),
@@ -1121,9 +1126,21 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
        * TRUNCATION_RETRY (parity gap #36): a reply cut at the token limit is never shown cut. It is written again once,
        * from the same conversation and this turn's tool results (the cut text left out), with twice the budget and no
        * tools, so nothing is called twice.
+       *
+       * A STEP CUT WHILE THINKING (port of Ask Bubbles #1060, 190a33d; its QA's live regression set, 22 Nov 2026: a
+       * message with many facts answered "I couldn't finish that in the steps I have for one message"). The loop thinks
+       * (adaptive) inside the step's output budget, and a message with many facts, or the reply after a long card result,
+       * can spend the whole budget thinking: the step ends "length" with no text and no tool call. That is no cut reply.
+       * Without its tools the retry could not make the call the step was thinking towards, so it ended with no text and
+       * the turn read as the step limit. That step is asked again as the loop step it was, with the tools and twice the
+       * budget, inside the turn's step budget; nothing was called in it, so nothing is called twice. Its calls and
+       * messages join the turn's (the hand-backs').
        */
       /* F4 (QA, batch F): ONE STEP BUDGET FOR THE TURN. A retry or hand-back gets only the steps left under the cap. */
       const stepsLeft = () => Math.max(0, limit - (stepNumber - 1) - hiddenCalls);
+      /* The turn's messages so far (its tool calls and results): the loop's, or the loop's and a step asked again (below). */
+      let turnMessagesAfterRetry: unknown[] | null = null;
+      const turnMessages = async (): Promise<unknown[]> => turnMessagesAfterRetry ?? (await result.response).messages;
       if (last?.finishReason === "length" && stepsLeft() === 0) {
         text = "";
         stoppedAt = "step_limit";
@@ -1131,6 +1148,8 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
         const response = await result.response;
         const turn = [...response.messages];
         if (turn.at(-1)?.role === "assistant") turn.pop();
+        /* Cut while thinking: no text and no tool call (above). */
+        const cutWhileThinking = (last.text ?? "").trim() === "" && last.toolCalls.length === 0;
         /* QA's audit (item 14a): the retry is its own model call, with its own first-token wait. */
         watch.attempt();
         const again = streamText({
@@ -1140,6 +1159,15 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
             { role: "system", content: dynamic },
           ],
           messages: [...(conversationOf(input.history, input.question, input.questionMessageId, cards) as never[]), ...(turn as never[])],
+          ...(cutWhileThinking
+            ? {
+                tools,
+                /* The turn's one step budget (F4): this step and any after it, with the tools' own model calls. */
+                stopWhen: () => stepNumber - 1 + hiddenCalls >= limit,
+                prepareStep: ({ messages }: { messages: unknown[] }) => ({ messages: withLastMessageCached(messages as never) }),
+                providerOptions: LOOP_PROVIDER_OPTIONS,
+              }
+            : {}),
           maxOutputTokens: CLAUDE_MAX_TOKENS.standard * 2,
           maxRetries: timed.maxRetries,
           abortSignal: timed.signal,
@@ -1160,8 +1188,9 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
         const retried = await again.steps;
         watch.idle();
         const final = retried.at(-1);
-        text = final?.finishReason === "length" ? "" : (final?.text ?? "").trim();
+        text = final?.finishReason === "length" || final?.finishReason === "tool-calls" ? "" : (final?.text ?? "").trim();
         if (text === "") stoppedAt = "step_limit";
+        if (cutWhileThinking) turnMessagesAfterRetry = [...turn, ...(await again.response).messages];
       }
       /*
        * SELF-REVIEW (above, `cardMismatch`): with a card made this turn, or a card on screen and nothing changed this
@@ -1174,7 +1203,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
         if (left === 0) return "";
         const hiddenBefore = hiddenCalls;
         const proposalBefore = effects.proposal;
-        const response = await result.response;
+        const turnSoFar = await turnMessages();
         /* QA's audit (item 14a): the hand-back is its own model call; each of its steps waits for its own first token. */
         watch.attempt();
         const review = streamText({
@@ -1183,7 +1212,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
             { role: "system", content: agentLoopRules(), providerOptions: EPHEMERAL },
             { role: "system", content: dynamic },
           ],
-          messages: [...(conversationOf(input.history, input.question, input.questionMessageId, cards) as never[]), ...(response.messages as never[]), { role: "user", content: note } as never],
+          messages: [...(conversationOf(input.history, input.question, input.questionMessageId, cards) as never[]), ...(turnSoFar as never[]), { role: "user", content: note } as never],
           tools,
           stopWhen: ({ steps: done }) => done.length + (hiddenCalls - hiddenBefore) >= Math.min(4, left),
           /*
@@ -1627,6 +1656,16 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   /* Never twice: the reply already asks for a change in its own words (QA: "change" and a question mark in one sentence). */
   const asksForChange = /\bchange\b[^.!?\n]*\?/i.test(content);
   if (effects.replyMustAsk && !content.includes(effects.replyMustAsk) && !asksForChange) content = `${content.trim()}\n\n${effects.replyMustAsk}`.trim();
+  /*
+   * U24 (port of Ask Bubbles #1061, its QA's flaky check): a reply for this turn's exit card that names none of the types
+   * the card ticks gets the card's own "Filed as" line after its opening paragraph (the card's facts, never the manager's
+   * words). The model's input is unchanged.
+   */
+  const exitTicks = effects.proposal?.templateKey === appConfig().formKeys.exit ? (effects.exitTicks ?? []) : [];
+  if (exitTicks.length > 0 && !exitTicks.some((label) => content.toLowerCase().includes(label.toLowerCase()))) {
+    const [opening, ...rest] = content.trim().split(/\n{2,}/);
+    content = [opening, `Filed as: ${exitTicks.join(", ")}.`, ...rest].join("\n\n");
+  }
   /*
    * STARTER_FOLLOW_UP_EXAMPLE_ENABLED (QA's live re-test of #1127, 20 Nov 2026): the same step as the regular chat's. When
    * one of the app's own home starters is the chat's first message and the reply asks who or which, it ends with one
