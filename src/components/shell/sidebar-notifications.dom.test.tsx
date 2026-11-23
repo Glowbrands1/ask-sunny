@@ -1,18 +1,23 @@
 // @vitest-environment jsdom
 import * as React from "react";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { DEFAULT_PERMISSION_MATRIX, canAccessAdminConsole, hasPermission } from "@/lib/permissions";
 import { TooltipProvider } from "@/components/ui/overlays";
+import { HR_DECISION_KIND, HR_REQUEST_KIND } from "@/lib/forms/hr-approval-bells";
 import type { BellData } from "@/lib/notifications/types";
+import type { Role } from "@/types";
 import type { Permission } from "@/types";
 
 /*
  * Pau, 23 Nov 2026, looking at Ask Sunny as an HR approver: "why no notification for [the approver]? should be same as
- * bubbles … for the form acceptance". The approver had the bell, but only in the top bar; Pau looked in the rail. As
- * in Ask Bubbles, the bell is now the rail's first item on desktop ("Notifications", with the unread count), and the
- * top bar keeps it for phones only, where the rail is a drawer. The drawer does not repeat it.
+ * bubbles … for the form acceptance". Then, seeing the top-bar bell: "can we remove this and add a notification bar
+ * instead below the overview" (the exact spot confirmed with a screenshot: the Home group, under Overview, above
+ * Assistant), and "make sure the form notif is still there". So Notifications is a rail item directly under Overview, on
+ * desktop and in the phone drawer, with its unread count; the top bar has no bell. Same people, same items.
  */
 
 const push = vi.fn();
@@ -41,20 +46,20 @@ afterEach(() => {
   markRead.mockClear();
 });
 
-/** An HR approver's bell: one form waiting, one manager reply (the two HR approval bells). */
+/** Two unread form bells: one waiting for the approver, one HR decision for the form's creator. */
 const bell: BellData = {
   unread: 2,
   items: [
-    { id: "h2", kind: "hr_approval_requested", title: "A form is waiting for your approval", body: "Corrective Action Form for Wren T.", href: "/forms/hr-approval/inst-2", createdAt: new Date().toISOString(), readAt: null },
-    { id: "h1", kind: "hr_approval_comment", title: "A manager replied on a form you are approving", body: "Coaching Form for Ivo M.", href: "/forms/hr-approval/inst-1", createdAt: new Date().toISOString(), readAt: null },
+    { id: "h2", kind: HR_REQUEST_KIND, title: "A form is waiting for your approval", body: "Corrective Action Form for Wren T.", href: "/forms/hr-approval/inst-2", createdAt: new Date().toISOString(), readAt: null },
+    { id: "h1", kind: HR_DECISION_KIND, title: "HR approved your form", body: "Coaching Form for Ivo M.", href: "/forms/hr-approval/inst-1", createdAt: new Date().toISOString(), readAt: null },
   ],
 };
 
-function renderRail(props: Partial<React.ComponentProps<typeof SidebarNav>>) {
+function renderRail(props: Partial<React.ComponentProps<typeof SidebarNav>>, role: Role = "district_manager", demoMode = true) {
   mocked.value = {
-    can: (permission: Permission) => hasPermission(DEFAULT_PERMISSION_MATRIX, "district_manager", permission),
-    isAdmin: canAccessAdminConsole("district_manager"),
-    demoMode: true,
+    can: (permission: Permission) => hasPermission(DEFAULT_PERMISSION_MATRIX, role, permission),
+    isAdmin: canAccessAdminConsole(role),
+    demoMode,
   };
   // The app mounts one TooltipProvider at the root (app/providers.tsx); the collapsed rail needs it.
   return render(
@@ -64,7 +69,79 @@ function renderRail(props: Partial<React.ComponentProps<typeof SidebarNav>>) {
   );
 }
 
-describe("Notifications in the rail, as in Ask Bubbles (Pau, 23 Nov 2026)", () => {
+/** The rail's entries in order: links by their text, the Notifications button by its label. */
+function railOrder(): string[] {
+  const nav = screen.getByRole("navigation", { name: "Main" });
+  return [...nav.querySelectorAll("li > a, li > button, li button[aria-label^='Notifications']")].map((el) =>
+    (el.getAttribute("aria-label")?.startsWith("Notifications") ? "Notifications" : el.textContent?.trim()) ?? "",
+  );
+}
+
+const one = (title: string, kind: string, href: string): BellData => ({
+  unread: 1,
+  items: [{ id: "n1", kind, title, body: "Corrective Action Form for Wren T.", href, createdAt: new Date().toISOString(), readAt: null }],
+});
+
+describe("Notifications under Overview (Pau, 23 Nov 2026: \"add a notification bar instead below the overview\")", () => {
+  it("sits directly under Overview, in the Home group, above Assistant", () => {
+    renderRail({ bell });
+    const order = railOrder();
+    expect(order.indexOf("Notifications")).toBe(order.indexOf("Overview") + 1);
+    const home = screen.getByText("Home").closest("div")!;
+    expect(home.querySelector("button[aria-label^='Notifications']")).not.toBeNull();
+    const assistant = screen.getByText("Assistant").closest("div")!;
+    expect(assistant.querySelector("button[aria-label^='Notifications']")).toBeNull();
+  });
+
+  it("is in the phone drawer too, under Overview, and opening a form there closes the drawer", async () => {
+    const onNavigate = vi.fn();
+    renderRail({ bell, variant: "drawer", onNavigate });
+    const order = railOrder();
+    expect(order.indexOf("Notifications")).toBe(order.indexOf("Overview") + 1);
+    fireEvent.click(screen.getByRole("button", { name: "Notifications, 2 unread" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /A form is waiting for your approval/ }));
+    });
+    expect(push).toHaveBeenCalledWith("/forms/hr-approval/inst-2");
+    expect(onNavigate).toHaveBeenCalled();
+  });
+
+  it("someone whose rail has no Overview still gets it, as the rail's first item", () => {
+    renderRail({ bell }, "employee", false);
+    expect(railOrder()).not.toContain("Overview");
+    const nav = screen.getByRole("navigation", { name: "Main" });
+    const first = nav.querySelector("a, button");
+    expect(first?.getAttribute("aria-label")).toBe("Notifications, 2 unread");
+  });
+});
+
+describe("the form notifications are still there (Pau, 23 Nov 2026: \"make sure the form notif is still there\")", () => {
+  it("an HR approver's unread \"A form is waiting for your approval\" is in the sidebar panel, badge 1", () => {
+    renderRail({ bell: one("A form is waiting for your approval", HR_REQUEST_KIND, "/forms/hr-approval/inst-9") });
+    const item = screen.getByRole("button", { name: "Notifications, 1 unread" });
+    expect(item.textContent).toContain("1");
+    fireEvent.click(item);
+    expect(screen.getByRole("button", { name: /A form is waiting for your approval/ })).toBeTruthy();
+  });
+
+  for (const title of ["HR approved your form", "HR sent your form back for changes"]) {
+    it(`a form creator's "${title}" is in the sidebar panel, badge 1`, () => {
+      renderRail({ bell: one(title, HR_DECISION_KIND, "/forms/hr-approval/inst-9") });
+      fireEvent.click(screen.getByRole("button", { name: "Notifications, 1 unread" }));
+      expect(screen.getByRole("button", { name: new RegExp(title) })).toBeTruthy();
+    });
+  }
+
+  it("the top bar has no bell, and both rails (desktop and drawer) get the same bell", () => {
+    const shell = readFileSync(join(__dirname, "app-shell.tsx"), "utf8");
+    expect(shell).not.toMatch(/NotificationBell/);
+    const mounts = [...shell.matchAll(/<SidebarNav[\s\S]*?\/>/g)].map((m) => m[0]);
+    expect(mounts).toHaveLength(2);
+    for (const mount of mounts) expect(mount).toMatch(/bell=\{bell\}/);
+  });
+});
+
+describe("Notifications in the rail (Pau, 23 Nov 2026)", () => {
   it("the HR approver sees Notifications in the desktop rail, with the unread count", () => {
     renderRail({ bell });
     const item = screen.getByRole("button", { name: "Notifications, 2 unread" });
@@ -93,8 +170,4 @@ describe("Notifications in the rail, as in Ask Bubbles (Pau, 23 Nov 2026)", () =
     expect(screen.queryByRole("button", { name: /Notifications/ })).toBeNull();
   });
 
-  it("the phone drawer does not repeat it: the top bar shows the bell there", () => {
-    renderRail({ bell, variant: "drawer" });
-    expect(screen.queryByRole("button", { name: /Notifications/ })).toBeNull();
-  });
 });

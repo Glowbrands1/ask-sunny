@@ -17,7 +17,6 @@ import { JumpToRow } from "./jump-to-row";
 import { SidebarNav } from "./sidebar";
 import { UpdateNotice } from "./update-notice";
 import { GlobalSearch } from "./global-search";
-import { NotificationBell } from "@/features/notifications/notification-bell";
 import type { BellData } from "@/lib/notifications/types";
 
 const COLLAPSE_KEY = "ask-sunny:sidebar-collapsed";
@@ -118,14 +117,9 @@ export function AppShell({
             </Badge>
           ) : null}
           {/*
-            On phones the bell stays here; on desktop it is the rail's first item (sidebar.tsx), as in Ask Bubbles
-            (Pau, 23 Nov 2026: "why no notification for [the approver]? should be same as bubbles").
+            No bell here (Pau, 23 Nov 2026: "can we remove this and add a notification bar instead below the
+            overview"). Notifications is a rail item under Overview, on desktop and in the phone drawer (sidebar.tsx).
           */}
-          {bell ? (
-            <span className="lg:hidden">
-              <NotificationBell data={bell} />
-            </span>
-          ) : null}
           <Dialog>
             <DialogTrigger asChild>
               <Button
@@ -223,6 +217,7 @@ export function AppShell({
                 showAppSwitcher={showAppSwitcher}
                 showLeadershipHub={showLeadershipHub}
                 meetingTabs={meetingTabs}
+                bell={bell}
               />
             </div>
           </div>

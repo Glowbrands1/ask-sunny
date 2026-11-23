@@ -7,20 +7,29 @@ be same as bubbles … for the form acceptance".
 FORMS_HR_APPROVAL_ENABLED on, and #1268 deployed. But Ask Sunny showed it only in the top bar, and Pau looked in the
 rail, where Ask Bubbles has a "Notifications" item.
 
-**Change (Ask Sunny, brought in line with Ask Bubbles' `notification-bell.tsx`):**
-- `features/notifications/notification-bell.tsx` gains Bubbles' `rail` variant: a "Notifications" item with the unread
-  count, a tooltip when the rail is collapsed, and its panel opening to the right. The `bar` variant is unchanged.
-- `components/shell/sidebar.tsx` mounts it as the rail's first item, on desktop only.
-- `components/shell/app-shell.tsx` keeps the top-bar bell for phones only (`lg:hidden`), where the rail is a drawer, as
-  in Bubbles. The drawer does not repeat it.
-- The same people get it: `bellForLayout` is unchanged.
+**Then (Pau, same day, of the top-bar bell):** "can we remove this and add a notification bar instead below the
+overview". The exact spot was confirmed with a screenshot: in the Home group, directly under Overview, above Assistant.
+Pau also asked: "make sure the form notif is still there".
+
+**Change (Ask Sunny):**
+- `features/notifications/notification-bell.tsx` gains a `rail` variant, as in Bubbles: a "Notifications" item with the
+  unread count, and a tooltip when the rail is collapsed. Its panel opens to the right on desktop and below the item in
+  the phone drawer.
+- `components/shell/sidebar.tsx` places it directly under Overview, on desktop and in the phone drawer. Someone whose rail
+  has no Overview gets it as the rail's first item, so nobody who had the bell loses it.
+- `components/shell/app-shell.tsx` has no top-bar bell any more, on desktop or phone. Both rails get the bell.
+- The same people get it: `bellForLayout` is unchanged. Tests check that the approver's "A form is waiting for your
+  approval" and the creator's "HR approved your form" / "HR sent your form back for changes" all appear in the sidebar
+  panel with the count.
 
 **The bells themselves:** "A form is waiting for your approval" and "A manager replied on a form you are approving" are
 already sent the same way in both apps. `lib/forms/hr-approval.ts` matches Bubbles' except for one comment, and its
 callers are the same. No change.
 
-**Sunny-only styling:** the rail item uses Ask Sunny's own nav-item style (rounded pill, its rail ink and hover), not
-Bubbles' bordered button. **Sibling app:** not needed; this brings Sunny to Bubbles' existing behaviour.
+**Sunny-only:** the rail item uses Ask Sunny's own nav-item style (rounded pill, its rail ink and hover), not Bubbles'
+bordered button. Its place under Overview and the removal of the top-bar bell are Pau's call for Ask Sunny. **Sibling
+app:** not ported. Ask Bubbles already has the rail item. Moving it under Overview there, or dropping its phone top-bar
+bell, would be a separate ask.
 
 ## Same day: "Bubbles approvals ↗" on Form Monitoring
 

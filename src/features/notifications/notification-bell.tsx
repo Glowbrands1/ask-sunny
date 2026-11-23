@@ -17,15 +17,17 @@ import { markNotificationsReadAction } from "./actions";
  * Training submissions (Pau, 20 Nov 2026), then the HR form approval.
  *
  * WHERE IT SITS (Pau, 23 Nov 2026, as an HR approver: "why no notification for [the approver]? should be same as
- * bubbles … for the form acceptance"): on desktop it is a "Notifications" item at the top of the rail (`rail`), as in
- * Ask Bubbles, so it is found where the rest of the navigation is; on phones, where the rail is a drawer, it stays in
- * the top bar (`bar`). Same people, same panel, same count either way.
+ * bubbles … for the form acceptance"), then, seeing the top-bar bell: "can we remove this and add a notification bar
+ * instead below the overview". So it is a "Notifications" item in the rail (`rail`), directly under Overview, on desktop
+ * and in the phone drawer alike, and the top bar has no bell. Same people, same panel, same count. (`bar`, the old
+ * top-bar button, is kept for any other caller.)
  */
 export function NotificationBell({
   data,
   variant = "bar",
   collapsed = false,
   onNavigate,
+  panelSide = "right",
 }: {
   data: BellData;
   variant?: "bar" | "rail";
@@ -33,6 +35,8 @@ export function NotificationBell({
   collapsed?: boolean;
   /** Called after opening a notification. */
   onNavigate?: () => void;
+  /** Rail only: where the panel opens. The phone drawer is too narrow to open it to the side, so it opens below. */
+  panelSide?: "right" | "bottom";
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -83,7 +87,7 @@ export function NotificationBell({
           type="button"
           aria-label={label}
           className={cn(
-            "group relative mb-4 flex w-full items-center gap-2.5 rounded-full text-[13.5px] font-semibold text-sidebar-foreground transition-colors hover:bg-hover-surface hover:text-foreground",
+            "group relative flex w-full items-center gap-2.5 rounded-full text-[13.5px] font-semibold text-sidebar-foreground transition-colors hover:bg-hover-surface hover:text-foreground",
             collapsed ? "justify-center px-0 py-2.5" : "px-3.5 py-2.5",
           )}
         >
@@ -117,7 +121,7 @@ export function NotificationBell({
       )}
       <PopoverContent
         align={variant === "rail" ? "start" : "end"}
-        side={variant === "rail" ? "right" : "bottom"}
+        side={variant === "rail" ? panelSide : "bottom"}
         className="w-[min(22rem,calc(100vw-1.5rem))] p-0"
       >
         <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
