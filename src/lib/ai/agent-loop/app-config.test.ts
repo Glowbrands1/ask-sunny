@@ -165,6 +165,12 @@ import { rulesBookText } from "./rules-book";
  * exit_dates line: an exit card's reads_back is the only exit lines the reply reads back, every one is saved at Create,
  * and a detail added after the card reaches the form only through propose_form. It reads the same under every config;
  * nothing else changed.
+ *
+ * Re-taken on purpose on 21 Nov 2026 (Pau: a search of past forms by topic, FORM_TOPIC_SEARCH_ENABLED): one Replies line
+ * was added: forms on file about a topic ("any forms about cash handling at my <place>s this month?", "who's been written
+ * up for dress code?") call find_past_forms with about and no employee_name, list each form as given, say the counts, and
+ * "showing N of M". It uses the config's place word; nothing else changed.
+ *
  * Re-taken on purpose on 23 Nov 2026 (HR approval of forms, owner request; CLAUDE.md rule 5): the tool list gained
  * read_hr_approvals, and "Forms on file and privacy" gained one line: a form waiting for HR is not on file, and HR
  * approval answers come only from read_hr_approvals, which lists only the asker's own forms. It reads the same under
