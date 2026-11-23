@@ -67,6 +67,9 @@ const KNOWN = new Set([
   // Added on purpose (port from the sibling app, its QA's round 2, 22 Nov 2026, U21): a card asked for the card on screen
   // for another person, with no account, goes back once to be proposed with that card's account.
   "same_card_account_missing",
+  // Added on purpose (Pau, 21 Nov 2026; FORM_TOPIC_SEARCH_ENABLED off): find_past_forms asked for forms by topic alone
+  // says plainly that searching by topic is not available yet.
+  "topic_search_off",
 ]);
 
 /** A line that returns a refusal: `error:` followed by a string, a template or a named message (not `error: Boolean(...)`). */
