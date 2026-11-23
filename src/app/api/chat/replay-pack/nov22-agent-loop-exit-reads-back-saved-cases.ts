@@ -42,8 +42,12 @@ type Card = { card?: { observation?: string | null; reads_back?: string[] } } | 
 const said = (view: LoopView) => view.turns.filter((turn) => turn.role === "user" && (turn.messageIds?.length ?? 0) > 0).at(-1)?.text ?? "";
 const handedBack = (view: LoopView) => view.turns.some((turn) => /^\[app check\]/.test(turn.text) && /exit field/.test(turn.text));
 
-/** The live model's reply: the account labelled "Reason for Resignation" and a notice date; `fixes`: the second reply reads back `reads_back`. */
-const live = (fixes: boolean) =>
+/**
+ * The live model's reply: the account labelled "Reason for Resignation" and a notice date; `fixes`: the second reply reads
+ * back `reads_back`. `oneLine` (QA, 23 Nov 2026: the case failed live): the opening and the notice date on one line, after
+ * the former-employee line, as the live reply wrote them.
+ */
+const live = (fixes: boolean, oneLine = false) =>
   loopStandIn((view): LoopDecision => {
     const result = lastResult(view, "propose_form") as Card;
     if (!result) {
@@ -61,6 +65,7 @@ const live = (fixes: boolean) =>
     }
     const intro = "Here's the Resignation/Exit Form for **Perpetua Lindqvist**.";
     if (handedBack(view) && fixes) return { text: [intro, ...(result.card?.reads_back ?? [])].join("\n\n") };
+    if (oneLine) return { text: ["**Perpetua Lindqvist** shows as no longer active in Woven; I've used the name as you typed it.", `${intro} **Date that notice was given:** 11/14/2026`, `**Reason for Resignation:** ${result.card?.observation ?? ""}`].join("\n\n") };
     return { text: [intro, "**Date that notice was given:** 11/14/2026", `**Reason for Resignation:** ${result.card?.observation ?? ""}`, "Filed as: Immediate Voluntary Resignation."].join("\n\n") };
   });
 
@@ -98,7 +103,49 @@ export const NOV22_AGENT_LOOP_EXIT_READS_BACK_SAVED_CASES: ReplayCase[] = [
       const reply = await thread.say(T2);
       expect(reply.content).not.toMatch(/Date that notice was given|Reason for Resignation/);
       expect(reply.content, "the unsaved line was offered as a change").not.toMatch(/isn't on the card yet/);
-      expect(reply.content).toMatch(/Resignation\/Exit Form for \*\*Perpetua/);
+      /*
+       * CHANGED ON PURPOSE (port of Ask Bubbles #1098; its QA's live check): a live reply opened "Here is the
+       * **Resignation/Exit Form** for **<P>**", the right opening with the form's name in bold. The check still wants the
+       * form's name and then the person in bold; the form's name may be bold too.
+       */
+      expect(reply.content).toMatch(/(?:\*\*)?Resignation\/Exit Form(?:\*\*)? for \*\*Perpetua/);
+    },
+  },
+  {
+    id: "nov23-u22-exit-unsaved-line-on-opening-line-keeps-opening",
+    title: "U22 (port of Ask Bubbles #1098): the reply writes \"Here's the Resignation/Exit Form for **<P>**. **Date that notice was given:** 11/14/2026\" on one line, twice; only the unsaved line leaves, and the reply still names the form",
+    report: "Port of Ask Bubbles #1098 (its QA, 23 Nov 2026): the exit reply opened on \"<P> shows as no longer active…\" instead of \"Resignation/Exit Form for <P>\"",
+    status: "fixed",
+    fixFlags: ["AGENT_LOOP_ENABLED"],
+    async run(t) {
+      if (!start(t)) return;
+      const thread = t.thread();
+      t.loopModel!(live(false, true));
+      await thread.say(T1);
+      const reply = await thread.say(T2);
+      expect(reply.content).not.toMatch(/Date that notice was given|Reason for Resignation/);
+      expect(reply.content, "the opening left with the unsaved line").toMatch(/Resignation\/Exit Form for \*\*Perpetua/);
+    },
+  },
+  {
+    id: "nov23-u22-card-reply-with-no-opening-gets-the-cards",
+    title: "U22 (port of Ask Bubbles #1098, its QA's RUN A): T2's ready exit card came with a reply that named no form; the reply opens with the card's own \"Here's the Resignation/Exit Form for **<P>**.\"",
+    report: "Port of Ask Bubbles #1098 (its QA, 23 Nov 2026): a ready exit card's reply named no form; the model wrote no opening",
+    status: "fixed",
+    fixFlags: ["AGENT_LOOP_ENABLED"],
+    async run(t) {
+      if (!start(t)) return;
+      const thread = t.thread();
+      const runA = "**Perpetua Lindqvist** shows as no longer active in Woven; I've used the name as you typed it.\n\n**How Employee Resigned:** Woven message\n\nLast day worked isn't set; tell me the date (you listed it as TBD).";
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        if (lastResult(view, "propose_form")) return { text: said(view) === T2 ? runA : "Here's the Resignation/Exit Form for **Perpetua**." };
+        return { tool: "propose_form", input: { template_key: "stc-exit", employee_name: "Perpetua Lindqvist", exit_type: "resignation", exit_evidence: { ...evidenceFrom(view, "create exit for Perpetua Lindqvist", said(view) === T1 ? 0 : 1), kind: "asks_for_exit_form" }, what_happened: ACCOUNT, person_evidence: evidenceFrom(view, "Perpetua Lindqvist", said(view) === T1 ? 0 : 1) } };
+      }));
+      await thread.say(T1);
+      const reply = await thread.say(T2);
+      expect(thread.proposal?.templateKey, "T2 made no exit card (the case proves nothing)").toBe("stc-exit");
+      expect(reply.content, "the card reply names no form").toMatch(/^Here's the Resignation\/Exit Form for \*\*Perpetua/);
+      expect(reply.content).toMatch(/How Employee Resigned/);
     },
   },
 ];
