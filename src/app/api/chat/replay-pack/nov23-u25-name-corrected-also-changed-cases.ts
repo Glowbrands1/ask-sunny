@@ -24,7 +24,7 @@ const T1 = "Which forms can I create here?";
 const T2 = "create a coaching form for Odalys Fenwrite";
 const T3 = "yes";
 const T4 = "coaching for undersales";
-const T5 = "create coaching form for Odalys Fenwright; coaching on under performance";
+const T5 = "create coaching form for Odalys Partridge; coaching on under performance";
 
 const said = (view: LoopView) => view.turns.filter((turn) => turn.role === "user" && (turn.messageIds?.length ?? 0) > 0).at(-1)?.text ?? "";
 type Result = { card?: unknown; facts?: { name_corrected?: { from: string; to: string; also_changed?: string[] } } } | null;
@@ -55,7 +55,7 @@ const model = () =>
         input: { template_key: "coaching", employee_name: "Odalys Fenwrite", person_evidence: evidenceFrom(view, "Odalys Fenwrite", 2), what_happened: "Odalys had undersales.", topic: "undersales", topic_evidence: evidenceFrom(view, "coaching for undersales") },
       };
     }
-    return { tool: "propose_form", input: { template_key: "coaching", employee_name: "Odalys Fenwright", person_evidence: evidenceFrom(view, "Odalys Fenwright"), what_happened: "Odalys had under performance." } };
+    return { tool: "propose_form", input: { template_key: "coaching", employee_name: "Odalys Partridge", person_evidence: evidenceFrom(view, "Odalys Partridge"), what_happened: "Odalys had under performance." } };
   });
 
 export const NOV23_U25_NAME_CORRECTED_ALSO_CHANGED_CASES: ReplayCase[] = [
@@ -74,7 +74,7 @@ export const NOV23_U25_NAME_CORRECTED_ALSO_CHANGED_CASES: ReplayCase[] = [
       for (const turn of [T1, T2, T3, T4]) await thread.say(turn);
       expect((thread.proposal as { coachingTopic?: string } | null)?.coachingTopic, "T4's card has no topic (the case proves nothing)").toMatch(/^undersales$/i);
       const reply = await thread.say(T5);
-      expect(thread.proposal?.employeeName, "no card for the corrected name (the case proves nothing)").toBe("Odalys Fenwright");
+      expect(thread.proposal?.employeeName, "no card for the corrected name (the case proves nothing)").toBe("Odalys Partridge");
       expect((thread.proposal as { coachingTopic?: string | null } | null)?.coachingTopic ?? null, "T5's card kept the topic (the case proves nothing)").toBeNull();
       const result = standIn.views.flatMap((view) => view.results).filter((entry) => entry.tool === "propose_form").at(-1)?.output as Result;
       expect(result?.facts?.name_corrected, "no name_corrected fact (the case proves nothing)").toBeDefined();
@@ -94,7 +94,7 @@ export const NOV23_U25_NAME_CORRECTED_ALSO_CHANGED_CASES: ReplayCase[] = [
       t.loopModel!(model());
       const thread = t.thread();
       for (const turn of [T1, T2, T3, T4, T5]) await thread.say(turn);
-      expect(thread.proposal?.employeeName, "no card (the case proves nothing)").toBe("Odalys Fenwright");
+      expect(thread.proposal?.employeeName, "no card (the case proves nothing)").toBe("Odalys Partridge");
       // The drafting model, as in the tester's run: it echoed the card's own line into Observed.
       t.draftWrites({ coaching_details: "Observed:\nWhat happened: Odalys had under performance." });
       const id = await thread.create();

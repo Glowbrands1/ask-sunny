@@ -6,7 +6,7 @@ import { loopCoachingWriteUp } from "./loop-coaching-write-up";
 const write = (details: string) =>
   loopCoachingWriteUp(
     { values: { coaching_details: details }, checked: {} },
-    { detailsKey: "coaching_details", notes: "What happened: Odalys had under performance.", employeeName: "Odalys Fenwright", typeOptions: [] },
+    { detailsKey: "coaching_details", notes: "What happened: Odalys had under performance.", employeeName: "Odalys Partridge", typeOptions: [] },
   ).values.coaching_details;
 
 describe("a loop coaching write-up never carries the card's own line labels", () => {
