@@ -28,6 +28,7 @@ import { evidenceFrom, lastResult, loopStandIn, type LoopDecision, type LoopView
  */
 
 const FLAG = "AGENT_LOOP_ENABLED";
+const LIVE = process.env.AGENT_LOOP_LIVE === "1";
 const REPORT = "Port from Ask Bubbles (#1021, its QA's round 2, 22 Nov 2026, U26): an exit form saved How Employee Resigned \"Voicemail\" (the director's voicemail, not how she quit) and asked which salon for a former employee Woven lists at one";
 const P10: DirectoryRow = { id: "e-odessa-varnell", firstName: "Odessa", lastName: "Varnell", preferredFirstName: null, employmentStatus: "terminated", salonIds: ["loc-0309"], positionName: "Tanning Consultant" };
 const T1 =
@@ -111,7 +112,11 @@ export const NOV22_AGENT_LOOP_EXIT_METHOD_IS_THE_QUITTERS_CASES: ReplayCase[] = 
       const model = live("Text message", "she quit effective immediately");
       t.loopModel!(model);
       await thread.say(T1);
-      expect(results(model.views).at(-1)?.card?.how_resigned ?? null).toBeNull();
+      // QA's live run (22 Nov 2026): the real model passed its own method, "Phone call" (she quit on the returned call),
+      // which is right. The bug is a method the manager's words do not name (Text, or the director's Voicemail) on the
+      // card or the saved form; the stand-in forces "Text message", so on its run the card has no method at all.
+      expect(String(results(model.views).at(-1)?.card?.how_resigned ?? ""), "the card's How Employee Resigned").not.toMatch(/text|voicemail/i);
+      if (!LIVE) expect(results(model.views).at(-1)?.card?.how_resigned ?? null).toBeNull();
       const id = await thread.create();
       expect(t.values(id).resignation_method ?? "").not.toMatch(/text|voicemail/i);
     },

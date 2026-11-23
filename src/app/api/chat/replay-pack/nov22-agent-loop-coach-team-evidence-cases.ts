@@ -16,6 +16,7 @@ import { evidenceFrom, lastResult, loopStandIn } from "./loop-stand-in";
  */
 
 const FLAG = "AGENT_LOOP_ENABLED";
+const LIVE = process.env.AGENT_LOOP_LIVE === "1";
 const REPORT = "QA's 266-chat shadow re-run (22 Nov 2026), S2: coach_team refused \"a coaching form for my entire <team> at <store>\" as not a team request";
 const GROUPS = ["sales team", "front desk team", "tanning consultants", "employees", "salon"];
 
@@ -60,9 +61,12 @@ export const NOV22_AGENT_LOOP_COACH_TEAM_EVIDENCE_CASES: ReplayCase[] = [
       const thread = start(t);
       const model = loopStandIn((view) => (lastResult(view, "coach_team") ? { text: "ok" } : { tool: "coach_team", input: { team_evidence: evidenceFrom(view, "my whole sales team") } }));
       t.loopModel!(model);
-      await thread.say("can you make me a coaching form for remy calder for selling lotion");
-      const result = lastResult(model.views.at(-1)!, "coach_team") as { reason_code?: string } | null;
-      expect(result?.reason_code).toBe("wrong_tool");
+      const reply = await thread.say("can you make me a coaching form for remy calder for selling lotion");
+      // QA's live run (22 Nov 2026): the real model made Remy's own card and never called coach_team. What the manager
+      // sees: no team card. The refusal whenever coach_team was called (the stand-in always calls it).
+      expect(reply.formProposal?.employeeName ?? null, `a team card was made for one person's request:\n${reply.content}`).not.toBe("All team members");
+      const result = model.views.flatMap((view) => view.results.filter((entry) => entry.tool === "coach_team")).at(-1)?.output as { reason_code?: string } | undefined;
+      if (!LIVE || result !== undefined) expect(result?.reason_code).toBe("wrong_tool");
     },
   },
   {

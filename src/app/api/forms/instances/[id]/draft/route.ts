@@ -2834,6 +2834,29 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       draftedPayload.checked = { ...draftedPayload.checked, offense_type: [...(draftedPayload.checked.offense_type ?? []), "other"] };
     }
     /*
+     * QA's item 9 (2) (22 Nov 2026; Ask Bubbles' R21): a Coaching Form whose card cited "Other — <topic>" was saved with no
+     * Type of Coaching ticked and no Other topic. The form's own Other box is ticked and its topic is the card's, as the
+     * Corrective Action's above; a topic the manager typed on the form is kept. Keyed on the version's own fields.
+     */
+    const coachingOther =
+      isCoachingFamily &&
+      cardPolicyToDraftEnabled() &&
+      typeof body.cardOther === "string" &&
+      body.cardOther.trim() !== "" &&
+      body.cardOther.trim().length <= 120 &&
+      (groups.find((group) => group.key === "coaching_topics")?.options.some((option) => option.key === "other") ?? false) &&
+      fields.some((field) => field.key === "other_topic")
+        ? body.cardOther.trim()
+        : null;
+    if (coachingOther) {
+      if (!(draftedPayload.checked.coaching_topics ?? []).includes("other")) {
+        draftedPayload.checked = { ...draftedPayload.checked, coaching_topics: [...(draftedPayload.checked.coaching_topics ?? []), "other"] };
+      }
+      if (!keeps("other_topic") && !(draftedPayload.values.other_topic ?? "").trim()) {
+        draftedPayload.values = { ...draftedPayload.values, other_topic: coachingOther };
+      }
+    }
+    /*
      * NO DATE THE MANAGER DID NOT STATE (Pau's ruling via QA, 17 Nov 2026; c094's "On October 22, 2026, …" with no date
      * typed): a drafted date in the Observation sections or the Action Plan whose day the manager never stated is taken out
      * and logged (`withoutUnstatedDates`). Their own dates stay; the form's Date field is not touched.

@@ -1304,6 +1304,10 @@ describe("new flags default off and wrappers are inert", () => {
           ":(exclude)src/features/reviews/reviews-demo-screen.tsx",
           ":(exclude)src/features/reviews/reviews-screen.tsx",
           ":(exclude)src/features/reviews/reviews-monthly-table.tsx",
+          // Salon leaderboard monthly only (Pau, 23 Nov 2026: "for google reviews can you make it monthly
+          // not weekly … i mean salon leaderboard"): the This week column and the Rank by this week toggle
+          // are removed. Reviews page only; no chat or form behaviour changes.
+          ":(exclude)src/features/reviews/reviews-leaderboard.tsx",
         ]),
       ).toBe("");
       expect(changedLines(diff(uiBase, [MONITORING_TABLE])).filter((line) => !MONITORING_MOUNT.includes(line))).toEqual([]);
