@@ -11,6 +11,9 @@
 **Fix (Ask Sunny).** Each of those reads adds `.is("archived_at", null)`. Archiving changes nothing stored: the form
 keeps its HR state, and restoring it puts it back in the queue.
 
+Archiving a form that waits for HR also marks HR's "waiting for your approval" bells for it as read (`archiveInstance` →
+`clearRequestBells`), so the bell stops pointing at it. Restoring the form doesn't ring them again (QA, 23 Nov 2026).
+
 Tests:
 - `src/lib/forms/hr-approval-archived.test.ts`: the queue, the count, the reminder bell, the manager's list and the
   chat reader.

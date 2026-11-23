@@ -32,7 +32,7 @@ const { ensureTemplateLibrary } = await import("./repository");
 const { createInstance, archiveInstance, loadInstance } = await import("./instances");
 const { sendForHrApproval, listHrQueue, hrQueueSummary, listMyFormsWithHr, readHrApprovalsFor } = await import("./hr-approval");
 const { runHrReminders } = await import("./hr-approval-reminders");
-const { HR_REMINDER_KIND } = await import("./hr-approval-bells");
+const { HR_REMINDER_KIND, HR_REQUEST_KIND } = await import("./hr-approval-bells");
 
 const CREATOR = "sd-tamsin";
 const HR = "hr-orrin";
@@ -104,6 +104,22 @@ describe("an archived form is out of HR's queue (QA, 23 Nov 2026)", () => {
     const outcome = await runHrReminders(SIX_AM_CENTRAL);
     expect(outcome).toMatchObject({ status: "sent", reminded: 0, nothingPending: 1 });
     expect(extra.app_notifications!.filter((row) => row.kind === HR_REMINDER_KIND)).toEqual([]);
+  });
+
+  it("archiving a form waiting for HR clears HR's bell for it; restoring it does not ring again", async () => {
+    const kept = await pendingDraft("Wren Halloway");
+    const duplicate = await pendingDraft("Wren Halloway");
+    const unread = () =>
+      extra.app_notifications!.filter((row) => row.kind === HR_REQUEST_KIND && row.recipient_email === "hr.orrin@example.com" && !row.read_at);
+    expect(unread().map((row) => row.href).sort()).toEqual([`/forms/hr-approval/${kept}`, `/forms/hr-approval/${duplicate}`].sort());
+
+    await archiveInstance(duplicate, HR, true);
+    expect(unread().map((row) => row.href), "the bell still points at the archived form").toEqual([`/forms/hr-approval/${kept}`]);
+
+    const before = extra.app_notifications!.length;
+    await archiveInstance(duplicate, HR, false);
+    expect(extra.app_notifications!.length, "restoring it rang a bell").toBe(before);
+    expect(unread().map((row) => row.href)).toEqual([`/forms/hr-approval/${kept}`]);
   });
 
   it("the manager's own list and the chat's reader leave the archived form out too", async () => {
