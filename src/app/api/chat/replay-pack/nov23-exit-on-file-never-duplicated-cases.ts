@@ -203,7 +203,7 @@ export const NOV23_EXIT_ON_FILE_NEVER_DUPLICATED_CASES: ReplayCase[] = [
     id: "nov23-exit-hr-edits-revise-the-finalized-form",
     title: "Failure 2, items 2 and 4: T1 verbatim (HR's edits pasted) edits the finalized exit form of 11/20 through a revision: both notice dates cleared, How Employee Resigned and Additional Details as HR wrote them; no second exit form, the original untouched",
     report: REPORT,
-    status: { open: "awaiting Pau's ruling (QA, 23 Nov 2026): may a chat edit on a revision clear or replace exit fields the manager typed (would_blank / typed_by_manager) when this message states the edit" },
+    status: "fixed",
     fixFlags: [FLAG],
     async run(t) {
       if (!t.loopOn?.() || process.env.AGENT_LOOP_LIVE === "1") return;
@@ -221,6 +221,7 @@ export const NOV23_EXIT_ON_FILE_NEVER_DUPLICATED_CASES: ReplayCase[] = [
           input: {
             instance_id: "exit-rhea-1120",
             forms_on_file_evidence: evidenceFrom(view, "make thes edits on rhea cotter exit"),
+            clear_evidence: { notice_given_date: "Remove dates for notice given and notice fulfilled", notice_fulfilled_date: "Remove dates for notice given and notice fulfilled" },
             values: {
               notice_given_date: "",
               notice_fulfilled_date: "",
@@ -241,6 +242,42 @@ export const NOV23_EXIT_ON_FILE_NEVER_DUPLICATED_CASES: ReplayCase[] = [
       expect(now.resignation_method).toMatch(/gave verbal notice of her immediate resignation/);
       expect(now.details).toMatch(/voluntarily terminated her employment effective immediately/);
       expect(t.values("exit-rhea-1120").notice_given_date, "the finalized original changed").toBe("2026-11-17");
+      /* The reply names every field it cleared or replaced (Pau, 24 Nov brief, item 4). */
+      const named = ((edits.at(-1)?.stated_edits ?? []) as { field: string; cleared?: boolean }[]);
+      expect(named.filter((line) => line.cleared).map((line) => line.field).sort()).toEqual(["Date that notice was fulfilled", "Date that notice was given"]);
+      expect(named.some((line) => /How Employee Resigned/i.test(line.field) && !line.cleared), JSON.stringify(named)).toBe(true);
+    },
+  },
+  {
+    id: "nov23-exit-edit-control-unnamed-field-untouched",
+    title: "Failure 2, item 4, control: a message that names only Additional Details, with the model also sending the notice dates and How Employee Resigned, changes Additional Details only; the fields the message does not name keep what the manager typed",
+    report: REPORT,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.() || process.env.AGENT_LOOP_LIVE === "1") return;
+      start(t);
+      const ask = "make thes edits on rhea cotter exit Additional Details should read: Rhea voluntarily terminated her employment effective immediately";
+      t.loopModel!(loopStandIn((view): LoopDecision => {
+        if (lastResult(view, "edit_form")) return { text: "Done." };
+        if (!lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { employee_name: "Rhea Cotter", form: "exit", open: true, forms_on_file_evidence: evidenceFrom(view, "rhea cotter exit") } };
+        return {
+          tool: "edit_form",
+          input: {
+            instance_id: "exit-rhea-1120",
+            forms_on_file_evidence: evidenceFrom(view, "make thes edits on rhea cotter exit"),
+            clear_evidence: { notice_given_date: "remove the notice dates" },
+            values: { notice_given_date: "", notice_fulfilled_date: "", resignation_method: "Rhea quit over the phone to the salon director", details: "Rhea voluntarily terminated her employment effective immediately" },
+          },
+        };
+      }));
+      await t.thread().say(ask);
+      const revision = exitForms(t).find((row) => row.revises_instance_id === "exit-rhea-1120");
+      expect(revision, "no revision opened").toBeTruthy();
+      const now = t.values(String(revision!.id));
+      expect(now.notice_given_date, "a notice date this message did not name was cleared").toBe("2026-11-17");
+      expect(now.notice_fulfilled_date, "a notice date this message did not name was cleared").toBe("2026-11-17");
+      expect(now.resignation_method, "How Employee Resigned was replaced with words this message does not hold").toBe("Verbal");
     },
   },
   {

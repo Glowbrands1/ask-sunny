@@ -612,6 +612,11 @@ function buildAgentLoopTools(config: AppConfig, planSteps = false) {
         account_evidence: { type: "array", items: evidence("A manager message that tells what happened, and their words."), description: "With intent write_account: the manager's messages with the account." },
         level_evidence: evidence("With values warning_type verbal or written: the words from THIS message that state the level."),
         payroll_evidence: evidence("With values payroll_deduct: the words from THIS message that answer whether payroll deduct applies."),
+        clear_evidence: {
+          type: "object",
+          additionalProperties: { type: "string" },
+          description: "A field this message asks to clear (sent in values as \"\"): per field key, the words from THIS message that ask it (\"Remove dates for notice given and notice fulfilled\").",
+        },
       },
       ["instance_id"],
     ),

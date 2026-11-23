@@ -1962,7 +1962,15 @@ export async function findPastForms(context: ToolContext, input: { employee_name
      * Corrective Actions, and every other form (the finalized exit form, the coaching form) was dropped. A level only
      * chooses among Corrective Actions; a form of another kind never has a level, so a level named never drops it.
      */
-    if (askedWords.size > 0 && rows.length > 1 && levelOf.size > 0) {
+    /*
+     * QA's ruling on the fix (23 Nov 2026): a level narrows only when the request is about Corrective Actions: the form the
+     * model asked for is one (the same reading as the kind narrowing above), or the card on screen is one. A pasted HR
+     * note's "verbal notice" on an exit request is never a level.
+     */
+    const correctiveKey = appConfig().formKeys.corrective;
+    const aboutCorrective = /\bca\b|corrective|write[- ]?up|warning|verbal|written/.test(wantForm) || wantForm === correctiveKey ||
+      (context.cardOnScreen ?? context.earlierCard ?? null)?.templateKey === correctiveKey;
+    if (aboutCorrective && askedWords.size > 0 && rows.length > 1 && levelOf.size > 0) {
       const levelNamed = (row: (typeof rows)[number]) => (levelOf.get(row.id) ?? []).some((key) => askedWords.has(key.toLowerCase()));
       const named = rows.filter((row) => levelOf.has(row.id) && levelNamed(row));
       if (named.length > 0 && named.length < levelOf.size) rows = rows.filter((row) => !levelOf.has(row.id) || levelNamed(row));
@@ -2970,6 +2978,15 @@ export const exitOnFileMark = (formName: string): string => `already has a ${for
  * as find_past_forms reads forms on file (`chatFormsActor`, `instanceListFilterFor`, `visibleInstances`), only this
  * person's (`samePerson`), never a revised or archived one. Empty when Form Monitoring cannot be read for this manager.
  */
+/** A quote names a form field when it holds at least half of the label's words (by prefix, "dates" for "Date"). */
+function quoteNamesField(quote: string, label: string): boolean {
+  const wordsOf = (text: string) => [...new Set((text.toLowerCase().match(/[a-z]+/g) ?? []).filter((word) => word.length >= 3))];
+  const labelWords = wordsOf(label);
+  const quoted = wordsOf(quote);
+  const named = labelWords.filter((word) => quoted.some((typed) => typed === word || typed.startsWith(word) || word.startsWith(typed)));
+  return labelWords.length > 0 && named.length >= Math.ceil(labelWords.length / 2);
+}
+
 /** The words the same-date question starts with; a reply holding them already asked it (asked once). */
 const sameDateOnFileMark = (formName: string, date: string) => `already has a ${formName} on file for ${date}`;
 
@@ -5637,7 +5654,7 @@ export async function coachTeam(context: ToolContext, effects: ToolEffects, inpu
 export async function editForm(
   context: ToolContext,
   effects: ToolEffects,
-  input: { instance_id?: unknown; values?: unknown; forms_on_file_evidence?: unknown; intent?: unknown; name_evidence?: unknown; account_evidence?: unknown; level_evidence?: unknown; payroll_evidence?: unknown },
+  input: { instance_id?: unknown; values?: unknown; forms_on_file_evidence?: unknown; intent?: unknown; name_evidence?: unknown; account_evidence?: unknown; level_evidence?: unknown; payroll_evidence?: unknown; clear_evidence?: unknown },
 ): Promise<ToolResult> {
   let id = typeof input.instance_id === "string" ? input.instance_id.trim() : "";
   if (id === "") return { reason_code: "missing_input", error: "Give the form's instance_id." };
@@ -5937,7 +5954,7 @@ export async function editForm(
       const draft = await openEditableDraft(context.request, id, { revise: true, reason: context.question.slice(0, 500) });
       const openedBefore = effects.formOpened ?? null;
       effects.formOpened = formOpenedFor(draft);
-      const revisedEdit = await editForm({ ...context, openFormId: draft.instanceId }, effects, { instance_id: draft.instanceId, values: input.values, intent: input.intent, name_evidence: input.name_evidence, account_evidence: input.account_evidence, level_evidence: input.level_evidence, payroll_evidence: input.payroll_evidence });
+      const revisedEdit = await editForm({ ...context, openFormId: draft.instanceId }, effects, { instance_id: draft.instanceId, values: input.values, intent: input.intent, name_evidence: input.name_evidence, account_evidence: input.account_evidence, level_evidence: input.level_evidence, payroll_evidence: input.payroll_evidence, clear_evidence: input.clear_evidence });
       /*
        * F3 (QA, batch F): A REFUSED EDIT LEAVES NO EMPTY REVISION. When the edit on the new draft is refused (an
        * unstated level or payroll, a reword that changes the person, an unknown field…), the revision this call opened
@@ -6195,8 +6212,34 @@ export async function editForm(
      * An empty value the model sends is a field to clear: it goes to the writers' own clear list (their rules decide what
      * may be cleared; the account field is guarded above and the name only changes by a name correction).
      */
-    const clearAsked = Object.keys(values).filter((field) => values[field]!.trim() === "" && field !== accountField && field !== "employee_name");
+    let clearAsked = Object.keys(values).filter((field) => values[field]!.trim() === "" && field !== accountField && field !== "employee_name");
     for (const field of clearAsked) delete values[field];
+    /*
+     * Pau, 24 Nov brief, item 4 (QA's ruling, 23 Nov 2026): "Apply every edit in the request, including clearing fields".
+     * HR's request pasted by the manager clears the notice dates and restates How Employee Resigned, fields the manager
+     * typed, which the writers never blank or replace for the chat. A field whose new text is quoted from THIS message, or
+     * whose clear is asked in this message's own words naming that field (clear_evidence), is the manager's own edit: it
+     * is saved as theirs (via chat), on a draft only (the revision draft of a finalized form, or their own draft), and the
+     * reply names each one. Every other field keeps the guard. Fields with their own rules (name, level, payroll, the
+     * dates and the plan) are not this. The message's words and the form's own labels; no word list.
+     */
+    const ownRules = new Set(["employee_name", "warning_type", "payroll_deduct", PAYROLL_AMOUNT_KEY, "form_date", "follow_up_date", "action_plan"]);
+    const squash = (text: string) => text.toLowerCase().replace(/\s+/g, " ").trim();
+    const thisMessage = squash(withoutMessageIdTags(context.question));
+    const labels = (await import("@/lib/forms/form-write")).formWordsOf(loaded);
+    const clearQuotes = input.clear_evidence && typeof input.clear_evidence === "object" ? (input.clear_evidence as Record<string, unknown>) : {};
+    const statedText = Object.fromEntries(
+      Object.entries(values).filter(([field, value]) => !ownRules.has(field) && value.trim().length >= 8 && thisMessage.includes(squash(value))),
+    );
+    const statedClears = clearAsked.filter((field) => {
+      const quote = typeof clearQuotes[field] === "string" ? String(clearQuotes[field]) : "";
+      return !ownRules.has(field) && quote.trim() !== "" && thisMessage.includes(squash(quote)) && quoteNamesField(quote, labels[field] ?? field);
+    });
+    const statedEdits = { ...statedText, ...Object.fromEntries(statedClears.map((field) => [field, ""])) };
+    const stated = await (await import("@/lib/forms/form-write")).statedFieldsWrite(id, statedEdits, context.actor.subject);
+    for (const field of stated.saved) delete values[field];
+    clearAsked = clearAsked.filter((field) => !stated.saved.includes(field));
+    const statedLines = stated.saved.map((field) => ({ field: labels[field] ?? field, ...(statedEdits[field] === "" ? { cleared: true } : { now: untrusted(statedEdits[field]!) }) }));
     // The revision's writer, as chat-revision.ts saves: the one writer with FORM_EDIT_SINGLE_WRITER_ENABLED, else the old one.
     const written = formEditSingleWriterEnabled()
       ? await (await import("@/lib/forms/form-write")).writeRevisionEdits(id, { values, checked }, clearAsked, {
@@ -6235,8 +6278,8 @@ export async function editForm(
       }
     }
     /* PR 3: claimed = what the writers accepted; the saved list is what the form shows after the write. */
-    const claimed = [...Object.keys(written.accepted.values ?? {}), ...Object.keys(written.accepted.checked ?? {}), ...("cleared" in written && Array.isArray(written.cleared) ? written.cleared : []), ...(documentDate !== null ? ["form_date"] : []), ...(dictatedPlan !== null ? ["action_plan"] : []), ...written.rejected.map((row) => row.key)];
-    const reasons = new Map(written.rejected.map((row) => [row.key, row.reason] as const));
+    const claimed = [...stated.saved, ...stated.rejected.map((row) => row.key), ...Object.keys(written.accepted.values ?? {}), ...Object.keys(written.accepted.checked ?? {}), ...("cleared" in written && Array.isArray(written.cleared) ? written.cleared : []), ...(documentDate !== null ? ["form_date"] : []), ...(dictatedPlan !== null ? ["action_plan"] : []), ...written.rejected.map((row) => row.key)];
+    const reasons = new Map([...stated.rejected, ...written.rejected].map((row) => [row.key, row.reason] as const));
     const { saved: savedChanges, refused: refusedAll, unchanged: unchangedAll, now: saved } = await recordSaved(claimed, reasons);
     const updated = savedChanges.map((change) => change.field);
     /* The value the draft already held equals the one asked for (an amount by its figure; any field). */
@@ -6279,6 +6322,8 @@ export async function editForm(
       ...(refused.length > 0 ? directEditFix(loaded, fieldKeys) : {}),
       ...(unchanged.length > 0 ? { unchanged } : {}),
       ...(alreadySet.length > 0 ? { already_set: alreadySet } : {}),
+      /* Pau, 24 Nov brief, item 4: every field this message cleared or restated, by the form's own label; the reply names each. */
+      ...(statedLines.length > 0 ? { stated_edits: statedLines, stated_edits_note: "Name every field in stated_edits in your reply, by its label, word for word: each one cleared, or what it now says." } : {}),
       ...(loaded.instance.templateKey === appConfig().formKeys.corrective ? { saved_level: savedLevel.length > 0 ? savedLevel.map((key) => levelLabel[key] ?? key).join(", ") : null } : {}),
       ...rewordFacts,
       ...addFacts,
