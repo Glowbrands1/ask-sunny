@@ -107,6 +107,59 @@ export const NOV23_HR_APPROVAL_CASES: ReplayCase[] = [
     },
   },
   {
+    id: "nov23-hr-approval-hr-sees-the-sibling-apps-queue",
+    title:
+      'HR: "what\'s waiting on me?" with the sibling link set: read_hr_approvals gives this app\'s form AND, under other_app, the form waiting for them in the sibling app',
+    report: 'Owner, 23 Nov 2026: "can we pls add both views sunny/bubbles for colene so she doesnt have to go back and forth just make a 1 tab for sunny 1 tab for bubbles"',
+    status: "fixed",
+    fixFlags: FLAGS,
+    async run(t) {
+      if (!t.loopOn?.() || !hrApprovalEnabled()) return;
+      await sentToHr(t);
+      t.addRows!("form_hr_approvers", [{ app_user_id: HR_ACCOUNT, revoked_at: null }]);
+      t.addRows!("app_users", [{ id: HR_ACCOUNT, email: "hr.wren@example.com", display_name: "Wren", status: "active" }]);
+      const before = process.env.SIBLING_HR_SECRET;
+      process.env.SIBLING_HR_SECRET = "replay-secret-0123456789abcdef0123456789";
+      // The sibling app's server, answering as `hrQueueForPartner` does.
+      const sibling = vi.fn(async () =>
+        Response.json({
+          app: "Sibling App",
+          approver: true,
+          forms: [
+            {
+              line: "Exit Form for Marlowe Fenwick at Invented Place",
+              from: "Ines",
+              state: "pending",
+              requestedAt: "2026-11-23T14:00:00Z",
+              waiting: "Sent today",
+              overdue: false,
+              path: "/forms/hr-approval/0b6f1c1e-2a8d-4c55-9a10-5f3b6c7d8e9f",
+            },
+          ],
+        }),
+      );
+      vi.stubGlobal("fetch", sibling);
+      try {
+        const result = asksHr(t, "district_manager", GLOBAL, HR_ACCOUNT);
+        await t.thread().say("what's waiting on me in both apps?");
+        const output = result();
+        expect(JSON.stringify(output.waiting_for_you), "this app's waiting form did not reach the model").toMatch(/Peregrine Ashdown/);
+        const other = output.other_app as Record<string, unknown> | undefined;
+        expect(other, "the sibling app's queue did not reach the model").toBeDefined();
+        expect(other!.app).toBe("Sibling App");
+        expect(JSON.stringify(other!.waiting_for_you)).toMatch(/Exit Form for Marlowe Fenwick/);
+        // Asked once, for this approver's own email only.
+        expect(sibling).toHaveBeenCalledTimes(1);
+        expect(String((sibling.mock.calls[0] as unknown[])[0])).toMatch(/\/api\/partner\/hr-queue$/);
+        expect(String(((sibling.mock.calls[0] as unknown[])[1] as RequestInit).body)).toContain('"approverEmail":"hr.wren@example.com"');
+      } finally {
+        vi.unstubAllGlobals();
+        if (before === undefined) delete process.env.SIBLING_HR_SECRET;
+        else process.env.SIBLING_HR_SECRET = before;
+      }
+    },
+  },
+  {
     id: "nov23-hr-approval-admin-gets-nothing-while-it-waits",
     title: 'an administrator: "does Peregrine Ashdown have any write ups?": the form waiting for HR is not on file for them, and nothing about it reaches the model',
     report: REPORT,

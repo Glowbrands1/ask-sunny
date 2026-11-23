@@ -511,16 +511,48 @@ export interface HrDecidedRow extends MyHrFormRow {
  * anybody else gets only the forms THEY created that went to HR — waiting, sent back, rejected, or approved in the last
  * 30 days — with HR's latest note on each. Never another manager's form, never another manager's note.
  */
+/**
+ * THE SIBLING APP'S QUEUE FOR THE AI (owner, 23 Nov 2026: HR sees both apps' queues). Null when the sibling link is not
+ * configured (no SIBLING_HR_SECRET); "unavailable" when the sibling did not answer. Asked with this approver's own
+ * account email only.
+ */
+export type SiblingHrRead =
+  | null
+  | "unavailable"
+  | { app: string; approver: boolean; forms: { line: string; from: string; state: HrApprovalState; requestedAt: string | null; waiting: string; overdue: boolean }[] };
+
+async function siblingHrReadFor(subject: string): Promise<SiblingHrRead> {
+  try {
+    const { accountEmail } = await import("./hr-approval-approvers");
+    const email = await accountEmail(subject);
+    if (!email) return null;
+    const { fetchSiblingHrQueue } = await import("@/lib/partner/sibling-hr-queue");
+    const sibling = await fetchSiblingHrQueue(email);
+    if (sibling.status === "off") return null;
+    if (sibling.status === "error") return "unavailable";
+    return {
+      app: sibling.app,
+      approver: sibling.approver,
+      forms: sibling.forms.map(({ line, from, state, requestedAt, waiting, overdue }) => ({ line, from, state, requestedAt, waiting, overdue })),
+    };
+  } catch {
+    return "unavailable";
+  }
+}
+
 export async function readHrApprovalsFor(subject: string, verified: boolean, now: Date = new Date()): Promise<
   | { kind: "off" }
-  | { kind: "hr"; queue: HrQueueRow[] }
+  | { kind: "hr"; queue: HrQueueRow[]; sibling: SiblingHrRead }
   | { kind: "manager"; forms: HrDecidedRow[] }
 > {
   if (!hrApprovalEnabled() || !verified || !subject || !SAFE_ID.test(subject)) return { kind: "off" };
   const { resolveHrApprover } = await import("./hr-approval-approvers");
   const hrApprover = await resolveHrApprover(subject);
   const actor: FormsActor = { id: subject, role: null, verified: true, scope: null, visibility: null, hrApprover };
-  if (hrApprover) return { kind: "hr", queue: await listHrQueue(actor, now) };
+  if (hrApprover) {
+    const [queue, sibling] = await Promise.all([listHrQueue(actor, now), siblingHrReadFor(subject)]);
+    return { kind: "hr", queue, sibling };
+  }
 
   const supabase = getSupabaseAdmin();
   const open = await listMyFormsWithHr(actor);

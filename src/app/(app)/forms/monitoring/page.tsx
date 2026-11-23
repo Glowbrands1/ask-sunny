@@ -27,7 +27,9 @@ import {
 } from "@/lib/forms/instance-scope";
 import { pageFormsAccess } from "@/lib/forms/page-scope";
 import type { Permission } from "@/types";
-import { HrApprovalTabs, HrQueueList, MyFormsWithHr } from "@/features/forms/hr-approval-lists";
+import { HrApprovalTabs, HrAppTabs, HrQueueList, MyFormsWithHr, SiblingHrQueueList } from "@/features/forms/hr-approval-lists";
+import { fetchSiblingHrQueue, type SiblingHrQueue } from "@/lib/partner/sibling-hr-queue";
+import { ACTIVE_BRAND } from "@/lib/brand";
 import { hrQueueSummary, listHrQueue, listMyFormsWithHr, type HrQueueRow, type MyHrFormRow } from "@/lib/forms/hr-approval";
 
 export const metadata: Metadata = { title: "Form Monitoring" };
@@ -50,11 +52,11 @@ export const dynamic = "force-dynamic";
 export default async function FormMonitoringPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; followup?: string }>;
+  searchParams: Promise<{ view?: string; followup?: string; app?: string }>;
 }) {
   const identity = await requirePagePermission("view_form_monitoring");
 
-  const { view: requestedView, followup: requestedFollowUp } = await searchParams;
+  const { view: requestedView, followup: requestedFollowUp, app: requestedApp } = await searchParams;
   /*
    * Both filters come from the URL so a view survives a refresh and can be
    * linked to, and both are narrowed here rather than trusted — an unknown
@@ -98,10 +100,23 @@ export default async function FormMonitoringPage({
   let hrQueue: HrQueueRow[] = [];
   let hrSummary: { pending: number; overdue: number } | null = null;
   let myWithHr: MyHrFormRow[] = [];
+  /*
+   * THE SIBLING APP'S QUEUE (owner, 23 Nov 2026: "1 tab for sunny 1 tab for bubbles"): on HR's tab only, for a
+   * verified HR approver, asked of the sibling's server with this identity's email (`fetchSiblingHrQueue`). "off"
+   * (no shared secret) shows no sub-tabs at all.
+   */
+  let sibling: SiblingHrQueue = { status: "off" };
+  const siblingView = hrView && requestedApp === "sibling";
   try {
     if (isHr) {
       hrSummary = await hrQueueSummary(access.actor);
-      if (hrView) hrQueue = await listHrQueue(access.actor);
+      if (hrView) {
+        const email = access.actor.verified && identity?.verified === true && identity.email ? identity.email : null;
+        [hrQueue, sibling] = await Promise.all([
+          listHrQueue(access.actor),
+          email ? fetchSiblingHrQueue(email) : Promise.resolve<SiblingHrQueue>({ status: "off" }),
+        ]);
+      }
     }
     myWithHr = await listMyFormsWithHr(access.actor);
   } catch {
@@ -189,7 +204,21 @@ export default async function FormMonitoringPage({
         {hrSummary ? <HrApprovalTabs active={hrView ? "hr" : "all"} pending={hrSummary.pending} overdue={hrSummary.overdue} /> : null}
         {!hrView ? <MyFormsWithHr rows={myWithHr} /> : null}
 
-        {hrView ? (
+        {hrView && sibling.status !== "off" ? (
+          <HrAppTabs
+            active={siblingView ? "sibling" : "this"}
+            thisApp={{ name: ACTIVE_BRAND.productName, pending: hrQueue.filter((row) => row.state === "pending").length }}
+            sibling={
+              sibling.status === "ok"
+                ? { name: sibling.app, pending: sibling.forms.filter((row) => row.state === "pending").length }
+                : { name: null, pending: null }
+            }
+          />
+        ) : null}
+
+        {hrView && siblingView && sibling.status !== "off" ? (
+          <SiblingHrQueueList queue={sibling} />
+        ) : hrView ? (
           <HrQueueList rows={hrQueue} />
         ) : access.noSalon ? (
           <Notice tone="attention" title="No home salon assigned">

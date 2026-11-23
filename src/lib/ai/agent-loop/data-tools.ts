@@ -168,6 +168,18 @@ export type HrApprovalsRead =
         waiting: string;
         overdue: boolean;
       }[];
+      /**
+       * The same approver's queue in the sibling app (`siblingHrReadFor`): null when the link is not configured,
+       * "unavailable" when the sibling did not answer. Optional, so a dep that predates it reads as not configured.
+       */
+      readonly sibling?:
+        | null
+        | "unavailable"
+        | {
+            app: string;
+            approver: boolean;
+            forms: readonly { line: string; from: string; state: string; requestedAt: string | null; waiting: string; overdue: boolean }[];
+          };
     }
   | {
       readonly kind: "manager";
@@ -534,6 +546,33 @@ function hrApprovalsSource(): string {
  * manager reads ONLY the forms they created that went to HR, with HR's latest note to them. A form waiting for HR is
  * not on file: never call it filed, finalized or a prior warning.
  */
+/**
+ * HR's queue in the sibling app (owner, 23 Nov 2026: HR sees both apps' queues), under its own key so the model never
+ * mixes the two apps' forms. Named by the sibling's own answer; nothing when the link is not configured.
+ */
+function siblingHrSection(sibling: NonNullable<Extract<HrApprovalsRead, { kind: "hr" }>["sibling"]> | null): Record<string, unknown> {
+  if (sibling === null) return {};
+  if (sibling === "unavailable") {
+    return { other_app: { note: "The other app's HR queue could not be read just now. Say so, and that it is listed under its own tab in Pending HR approval." } };
+  }
+  const source = `HR approval (${sibling.app})`;
+  if (!sibling.approver) {
+    return { other_app: { app: sibling.app, note: `This account is not the HR approver in ${sibling.app}, so nothing waits for them there.` } };
+  }
+  return {
+    other_app: {
+      app: sibling.app,
+      waiting_for_you: sibling.forms
+        .filter((row) => row.state === "pending")
+        .map((row) => ({ form: untrusted(row.line, source), from: row.from, sent: formatBusinessTime(row.requestedAt) ?? row.requestedAt, waiting: row.waiting, overdue: row.overdue })),
+      sent_back_or_rejected: sibling.forms
+        .filter((row) => row.state !== "pending")
+        .map((row) => ({ form: untrusted(row.line, source), from: row.from, state: row.state === "rejected" ? "rejected" : "sent back for changes" })),
+      note: `These forms are in ${sibling.app}, not this app: list them separately, under ${sibling.app}'s name. They are approved in ${sibling.app}, opened from its own tab in Pending HR approval.`,
+    },
+  };
+}
+
 export async function readHrApprovals(context: DataToolContext, deps: DataToolDeps = DEFAULT_DATA_TOOL_DEPS): Promise<ToolResult> {
   const subject = context.actor.subject ?? "";
   const read = await deps.loadHrApprovals({ subject, verified: context.actor.verified === true, now: context.now ?? new Date() });
@@ -551,6 +590,7 @@ export async function readHrApprovals(context: DataToolContext, deps: DataToolDe
         .filter((row) => row.state !== "pending")
         .map((row) => ({ form: untrusted(row.line, hrApprovalsSource()), from: row.createdByName, state: row.state === "rejected" ? "rejected" : "sent back for changes" })),
       note: "List the forms waiting for this HR approver, oldest first, saying which are overdue (waited more than one business day). They approve, send back or reject each one from Pending HR approval in " + appConfig().formsPageName + ".",
+      ...siblingHrSection(read.sibling ?? null),
     };
   }
   return {
@@ -607,7 +647,7 @@ export function dataToolSpecs(config: AppConfig) {
   {
     name: "read_hr_approvals",
     description:
-      "HR approval of forms: for HR, every form waiting for their approval (oldest first, overdue after one business day) and the ones they sent back or rejected; for any other manager, only the forms THEY created that went to HR (waiting, sent back, rejected, or approved in the last 30 days) with HR's latest note to them. Use it for \"has HR approved it?\", \"what's waiting on me?\", \"did HR send my form back?\". A form waiting for HR is not on file.",
+      "HR approval of forms: for HR, every form waiting for their approval (oldest first, overdue after one business day) and the ones they sent back or rejected, plus (other_app) the forms waiting for them in the sibling app; for any other manager, only the forms THEY created that went to HR (waiting, sent back, rejected, or approved in the last 30 days) with HR's latest note to them. Use it for \"has HR approved it?\", \"what's waiting on me?\", \"did HR send my form back?\". A form waiting for HR is not on file.",
     input_schema: { type: "object", properties: {}, required: [] },
   },
   {
