@@ -61,16 +61,23 @@ export const NOV20_AGENT_LOOP_SALON_CITY_NOT_IN_ACCOUNT_CASES: ReplayCase[] = [
   fixed("nov20-salon-city-not-in-account-sentence-end", "The salon at a sentence's end: \"ca for Remy Calder at kearney, she left the beds wet\" and the account \"She left the beds wet at Kearney.\": the account is \"She left the beds wet.\"", async (t) => {
     t.loopModel!(withAccount("dpoa", "She left the beds wet at Kearney."));
     const reply = await t.thread().say("ca for Remy Calder at kearney, she left the beds wet");
-    expect(card(reply)?.issue, "the salon the manager named stayed in the account").toBe("She left the beds wet.");
+    /* Changed on purpose (QA's live retest of #1147, 20 Nov 2026): the card's own account names the person, never a pronoun. */
+    expect(card(reply)?.issue, "the salon the manager named stayed in the account").toBe("Remy left the beds wet.");
   }),
   fixed("nov20-salon-city-control-other-places-kept", "Control: a longer proper noun and a work area stay word for word (\"She was at lincoln high during her shift, then at the front desk.\")", async (t) => {
     t.loopModel!(withAccount("dpoa", "She was at lincoln high during her shift, then at the front desk."));
     const reply = await t.thread().say("ca for Remy Calder at kearney, she was at lincoln high during her shift, then at the front desk");
-    expect(card(reply)?.issue).toBe("She was at lincoln high during her shift, then at the front desk.");
+    /*
+     * Changed on purpose (QA's live retest of #1147, 20 Nov 2026): the card's own account names the person, never a pronoun.
+     * Changed on purpose again (QA, item 19, #1145): the same person's second mention reads naturally, "during the shift",
+     * never "during Remy's shift". The places this control is about stay word for word.
+     */
+    expect(card(reply)?.issue).toBe("Remy was at lincoln high during the shift, then at the front desk.");
   }),
   fixed("nov20-salon-city-control-not-named-by-manager", "Control: the manager named no place; the model's \"At Kearney, she left the beds wet.\" keeps its words (nothing the manager said set the salon from them)", async (t) => {
     t.loopModel!(withAccount("dpoa", "At Kearney, she left the beds wet."));
     const reply = await t.thread().say("ca for Remy Calder, she left the beds wet");
-    expect(card(reply)?.issue).toBe("At Kearney, she left the beds wet.");
+    /* Changed on purpose (QA's live retest of #1147, 20 Nov 2026): the card's own account names the person, never a pronoun. */
+    expect(card(reply)?.issue).toBe("At Kearney, Remy left the beds wet.");
   }),
 ];

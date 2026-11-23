@@ -74,6 +74,15 @@ function sentenceBefore(text: string, at: number): string {
   return text.slice(start + 1, at);
 }
 
+/** A pronoun's person: she/her/hers/herself, he/him/his/himself, or they/them/their/theirs/themself. Null for any other word. */
+function pronounKind(word: string): "she" | "he" | "they" | null {
+  const lower = word.toLowerCase();
+  if (/^(?:she|her|hers|herself)$/.test(lower)) return "she";
+  if (/^(?:he|him|his|himself)$/.test(lower)) return "he";
+  if (/^(?:they|them|their|theirs|themself|themselves)$/.test(lower)) return "they";
+  return null;
+}
+
 const possessive = (name: string) => (/s$/i.test(name) ? `${name}'` : `${name}'s`);
 
 /** The verb after a replaced "they" agrees with one person ("they were" → "<name> was"). */
@@ -139,6 +148,14 @@ export function withoutPersonPronouns(
     if (reporterPronouns.length > 0) {
       const sentenceStart = at - before.length;
       const clauseStart = sentenceStart + before.length - clause.length;
+      /*
+       * QA's round 2 (22 Nov 2026, U23; port of Ask Bubbles #1014): "she asked another employee what they would do if they
+       * had 8 arms" became "<P> asked another employee what <P> would do …". A pronoun of another kind than its reporter's
+       * ("they" in a clause "she" reports, "he" in one "she" reports) is someone else, and stays as written.
+       */
+      const reporterKind = pronounKind(reporterPronouns.at(-1)![0]);
+      const ownKind = pronounKind(reply.slice(at).match(/^\p{L}+/u)?.[0] ?? "");
+      if (reporterKind !== null && ownKind !== null && reporterKind !== ownKind) return "untrusted";
       return keepsOwn(clauseStart + reporterPronouns.at(-1)!.index!) ? "untrusted" : "trusted";
     }
     if (/\b(?:him|her|them|his|their)\b/.test(clause.slice(0, verb.index))) return "untrusted";
@@ -174,30 +191,93 @@ export function withoutPersonPronouns(
     const at = match.index! + match[0].length - match[1]!.length;
     if (quoted.some(([from, to]) => at >= from && at < to)) continue;
     const before = sentenceBefore(reply, match.index!).toLowerCase();
-    // The card's person telling someone else ("Tamsin told her to …") is not this.
-    const named = knownKeys.flatMap((key) => [...before.matchAll(nameRe(key, "gu"))].map((hit) => ({ key, at: hit.index! })));
-    const teller = named.sort((a, b) => b.at - a.at)[0]?.key;
-    if (!teller || teller === display.toLowerCase()) continue;
+    /*
+     * The teller is the subject right before the verb, an appositive between commas set aside ("<A>'s shift lead, <L>,
+     * told her"). It need not be a known name: QA's live retest (conv_mwp5inao2y4s849) named the lead in an earlier turn,
+     * off the roster, and "Test's shift lead" was read as Test telling. The card's person telling someone else ("Tamsin
+     * told her to …") and a pronoun telling ("She told her to …") are not this; a possessive ("Test's") never tells.
+     */
+    const subject = before.replace(/[\s*_]+$/, "").replace(/,[^,]*,$/, "").replace(/[\s*_:]+$/, "");
+    // The card's person as the subject: their reply name, alone or with a surname after it ("Test told", "Test Testy told").
+    const own = display.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const ownTells = new RegExp(`(?:^|[^\\p{L}'-])${own}(?:\\s+\\p{L}+)?$`, "u").test(subject);
+    if (!subject || ownTells || /(?:^|[^\p{L}'-])(?:he|she|they|i|you|we)$/u.test(subject)) continue;
     told.add(at);
-    const subject = { him: "he", her: "she", them: "they" }[match[1]!.toLowerCase() as "him" | "her" | "them"];
+    const listener = { him: "he", her: "she", them: "they" }[match[1]!.toLowerCase() as "him" | "her" | "them"];
     const rest = reply.slice(at + match[1]!.length);
     const end = rest.search(/[.?!](?!\d)|\n/);
     const sentence = end === -1 ? rest : rest.slice(0, end);
-    for (const joined of sentence.matchAll(new RegExp(`\\b(?:and|but|so|then)\\s+(${subject})\\b`, "gi"))) told.add(at + match[1]!.length + joined.index! + joined[0].length - joined[1]!.length);
+    for (const joined of sentence.matchAll(new RegExp(`\\b(?:and|but|so|then)\\s+(${listener})\\b`, "gi"))) told.add(at + match[1]!.length + joined.index! + joined[0].length - joined[1]!.length);
   }
   const inQuote = (at: number) => quoted.some(([from, to]) => at >= from && at < to) || (!told.has(at) && keepsOwn(at));
   const edits: Array<{ from: number; to: number; text: string }> = [];
 
+  /*
+   * QA (20 Nov 2026, item 19; the production audit): "<P> did not come into <P>'s scheduled shift today" reads clumsily.
+   * The person's second mention in one sentence (the name already written, or an earlier pronoun of theirs replaced) is
+   * not the name again: a possessive right after a preposition is "the" ("did not come into the scheduled shift"; one
+   * elsewhere, "said her car broke down", keeps its owner as the name), and a subject after "and",
+   * "but", "or" or "then" is dropped ("came in late and left early"). The first mention is the name, as before, and no
+   * pronoun is ever kept.
+   */
+  const nameInSentence = nameRe(display.toLowerCase(), "iu");
+  const mentionedBefore = (at: number) => {
+    const before = sentenceBefore(reply, at);
+    const sentenceStart = at - before.length;
+    return nameInSentence.test(before) || edits.some((edit) => edit.from >= sentenceStart && edit.from < at);
+  };
   for (const match of reply.matchAll(ALWAYS)) {
     const at = match.index!;
     if (inQuote(at)) continue;
     const word = match[0].toLowerCase();
     const end = at + match[0].length;
-    let text: string;
-    if (word === "his" || word === "hers") text = possessive(display);
+    const owns = word === "his" || word === "hers" || (word === "her" && /^\s+[A-Za-z0-9$]/.test(reply.slice(end)) && !NOT_OWNED.test(reply.slice(end)));
+    const again = mentionedBefore(at);
+    // Only after a place or time preposition ("into her scheduled shift"): "Remy said her car broke down" keeps the owner.
+    const afterPreposition = /\b(?:into|for|to|on|at|during|from|before|after|in)[ \t]+$/i.test(reply.slice(Math.max(0, at - 10), at));
+    /*
+     * QA2's live R3 (21 Nov 2026): "Test came into the salon to show her team her new puppy" was replied as "to show Test's
+     * team Test's new puppy", while the saved write-up read "to show the team the new puppy". Outside reported speech
+     * (no reporting verb in the clause before it), a possessive of the person already named in the sentence is "the", as
+     * the saved write-up writes it (`nameInsteadOfPronouns`). "Remy said her car broke down" keeps its owner, as before.
+     */
+    const clauseBefore = sentenceBefore(reply, at).split(/[,;:]/).at(-1) ?? "";
+    const notReported = !REPORTING.test(clauseBefore.toLowerCase());
+    /* Only an object ("show her team", "team her new puppy"): never one opening a clause ("and her shift …") or after "with"/"of". */
+    const opensClause = clauseBefore.trim() === "" || /\b(?:and|but|or|so|then|with|of)[ \t]+$/i.test(clauseBefore);
+    if (again && owns && word !== "hers" && (afterPreposition || (notReported && !opensClause))) {
+      edits.push({ from: at, to: end, text: match[0][0] === match[0][0]!.toUpperCase() ? "The" : "the" });
+      continue;
+    }
+    const joined = /\b(?:and|but|or|then)[ \t]+$/i.exec(reply.slice(Math.max(0, at - 8), at));
+    /*
+     * Dropped only when the person is the subject the sentence opens with ("Remy came in late and she left early"). The
+     * listener of someone else's instruction ("Corin told her to clock out early and she refused", #1147's f059) is named,
+     * never dropped: the joined clause's subject would read as the teller's.
+     */
+    const lead = sentenceBefore(reply, at).replace(/^\s*(?:\*\*[^*]*\*\*\s*)?(?:[A-Z][\w ]{0,40}:\s+)?/, "");
+    const firstWord = (display.split(/\s+/)[0] ?? "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const opensWithPerson = new RegExp(`^(?:${firstWord}|she|he)\\b`, "iu").test(lead);
+    if (again && !told.has(at) && opensWithPerson && (word === "she" || word === "he") && joined && /^\s+[a-z]/.test(reply.slice(end))) {
+      edits.push({ from: at, to: end + (/^[ \t]/.test(reply.slice(end)) ? 1 : 0), text: "" });
+      continue;
+    }
+    /*
+     * QA2's live R3 (21 Nov 2026, #1168's case): "Her shift lead told her to go home and she refused" read "Test's shift
+     * lead, <J>, told Test to go home and Test refused". The told listener later in this sentence is named (f059), so a
+     * possessive before it, at the sentence's first mention, is the plain article: "The shift lead … told Remy …".
+     */
+    if (owns && word !== "hers" && !again) {
+      const rest = reply.slice(end);
+      const stop = rest.search(/[.?!](?!\d)|\n/);
+      const sentenceEnd = end + (stop === -1 ? rest.length : stop);
+      if ([...told].some((listener) => listener > at && listener < sentenceEnd)) {
+        edits.push({ from: at, to: end, text: match[0][0] === match[0][0]!.toUpperCase() ? "The" : "the" });
+        continue;
+      }
+    }
     // "her shift", "her 146 tans", "her own" own something; "for her.", "with her and", "talked to her" do not.
-    else if (word === "her") text = /^\s+[A-Za-z0-9$]/.test(reply.slice(end)) && !NOT_OWNED.test(reply.slice(end)) ? possessive(display) : display;
-    else text = display;
+    const text = owns ? possessive(display) : display;
     edits.push({ from: at, to: end, text });
   }
   for (const match of reply.matchAll(THEY_PERSON)) {

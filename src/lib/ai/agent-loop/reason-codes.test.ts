@@ -54,10 +54,19 @@ const KNOWN = new Set([
   "form_locked",
   // QA item 8 (20 Nov 2026): a roster person nobody named, picked or confirmed in this chat.
   "person_not_named",
+  "person_change_not_asked",
   // QA (16 Nov 2026, the 266 audit on train 4): c261/c263 dress code cited as another heading; c207 Must See Behaviors with no MSB said.
   "dress_code_heading", "msb_not_said",
   // Added on purpose (QA's review of #1137, 20 Nov 2026): an Attendance CA card with no attendance record, or one not in the manager's words.
   "attendance_not_given", "attendance_evidence_not_found",
+  // Added on purpose (port from the sibling app, its QA's live re-test, 21 Nov 2026, A5): a Corrective Action account with no subject.
+  "account_no_subject",
+  // Added on purpose (port from the sibling app, its QA's round 2, 22 Nov 2026, R14): a one-word name that is the first word
+  // of the full name the manager typed in this request goes back with that full name.
+  "full_name_typed",
+  // Added on purpose (port from the sibling app, its QA's round 2, 22 Nov 2026, U21): a card asked for the card on screen
+  // for another person, with no account, goes back once to be proposed with that card's account.
+  "same_card_account_missing",
 ]);
 
 /** A line that returns a refusal: `error:` followed by a string, a template or a named message (not `error: Boolean(...)`). */

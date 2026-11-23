@@ -55,7 +55,11 @@ export interface ReplayContext {
   /** `extra`: other fields of the draft tool's input, e.g. `{ offense_basis: "sales" }` (CA_SALES_POLICY_ENABLED). */
   draftWrites(values: Record<string, string>, checked?: Record<string, string[]>, extra?: Record<string, unknown>): void;
   /** The pinned policy manual also has these chunks this case (as `fetchOfficialPolicyManual` returns them); none by default. */
-  manualAlsoHas?(chunks: readonly Record<string, unknown>[]): void;
+  /**
+   * Chunks the pinned manual also has. `inPlace` (QA2, 21 Nov 2026): they take the place of the pinned chunks with the same
+   * chunk numbers, so a case reads production's own layout of those sections (the pinned CA fixture words them differently).
+   */
+  manualAlsoHas?(chunks: readonly Record<string, unknown>[], options?: { inPlace?: boolean }): void;
   /**
    * FULL_MANUAL_KEEPS_RETRIEVAL (QA, 10 Nov 2026): what the knowledge search returns this case (none by default), the
    * message normalizer's intent label (none by default: the glossary's reading), and whether the whole JBA Policy Manual
@@ -148,6 +152,10 @@ export interface ReplayContext {
   redraft(instanceId: string, notes: string): Promise<Record<string, unknown>>;
   /** The manager types on the form and saves (filled by the manager). */
   typeOnForm(instanceId: string, values: Record<string, string>): void;
+  /** Tick a form's checkbox groups (form_instance_values.checked), as a form on file holds them: its warning level, its boxes. */
+  checkOnForm?(instanceId: string, checked: Record<string, string[]>): void;
+  /** The real template and current version ids of a form, for a row a case puts on file directly (its values then load as a saved form's). */
+  templateIds?(key: string): { template_id: string; template_version_id: string };
   /** Production's race: the next message arrives before the drafting model's values are saved. */
   draftNotYetSaved(instanceId: string): void;
   /** The draft route's replies this case, in order (e.g. its `notice`). */

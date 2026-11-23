@@ -68,15 +68,20 @@ function useRun() {
   return { pending, error, warning, run };
 }
 
+const MANAGE_TABS = ["lessons", "pages", "submissions", "import"];
+
 export function ManageScreen({
   problem,
   data,
   otherAppName = null,
+  initialTab,
 }: {
   problem: string | null;
   data: ManageData | null;
   /** The sibling app's name when publishing to it is set up; null hides the box. */
   otherAppName?: string | null;
+  /** "submissions" from the bell's link; anything else opens the usual first tab. */
+  initialTab?: string;
 }) {
   const waiting = data?.submissions.filter((s) => s.status === "pending").length ?? 0;
   return (
@@ -88,7 +93,7 @@ export function ManageScreen({
       {problem || !data ? (
         <Notice tone="attention" title="AI Training is unavailable">{problem ?? "Nothing to show."}</Notice>
       ) : (
-        <Tabs defaultValue={data.catalog.tracks.length ? "lessons" : "import"}>
+        <Tabs defaultValue={initialTab && MANAGE_TABS.includes(initialTab) ? initialTab : data.catalog.tracks.length ? "lessons" : "import"}>
           <TabsList aria-label="Manage sections">
             <TabsTrigger value="lessons">Lessons</TabsTrigger>
             <TabsTrigger value="pages">Pages</TabsTrigger>

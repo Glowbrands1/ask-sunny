@@ -249,7 +249,7 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
   },
   {
     id: "nov15-agent-loop-g4-edit-a-misspelled-name-ca",
-    title: "G4 (REOPEN_CLOSE_SPELLING, parity gap #43): \"edit remy caldr ca\" opens the one form on file whose employee's name it closely spells; two close names are asked about",
+    title: "G4 (REOPEN_CLOSE_SPELLING, parity gap #43): \"edit remy caldr ca\" asks \"Did you mean **Remy Calder**?\" and opens nothing; the full name opens the form; two close names are asked about",
     report: `${REPORT}; parity matrix #43: "Edit <misspelled name> CA" with that person's CA on file`,
     status: "fixed",
     fixFlags: [FLAG],
@@ -260,14 +260,26 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       t.as("salon_director", KEARNEY);
       const ca = await onFile(t, "e-2", "Remy Calder", "dpoa", "2026-11-12", "Remy Calder was 20 minutes late on 11/12.");
       const model = loopStandIn((view): LoopDecision => {
-        const found = lastResult(view, "find_past_forms") as { best_match?: string; close_names?: string[] } | null;
-        if (!found) return { tool: "find_past_forms", input: { employee_name: "remy caldr", form: "ca", forms_on_file_evidence: evidenceFrom(view), open: true } };
-        if (found.best_match && !lastResult(view, "open_form")) return { tool: "open_form", input: { instance_id: found.best_match, forms_on_file_evidence: evidenceFrom(view) } };
-        return { text: found.close_names ? `Which one: ${found.close_names.join(" or ")}?` : "Opening **Remy Calder**'s form." };
+        const found = lastResult(view, "find_past_forms") as { best_match?: string; close_names?: string[]; ask_exactly?: string; forms?: { instance_id: string }[] } | null;
+        const typed = /remy calder/i.test(view.turns.at(-1)?.text ?? "") ? "remy calder" : "remy caldr";
+        if (!found) return { tool: "find_past_forms", input: { employee_name: typed, form: "ca", forms_on_file_evidence: evidenceFrom(view), open: true } };
+        const one = found.best_match ?? (found.forms?.length === 1 ? found.forms[0]!.instance_id : undefined);
+        if (one && !lastResult(view, "open_form")) return { tool: "open_form", input: { instance_id: one, forms_on_file_evidence: evidenceFrom(view) } };
+        if (lastResult(view, "open_form")) return { text: "Opening **Remy Calder**'s form." };
+        return { text: found.close_names ? `Which one: ${found.close_names.join(" or ")}?` : (found.ask_exactly ?? "There's nothing on file under that name.") };
       });
       t.loopModel!(model);
-      const reply = await t.thread().say("edit remy caldr ca");
-      expect(reply.formOpened?.instanceId, `the close spelling's form was not opened:\n${reply.content}`).toBe(ca);
+      /*
+       * Changed on purpose (QA, 20 Nov 2026, live: "show me forms for Tes" opened another person's draft): a close spelling
+       * is only ever a Did-you-mean question (Pau's ruling A), never a silent open. The form opens once the full name is
+       * typed.
+       */
+      const asked = await t.thread().say("edit remy caldr ca");
+      expect(asked.formOpened ?? null, `a form was opened on a close spelling:\n${asked.content}`).toBeNull();
+      expect(asked.content).toMatch(/Did you mean \*\*Remy Calder\*\*\?/);
+      t.loopModel!(model);
+      const reply = await t.thread().say("edit remy calder ca");
+      expect(reply.formOpened?.instanceId, `the full name's form was not opened:\n${reply.content}`).toBe(ca);
       // A second person on file with a name as close: ask which, open nothing.
       await onFile(t, REMI.id, "Remi Calder", "dpoa", "2026-11-10", "Remi Calder was late on 11/10.");
       t.loopModel!(model);
@@ -483,7 +495,8 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       const reply = await thread.say("ca for remy calder, Remy Calder failed to have Juno Paxton complete required policy acknowledgements in Woven during her onboarding");
       expect(thread.proposal?.employeeName).toBe("Remy Calder");
       expect(thread.proposal?.issue ?? "", `the account blames someone else:\n${reply.content}`).not.toMatch(/^Juno Paxton did not/);
-      expect(thread.proposal?.issue ?? "", "the employee is not the one responsible").toMatch(/Remy Calder failed to have Juno Paxton/);
+      /* Changed on purpose (QA, 20 Nov 2026; #1184): the card's account and the reply call the person by the reply name (the first name, Pau's rule), not the full name the stand-in model wrote. */
+      expect(thread.proposal?.issue ?? "", "the employee is not the one responsible").toMatch(/^Remy failed to have Juno Paxton/);
       if (offline) expect(toolResults(model.views, "propose_form")[0], "the changed subject is not a fact").toMatch(/"account_subject_changed":\{"employee":"Remy Calder","account_says_it_was":"Juno Paxton"\}/);
     },
   },

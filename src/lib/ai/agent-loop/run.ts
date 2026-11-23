@@ -1,11 +1,18 @@
+import { EXIT_METHOD_LABELS } from "@/lib/forms/exit-details";
+import { cardLines, historyReply, withoutAppNotes, withoutCardLines } from "./card-lines";
+import { exitReadBackMismatch, withoutUnsavedExitLines } from "./exit-read-back";
 import "server-only";
 
+import { observationDateMismatch, withoutMisdatedRestatements } from "./observation-dates";
 import { withFullOffRosterName } from "./off-roster-line";
-import { cardTurns, personKey, readLoopRecords, replyTurns, type CardRecord, type CardSlot, type ExitOfferSlot, type NameQuestionSlot, type PersonAskedSlot } from "./card-record";
+import { speaksOfTheManager, withoutManagerReasoning } from "./reasoning-leak";
+import { salonsNamedNotSaid, withoutSalonGuess } from "./salon-guess";
+import type { WhichFormSlot } from "./which-form";
+import { cardTurns, personKey, readLoopRecords, replyTurns, type CardRecord, type CardSlot, type ExitOfferSlot, type NameQuestionSlot, type PersonAskedSlot, type TeamConfirmSlot } from "./card-record";
 import { CLAUDE_EFFORT, CLAUDE_MAX_TOKENS, CLAUDE_MODEL } from "@/lib/config/models";
 import { MissingConfigurationError, requireEnv } from "@/lib/config/server-env";
 import { mainAnswerTimeoutMs, streamGapTimeoutMs } from "@/lib/config/ai-timeouts";
-import { chatTraceEnabled, editSeesSavedFormEnabled } from "@/lib/config/chat-quality-flags";
+import { chatTraceEnabled, editSeesSavedFormEnabled, statedPlanStepsEnabled } from "@/lib/config/chat-quality-flags";
 import { countModelCalls } from "../model-call-scope";
 import { authorizedSalonIds } from "@/lib/forms/location-scope";
 import { rosterSalonName } from "@/lib/forms/salon-mention";
@@ -16,7 +23,7 @@ import { chatTraceDraft } from "../chat-trace-store";
 import { AiError } from "../errors";
 import { noteModelCall } from "../model-failure";
 import { activeSpendMeter } from "../spend-meter";
-import { AI_TIMEOUT_MESSAGE, isAiTimeLimitError, logAiFailure, msLeftForCleanup, withStreamTimeLimit, type StreamWatch } from "../time-limit";
+import { isAiTimeLimitError, logAiFailure, msLeftForCleanup, withStreamTimeLimit, type StreamWatch } from "../time-limit";
 import type { AskResponse } from "../types";
 import { withoutSensitiveDefaults } from "../sensitive-defaults";
 import { finalReplyWithoutMarkers, withoutSourceMarkers, withoutSourceNotes } from "../source-note";
@@ -25,6 +32,7 @@ import { shownCitations } from "@/lib/knowledge/empty-card-drop";
 import { dataToolHandlers, dataToolSpecs } from "./data-tools";
 import { appConfig, SUNNY_CONFIG, type AppConfig } from "./app-config";
 import { withoutPersonPronouns } from "./reply-pronouns";
+import { replyWithShortName } from "@/lib/forms/short-name";
 import { agentLoopRules, agentLoopSystem } from "./prompt";
 import { generatedId, identifiedTurns, messageIdTag, withoutMessageIdTags } from "./evidence";
 import { agentLoopStepLimit } from "./switch";
@@ -96,6 +104,17 @@ export const TOOL_SETTLE_MS = 5_000;
 import { LOOP_FAILED_REPLY, STEP_LIMIT_REPLY } from "./replies";
 import { fieldLabel, readableValue } from "./saved-diff";
 
+/*
+ * QA's f074 (20 Nov 2026): the MODEL's reply says a form or card was made ("I made the coaching form", "I've created the
+ * CA", "here's the Coaching Form"), read only when propose_form made no card this turn; and later work the app cannot send.
+ */
+const CLAIMS_A_FORM_MADE = /\b(?:I(?:'ve| have)?\s+(?:made|created|drafted|started|put together|set up|built)|here(?:'s| is)\s+(?:the|your))\b[^.\n]{0,60}?\b(?:form|card|CA|C\/A|coaching|corrective action)\b/i;
+const PROMISES_LATER_WORK = /\b(?:in a follow-?up|follow-?up (?:message|reply)|resend|re-send|on my end|an issue on (?:my|our) end|a lookup problem|try (?:it )?again|I(?:'ll| will) (?:send (?:it|that|this) (?:again|later|over)|get back to you|follow up))\b/i;
+/** QA2 (21 Nov 2026): the reply speaks of an earlier card's draft (Form Monitoring, deleting it, keeping it unused). */
+/* The page name comes from the app config (the loop port: "Form Monitoring" here, the sibling app's own page there). */
+const speaksOfEarlierDraft = (text: string): boolean =>
+  new RegExp(`\\b${appConfig().formsPageName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b|\\bdelet(?:e|ed|ing)\\b|\\bleft unused\\b`, "i").test(text);
+
 export { LOOP_FAILED_REPLY, STEP_LIMIT_REPLY };
 
 /**
@@ -107,7 +126,7 @@ export function doneThisTurn(effects: Pick<ToolEffects, "proposal" | "formUpdate
   const done: string[] = [];
   /* QA's audit (item 14b): coach_team's "create all" saves drafts in Form Monitoring; a later failure never says nothing was saved. */
   if (effects.draftsCreated && effects.draftsCreated > 0) {
-    done.push(`I created ${effects.draftsCreated} draft Coaching Form${effects.draftsCreated === 1 ? "" : "s"} in Form Monitoring.`);
+    done.push(`I created ${effects.draftsCreated} draft Coaching Form${effects.draftsCreated === 1 ? "" : "s"} in ${appConfig().formsPageName}.`);
   }
   if (effects.proposal) {
     const who = effects.proposal.employeeName ? ` for **${effects.proposal.employeeName}**` : "";
@@ -136,6 +155,9 @@ export function doneThisTurn(effects: Pick<ToolEffects, "proposal" | "formUpdate
 }
 
 /** F1: an error or timeout after something was saved: what was, and that the rest did not finish. */
+/** A turn that ran out of time with nothing done (QA's call, 22 Nov 2026): one sentence, no promise about next time. */
+export const LOOP_TIMEOUT_REPLY = "I ran out of time before I could answer that, so nothing was changed.";
+
 export function partialReply(done: string, stopped: "timeout" | "error"): string {
   return `${done} ${stopped === "timeout" ? "I ran out of time before finishing the rest of that answer" : "Something went wrong before I could finish the rest of that answer"}, so please check it and send anything still missing again.`;
 }
@@ -146,9 +168,50 @@ export function partialReply(done: string, stopped: "timeout" | "error"): string
  * the form really holds changed, from saved), or that nothing else was saved yet; then it asks the manager to send the
  * change again. It never reads the manager's message and never guesses what is "left".
  */
-export function stepLimitReply(done: string | null, saved = false): string {
+export function stepLimitReply(done: string | null, saved = false, card: CardMade | null = null): string {
   if (!done) return STEP_LIMIT_REPLY;
+  /*
+   * Port from the sibling app (its QA's live re-test, 21 Nov 2026): "Create the coaching form with the information given.
+   * Her name is <First> <Lasty> …" and the next turn's place answer each hit the step limit after the card was made, and
+   * the reply was "Here is the **Coaching Form** for **<name>** … Please send the change you still need again". The card
+   * already held the change. With a card made this turn, the reply says what the card's own result records (the form it
+   * changed from, the name it corrected, its person and salon), and never asks for the change again.
+   */
+  if (card) return `${done} ${cardMadeLine(card)} Tell me if anything else on the card should change.`;
   return `${done} ${saved ? "" : "Nothing else was saved yet. "}Please send the change you still need again, and I'll make it.`;
+}
+
+/** What propose_form's latest card this turn recorded: its form, person and salon, and what changed from the earlier card. */
+export interface CardMade {
+  readonly form: string | null;
+  readonly employee: string | null;
+  readonly salon: string | null;
+  /** facts.form_changed.from: the earlier card's form. */
+  readonly formFrom: string | null;
+  /** facts.name_corrected: the earlier card's name, and the card's name now. */
+  readonly nameFrom: string | null;
+}
+
+/**
+ * The form the card switched from, when its result has no form_changed (no form_change_evidence this turn): the chat's
+ * latest card before this turn (the server's card record) was THIS person's on another form, or its name was corrected.
+ */
+function withEarlierForm(card: CardMade, earlier: CardRecord | null, effects: Pick<ToolEffects, "proposal" | "proposalEmployeeId">): CardMade {
+  if (card.formFrom || !earlier || !effects.proposal || earlier.templateKey === effects.proposal.templateKey || !earlier.templateName) return card;
+  const samePerson = effects.proposalEmployeeId ? earlier.employeeKey === personKey(effects.proposalEmployeeId) : Boolean(effects.proposal.employeeName && !earlier.employeeKey && earlier.nameKey === personKey(effects.proposal.employeeName));
+  return samePerson || card.nameFrom ? { ...card, formFrom: earlier.templateName } : card;
+}
+
+/** Port from the sibling app (its QA's live re-test, 21 Nov 2026): the change line, from the card's own result, never the manager's words. */
+export function cardMadeLine(card: CardMade): string {
+  const changes = [
+    ...(card.formFrom && card.form && card.formFrom !== card.form ? [`the form from the ${card.formFrom} to the ${card.form}`] : []),
+    ...(card.nameFrom && card.employee && card.nameFrom.toLowerCase() !== card.employee.toLowerCase() ? [`the name from ${card.nameFrom} to ${card.employee}`] : []),
+  ];
+  const changed = changes.length > 0 ? `I changed ${changes.join(", and ")}. ` : "";
+  const who = card.employee ? ` for ${card.employee}` : "";
+  const where = card.salon ? ` at ${card.salon}` : "";
+  return `${changed}The card is${who}${where}.`.replace(/^The card is\.$/, "").trim();
 }
 
 export interface AgentLoopStep {
@@ -327,10 +390,16 @@ function cardFacts(card: ChatFormProposal | null): Record<string, unknown> {
     observation: card.issue ?? null,
   };
 }
-/* PR 2: a reply that showed a card, by the server's card record (`card-record.ts`), never by reading the reply's text. */
-function withCardNote(message: ChatMessage, showedCard: boolean): string {
+/*
+ * PR 2: a reply that showed a card, by the server's card record (`card-record.ts`), never by reading the reply's text.
+ * Port of Ask Bubbles #1038 (its QA's live re-run 2, 22 Nov 2026, "saved ≠ card"): the full card reply plus CARD_NOTE was
+ * a card reply the model copied on turns where it called no tool (note and all). An earlier reply is now shown without app
+ * notes and without card lines; a card reply's card is one "[card shown under this reply: <form> …]" line (`card-lines.ts`).
+ */
+function withCardNote(message: ChatMessage, card: CardRecord | undefined): string {
   const content = String(message.content);
-  return message.role === "assistant" && showedCard ? `${content}\n\n${CARD_NOTE}` : content;
+  if (message.role !== "assistant") return content;
+  return historyReply(content, card ? (card.templateName ?? "a card") : null);
 }
 
 /**
@@ -338,7 +407,7 @@ function withCardNote(message: ChatMessage, showedCard: boolean): string {
  * manager turn ends with its `[message_id: <id>]` (evidence.ts), so a tool's evidence can name the turn it quotes.
  */
 function conversationOf(history: readonly ChatMessage[], question: string, questionMessageId: string | null | undefined, cards: ReadonlyMap<number, CardRecord>): { role: "user" | "assistant"; content: unknown }[] {
-  const shown = new Map(history.map((message, index) => [message, withCardNote(message, cards.has(index))]));
+  const shown = new Map(history.map((message, index) => [message, withCardNote(message, cards.get(index))]));
   const turns = identifiedTurns(history, question, questionMessageId).map((turn, position, all) => {
     const message = position < all.length - 1 ? history.find((candidate, index) => (candidate.id ?? generatedId(index)) === turn.id) : undefined;
     const content = message ? (shown.get(message) ?? turn.content) : turn.content;
@@ -371,21 +440,31 @@ const evidence = (description: string) => ({
   additionalProperties: false,
 });
 const FORMS_ON_FILE_EVIDENCE = evidence("Where the manager asks about a form on file (what is on file, an earlier form, open / edit / see one). Needed for any form that is not the one open on screen.");
+/* QA's Bubbles re-run (22 Nov 2026, A11): after "Which one should I open?", the manager's own pick (`which-form.ts`). */
+const choiceEvidence = (place: string) => evidence("After your reply asked which listed form to open: the words from THIS message that pick this form (its date, " + place + ", status, form, or its number in the list). Never pick one the manager did not.");
 
 /** The loop's tool definitions with one app's words (the app config's place word); cached per config. */
-const toolsBuilt = new WeakMap<AppConfig, ReturnType<typeof buildAgentLoopTools>>();
+/* Built once per config and STATED_PLAN_STEPS_ENABLED setting (its two propose_form fields exist only with the flag on). */
+const toolsBuilt = new WeakMap<AppConfig, Map<boolean, ReturnType<typeof buildAgentLoopTools>>>();
 export function agentLoopTools(config: AppConfig = appConfig()) {
-  let tools = toolsBuilt.get(config);
+  const planSteps = statedPlanStepsEnabled();
+  let byFlag = toolsBuilt.get(config);
+  if (!byFlag) {
+    byFlag = new Map();
+    toolsBuilt.set(config, byFlag);
+  }
+  let tools = byFlag.get(planSteps);
   if (!tools) {
-    tools = buildAgentLoopTools(config);
-    toolsBuilt.set(config, tools);
+    tools = buildAgentLoopTools(config, planSteps);
+    byFlag.set(planSteps, tools);
   }
   return tools;
 }
 
-function buildAgentLoopTools(config: AppConfig) {
+function buildAgentLoopTools(config: AppConfig, planSteps = false) {
   const place = config.locationWord;
   const places = config.locationWordPlural;
+  const examples = config.content({ place, places, staff: config.staffSystem }).toolExamples;
   return [
   {
     name: "find_staff",
@@ -394,14 +473,14 @@ function buildAgentLoopTools(config: AppConfig) {
   },
   {
     name: "find_past_forms",
-    description: "List the forms on file (Form Monitoring) for one employee, or, with no employee_name, every form of a kind or period (\"who got a CA this month?\": form and date_from/date_to), or every form about a topic (\"any forms about cash handling this month?\", \"who's been written up for dress code?\": about, with form and dates if given). Only when the manager asks about forms on file or history; never otherwise.",
+    description: "List the forms on file (" + config.formsPageName + ") for one employee, or, with no employee_name, every form of a kind or period (\"who got a CA this month?\": form and date_from/date_to), or every form about a topic (\"any forms about cash handling this month?\", \"who's been written up for dress code?\": about, with form and dates if given). Only when the manager asks about forms on file or history; never otherwise.",
     input_schema: object({
       employee_name: { type: "string", description: "The employee the manager named. Leave it out for a list of every form of a kind or period." },
       form: { type: "string", description: "The form the manager named (\"coaching\", \"CA\"), if any." },
       date: { type: "string", description: "The form's date as the manager gave it (\"10/31\"), if any." },
       date_from: { type: "string", description: "First form date of a period the manager asked about (\"this month\": the 1st), YYYY-MM-DD, if any." },
       date_to: { type: "string", description: "Last form date of that period (\"this month\": today), YYYY-MM-DD, if any." },
-      about: { type: "string", description: "Words the manager used about the form (\"getting rooms ready between guests\"), if any. With no employee_name, the topic to search every form's saved text for (\"cash handling\", \"dress code\")." },
+      about: { type: "string", description: "Words the manager used about the form (\"" + examples.formAbout + "\"), if any. With no employee_name, the topic to search every form's saved text for (\"cash handling\", \"dress code\")." },
       forms_on_file_evidence: FORMS_ON_FILE_EVIDENCE,
       open: { type: "boolean", description: "true when the manager asks to open, edit or see one form on file (not a list of what is on file)." },
       include_archived: { type: "boolean", description: "true only when the manager asks for archived forms. Finalized forms are listed archived or not; this adds archived drafts." },
@@ -415,7 +494,7 @@ function buildAgentLoopTools(config: AppConfig) {
   {
     name: "list_staff",
     description: "The staff of one of the signed-in manager's own " + places + ", by name and position. For \"who's on my staff\" and for a form asked for a whole staff (never one card for everyone). With several " + places + " and none named, it gives the question to ask.",
-    input_schema: object({ salon: { type: "string", description: "The " + place + " the manager named, if any." }, position: { type: "string", description: "One position the manager asked about (\"tanning consultants\"), if any." } }, []),
+    input_schema: object({ salon: { type: "string", description: "The " + place + " the manager named, if any." }, position: { type: "string", description: "One position the manager asked about (\"" + examples.position + "\"), if any." } }, []),
   },
   {
     name: "search_knowledge",
@@ -453,6 +532,18 @@ function buildAgentLoopTools(config: AppConfig) {
           items: evidence("An earlier manager message of this same request (for this person) that named them differently: their words."),
           description: "Earlier messages of this request the name lookup missed (the manager typed the name differently there, and this message gives it).",
         },
+        same_card_evidence: {
+          ...evidence("Only when this message asks for the card on screen (or this chat's latest card of this form) for THIS person instead of, or as well as, the person it was for (\"make this for <B> instead of <A>\", \"the same corrective action but for <B>\"): its words. Give what_happened too: that card's account as the chat shows it, with this person's name. kind \"same_form\" when the manager asks for the SAME form (\"the same corrective action but for <B>\"): its level and payroll answer are copied too; else kind \"this_card_for\" (\"make this for <B> instead of <A>\")."),
+          properties: {
+            ...evidence("").properties,
+            kind: {
+              type: "string",
+              enum: ["same_form", "this_card_for"],
+              description: "same_form: the manager asks for the SAME form for this person (its level and payroll answer are copied too). this_card_for: the card on screen made for this person instead (\"make this for <B> instead of <A>\"); nothing but the account carries.",
+            },
+          },
+          required: ["message_id", "quote", "kind"],
+        },
         new_form_evidence: evidence("Only when this message asks for another or a new form (a second form for the person on the open draft, or a new request after an earlier card): its words."),
         form_change_evidence: evidence("Only when this message asks for the card on screen to be a different form for the same incident (\"make it a CA instead\", or the manager's yes to your offer of the other form): its words."),
         policy: { type: "string", description: "Always on a Corrective Action, Coaching or Follow-Up Coaching card (Pau, 17 Nov 2026), the heading that fits THIS card's own account, never one copied from another form's card. The one JBA Policy Manual heading that fits what happened, exactly. \"Other — <short topic>\" only for Must See Behaviors, a cleaning or sanitation duty left undone, or an incident no section covers; or both, \"<heading>; Other — <topic>\" (a cleaning duty beside another offense), as the rules book says." },
@@ -462,24 +553,39 @@ function buildAgentLoopTools(config: AppConfig) {
             "This incident's account in the manager's own words, all of it, with work areas and names kept as typed. Spelling, spacing and capitals cleaned, but never change a name, date, number, amount or quoted word. Every date, time and amount the manager gave stays in it as typed (\"on 11/10\"), even when the date also goes in incident_date. No instructions (\"create a CA\", \"make it about\", \"the policy is\"), no level or payroll words, nothing invented. Leave out when the manager has not said what happened.",
         },
         incident_date: { type: "string", description: "YYYY-MM-DD, the " + place + "'s local date." },
-        level_evidence: evidence("With warning_level verbal or written: the manager message and the words from it that state this form's level, from the message being answered or the one before it. \"She was written up before\" is not this form's level."),
+        level_evidence: evidence("With warning_level verbal or written: the manager message and the words from it that state this form's level, from the message being answered or the one before it. A request that names the level (\"a verbal CA\", \"create a written\") states it: quote those words. \"She was written up before\" is not this form's level."),
         payroll_evidence: evidence("With payroll_deduct: the manager message and the words from it that answer whether payroll deduct applies: the message being answered, or an answer that came right after your reply showing THIS person's card (never another person's answer)."),
         warning_level: { type: "string", enum: ["verbal", "written", "termination"], description: "Only when the manager stated it for this form. termination: only when the rules book's Termination lines say this form is one." },
         exit_type: { type: "string", enum: ["resignation", "termination"], description: "Employee Exit Form only: which the rules book's Exit lines say this exit is." },
+        exit_how: { type: "string", enum: ["submitted_fulfilled_notice", "immediate_voluntary_resignation", "notice_not_fulfilled", "no_call_no_show"], description: "Employee Exit Form resignation only: how the person left, when the manager said it (submitted_fulfilled_notice: gave notice and is working it or worked it; immediate_voluntary_resignation: left by choice with no notice, as \"immediate voluntary termination\", \"quit on the spot\"; notice_not_fulfilled: gave notice but did not work it; no_call_no_show). With exit_how_evidence. Never for a termination." },
+        exit_how_evidence: evidence("With exit_how: the manager message of this request and its words that say how the person left."),
+        exit_method: { type: "string", enum: [...EXIT_METHOD_LABELS], description: "Employee Exit Form resignation only: how the person told the company they were leaving (How Employee Resigned), when the manager said it. The person's own way of resigning, never how the manager or anyone else reached them (a voicemail left FOR the person is not how they resigned). With exit_method_evidence. Never for a termination." },
+        exit_method_evidence: evidence("With exit_method: the manager message of this request and its words that say how the person resigned (e.g. \"returned the call and told me she quit\")."),
         effective_date: { type: "string", description: "Employee Exit Form termination only: the effective or termination date as the manager typed it (e.g. 11/28)." },
         payroll_deduct: { type: "string", enum: ["yes", "no"], description: "Only when the manager said whether payroll deduct applies." },
         payroll_amount: { type: "string", description: "The deduction amount the manager stated, digits." },
         prior_actions: { type: "string", description: "Earlier steps only as the manager stated them (\"verbal on 10/2\", \"coached last month\"); never from records on file." },
         topic: { type: "string", description: "Coaching card only: the coaching topic in a few of the manager's words (\"greeting guests at the door\"), never the request sentence or the person's name. With topic_evidence." },
         topic_evidence: evidence("With topic: the manager message of this request and its words that name the topic."),
+        /* STATED_PLAN_STEPS_ENABLED (Pau via QA, 20 Nov 2026, f062): only with the flag on, so the tools are unchanged off. */
+        ...(planSteps
+          ? {
+              plan_steps: {
+                type: "array",
+                items: { type: "string" },
+                description: "Corrective Action only: each next step the manager asked for in the Action Plan (\"review the opening procedures with <P> this week\"), in their own words lightly tidied, one per item. Never a step they did not ask for, and never the account, the level or payroll. With plan_evidence.",
+              },
+              plan_evidence: evidence("With plan_steps: the manager message of this request and its words that ask for those steps."),
+            }
+          : {}),
         attendance: {
           type: "string",
-          enum: ["absence", "lateness", "both"],
-          description: "Corrective Action card whose offense is attendance: what the manager described. absence: a shift missed (did not come in, no-show, no call no show, called out). lateness: late, or left early. both: each. With attendance_evidence.",
+          enum: ["absence", "lateness", "left_early", "both"],
+          description: "Corrective Action card whose offense is attendance: what the manager described. absence: a shift missed (did not come in, no-show, no call no show, called out). lateness: arrived late. left_early: left before the shift ended (left early, left before close, walked out mid-shift); never lateness. both: an absence and lateness. With attendance_evidence.",
         },
-        attendance_evidence: evidence("With attendance: the manager message of this request and its words that describe the absence or the lateness."),
+        attendance_evidence: evidence("With attendance: the manager message of this request and its words that describe the absence, the lateness or the early leaving."),
         incident_time: { type: "string", description: "The time of the incident if the manager gave one, as they said it." },
-        salon: { type: "string", description: "The " + place + " the form is for, as the manager named it (\"kearney\", \"IA Altoona\"), when the card asks which " + place + " or the manager says one. Only the manager's own " + places + " are accepted." },
+        salon: { type: "string", description: "The " + place + " the form is for, as the manager named it (" + examples.placesNamed + "), when the card asks which " + place + " or the manager says one. Only the manager's own " + places + " are accepted." },
       },
       ["template_key"],
     ),
@@ -493,6 +599,7 @@ function buildAgentLoopTools(config: AppConfig) {
         instance_id: { type: "string" },
         values: { type: "object", additionalProperties: { type: "string" } },
         forms_on_file_evidence: FORMS_ON_FILE_EVIDENCE,
+        choice_evidence: choiceEvidence(place),
         intent: {
           type: "string",
           enum: ["correct_name", "write_account"],
@@ -509,7 +616,7 @@ function buildAgentLoopTools(config: AppConfig) {
   {
     name: "open_form",
     description: "Open a form on file on the manager's screen (a draft to edit, a finalized form read-only). Only for a form the manager asked to open, edit or see.",
-    input_schema: object({ instance_id: { type: "string" }, forms_on_file_evidence: FORMS_ON_FILE_EVIDENCE }, ["instance_id"]),
+    input_schema: object({ instance_id: { type: "string" }, forms_on_file_evidence: FORMS_ON_FILE_EVIDENCE, choice_evidence: choiceEvidence(place) }, ["instance_id"]),
   },
   {
     name: "app_help",
@@ -520,8 +627,8 @@ function buildAgentLoopTools(config: AppConfig) {
   ...dataToolSpecs(config),
   {
     name: "coach_team",
-    description: "A Coaching Form for the whole team: with no draft open, the team Coaching card (\"All team members\" at one " + place + "); with a Coaching draft open, \"this coaching for everyone on my team\" and its \"create all\" confirmation make one draft each with the same Details. No arguments: it reads the manager's message.",
-    input_schema: object({}, []),
+    description: "A Coaching Form for the whole team: with no draft open, the team Coaching card (\"All team members\" at one " + place + "); with a Coaching draft open, \"this coaching for everyone on my team\" and its \"create all\" confirmation make one draft each with the same Details. Pass team_evidence when the manager asks for a Coaching Form for a whole team or group.",
+    input_schema: object({ team_evidence: evidence("The manager's words in this message asking for a Coaching Form for the whole team or a whole group of the staff (\"my entire sales team\", \"all my front desk staff\"): their message id and words.") }, []),
   },
 ];
 }
@@ -624,13 +731,17 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   /* PR 6: the turn's one read of the policy manual starts first, beside the chat's record read (`turnManual`). */
   const turn: TurnReads = {};
   turn.manual = manualFor(input.scopeId, turn);
-  const { cards: records, nameQuestions, personAsked, exitOffers, turns: turnRecords } = await readLoopRecords(input.conversationId, input.actor.subject, input.history.filter((turn) => turn.role === "user" && typeof turn.id === "string").map((turn) => turn.id));
+  const { cards: records, nameQuestions, personAsked, exitOffers, teamConfirms, whichForms, turns: turnRecords } = await readLoopRecords(input.conversationId, input.actor.subject, input.history.filter((turn) => turn.role === "user" && typeof turn.id === "string").map((turn) => turn.id));
   const cards = cardTurns(input.history, records);
   const lastReplyIndex = input.history.findLastIndex((turn) => turn.role === "assistant" && !turn.error);
   const cardOnScreen = !input.openFormId && lastReplyIndex >= 0 ? (cards.get(lastReplyIndex) ?? null) : null;
   const cardOpenAtStart = cardOnScreen !== null;
   /* Fix batch item 6 (c124, c165): the last reply's propose_form asked who the form is for (the record, never the reply's text). */
   const whoAsked = lastReplyIndex >= 0 ? (replyTurns(input.history, personAsked).get(lastReplyIndex) ?? null) : null;
+  /* QA's code audit, coach_team C: the last reply asked the open draft's "create all?" (the record, never the reply's text). */
+  const teamAsked = lastReplyIndex >= 0 ? (replyTurns(input.history, teamConfirms).get(lastReplyIndex) ?? null) : null;
+  /* QA's Bubbles re-run (22 Nov 2026, A11): the last reply asked which listed form to open (the record, never the reply's text). */
+  const whichFormAsked = lastReplyIndex >= 0 && !input.openFormId ? (replyTurns(input.history, whichForms).get(lastReplyIndex) ?? null) : null;
   const context: ToolContext = {
     request: input.request,
     actor: input.actor,
@@ -650,6 +761,8 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     /* QA (16 Nov 2026; c158, c208): every card and "who is it for?" this chat's loop gave, for where THIS request started. */
     cardRecords: records,
     personAskedRecords: personAsked,
+    whichFormAsked,
+    teamConfirmAsked: Boolean(input.openFormId && teamAsked && teamAsked.sourceKey === personKey(input.openFormId)),
     /* #1055's follow-up: the exit-form offer the last reply's tools made (its record, never the reply's text). */
     exitOffered: lastReplyIndex >= 0 ? (replyTurns(input.history, exitOffers).get(lastReplyIndex) ?? null) : null,
     /* QA's review of #1062: what each earlier loop turn finished (saved fields, a card), for a request left open. */
@@ -696,7 +809,14 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     find_past_forms: async (args) => withLookupReplyName(context, await findPastForms(context, args, effects), (args as { employee_name?: unknown }).employee_name),
     read_form: (args) => readForm(context, args, effects),
     read_policy: (args) => readPolicy(context, args, effects),
-    propose_form: (args) => proposeForm(context, effects, args),
+    propose_form: async (args) => {
+      const asked = effects.nameQuestion;
+      const result = await proposeForm(context, effects, args);
+      /* U35(ii) (port of Ask Bubbles #1043): a name question this propose_form call asked belongs to the form it was making (the record's templateKey). */
+      const key = (args as { template_key?: unknown } | null)?.template_key;
+      if (effects.nameQuestion && effects.nameQuestion !== asked && typeof key === "string") effects.nameQuestion = { ...effects.nameQuestion, templateKey: key };
+      return result;
+    },
     /*
      * PR 6 item 3: an edit with no values runs the form's reviser, which makes its own model calls. It runs only when
      * the turn's budget (AGENT_LOOP_MAX_STEPS, loop steps plus every model call a tool made) has room for the reviser
@@ -715,7 +835,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     search_knowledge: (args) => searchKnowledge(context, effects, args),
     list_staff: (args) => listStaffTool(context, effects, args),
     app_help: (args) => appHelp(args),
-    coach_team: () => coachTeam(context, effects),
+    coach_team: (args) => coachTeam(context, effects, args),
     ...dataToolHandlers({ actor: context.actor, question: context.question, scopeId: context.scopeId, today: context.today }, effects),
   };
 
@@ -728,6 +848,11 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
    * stop_retrying {reason_code, ask_exactly?}; any later call for that person, or of that tool, in the turn is refused
    * without running it (the count goes in the trace). Code never writes the reply.
    */
+  /* QA's f074: this turn's propose_form calls that made no card, by reason code (the reply's honesty check reads it). */
+  const proposeNoCard: string[] = [];
+  /* The form a card this turn was switched from when that form was never created (propose_form's form_changed fact). */
+  let switchedFromNotCreated: string | null = null;
+  let cardMade: CardMade | null = null;
   const refusalCounts = new Map<string, number>();
   const refusalSteps = new Map<string, Set<number>>();
   const stoppedTools = new Map<string, { reason_code: string; ask_exactly?: string }>();
@@ -782,6 +907,17 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
        * A refusal: a reason_code with an error, or with a question to ask (find_staff's use-<name> offer has no error).
        * Keyed on (reason_code, the person) when it names one (not_on_roster), else on (tool, reason_code).
        */
+      if (name === "propose_form") {
+        const changed = (result as { facts?: { form_changed?: { from?: unknown; earlier_created?: unknown } } }).facts?.form_changed;
+        if ((result as { card?: unknown }).card) switchedFromNotCreated = changed && changed.earlier_created === false ? String(changed.from ?? "earlier") : null;
+        /* Port from the sibling app (its QA's live re-test, 21 Nov 2026): the latest card's own record of what it is and what changed, for a step-limit reply. */
+        const made = result as { card?: { form?: unknown; employee?: unknown; salon?: unknown }; facts?: { name_corrected?: { from?: unknown } } };
+        if (made.card) {
+          const text = (value: unknown) => (typeof value === "string" && value.trim() !== "" ? value.trim() : null);
+          cardMade = { form: text(made.card.form), employee: text(made.card.employee), salon: text(made.card.salon), formFrom: text(changed?.from), nameFrom: text(made.facts?.name_corrected?.from) };
+        }
+      }
+      if (name === "propose_form" && !(result as { card?: unknown }).card) proposeNoCard.push(typeof (result as { reason_code?: unknown }).reason_code === "string" ? String((result as { reason_code: string }).reason_code) : "no_card");
       const refusal = result as { reason_code?: unknown; error?: unknown; ask_exactly?: unknown; not_on_roster?: unknown };
       if (typeof refusal.reason_code === "string" && (typeof refusal.error === "string" || typeof refusal.ask_exactly === "string")) {
         const person = typeof refusal.not_on_roster === "string" && refusal.not_on_roster.trim() ? personKey(refusal.not_on_roster.trim().replace(/^use\s+/i, "")) : null;
@@ -911,6 +1047,8 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   let selfReview: { mismatched: string[]; fixed: boolean } | null = null;
   let draftReview: { claimed: boolean; fixed: boolean } | null = null;
   let levelReview: { claimed: string | null; nothing_changed: boolean; saved: string | null; fixed: boolean } | null = null;
+  /* QA's f074: a reply that claimed a form with no card, or promised later work, and whether the hand-back fixed it. */
+  let honestyReview: { claimed_made: boolean; promised: boolean; earlier_draft?: boolean; fixed: boolean } | null = null;
   let streamError: unknown = null;
   try {
     /*
@@ -1090,12 +1228,34 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
        * card this turn the reply is compared with the card ON SCREEN (its recorded level and policy line), never with no
        * card: a reply that repeats the card's own policy or level is no mismatch.
        */
-      const cardShownNow = () => effects.proposal !== null || cardOnScreen !== null;
+      /*
+       * Port of Ask Bubbles #1038 ("saved ≠ card"): after one reply with no card the last reply's card is none, and nothing
+       * was checked ("payroll is not deductable" then "verbal warning", both claimed, neither on the card). The card still on
+       * the manager's screen is this chat's latest card (its server record) until a form opens.
+       */
+      const shownCard = cardOnScreen ?? (!input.openFormId ? context.earlierCard ?? null : null);
+      const cardShownNow = () => effects.proposal !== null || shownCard !== null;
+      /* A turn with no card call while a card is shown: a card line is a card nobody proposed (`card-lines.ts`). */
+      const noCardThisTurn = () => effects.proposal === null && shownCard !== null;
+      /* B6 (port of Ask Bubbles #1036): an exit card shown under the last reply, and none proposed this turn. */
+      const exitOnScreenOnly = !effects.proposal && shownCard?.templateKey === appConfig().formKeys.exit;
       const mismatchOf = (reply: string) => {
         const claims = cardClaims(reply);
-        if (effects.proposal) return cardMismatch(claims, effects.proposal);
-        const onScreen = cardOnScreen ? ({ warningLevel: cardOnScreen.level ?? null, policyLine: cardOnScreen.policyLine ?? null } as unknown as ChatFormProposal) : null;
-        return cardMismatch(claims, onScreen);
+        /* QA's re-run (22 Nov 2026, A3; port of Ask Bubbles #1004): a restated Observation keeps the Observation's dates (`observation-dates.ts`). */
+        /* U22 (port of Ask Bubbles #1034): an exit card's reply reads back only the lines Create saves (`exit-read-back.ts`). */
+        if (effects.proposal) return [...cardMismatch(claims, effects.proposal), ...observationDateMismatch(reply, effects.proposal.issue), ...exitReadBackMismatch(reply, effects.proposal.exitReadBack)];
+        const onScreen = shownCard ? ({ warningLevel: shownCard.level ?? null, policyLine: shownCard.policyLine ?? null, payrollDeduct: shownCard.payroll ?? null, payrollDeductAmount: shownCard.payrollAmount ?? null } as unknown as ChatFormProposal) : null;
+        /*
+         * B6: no card this turn ("she is resigning due to second job …" called no tool and replied "Noted the reason —
+         * **Reason for Resignation:** Second job."): an exit card on screen saves nothing new, so a Details or answer line
+         * goes back (`exit-read-back.ts`, onScreenOnly).
+         */
+        return [
+          ...cardMismatch(claims, onScreen),
+          ...exitReadBackMismatch(reply, exitOnScreenOnly ? [] : null, true),
+          ...(noCardThisTurn() ? cardLines(reply).map((line) => `card line "${line.label}"`) : []),
+          ...(noCardThisTurn() && /\[app note:/i.test(reply) ? ["card line (an app note copied from an earlier card reply)"] : []),
+        ];
       };
       const reviewed = stoppedAt === "reply" && !effects.formUpdate && !effects.formOpened && !input.openFormId && cardShownNow();
       const wrong = reviewed ? mismatchOf(text) : [];
@@ -1118,7 +1278,13 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
          */
         const shownForm = effects.proposal?.templateKey ?? cardOnScreen?.templateKey ?? null;
         const caOnly = (field: string) => /^(?:policy|warning level|payroll deduct|payroll amount) \(/.test(field);
-        const offer = shownForm === appConfig().formKeys.corrective ? still : still.filter((field) => !caOnly(field));
+        /* A misdated restatement of the Observation is no change the manager asked for: it is never offered as one. */
+        const observationDate = (field: string) => /^observation date \(/.test(field);
+        /* "Saved ≠ card": a card line written with no card call is no change the manager asked for either. */
+        const cardLine = (field: string) => /^card line /.test(field);
+        /* U22: an exit field line the card does not save is no change the manager asked for either. */
+        const exitField = (field: string) => /^exit field "/.test(field);
+        const offer = (shownForm === appConfig().formKeys.corrective ? still : still.filter((field) => !caOnly(field))).filter((field) => !observationDate(field) && !cardLine(field) && !exitField(field));
         const withoutPolicyLine = (reply: string) => (shownForm !== appConfig().formKeys.corrective ? reply.replace(/^\s*\*\*Policy:?\*\*:?.*$\n?/gim, "").trim() : reply);
         selfReview = { mismatched: [...wrong, ...(missing ? ["policy line (missing)"] : [])], fixed: still.length === 0 && Boolean(again) && !noPolicyLine(again) };
         /*
@@ -1158,6 +1324,12 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
         if (offer.length > 0 && cardShownNow()) text = [...(sayBack.length > 0 ? [`That change isn't on the card yet: ${sayBack.join("; ")}. Tell me again and I'll update the card.`] : []), ...asks].join(" ");
         else if (again) text = withoutPolicyLine(again);
         else if (still.length > 0) text = withoutPolicyLine(text);
+        /* Still misdated after the hand-back: the false restatement is left out; the card under the reply shows the Observation. */
+        if (!(offer.length > 0 && cardShownNow()) && still.some(observationDate)) text = withoutMisdatedRestatements(text, effects.proposal?.issue);
+        /* U22: still reading back an exit line the card does not save: that line is left out (the card shows what is saved). */
+        if (!(offer.length > 0 && cardShownNow()) && still.some(exitField)) text = exitOnScreenOnly ? withoutUnsavedExitLines(text, [], true) : withoutUnsavedExitLines(text, effects.proposal?.exitReadBack);
+        /* Saved ≠ card: still writing card lines with no card call, they are left out (the card under the earlier reply is what is saved). */
+        if (noCardThisTurn() && still.some(cardLine)) text = withoutCardLines(text);
       }
       /*
        * THE DRAFT'S HONESTY CHECK HANDS BACK FIRST (code-check #48, batch D): with a draft open, a reply that claims the
@@ -1209,6 +1381,78 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
           }
         }
       }
+      /*
+       * QA's f074 (20 Nov 2026, live on 29270d58): with no card, the reply said "I made the coaching form for **<P>**, but
+       * the policy field kept getting rejected on my end — I'll fix that and resend it in a follow-up". Reads the MODEL's
+       * reply, never the manager's words. A reply that says a form or card was made when propose_form returned no card this
+       * turn, or that promises later work the app cannot send (a follow-up, a resend, "on my end"), goes back to the model
+       * once with the facts; still wrong, the claim is replaced by the plain fact that no card was made, and the promise
+       * sentences are taken out.
+       */
+      if (stoppedAt === "reply" && text) {
+        const noCard = !effects.proposal && proposeNoCard.length > 0;
+        const claimsMade = (reply: string) => noCard && CLAIMS_A_FORM_MADE.test(reply);
+        const promises = (reply: string) => PROMISES_LATER_WORK.test(reply);
+        /*
+         * QA2 (21 Nov 2026, #1172's live test): a card switched from one that was never created, and the reply said the
+         * earlier card "is left unused unless you'd like it deleted from Form Monitoring". No draft of it exists.
+         */
+        const earlierDraft = (reply: string) => Boolean(effects.proposal && switchedFromNotCreated) && speaksOfEarlierDraft(reply);
+        if (claimsMade(text) || promises(text) || earlierDraft(text)) {
+          const note = [
+            ...(claimsMade(text) ? [`[app check] Your reply says a form was made, but propose_form made no card this turn (${proposeNoCard.join(", ")}). Nothing is on the manager's screen for it. Fix what propose_form said and propose again, or say plainly the card was not made and what is needed.`] : []),
+            ...(earlierDraft(text) ? [`[app check] Your reply speaks of the earlier ${switchedFromNotCreated} card being kept, deleted or in ${appConfig().formsPageName}, but it was never created (form_changed: earlier_created false): there is no draft of it and nothing in ${appConfig().formsPageName}. Say nothing about it, or at most "The ${switchedFromNotCreated} card was not created."`] : []),
+            ...(promises(text) ? ["[app check] Your reply promises later work (a follow-up, a resend) or blames an issue on your end. You cannot send anything after this reply, and a refusal is never a lookup problem, an issue on your end, or a reason to ask the manager to try again: act on what the tool said now, or say in one line what you need from them."] : []),
+            "Then write your reply to the manager again.",
+          ].join("\n");
+          const again = await handBack(note);
+          if (again) text = again;
+          honestyReview = { claimed_made: claimsMade(text), promised: promises(text), ...(switchedFromNotCreated ? { earlier_draft: earlierDraft(text) } : {}), fixed: !claimsMade(text) && !promises(text) && !earlierDraft(text) };
+          if (claimsMade(text)) text = "That card wasn't made, so nothing new is on your screen for it. Tell me the policy, form or person it should have, and I'll make it.";
+          else {
+            if (promises(text)) text = text.split(/(?<=[.!?])\s+/).filter((sentence) => !PROMISES_LATER_WORK.test(sentence)).join(" ").trim();
+            if (earlierDraft(text)) text = text.split(/(?<=[.!?])\s+/).filter((sentence) => !speaksOfEarlierDraft(sentence)).join(" ").trim();
+          }
+        }
+        /*
+         * QA's re-run (22 Nov 2026, A13; port of Ask Bubbles #1007): the reply leaked the model's own reasoning ("The
+         * manager's request to add this is about the card on screen (the open draft), not an older form on file."). The reply
+         * is written TO the manager; "the manager" is the app's own name for them in tool results and notes
+         * (`speaksOfTheManager`). A reply sentence that speaks of them in the third person is reasoning, handed back once
+         * and then left out.
+         */
+        if (stoppedAt === "reply" && speaksOfTheManager(text)) {
+          const again = await handBack("[app check] Your reply speaks of \"the manager\" in the third person: that is your own reasoning, not an answer. The manager reads this reply: write to them as \"you\", say only what was done or what you need, and never explain your reasoning. Then write your reply to the manager again.");
+          if (again) text = again;
+          if (speaksOfTheManager(text)) text = withoutManagerReasoning(text) || text;
+        }
+        /*
+         * QA's re-run (22 Nov 2026, A8; port of Ask Bubbles #1010): with a team card that has no salon yet, the reply named
+         * salons nobody had named (a city's locations, read from a program's abbreviation). Read by the app's own salon
+         * reader: a salon the reply names that the manager never named and the card does not hold goes back once; if it
+         * comes back, the reply asks the salon question plainly. The team card only: a person's card offers that person's
+         * own roster salons, which the manager never typed. Sunny has no team-card update tool, so a later turn's team card is
+         * the one shown under the last reply (its card record), as well as one made this turn.
+         *
+         * Ask Bubbles' live re-run 2 (22 Nov 2026, A8; port of #1033): any team card that holds no salon, whatever its
+         * status. A global login's team card with no salon is ready (a global login may file a form with none), and the
+         * check never ran there. A turn with no tool call ("this is perfect", "make that update" repeated the narrowed
+         * question live) reads the team card still shown from its card record (`teamNoSalon`; an older record's
+         * `teamNeedsLocation`). Sunny has no team-card update tool, so a later turn's coach_team is refused and that turn's
+         * reply shows no new card: the card still shown is the last reply's, else this chat's latest card record until a
+         * form opens, as `tools.ts` reads it (`cardOnScreen ?? earlierCard`).
+         */
+        const teamCardShown = cardOnScreen ?? (!input.openFormId ? records.at(-1) ?? null : null);
+        const teamNoSalon = effects.proposal ? effects.proposal.subject === "team" && !effects.proposal.locationId : teamCardShown?.teamNoSalon === true || teamCardShown?.teamNeedsLocation === true;
+        if (stoppedAt === "reply" && teamNoSalon) {
+          const guessed = (reply: string) => salonsNamedNotSaid(reply, [...input.history.filter((turn) => turn.role === "user").map((turn) => String(turn.content ?? "")), input.question], effects.proposal?.locationId ?? null);
+          if (guessed(text).length > 0) {
+            const again = await handBack(`[app check] Your reply names ${guessed(text).join(", ")}, but the manager named no such ${appConfig().locationWord} and the card has none. Never guess a ${appConfig().locationWord} from another word (an abbreviation, a program, a product). Ask which ${appConfig().locationWord} it is for, plainly. Then write your reply to the manager again.`);
+            if (again) text = again;
+            if (guessed(text).length > 0) text = [withoutSalonGuess(text, guessed(text)), `Which ${appConfig().locationWord} is this for?`].filter(Boolean).join("\n\n");
+          }
+        }
+      }
     });
   } catch (error) {
     if (error instanceof MissingConfigurationError) throw new AiError("not_configured", error.message, 503, error.missing);
@@ -1240,6 +1484,8 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
    * JSON object (bare, or in a ```json fence) with a string "content" is that string; the trace says reply_unwrapped.
    */
   text = unwrapReply(text);
+  /* Port of Ask Bubbles #1038: the app's own notes ("[app note: …]") are never shown to the manager. */
+  text = withoutAppNotes(text);
   const latencyMs = Math.round(performance.now() - started);
   noteModelCall({
     model: CLAUDE_MODEL,
@@ -1277,16 +1523,31 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
    * confirm-which-person lines), never the short reply name; with one such card this turn, code keeps it so
    * (`withFullOffRosterName`, the app's own sentence matched by its shape).
    */
+  /*
+   * QA (20 Nov 2026; live on main b06e51be): "Here's the Corrective Action Form for **Test Testy**" and "Observation of
+   * Offense: Test Testy was late on 11/18" when the reply name was "Test". With this turn's card and its one reply name,
+   * the card's full name in the reply becomes that name, except on the lines that confirm which person it is (bold, or
+   * a question; `replyWithShortName`). The off-roster line's guard below still keeps its full name.
+   */
+  let fullNamesShortened = 0;
+  const cardName = effects.proposal?.employeeName?.trim();
+  if (cardName && text && replyNames.size === 1) {
+    const short = replyWithShortName(text, cardName, [...replyNames][0]!, effects.proposal?.templateName ?? null);
+    text = short.text;
+    fullNamesShortened = short.replaced;
+  }
   if (offRosterNames.size === 1 && text) text = withFullOffRosterName(text, [...offRosterNames][0]!, appConfig().staffSystem);
   const cardSlot: CardSlot | null = effects.proposal
-    ? { proposalId: effects.proposal.proposalId, employeeKey: effects.proposalEmployeeId ? personKey(effects.proposalEmployeeId) : null, nameKey: effects.proposal.employeeName ? personKey(effects.proposal.employeeName) : null, templateKey: effects.proposal.templateKey, templateName: effects.proposal.templateName ?? null, ...(effects.proposalAsked?.length ? { asked: effects.proposalAsked } : {}), ...(effects.proposalLevel ? { level: effects.proposalLevel } : {}), ...(effects.proposalPayroll ? { payroll: effects.proposalPayroll } : {}), ...(effects.proposalPayroll === "yes" && effects.proposalPayrollAmount ? { payrollAmount: effects.proposalPayrollAmount } : {}), ...(effects.proposal.policyLine ? { policyLine: effects.proposal.policyLine } : {}), ...(effects.proposalAccountKey ? { accountKey: effects.proposalAccountKey } : {}), ...(effects.proposal.formDate ? { incidentDate: effects.proposal.formDate } : {}) }
+    ? { proposalId: effects.proposal.proposalId, employeeKey: effects.proposalEmployeeId ? personKey(effects.proposalEmployeeId) : null, nameKey: effects.proposal.employeeName ? personKey(effects.proposal.employeeName) : null, templateKey: effects.proposal.templateKey, templateName: effects.proposal.templateName ?? null, ...(effects.proposalAsked?.length ? { asked: effects.proposalAsked } : {}), ...(effects.proposalLevel ? { level: effects.proposalLevel } : {}), ...(effects.proposalPayroll ? { payroll: effects.proposalPayroll } : {}), ...(effects.proposalPayroll === "yes" && effects.proposalPayrollAmount ? { payrollAmount: effects.proposalPayrollAmount } : {}), ...(effects.proposal.policyLine ? { policyLine: effects.proposal.policyLine } : {}), ...(effects.proposalAccountKey ? { accountKey: effects.proposalAccountKey } : {}), ...(effects.proposal.formDate ? { incidentDate: effects.proposal.formDate } : {}), ...(effects.proposal.subject === "team" && effects.proposal.status === "needs_location" ? { teamNeedsLocation: true } : {}), ...(effects.proposal.subject === "team" && !effects.proposal.locationId ? { teamNoSalon: true } : {}) }
     : null;
   /* Fix batch items 4 and 3: this turn's "Did you mean", for the next turn's name question record (one-way keys only). */
   const nameQuestionSlot: NameQuestionSlot | null = effects.nameQuestion && stoppedAt === "reply"
-    ? { offeredKeys: effects.nameQuestion.offeredIds.map(personKey), typedKey: personKey(effects.nameQuestion.typed), ...(effects.nameQuestion.offeredNames?.length ? { offeredNameKeys: effects.nameQuestion.offeredNames.map(personKey) } : {}), ...(effects.nameQuestion.asksFullName ? { asksFullName: true } : {}) }
+    ? { offeredKeys: effects.nameQuestion.offeredIds.map(personKey), typedKey: personKey(effects.nameQuestion.typed), ...(effects.nameQuestion.offeredNames?.length ? { offeredNameKeys: effects.nameQuestion.offeredNames.map(personKey) } : {}), ...(effects.nameQuestion.asksFullName ? { asksFullName: true } : {}), ...(effects.nameQuestion.templateKey ? { templateKey: effects.nameQuestion.templateKey } : {}) }
     : null;
   /* Fix batch item 6: propose_form asked who the form is for, for the next turn's person asked record (no names). */
   const personAskedSlot: PersonAskedSlot | null = effects.personAsked && stoppedAt === "reply" && !effects.proposal ? { templateKey: effects.personAsked.templateKey } : null;
+  const teamConfirmSlot: TeamConfirmSlot | null = effects.teamConfirm && stoppedAt === "reply" ? { sourceKey: personKey(effects.teamConfirm.sourceInstanceId) } : null;
+  const whichFormSlot: WhichFormSlot | null = effects.whichFormAsked && effects.whichFormAsked.length > 1 && stoppedAt === "reply" && !effects.formOpened && !effects.proposal ? { forms: effects.whichFormAsked } : null;
   /* #1055's follow-up: this turn's tools offered the exit form, for the next turn's exit offer record (one-way keys only). */
   const exitOfferSlot: ExitOfferSlot | null = effects.exitOffered && stoppedAt === "reply"
     ? { employeeKey: effects.exitOffered.employeeId ? personKey(effects.exitOffered.employeeId) : null, nameKey: personKey(effects.exitOffered.name) }
@@ -1295,7 +1556,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     trace.firstTokenMs = firstTokenMs;
     trace.slots = {
       ...(trace.slots ?? {}),
-      agent_loop: { question_key: personKey(input.question), ...(cardSlot ? { card: cardSlot } : {}), ...(nameQuestionSlot ? { name_question: nameQuestionSlot } : {}), ...(personAskedSlot ? { person_asked: personAskedSlot } : {}), ...(exitOfferSlot ? { exit_offer: exitOfferSlot } : {}), steps, model_steps: modelSteps, model_calls: modelCalls, ...(turn.manualRead ? { manual_read: turn.manualRead } : {}), step_limit: limit, steps_used: stepNumber - 1 + hiddenCalls, ...(toolModelCalls > 0 ? { tool_model_calls: toolModelCalls } : {}), stopped: stoppedAt, ms: latencyMs, first_token_ms: firstTokenMs, ...(selfReview ? { self_review: selfReview } : {}), ...(draftReview ? { draft_review: draftReview } : {}), ...(levelReview ? { level_review: levelReview } : {}), ...(replyUnwrapped ? { reply_unwrapped: true } : {}), ...(retriesBlocked > 0 ? { stop_retrying: retriesBlocked } : {}), ...(repeatsReused > 0 ? { repeat_calls_reused: repeatsReused } : {}), ...(pronounsReplaced > 0 ? { pronouns_replaced: pronounsReplaced } : {}) },
+      agent_loop: { question_key: personKey(input.question), ...(cardSlot ? { card: cardSlot } : {}), ...(nameQuestionSlot ? { name_question: nameQuestionSlot } : {}), ...(personAskedSlot ? { person_asked: personAskedSlot } : {}), ...(exitOfferSlot ? { exit_offer: exitOfferSlot } : {}), ...(teamConfirmSlot ? { team_confirm: teamConfirmSlot } : {}), ...(whichFormSlot ? { which_form: whichFormSlot } : {}), steps, model_steps: modelSteps, model_calls: modelCalls, ...(turn.manualRead ? { manual_read: turn.manualRead } : {}), step_limit: limit, steps_used: stepNumber - 1 + hiddenCalls, ...(toolModelCalls > 0 ? { tool_model_calls: toolModelCalls } : {}), stopped: stoppedAt, ms: latencyMs, first_token_ms: firstTokenMs, ...(selfReview ? { self_review: selfReview } : {}), ...(draftReview ? { draft_review: draftReview } : {}), ...(levelReview ? { level_review: levelReview } : {}), ...(honestyReview ? { honesty_review: honestyReview } : {}), ...(replyUnwrapped ? { reply_unwrapped: true } : {}), ...(retriesBlocked > 0 ? { stop_retrying: retriesBlocked } : {}), ...(repeatsReused > 0 ? { repeat_calls_reused: repeatsReused } : {}), ...(pronounsReplaced > 0 ? { pronouns_replaced: pronounsReplaced } : {}), ...(fullNamesShortened > 0 ? { full_names_shortened: fullNamesShortened } : {}) },
     };
   }
 
@@ -1305,7 +1566,12 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
    * carries the card, the opened draft and the update, so the screen matches.
    */
   const done = doneThisTurn(effects);
-  if (stoppedAt === "timeout" && !done) throw new AiError("model_failed", AI_TIMEOUT_MESSAGE, 504);
+  /*
+   * QA's Bubbles re-run (22 Nov 2026, A1 follow-up; QA's call (b)): a turn that ran out of time with nothing done threw, so
+   * the manager saw an error that was never saved and the chat showed no reply for that turn on reload (managers saw blank
+   * replies). It is now a normal reply, saved with the chat, saying plainly in one sentence that nothing was changed.
+   */
+  const timedOutNothingDone = stoppedAt === "timeout" && !done;
   if (stoppedAt === "error" && !done) throw new AiError("model_failed", LOOP_FAILED_REPLY, 502);
 
   /*
@@ -1314,7 +1580,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
    * backs and policy line are facts on propose_form's result, worded by the rules book's Card replies.
    */
   let content = (
-    stoppedAt === "timeout" || stoppedAt === "error" ? partialReply(done!, stoppedAt) : stoppedAt === "step_limit" ? stepLimitReply(done, Boolean(effects.formUpdate && effects.formUpdate.updated.length > 0)) : text
+    timedOutNothingDone ? LOOP_TIMEOUT_REPLY : stoppedAt === "timeout" || stoppedAt === "error" ? partialReply(done!, stoppedAt) : stoppedAt === "step_limit" ? stepLimitReply(done, Boolean(effects.formUpdate && effects.formUpdate.updated.length > 0), effects.proposal && cardMade ? withEarlierForm(cardMade, records.at(-1) ?? null, effects) : null) : text
   ).trim();
   if (content === "") content = done ?? STEP_LIMIT_REPLY;
   /*

@@ -80,6 +80,8 @@ const state = vi.hoisted(() => ({
   slotReading: "none" as "none" | "ca" | "copy",
   /** Chunks the pinned manual also has, when a case sets them (`manualAlsoHas`); none by default. */
   manualExtra: [] as Record<string, unknown>[],
+  /** `manualAlsoHas(…, { inPlace: true })`: the added chunks replace the pinned ones with the same chunk numbers. */
+  manualExtraInPlace: false,
   /** FULL_MANUAL_KEEPS_RETRIEVAL: what the knowledge search returns (`knowledgeHas`), the normalizer's label, the full manual. */
   knowledgeRows: [] as Record<string, unknown>[],
   /** POLICY_CARRY_RETRIEVAL (#248 rebuilt, 12 Nov 2026): every knowledge search's query, in order (`searches`). */
@@ -525,7 +527,12 @@ vi.mock("@/lib/knowledge/providers/supabase", () => ({
         documentCategory: "policies_compliance",
         matchedBy: "tag",
         // REPLAY_FULL_POLICY_MANUAL=1 (QA, 20 Nov 2026): shadow and saved-form runs read the manual production reads.
-        chunks: [...(replayReadsFullPolicyManual() ? fullPolicyManualChunks() : JBA_MANUAL_CA_CHUNKS), ...state.manualExtra],
+        chunks: [
+          ...(replayReadsFullPolicyManual() ? fullPolicyManualChunks() : JBA_MANUAL_CA_CHUNKS).filter(
+            (chunk) => !state.manualExtraInPlace || !state.manualExtra.some((extra) => extra.chunkIndex === (chunk as { chunkIndex?: unknown }).chunkIndex),
+          ),
+          ...state.manualExtra,
+        ],
       };
     }
   },
@@ -923,6 +930,7 @@ beforeEach(async () => {
   // A case that pinned extra manual passages leaves the heading index with them; the next case starts without.
   if (state.manualExtra.length > 0) forgetManualIndexForTests();
   state.manualExtra = [];
+  state.manualExtraInPlace = false;
   state.knowledgeRows = [];
   state.knowledgeQueries = [];
   state.normalizerIntent = null;
@@ -1129,8 +1137,9 @@ function context(): ReplayContext {
     reviewsOnFile: () => {
       state.reviewsOnFile = true;
     },
-    manualAlsoHas: (chunks) => {
+    manualAlsoHas: (chunks, options = {}) => {
       state.manualExtra = [...chunks];
+      state.manualExtraInPlace = options.inPlace === true;
       // The slot reader's heading index is cached per scope: an earlier case's index would not have these passages.
       forgetManualIndexForTests();
     },
@@ -1208,6 +1217,20 @@ function context(): ReplayContext {
         else store.form_instance_values.push({ id: `typed-${key}`, instance_id: instanceId, field_key: key, value, checked: [], filled_by: "manager", provenance: {}, updated_at: new Date().toISOString() } as never);
       }
     },
+    templateIds: (key) => {
+      const template = (store.form_templates ?? []).find((entry) => entry.key === key);
+      if (!template) throw new Error(`no template ${key} in the store`);
+      const versions = store.form_template_versions.filter((entry) => entry.template_id === template.id).sort((a, b) => Number(b.version) - Number(a.version));
+      if (!versions[0]) throw new Error(`no version of ${key} in the store`);
+      return { template_id: String(template.id), template_version_id: String(versions[0].id) };
+    },
+    checkOnForm: (instanceId, checked) => {
+      for (const [key, options] of Object.entries(checked)) {
+        const row = store.form_instance_values.find((entry) => entry.instance_id === instanceId && entry.field_key === key);
+        if (row) Object.assign(row, { checked: [...options], filled_by: "manager" });
+        else store.form_instance_values.push({ id: `checked-${instanceId}-${key}`, instance_id: instanceId, field_key: key, value: null, checked: [...options], filled_by: "manager", provenance: {}, updated_at: new Date().toISOString() } as never);
+      }
+    },
     values: (instanceId) =>
       Object.fromEntries(store.form_instance_values.filter((row) => row.instance_id === instanceId).map((row) => [String(row.field_key), String(row.value ?? "")])),
     checked: (instanceId) =>
@@ -1260,12 +1283,39 @@ function sourceText(dir: string): string {
   return out;
 }
 
+/*
+ * EVERY FLAG THIS APP READS IS IN THE FLAG FILE (port of Ask Bubbles #985; QA's audit, P3, 20 Nov 2026). The check above
+ * runs one way only, so 39 *_ENABLED flags the code reads were listed nowhere and the pack quietly ran them off, whatever
+ * production had. A flag read in production code (`envFlag("…")` or `process.env.…`; tests, replay cases and src/test
+ * are not production) must be in 'on', 'assumedOn', 'off' or 'unknown' ('unknown': never read from Vercel; QA records it).
+ */
+function productionFlagReads(dir: string, found = new Set<string>()): Set<string> {
+  for (const entry of readdirSync(dir)) {
+    const path = join(dir, entry);
+    if (statSync(path).isDirectory()) {
+      if (entry !== "replay-pack" && path !== join("src", "test")) productionFlagReads(path, found);
+    } else if (/\.tsx?$/.test(entry) && !/\.test\.tsx?$/.test(entry) && !entry.endsWith("-cases.ts")) {
+      const text = readFileSync(path, "utf8");
+      for (const match of text.matchAll(/envFlag\("([A-Z0-9_]+_ENABLED)"\)|process\.env\.([A-Z0-9_]+_ENABLED)\b|process\.env\["([A-Z0-9_]+_ENABLED)"\]/g)) {
+        found.add(match[1] ?? match[2] ?? match[3]);
+      }
+    }
+  }
+  return found;
+}
+
 describe("src/config/production-flags.json", () => {
+  const listed = [...PRODUCTION_FLAGS.on, ...PRODUCTION_FLAGS.assumedOn, ...PRODUCTION_FLAGS.off, ...PRODUCTION_FLAGS.unknown];
+
   it("names only flags this app reads, each once", () => {
     const source = sourceText("src");
-    const names = [...PRODUCTION_FLAGS.on, ...PRODUCTION_FLAGS.assumedOn, ...PRODUCTION_FLAGS.off];
-    expect(names.filter((name) => !source.includes(`"${name}"`) && !source.includes(`process.env.${name}`))).toEqual([]);
-    expect(names.filter((name, index) => names.indexOf(name) !== index)).toEqual([]);
+    expect(listed.filter((name) => !source.includes(`"${name}"`) && !source.includes(`process.env.${name}`))).toEqual([]);
+    expect(listed.filter((name, index) => listed.indexOf(name) !== index)).toEqual([]);
+  });
+
+  it("lists every *_ENABLED flag this app's code reads (on, assumedOn, off, or unknown until QA reads it)", () => {
+    const unlisted = [...productionFlagReads("src")].filter((name) => !listed.includes(name)).sort();
+    expect(unlisted, "add each to production-flags.json: its Vercel value in 'on' or 'off', or 'unknown' until read").toEqual([]);
   });
 });
 

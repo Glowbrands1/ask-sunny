@@ -41,13 +41,19 @@ async function coachingCard(t: ReplayContext) {
 }
 
 /** The live model: a Corrective Action for the person, with `extra` evidence; after a lock refusal, the refused form again. */
+/*
+ * Changed on purpose (the issue-line port, 6f27926: a Corrective Action account with no subject is handed back,
+ * account_no_subject): the stand-in writes its CA account with the person's first name as its subject, as the live model
+ * is taught to. The cases' expectations (which form the card is) are unchanged.
+ */
+const caAccount = (employeeId: string) => `${employeeId === TAMSIN.id ? "Tamsin" : "Remy"} was not greeting guests at the front desk; also late on 11/14.`;
 const caModel = (employeeId: string, extra: (view: LoopView) => Record<string, unknown> = () => ({})) => loopStandIn((view): LoopDecision => {
   const tries = proposeResults({ views: [view] });
   const last = tries.at(-1);
   if (last?.card) return { text: "Here's the card." };
-  if (last?.reason_code === "form_locked" && tries.length === 1) return { tool: "propose_form", input: { template_key: last.template_key, employee_id: employeeId, what_happened: "Not greeting guests at the front desk; also late on 11/14.", incident_date: "2026-11-18" } };
+  if (last?.reason_code === "form_locked" && tries.length === 1) return { tool: "propose_form", input: { template_key: last.template_key, employee_id: employeeId, what_happened: caAccount(employeeId), incident_date: "2026-11-18" } };
   if (last) return { text: last.ask_exactly ?? last.error ?? "" };
-  return { tool: "propose_form", input: { template_key: "dpoa", employee_id: employeeId, what_happened: "Not greeting guests at the front desk; also late on 11/14.", incident_date: "2026-11-18", ...extra(view) } };
+  return { tool: "propose_form", input: { template_key: "dpoa", employee_id: employeeId, what_happened: caAccount(employeeId), incident_date: "2026-11-18", ...extra(view) } };
 });
 
 export const NOV20_AGENT_LOOP_FORM_LOCK_CASES: ReplayCase[] = [

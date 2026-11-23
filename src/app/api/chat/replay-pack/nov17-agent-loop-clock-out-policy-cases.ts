@@ -81,7 +81,8 @@ export const NOV17_AGENT_LOOP_CLOCK_OUT_POLICY_CASES: ReplayCase[] = [
       const reply = await t.thread().say("Please make me a CA form for Remy Calder for staying overhours until 9:53 on 11/4 and 11/11 until 10:19 pm. Remy said Remy was cleaning but it has been clear that we do not do extra cleaning after hours and this is not acceptable.");
       expect(systems[0], "the after-hours rule is not in the model's instructions").toMatch(/Staying after hours, or clocking out more than fifteen minutes after the end of the scheduled shift without a manager's approval, is the manual's Time Records section/);
       expect(systems[0], "Time Records is not among the manual headings the model is given").toMatch(/Time Records/);
-      expect(card(reply)?.policyLine ?? "", JSON.stringify(card(reply))).toMatch(/^Time Records Policy, JBA Policy Manual p\.\d+$/);
+      // Changed on purpose (QA2, 21 Nov 2026, c259 option (a)): a Time Records card names the box it is saved under, as the form does.
+      expect(card(reply)?.policyLine ?? "", JSON.stringify(card(reply))).toMatch(/^Standards of Conduct \u2014 Time Records, JBA Policy Manual p\.\d+$/);
     },
   },
 ];

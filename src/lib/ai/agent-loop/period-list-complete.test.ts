@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from "vitest";
  * read had cut off were never counted. The replay harness's actor sees every row (no filter runs there), so this test
  * fakes the two halves: the database read returns its full 100, and the visibility filter keeps 60.
  */
-const read = vi.hoisted(() => ({ rows: 100, visible: 60 }));
+const read = vi.hoisted(() => ({ rows: 100, visible: 60, dateOf: ((() => "2026-11-10") as (index: number) => string) }));
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/forms/instances", async (importOriginal) => ({
@@ -18,7 +18,7 @@ vi.mock("@/lib/forms/instances", async (importOriginal) => ({
       templateKey: "dpoa",
       employeeName: `Person ${index}`,
       status: "finalized",
-      formDate: "2026-11-10",
+      formDate: read.dateOf(index),
       locationId: "loc-0309",
       locationName: "NE Kearney",
       createdAt: "2026-11-10T15:00:00Z",
@@ -65,5 +65,30 @@ describe("a period list's completeness (item 29)", () => {
     read.visible = 40;
     const result = (await findPastForms(context, input)) as { complete?: boolean };
     expect(result.complete).toBe(true);
+  });
+
+  /*
+   * QA2, 21 Nov 2026 (production "list ca for the month": "100 of 121 shown", 102 rows written): the 100-row cut fell
+   * inside 11/03 and the model wrote all of that day from the counts. The list now stops at the last whole day.
+   */
+  it("a list cut inside a day stops at the last whole day; the cut day is a count only", async () => {
+    read.rows = 121;
+    read.visible = 121;
+    read.dateOf = (index) => (index < 63 ? `2026-11-${String(20 - Math.floor(index / 4)).padStart(2, "0")}` : index < 102 ? "2026-11-03" : "2026-11-02");
+    const result = (await findPastForms(context, input)) as { forms?: { form_date?: string }[]; listed?: number; of?: number; not_listed_days?: { date: string; count: number }[]; note?: string };
+    expect([result.listed, result.of]).toEqual([63, 121]);
+    expect(result.forms).toHaveLength(63);
+    expect(result.forms?.some((form) => form.form_date === "2026-11-03")).toBe(false);
+    expect(result.not_listed_days).toEqual([{ date: "2026-11-03", count: 39 }, { date: "2026-11-02", count: 19 }]);
+    expect(result.note).toContain("the number you say is shown is 63");
+  });
+
+  it("a single day larger than the list is still cut at 100 (nothing else could be listed)", async () => {
+    read.rows = 150;
+    read.visible = 150;
+    read.dateOf = () => "2026-11-03";
+    const result = (await findPastForms(context, input)) as { forms?: unknown[]; listed?: number; of?: number };
+    expect([result.listed, result.of]).toEqual([100, 150]);
+    expect(result.forms).toHaveLength(100);
   });
 });

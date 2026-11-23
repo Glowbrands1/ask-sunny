@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { getSupabaseAdmin } from "@/lib/supabase/server";
+import { isWhichFormSlot, type WhichFormRecord } from "./which-form";
 import type { ChatMessage } from "@/types";
 
 /*
@@ -60,6 +61,17 @@ export interface CardRecord {
    * the same CA asked again about the same incident keeps the level the card held. Null when none or for an older record.
    */
   readonly incidentDate?: string | null;
+  /**
+   * QA's re-run (22 Nov 2026, A8; port of Ask Bubbles #1010): the card is the team Coaching card ("All team members"),
+   * and it had no salon when shown, so a later turn's reply is checked for a salon nobody named. False for an older record.
+   */
+  readonly teamNeedsLocation?: boolean;
+  /**
+   * Ask Bubbles' live re-run 2 (22 Nov 2026, A8; port of #1033): the card is the team Coaching card and held no salon when
+   * shown, whatever its status (a global login's team card with no salon is ready), so a later turn with no tool call is
+   * checked for a salon nobody named. False for an older record (which may carry `teamNeedsLocation`).
+   */
+  readonly teamNoSalon?: boolean;
 }
 
 /** What a turn writes into `slots.agent_loop.card`. */
@@ -89,6 +101,11 @@ export interface NameQuestionSlot {
   readonly offeredNameKeys?: readonly string[];
   /** The answer bridge (QA, 16 Nov 2026): the question asked for the full name ("I can't find **<A'>** … give me the full name"). */
   readonly asksFullName?: boolean;
+  /**
+   * Port of Ask Bubbles #1043 (U35(ii)): the form propose_form was making when it asked (a template key, never a name), so
+   * the question marks that form's request start. Absent for find_staff's questions and older records.
+   */
+  readonly templateKey?: string;
 }
 
 export interface NameQuestionRecord extends NameQuestionSlot {
@@ -136,7 +153,21 @@ export interface ExitOfferRecord extends ExitOfferSlot {
   readonly questionKey?: string | null;
 }
 
-type TraceRow = { message_id: string | null; slots: { agent_loop?: { card?: unknown; name_question?: unknown; person_asked?: unknown; exit_offer?: unknown; steps?: unknown; question_key?: unknown } } | null };
+/*
+ * THE TEAM CONFIRMATION RECORD (QA's code audit, coach_team C, 20 Nov 2026): a turn whose coach_team asked "create all?"
+ * for an open Coaching draft writes `slots.agent_loop.team_confirm = { sourceKey }`, a one-way key of that draft's id. The
+ * next turn reads the manager's answer against this record, never against the reply's wording.
+ */
+export interface TeamConfirmSlot {
+  readonly sourceKey: string;
+}
+
+export interface TeamConfirmRecord extends TeamConfirmSlot {
+  readonly messageId: string | null;
+  readonly questionKey?: string | null;
+}
+
+type TraceRow = { message_id: string | null; slots: { agent_loop?: { card?: unknown; name_question?: unknown; person_asked?: unknown; exit_offer?: unknown; team_confirm?: unknown; which_form?: unknown; steps?: unknown; question_key?: unknown } } | null };
 
 /** The turn's one-way key of the manager's message (`question_key`), to find that message when its id does not match. */
 const questionKeyOf = (row: TraceRow): string | null => (typeof row.slots?.agent_loop?.question_key === "string" ? row.slots.agent_loop.question_key : null);
@@ -155,8 +186,8 @@ export interface TurnRecord {
   readonly card: boolean;
 }
 
-type LoopRecords = { cards: CardRecord[]; nameQuestions: NameQuestionRecord[]; personAsked: PersonAskedRecord[]; exitOffers: ExitOfferRecord[]; turns: TurnRecord[] };
-const NO_RECORDS = (): LoopRecords => ({ cards: [], nameQuestions: [], personAsked: [], exitOffers: [], turns: [] });
+type LoopRecords = { cards: CardRecord[]; nameQuestions: NameQuestionRecord[]; personAsked: PersonAskedRecord[]; exitOffers: ExitOfferRecord[]; teamConfirms: TeamConfirmRecord[]; whichForms: WhichFormRecord[]; turns: TurnRecord[] };
+const NO_RECORDS = (): LoopRecords => ({ cards: [], nameQuestions: [], personAsked: [], exitOffers: [], teamConfirms: [], whichForms: [], turns: [] });
 
 /** This user's loop records in this conversation, oldest first, from one read. Empty without a conversation id, or if the read fails. */
 export async function readLoopRecords(conversationId: string | undefined, userId: string, historyMessageIds: readonly string[] = []): Promise<LoopRecords> {
@@ -195,13 +226,13 @@ export async function readLoopRecords(conversationId: string | undefined, userId
       cards: rows.flatMap((row) => {
         const card = row.slots?.agent_loop?.card;
         return isCardSlot(card)
-          ? [{ proposalId: card.proposalId, employeeKey: card.employeeKey ?? null, nameKey: card.nameKey ?? null, templateKey: card.templateKey, templateName: card.templateName ?? null, messageId: row.message_id, questionKey: questionKeyOf(row), asked: Array.isArray(card.asked) ? card.asked.filter((field): field is string => typeof field === "string") : [], level: card.level === "verbal" || card.level === "written" ? card.level : null, policyLine: typeof card.policyLine === "string" ? card.policyLine : null, payroll: card.payroll === "yes" || card.payroll === "no" ? card.payroll : null, payrollAmount: typeof card.payrollAmount === "string" && /^\d+(?:\.\d+)?$/.test(card.payrollAmount) ? card.payrollAmount : null, accountKey: typeof card.accountKey === "string" && /^[0-9a-f]{16}$/.test(card.accountKey) ? card.accountKey : null, incidentDate: typeof card.incidentDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(card.incidentDate) ? card.incidentDate : null }]
+          ? [{ proposalId: card.proposalId, employeeKey: card.employeeKey ?? null, nameKey: card.nameKey ?? null, templateKey: card.templateKey, templateName: card.templateName ?? null, messageId: row.message_id, questionKey: questionKeyOf(row), asked: Array.isArray(card.asked) ? card.asked.filter((field): field is string => typeof field === "string") : [], level: card.level === "verbal" || card.level === "written" ? card.level : null, policyLine: typeof card.policyLine === "string" ? card.policyLine : null, payroll: card.payroll === "yes" || card.payroll === "no" ? card.payroll : null, payrollAmount: typeof card.payrollAmount === "string" && /^\d+(?:\.\d+)?$/.test(card.payrollAmount) ? card.payrollAmount : null, accountKey: typeof card.accountKey === "string" && /^[0-9a-f]{16}$/.test(card.accountKey) ? card.accountKey : null, incidentDate: typeof card.incidentDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(card.incidentDate) ? card.incidentDate : null, teamNeedsLocation: card.teamNeedsLocation === true, teamNoSalon: card.teamNoSalon === true }]
           : [];
       }),
       nameQuestions: rows.flatMap((row) => {
         const asked = row.slots?.agent_loop?.name_question;
         return isNameQuestionSlot(asked)
-          ? [{ offeredKeys: [...asked.offeredKeys], typedKey: asked.typedKey, ...(Array.isArray(asked.offeredNameKeys) ? { offeredNameKeys: asked.offeredNameKeys.filter((key): key is string => typeof key === "string") } : {}), ...(asked.asksFullName === true ? { asksFullName: true } : {}), messageId: row.message_id, questionKey: questionKeyOf(row) }]
+          ? [{ offeredKeys: [...asked.offeredKeys], typedKey: asked.typedKey, ...(Array.isArray(asked.offeredNameKeys) ? { offeredNameKeys: asked.offeredNameKeys.filter((key): key is string => typeof key === "string") } : {}), ...(asked.asksFullName === true ? { asksFullName: true } : {}), ...(typeof asked.templateKey === "string" ? { templateKey: asked.templateKey } : {}), messageId: row.message_id, questionKey: questionKeyOf(row) }]
           : [];
       }),
       turns: rows.flatMap((row) => {
@@ -213,6 +244,15 @@ export async function readLoopRecords(conversationId: string | undefined, userId
       personAsked: rows.flatMap((row) => {
         const asked = row.slots?.agent_loop?.person_asked as Partial<PersonAskedSlot> | undefined;
         return asked && typeof asked.templateKey === "string" ? [{ templateKey: asked.templateKey, messageId: row.message_id, questionKey: questionKeyOf(row) }] : [];
+      }),
+      teamConfirms: rows.flatMap((row) => {
+        const asked = row.slots?.agent_loop?.team_confirm as Partial<TeamConfirmSlot> | undefined;
+        return asked && typeof asked.sourceKey === "string" ? [{ sourceKey: asked.sourceKey, messageId: row.message_id, questionKey: questionKeyOf(row) }] : [];
+      }),
+      /* QA's Bubbles re-run (22 Nov 2026, A11): the forms a "Which one should I open?" listed (`which-form.ts`). */
+      whichForms: rows.flatMap((row) => {
+        const asked = row.slots?.agent_loop?.which_form;
+        return isWhichFormSlot(asked) ? [{ forms: asked.forms, messageId: row.message_id, questionKey: questionKeyOf(row) }] : [];
       }),
       exitOffers: rows.flatMap((row) => {
         const offer = row.slots?.agent_loop?.exit_offer as Partial<ExitOfferSlot> | undefined;

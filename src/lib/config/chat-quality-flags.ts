@@ -5010,3 +5010,41 @@ export function nearMissNeverSeatedEnabled(): boolean {
 export function formsOnFileDateRangeEnabled(): boolean {
   return envFlag("FORMS_ON_FILE_DATE_RANGE_ENABLED");
 }
+
+/**
+ * STATED_PLAN_STEPS_ENABLED (Pau via QA, 20 Nov 2026, f062; default off; QA flips it after a live test). A Corrective
+ * Action's Action Plan keeps old Sunny's standard plan exactly and adds each step the manager stated ("the opening
+ * procedures reviewed with <P> this week"), in their words, before the closing. The steps come from a record: the loop
+ * card's plan_steps (with evidence) or the intent reader's planSteps slot, each kept only when its words are the
+ * manager's. Off, the tool schemas, the card and the plan are exactly as before. See `forms/stated-plan-steps.ts`.
+ */
+export function statedPlanStepsEnabled(): boolean {
+  return envFlag("STATED_PLAN_STEPS_ENABLED");
+}
+
+/**
+ * FORMS_ON_FILE_COUNTS_ENABLED (QA's f081 follow-up, 20 Nov 2026; default off). The chat's FORMS ON FILE block
+ * (`forms/chat-form-records.ts`) lists rows and the model counted them: "11/18 — <A> (×2)" where there were 3, a
+ * different person's form folded into <A>'s, totals that did not add up. With the flag, the block carries counts built
+ * by code (per person as filed, per form, per date with statuses, and a total; `forms/forms-on-file-counts.ts`) for the
+ * model to copy; a period is read up to 1000 rows and counted over all of them, with up to 100 listed; and an archived
+ * DRAFT is left out unless the question asks for archived forms (finalized forms count archived or not, marked
+ * archived: QA's ruling on production's data). The agent loop's find_past_forms does the same without this flag. Off,
+ * as before.
+ */
+export function formsOnFileCountsEnabled(): boolean {
+  return envFlag("FORMS_ON_FILE_COUNTS_ENABLED");
+}
+
+/**
+ * CARD_PERSON_THIS_REQUEST_ENABLED (the outside audit's wrong-person risk, approved by Pau, 21 Nov 2026; default off). The
+ * agent loop seated a card's or form's person when ANY manager turn in the chat held their name, or any earlier card was
+ * theirs: a name from an unrelated turn four turns back could put a form on the wrong person (Ask Bubbles, 18 Nov 2026).
+ * On: the person must be named by the manager in this request: the turn that asks for the form, or a manager turn after
+ * the chat's last card, after the last turn that named a different roster person, or after a "who is this for?" (never a
+ * name only in Sunny's reply or a tool note); an earlier card for them counts only while no different person was named
+ * since. Otherwise Sunny asks who the form is for (`ai/agent-loop/person-in-request.ts`). Off, as before.
+ */
+export function cardPersonThisRequestEnabled(): boolean {
+  return envFlag("CARD_PERSON_THIS_REQUEST_ENABLED");
+}

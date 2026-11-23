@@ -1,7 +1,9 @@
 import "server-only";
 
+import { withPlanStepsTurn, turnPlanSteps } from "./plan-steps-turn";
 import { besideManualGrounding, besideManualRows, fullManualKeepsRetrieval, startBesideSearch } from "./full-manual-keeps-retrieval";
 import {
+  statedPlanStepsEnabled,
   chatDataToolsEnabled,
   chatParallelLoadsEnabled,
   chatParallelRewriteEnabled,
@@ -80,7 +82,7 @@ import {
 import { detectTemplateIntent } from "@/lib/forms/template-intent";
 import { buildFormInventory, publishedEntries } from "@/lib/forms/inventory";
 import { listTemplateSummaries, type TemplateSummary } from "@/lib/forms/repository";
-import { isFormRangeQuestion, isFormRecordsQuestion, loadFormRecords } from "@/lib/forms/chat-form-records";
+import { isFormListQuestion, isFormRangeQuestion, isFormRecordsQuestion, loadFormRecords } from "@/lib/forms/chat-form-records";
 import { namesAPerson } from "@/lib/forms/names-a-person";
 import { withRosterOnlyNames } from "@/lib/forms/roster-only-names";
 import { priorFormsReadingForChat } from "@/lib/forms/prior-forms";
@@ -431,7 +433,18 @@ async function answerQuestionChecked(
     const names = typoReadingCopyEnabled() ? await protectedNameWords() : new Set<string>();
     // FORM_TYPE_SWITCH_ENABLED: "change to coaching" with the card open switches it to the other form.
     // FIRST_NAME_SUGGEST_ENABLED: "yes" to "Is this for **Quinn Marlowe**?" is read as that name.
-    const response = await answerQuestionUntraced(withFormTypeSwitch(withTerseSlots(withNameBeforeTitle(withTypoReadingCopy(await withFirstNameAnswerFor(request, actor), names)))), actor, memory);
+    const turnRequest = withFormTypeSwitch(withTerseSlots(withNameBeforeTitle(withTypoReadingCopy(await withFirstNameAnswerFor(request, actor), names))));
+    /*
+     * STATED_PLAN_STEPS_ENABLED (Pau via QA, 20 Nov 2026, f062): the turn keeps the plan steps its intent reader kept, and a
+     * Corrective Action card built this turn carries them (`planSteps`); Create adds them to the plan. Off, as before.
+     */
+    const response = statedPlanStepsEnabled()
+      ? await withPlanStepsTurn(async () => {
+          const answered = await answerQuestionUntraced(turnRequest, actor, memory);
+          const steps = turnPlanSteps();
+          return answered.formProposal?.templateKey === "dpoa" && steps.length > 0 ? { ...answered, formProposal: { ...answered.formProposal, planSteps: steps } } : answered;
+        })
+      : await answerQuestionUntraced(turnRequest, actor, memory);
     noteTraceOutcome(response);
     // Last on every path, after the reply check too: the Action Plan is the manager's or none.
     // CA_ASKS_WHAT_HAPPENED_ENABLED: a Corrective Action card with no account asks what happened.
@@ -573,7 +586,9 @@ async function answerQuestionUntraced(
    */
   // LIST_POLICY_IS_EDIT_ENABLED: "please list the policy" with only a card open is a card turn, never a question.
   const listPolicyCard = listPolicyOnCard(request);
-  const askedQuestion = !listPolicyCard && questionNotFormEnabled() && isQuestionNotForm(request.question, request.history);
+  /* FORMS_ON_FILE_COUNTS_ENABLED (QA's f081): "list ca for the month" lists forms on file; it never starts a new form. */
+  const listsForms = isFormListQuestion(request.question, request.context.todayIso);
+  const askedQuestion = listsForms || (!listPolicyCard && questionNotFormEnabled() && isQuestionNotForm(request.question, request.history));
   let intentForm = false;
   /*
    * CHAT_PARALLEL_REWRITE_ENABLED (QA, 9 Nov 2026): the message normalizer (`normalizeForChat`, below) starts now, from
@@ -1424,6 +1439,7 @@ async function answerQuestionUntraced(
    * coaching jba manual 11-1-26"), and each row says who created it.
    */
   const readsFormRecords =
+    listsForms ||
     pastFormsFirst ||
     ((isFormRecordsQuestion(request.question) ||
       (formsOnFileDateRangeEnabled() && isFormRangeQuestion(request.question, request.context.todayIso))) &&
@@ -1435,7 +1451,7 @@ async function answerQuestionUntraced(
         previousQuestion: previousManagerTurn(request),
         today: request.context.todayIso,
         ...(crossChatGuard ? { markCreator: true } : {}),
-        ...(formsOnFileDateRangeEnabled() ? { narrowFromQuestion: true } : {}),
+        ...(formsOnFileDateRangeEnabled() || listsForms ? { narrowFromQuestion: true } : {}),
       })
     : Promise.resolve(null);
 

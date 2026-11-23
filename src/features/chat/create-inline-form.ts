@@ -221,6 +221,10 @@ export async function createInlineForm({
        */
       ...(proposal.warningLevel ? { warningLevel: proposal.warningLevel } : proposal.loopTermination ? { warningLevel: "termination" } : {}),
       ...(proposal.fromAgentLoop ? { fromAgentLoop: true } : {}),
+      /* The loop's exit card: how the person left and the manager's words for it (a real manager's exit form, 20 Nov 2026). */
+      ...(proposal.fromAgentLoop && proposal.exitHow && proposal.exitHowQuote ? { exitHow: proposal.exitHow, exitHowQuote: proposal.exitHowQuote } : {}),
+      /* The loop's exit card: how the person resigned and the manager's words for it (port from Ask Bubbles #1021, U26); checked again by the route. */
+      ...(proposal.fromAgentLoop && proposal.exitMethod && proposal.exitMethodQuote ? { exitMethod: proposal.exitMethod, exitMethodQuote: proposal.exitMethodQuote } : {}),
       /*
        * QA item 17 (20 Nov 2026): a loop card's account, so an exit form's reason line (a termination) or its Additional
        * Details (a resignation) is the manager's account (the loop checked it against their words). Create writes it only
@@ -330,6 +334,8 @@ export async function createInlineForm({
         ...(cardPolicyToDraftEnabled() && cardPolicyLineFor(proposal, messages) ? { cardPolicyLine: cardPolicyLineFor(proposal, messages) } : {}),
         // The coaching card's topic (QA, 17 Nov 2026): the saved form's Other topic.
         ...(proposal.coachingTopic ? { cardTopic: proposal.coachingTopic } : {}),
+        // STATED_PLAN_STEPS_ENABLED (f062): the plan steps the card carries (set only with the flag on, server-side).
+        ...(proposal.planSteps && proposal.planSteps.length > 0 ? { cardPlanSteps: proposal.planSteps } : {}),
         // QA's production audit (20 Nov 2026, item 21): the loop card's attendance record; an absence is never written up as lateness.
         ...(proposal.fromAgentLoop && proposal.attendanceKind ? { cardAttendance: proposal.attendanceKind } : {}),
         // SAME_FORM_COPY_NEW_PERSON_ENABLED: the form this card copies; re-checked by the route.

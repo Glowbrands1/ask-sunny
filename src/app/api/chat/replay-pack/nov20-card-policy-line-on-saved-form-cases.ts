@@ -67,7 +67,8 @@ export const NOV20_CARD_POLICY_LINE_ON_SAVED_FORM_CASES: ReplayCase[] = [
     /* Time Records as the production manual's chunks lay it out (printed page 36); copied from the 17 Nov clock-out case. */
     t.manualAlsoHas!([{ chunkIndex: 120, chunkId: "jba-120", locator: "Page 36 — Timekeeping & Payroll", page: 37, section: "Timekeeping & Payroll", printedPage: 36, sections: [{ page: 36, heading: "Timekeeping & Payroll" }, { page: 36, heading: "Time Records" }], content: "Timekeeping & Payroll\nEmployees record their own working time accurately.\nTime Records\nEmployees clock in at the start of their scheduled shift and clock out at its end, no more than a\nshort time after it unless a manager approves the extra time." }]);
     const { id, line } = await created(t, "ca for remy calder, stayed over hours until 9:53 on 11/19 without approval", "Time Records", "Remy stayed over hours until 9:53 on 11/19 without approval.", "standards_of_conduct");
-    expect(line).toBe("Time Records Policy, JBA Policy Manual p.36");
+    // Changed on purpose (QA2, 21 Nov 2026, c259 option (a)): a Time Records card names the box it is saved under, as the form does.
+    expect(line).toBe("Standards of Conduct \u2014 Time Records, JBA Policy Manual p.36");
     /* QA (20 Nov 2026): Time Records is the one heading that keeps the readers' line (`READERS_LINE_HEADINGS`, draft route). */
     expect(t.values(id).policy_violated ?? "").toBe("Standards of Conduct — Time Records");
     expect(t.checked(id).offense_type ?? []).toEqual(["standards_of_conduct"]);

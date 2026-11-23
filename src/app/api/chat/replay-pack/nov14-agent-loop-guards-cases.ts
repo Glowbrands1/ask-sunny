@@ -93,8 +93,15 @@ function nosyStandIn(view: LoopView) {
   if (!/before|on file/i.test(view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "") && !lastResult(view, "propose_form")) {
     return { tool: "propose_form", input: { template_key: "dpoa", employee_id: firstMatch(view)?.employee_id, what_happened: "Tamsin Orwell was on her phone at the front desk on 11/13." } };
   }
-  const seen = [lastResult(view, "find_past_forms"), lastResult(view, "read_form")].map((result) => JSON.stringify(result ?? {})).join(" ");
-  return { text: `Here is what I found: ${seen}` };
+  /*
+   * Changed on purpose (port of Ask Bubbles #1007, A13, 22 Nov 2026): this stand-in used to reply with the tool results'
+   * raw JSON, whose notes speak of "the manager"; the loop now leaves out reply sentences that speak of the manager in
+   * the third person (`reasoning-leak.ts`), which cut the dump. It now replies with what it read: each listed form and
+   * its status, and the form read. The privacy assertions are unchanged.
+   */
+  const read = lastResult(view, "read_form") as { form?: string; template_name?: string } | null;
+  const seen = [...listed.map((form) => `${form.form} (${form.status})`), ...(read ? [String(read.form ?? read.template_name ?? "")] : [])].filter(Boolean).join("; ");
+  return { text: `Here is what I found: ${seen || "nothing"}.` };
 }
 
 export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
@@ -301,8 +308,12 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       await thread.say("create a coaching form for tamsin orwell, she missed the monthly meeting on 10/10/26");
       await thread.say("she also left her station early that day");
       const earlier = model.views.at(-1)!.turns.filter((turn) => turn.role === "assistant").map((turn) => turn.text).join("\n");
-      expect(earlier, "the model was not told the earlier card was real").toContain("[app note: this reply showed a card built with propose_form]");
-      expect(thread.proposal?.issue ?? "").toMatch(/left her station early/);
+      /* Changed on purpose (port of Ask Bubbles #1038, "saved ≠ card"): the earlier card's turn is marked by a "[card shown under this reply: …]" line, not the app note the model copied into replies with no card. */
+      expect(earlier, "the model was not told the earlier card was real").toContain("[card shown under this reply: Coaching Form, made by propose_form");
+      expect(earlier, "the model was shown an app note it could copy").not.toContain("[app note:");
+      /* Changed on purpose (QA's live retest of #1147, 20 Nov 2026): the card's own account names the person, never a pronoun. */
+      /* Changed on purpose (#1198, QA2's live R3, 21 Nov 2026): Tamsin is already named in the sentence, so her station is "the station", as the saved write-up writes it. */
+      expect(thread.proposal?.issue ?? "").toMatch(/Tamsin also left the station early/);
     },
   },
   {
@@ -920,7 +931,8 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
         const said = view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "";
         const corbin = /corbin/i.test(said);
         if (!lastResult(view, "propose_form")) {
-          return { tool: "propose_form", input: { level_evidence: evidenceFrom(view), template_key: "dpoa", employee_id: corbin ? CORBIN.id : TAMSIN.id, what_happened: `${corbin ? "Corbin Ashdown" : "Tamsin Orwell"} was late on 11/3/26.`, ...(corbin ? { warning_level: "written" } : {}) } };
+          /* Changed on purpose (live model verified 21 Nov 2026, QA2; #1199): with CARD_PERSON_THIS_REQUEST on in production, another person's card while one is open carries new_form_evidence, as the live model passes it; this message states no date, so the ownRequest rule does not cover it. */
+          return { tool: "propose_form", input: { level_evidence: evidenceFrom(view), template_key: "dpoa", employee_id: corbin ? CORBIN.id : TAMSIN.id, what_happened: `${corbin ? "Corbin Ashdown" : "Tamsin Orwell"} was late on 11/3/26.`, ...(corbin ? { warning_level: "written", new_form_evidence: evidenceFrom(view) } : {}) } };
         }
         /* Changed on purpose (Pau 14 Nov: code may refuse or inform, never rewrite): the card reply is the model's, in the rules book's Card replies words. */
         return { text: `Here's the Corrective Action Form for **${corbin ? "Corbin Ashdown" : "Tamsin Orwell"}**.\n\n**Observation of Offense:** Late on 11/3/26.` };
@@ -1024,7 +1036,8 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
       // Multi-person (QA, 14 Nov 2026): another person always gets their own card, the draft open or not.
       const corbin = loopStandIn((view) => {
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "corbin ashdown" } };
-        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: CORBIN.id, what_happened: "Corbin Ashdown was on his phone at the front desk." } };
+        /* Changed on purpose (live model verified 21 Nov 2026, QA2; #1199): with CARD_PERSON_THIS_REQUEST on in production, another person's card while one is open carries new_form_evidence, as the live model passes it; this message states no date, so the ownRequest rule does not cover it. */
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: CORBIN.id, what_happened: "Corbin Ashdown was on his phone at the front desk.", new_form_evidence: evidenceFrom(view) } };
         return { text: "Here is Corbin Ashdown's card." };
       });
       t.loopModel!(corbin);
@@ -1048,7 +1061,8 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
         const name = /marchetti/i.test(said) ? "Ysolde Marchetti" : /grand island/i.test(said) ? "Grand Island" : "Perpetua Vandersloot";
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name } };
         if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_name: name, what_happened: `${name} was late on 11/12.` } };
-        return { text: "Here's the card." };
+        // Changed on purpose (QA's f074, 20 Nov 2026): with no card made, the model never says "Here's the card" (the honesty review hands it back).
+        return { text: (lastResult(view, "propose_form") as { card?: unknown }).card ? "Here's the card." : "That isn't a person on your staff list. Who is this form for?" };
       });
       t.loopModel!(typed);
       // Changed on purpose (Pau 14 Nov: fewer questions; card + not-on-Woven line).
@@ -1297,7 +1311,8 @@ export const NOV14_AGENT_LOOP_GUARD_CASES: ReplayCase[] = [
         const said = view.turns.filter((turn) => turn.role === "user").at(-1)?.text ?? "";
         const two = /varga two/i.test(said);
         if (!lastResult(view, "propose_form")) {
-          return { tool: "propose_form", input: { template_key: "dpoa", employee_id: two ? ISOLDE_TWO.id : ISOLDE.id, what_happened: two ? "Isolde Varga Two was late on 10-20-26." : "Isolde Varga was late opening the salon on Monday." } };
+          /* Changed on purpose (live model verified 21 Nov 2026, QA2; #1199): with CARD_PERSON_THIS_REQUEST on in production, another person's card while one is open carries new_form_evidence, as the live model passes it; this message states a date, but the open card's person ("Isolde Varga") is named inside the new person's name ("Isolde Varga Two"), so the ownRequest rule does not cover it. */
+          return { tool: "propose_form", input: { template_key: "dpoa", employee_id: two ? ISOLDE_TWO.id : ISOLDE.id, what_happened: two ? "Isolde Varga Two was late on 10-20-26." : "Isolde Varga was late opening the salon on Monday.", ...(two ? { new_form_evidence: evidenceFrom(view) } : {}) } };
         }
         return { text: "Here is the card." };
       });

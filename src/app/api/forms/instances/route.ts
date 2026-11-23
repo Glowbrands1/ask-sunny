@@ -57,11 +57,25 @@ import type { SameChat } from "@/lib/forms/draft-same-chat";
 import { authorizeLocation } from "@/lib/forms/location-scope";
 import { TERMINATION_OPTION, statesTermination } from "@/lib/forms/termination-stated";
 import { saysTerminationWord } from "@/lib/forms/termination-word";
-import { EXIT_DETAIL_FIELDS, EXIT_OPTION, EXIT_TEMPLATE_KEY, EXIT_TYPE_GROUP } from "@/lib/forms/exit-library";
+import { EXIT_DETAIL_FIELDS, EXIT_NOTICE_GROUP, EXIT_OPTION, EXIT_TEMPLATE_KEY, EXIT_TYPE_GROUP } from "@/lib/forms/exit-library";
+import { exitReasonOnly } from "@/lib/forms/exit-reason-only";
+
+/** The resignation types a loop exit card may carry (never the involuntary box). */
+const LOOP_EXIT_HOW = new Set<string>([EXIT_OPTION.submittedFulfilledNotice, EXIT_OPTION.immediateVoluntary, EXIT_OPTION.noticeNotFulfilled, EXIT_OPTION.noCallNoShow]);
+
+/** The checkbox group that holds this option on the draft's own template version, or null when it is not on it. */
+async function exitOptionGroup(instanceId: string, option: string): Promise<string | null> {
+  const loaded = await loadInstance(instanceId).catch(() => null);
+  if (!loaded) return null;
+  const { checkboxGroupsForVariant, parseFormDocument } = await import("@/lib/forms/document");
+  return checkboxGroupsForVariant(parseFormDocument(loaded.version.document), loaded.instance.variantKey).find((group) => group.options.some((candidate) => candidate.key === option))?.key ?? null;
+}
 /** The exit form's Additional Details line (`exit-library.ts`). */
 const EXIT_ADDITIONAL_DETAILS_KEY = "details";
 /** QA item 17: the exit form's own payroll question (`exit-library.ts`, EXIT_YES_NO_QUESTIONS). */
 const EXIT_PAYROLL_KEY = "payroll_deduction_applicable";
+/** The exit form's rehire question (`exit-library.ts`, EXIT_YES_NO_QUESTIONS). */
+const EXIT_REHIRE_KEY = "eligible_for_rehire";
 import { terminationStatedTicksEnabled } from "@/lib/config/chat-quality-flags";
 import { checkProposalIsCurrent } from "@/lib/forms/proposal-currency";
 import { preferredNamesOf } from "@/lib/forms/preferred-name-current";
@@ -181,6 +195,12 @@ export async function POST(request: Request) {
       fromAgentLoop?: unknown;
       /** QA item 17: the loop termination's account (the exit form's reason line). */
       loopAccount?: unknown;
+      /** The loop's exit card: how the person left (a resignation_type option) and the manager's words for it. */
+      exitHow?: unknown;
+      exitHowQuote?: unknown;
+      /** The loop's exit card: How Employee Resigned and the manager's words for it (port from Ask Bubbles #1021, U26). */
+      exitMethod?: unknown;
+      exitMethodQuote?: unknown;
       /** The chat the proposal came from, for `checkProposalIsCurrent`. Ask Sunny only. */
       conversation?: unknown;
       /** Optional stable id for this chat. The first message id is used when this is absent. */
@@ -420,7 +440,18 @@ export async function POST(request: Request) {
         const account = typeof card.loopAccount === "string" ? card.loopAccount.trim().slice(0, 2_000) : "";
         if (card.warningLevel === "termination" && saysTerminationWord(userTurns)) {
           exitStated.checked[EXIT_TYPE_GROUP] = [EXIT_OPTION.immediateInvoluntary];
-          if (account) exitStated.values[EXIT_DETAIL_FIELDS.resignationReason] = account;
+          if (account) {
+            /* f077 and QA2's R3 (21 Nov 2026): only the reason; a rehire answer in the account is the rehire question's. */
+            const { reason, rehire } = exitReasonOnly(account, new Date().toISOString().slice(0, 10));
+            exitStated.values[EXIT_DETAIL_FIELDS.resignationReason] = reason;
+            if (rehire) exitStated.checked[EXIT_REHIRE_KEY] = [rehire];
+            /*
+             * QA's live L6 (22 Nov 2026; Pau: saved = card, nothing invented): with nothing stated for Additional Details, the
+             * drafting model wrote "The departure was recorded effective 2026-11-21.", words no one said. A termination's
+             * Additional Details are the card's account, the manager's own words, as a resignation's already are.
+             */
+            exitStated.values[EXIT_ADDITIONAL_DETAILS_KEY] = account;
+          }
         } else if (account && card.templateKey === EXIT_TEMPLATE_KEY) {
           /*
            * QA (20 Nov 2026, #1138's live test: "final paycheck should deduct the uniform cost"): the exit form has no line
@@ -429,8 +460,45 @@ export async function POST(request: Request) {
            */
           exitStated.values[EXIT_ADDITIONAL_DETAILS_KEY] = account;
         }
+        /*
+         * A real manager's exit form (20 Nov 2026): "immideate volunatary termination" ticked no type. The loop card's
+         * exit_how (never the involuntary box) is ticked as the manager's statement only when its quoted words are in this
+         * chat's own manager turns, checked here, server-side.
+         */
+        /*
+         * QA's re-run (22 Nov 2026, B6; port of Ask Bubbles #1011): the exit form's own reader ticking a box in EITHER
+         * Resignation Details group (one set of boxes, split for the page's layout) is the one decision of how the person
+         * left; the card's exit_how is then never added beside it ("Submitted & Fulfilled Notice" with "Did not fulfill …
+         * notice").
+         */
+        const readerTicks = card.templateKey === EXIT_TEMPLATE_KEY
+          ? (await (async () => {
+              const { readExitFacts, exitFactValues } = await import("@/lib/forms/exit-facts");
+              const checked = exitFactValues(readExitFacts(userTurns, new Date().toISOString().slice(0, 10))).checked;
+              return [EXIT_TYPE_GROUP, EXIT_NOTICE_GROUP].some((group) => (checked[group] ?? []).length > 0);
+            })())
+          : false;
+        if (card.templateKey === EXIT_TEMPLATE_KEY && card.warningLevel !== "termination" && exitStated.checked[EXIT_TYPE_GROUP] === undefined && exitStated.checked[EXIT_NOTICE_GROUP] === undefined && !readerTicks) {
+          const how = typeof card.exitHow === "string" && LOOP_EXIT_HOW.has(card.exitHow) ? card.exitHow : null;
+          const flat = (text: string) => text.toLowerCase().replace(/[*_"“”]/g, "").replace(/\s+/g, " ").trim();
+          const quote = typeof card.exitHowQuote === "string" ? flat(card.exitHowQuote) : "";
+          /* QA (22 Nov 2026, B6 on Sunny): the option goes to its own group on this draft's template version (Submitted & Fulfilled Notice: resignation_notice). */
+          const group = how ? await exitOptionGroup(instanceId, how) : null;
+          if (how && group && quote !== "" && flat(userTurns).includes(quote)) exitStated.checked[group] = [how];
+        }
+        /*
+         * U26 (QA's Bubbles round 2, 22 Nov 2026): the loop card's How Employee Resigned, written as the manager's statement
+         * only on a resignation, when its quote is in this chat's manager turns and names that method (`quoteNamesMethod`).
+         */
+        if (card.templateKey === EXIT_TEMPLATE_KEY && card.warningLevel !== "termination" && typeof card.exitMethod === "string" && typeof card.exitMethodQuote === "string") {
+          const { quoteNamesMethod } = await import("@/lib/forms/exit-details");
+          const flat = (text: string) => text.toLowerCase().replace(/[*_"“”]/g, "").replace(/\s+/g, " ").trim();
+          if (flat(card.exitMethodQuote) !== "" && flat(userTurns).includes(flat(card.exitMethodQuote)) && quoteNamesMethod(card.exitMethodQuote, card.exitMethod)) {
+            exitStated.values[EXIT_DETAIL_FIELDS.resignationMethod] = card.exitMethod;
+          }
+        }
         if (Object.keys(exitStated.checked).length > 0 || Object.keys(exitStated.values).length > 0) {
-          await applyStatedFacts(instanceId, exitStated, actor.id, new Set([EXIT_PAYROLL_KEY, EXIT_TYPE_GROUP, EXIT_DETAIL_FIELDS.resignationReason, EXIT_ADDITIONAL_DETAILS_KEY]));
+          await applyStatedFacts(instanceId, exitStated, actor.id, new Set([EXIT_PAYROLL_KEY, EXIT_TYPE_GROUP, EXIT_NOTICE_GROUP, EXIT_DETAIL_FIELDS.resignationReason, EXIT_DETAIL_FIELDS.resignationMethod, EXIT_ADDITIONAL_DETAILS_KEY, EXIT_REHIRE_KEY]));
         }
       }
     }

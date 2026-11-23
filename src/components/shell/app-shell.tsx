@@ -17,6 +17,8 @@ import { JumpToRow } from "./jump-to-row";
 import { SidebarNav } from "./sidebar";
 import { UpdateNotice } from "./update-notice";
 import { GlobalSearch } from "./global-search";
+import { NotificationBell } from "@/features/notifications/notification-bell";
+import type { BellData } from "@/lib/notifications/types";
 
 const COLLAPSE_KEY = "ask-sunny:sidebar-collapsed";
 
@@ -31,6 +33,7 @@ export function AppShell({
   showAppSwitcher = false,
   showLeadershipHub = false,
   meetingTabs = [],
+  bell = null,
 }: {
   children: ReactNode;
   overdueFollowUps?: number;
@@ -39,6 +42,8 @@ export function AppShell({
   showLeadershipHub?: boolean;
   /** The DM L10 tab(s), decided on the server from the Leadership Hub (attendees only). Empty: no tab. */
   meetingTabs?: { href: string; label: string }[];
+  /** The signed-in person's notifications, read on the server by the layout. Null: no bell. */
+  bell?: BellData | null;
 }) {
   const { hydrated, signedIn, demoMode } = useSession();
   const pathname = usePathname();
@@ -112,6 +117,7 @@ export function AppShell({
               Demo
             </Badge>
           ) : null}
+          {bell ? <NotificationBell data={bell} /> : null}
           <Dialog>
             <DialogTrigger asChild>
               <Button
