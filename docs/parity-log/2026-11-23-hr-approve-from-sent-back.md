@@ -10,8 +10,9 @@ every salon] will be able to see all. then the manager once sent back, will have
   note after HR's latest send-back.
 - `decideHrApproval` approves it through the same path as from pending (`finalizeInstance` with `fromHrApproval`:
   finalized and approved in one write, "HR approved it" in the thread, the creator's and senders' bell "HR approved
-  your form"). Send back and reject still need `pending`.
-- `hrApprovalViewFor` gives HR `canApproveSentBack`; the panel shows Approve beside Add note.
+  your form"). From that replied-to stage HR may also send it back again with a note (QA: HR may still need more
+  changes): it waits on the manager again and their bell rings. Reject still needs `pending`.
+- `hrApprovalViewFor` gives HR `canApproveSentBack`; the panel shows Approve and Send back for changes beside Add note.
 - Form Monitoring is unchanged: an approved form is an ordinary finalized form, scoped by salon, all of them for an
   every-salon account. The thread and who approved stay creator/sender/HR only.
 - Print beside Download PDF on a finalized card (`printFormPdf`, the same server PDF). The PDF renders only the form's

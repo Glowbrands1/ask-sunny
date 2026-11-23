@@ -196,17 +196,18 @@ export async function decideHrApproval(
   const before = await loadInstance(instanceId);
   if (!before) throw new HrApprovalError("That form no longer exists.", 404);
   /*
-   * Pau (via QA, 23 Nov 2026): a form HR sent back may be APPROVED once the manager has replied with a note, without
-   * waiting for them to send it again (`approvableFromSentBack`). Reject and send back still need it waiting.
+   * Pau (via QA, 23 Nov 2026): a form HR sent back may be APPROVED, or SENT BACK AGAIN with a note (QA: HR may still need
+   * more changes), once the manager has replied with a note, without waiting for them to send it again
+   * (`approvableFromSentBack`). Reject still needs it waiting.
    */
   const fromSentBack =
-    decision === "approve" &&
+    decision !== "reject" &&
     before.instance.status === "draft" &&
     approvableFromSentBack(before.instance, await approvalEventFacts(instanceId));
   if (!heldForHr(before.instance.hrApprovalState) && !fromSentBack) {
     throw new HrApprovalError(
-      before.instance.hrApprovalState === "changes_requested" && decision === "approve"
-        ? "This form was sent back for changes. It can be approved once the manager replies with a note, or sends it again."
+      before.instance.hrApprovalState === "changes_requested" && decision !== "reject"
+        ? "This form was sent back for changes. It can be approved or sent back again once the manager replies with a note, or sends it again."
         : "This form is not waiting for HR approval.",
     );
   }
@@ -242,7 +243,8 @@ export async function decideHrApproval(
       .from("form_instances")
       .update({ hr_approval_state: state, hr_approval_decided_at: new Date().toISOString(), hr_approval_decided_by: actor.id })
       .eq("id", instanceId)
-      .eq("hr_approval_state", "pending")
+      // Waiting for HR, or (send back again) sent back and replied to, as it was read above.
+      .eq("hr_approval_state", fromSentBack ? "changes_requested" : "pending")
       .select("id")
       .maybeSingle();
     if (error) throw new Error(`Could not record the decision: ${error.message}`);

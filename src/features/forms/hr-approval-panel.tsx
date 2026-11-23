@@ -20,8 +20,9 @@ import { formatBusinessTime } from "@/lib/business-date";
  *
  *   HR, while the form waits    Approve · Send back for changes · Reject, a note
  *                               required for the last two; a note box for comments
- *   HR, sent back, once the     Approve beside Add note (Pau, via QA, 23 Nov 2026):
- *   manager has replied         no need to wait for the manager to send it again
+ *   HR, sent back, once the     Approve and Send back for changes (again, a note
+ *   manager has replied         required) beside Add note (Pau, via QA, 23 Nov 2026):
+ *                               no need to wait for the manager to send it again
  *   the creator                 the state, how long it has waited, and every note
  */
 
@@ -153,7 +154,7 @@ export function HrApprovalPanel({
 
       <div className="mt-3 space-y-2">
         <Label htmlFor={`hr-note-${instanceId}`} className="text-xs">
-          {view.canDecide ? "Note to the manager" : "Note"}
+          {view.canDecide || view.canApproveSentBack ? "Note to the manager" : "Note"}
         </Label>
         <Textarea
           id={`hr-note-${instanceId}`}
@@ -161,7 +162,13 @@ export function HrApprovalPanel({
           onChange={(event) => setNote(event.target.value)}
           rows={3}
           maxLength={4000}
-          placeholder={view.canDecide ? "Required to reject or send back. Optional to approve." : "Add a note"}
+          placeholder={
+            view.canDecide
+              ? "Required to reject or send back. Optional to approve."
+              : view.canApproveSentBack
+                ? "Required to send back again. Optional to approve."
+                : "Add a note"
+          }
         />
         <div className="flex flex-wrap items-center gap-2">
           {view.canDecide ? (
@@ -180,10 +187,16 @@ export function HrApprovalPanel({
               </Button>
             </>
           ) : view.canApproveSentBack ? (
-            <Button variant="accent" size="sm" onClick={() => void act("approve")} disabled={busy !== null} data-testid="hr-approve-sent-back">
-              {busy === "approve" ? <Loader2 className="animate-spin" /> : <Check />}
-              Approve
-            </Button>
+            <>
+              <Button variant="accent" size="sm" onClick={() => void act("approve")} disabled={busy !== null} data-testid="hr-approve-sent-back">
+                {busy === "approve" ? <Loader2 className="animate-spin" /> : <Check />}
+                Approve
+              </Button>
+              <Button size="sm" onClick={() => void act("send_back")} disabled={busy !== null} data-testid="hr-send-back-again">
+                {busy === "send_back" ? <Loader2 className="animate-spin" /> : <Undo2 />}
+                Send back for changes
+              </Button>
+            </>
           ) : null}
           <Button variant="ghost" size="sm" onClick={() => void act("comment")} disabled={busy !== null}>
             {busy === "comment" ? <Loader2 className="animate-spin" /> : view.canDecide ? <MessageSquare /> : <Send />}
@@ -196,7 +209,8 @@ export function HrApprovalPanel({
           </p>
         ) : view.canApproveSentBack ? (
           <p className="text-xs text-subtle-foreground">
-            The manager replied. Approving finalizes the form as it is now; the manager is told in their bell.
+            The manager replied. Approving finalizes the form as it is now; sending it back again needs a note. The manager
+            is told in their bell either way.
           </p>
         ) : null}
       </div>

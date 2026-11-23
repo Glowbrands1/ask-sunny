@@ -551,7 +551,7 @@ export async function readHrApprovals(context: DataToolContext, deps: DataToolDe
         .map((row) => ({
           form: untrusted(row.line, hrApprovalsSource()),
           from: row.createdByName,
-          ...(row.managerReplied ? { state: "manager replied to changes: you can approve it now" } : {}),
+          ...(row.managerReplied ? { state: "manager replied to changes: you can approve it, or send it back again with a note" } : {}),
           sent: formatBusinessTime(row.requestedAt) ?? row.requestedAt,
           waiting: row.waiting,
           overdue: row.overdue,

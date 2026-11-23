@@ -172,10 +172,40 @@ describe("HR approves a form it sent back, once the manager has replied (Pau)", 
     await expect(decideHrApproval(waiting.id, hr, "approve", undefined)).rejects.toThrow(/once the manager replies/);
   });
 
-  it("control: send back and reject still need the form to be waiting for HR", async () => {
+  /*
+   * CHANGED ON PURPOSE (QA, 23 Nov 2026): from the manager-replied stage HR gets Approve AND Send back again (with a
+   * note), not Reject — HR may still need more changes after the reply.
+   */
+  it("after the reply, HR may send it back again with a note: it waits on the manager again and the manager's bell rings", async () => {
     const replied = await sentBack(true);
-    await expect(decideHrApproval(replied.id, hr, "send_back", "Again")).rejects.toThrow(/not waiting for HR approval/);
+    expect((await hrApprovalViewFor(hr, replied))?.canApproveSentBack).toBe(true);
+    await expect(decideHrApproval(replied.id, hr, "send_back", undefined), "a note is required").rejects.toThrow(/Add a note/);
+    const before = bells("marigold@example.com").length;
+
+    const again = await decideHrApproval(replied.id, hr, "send_back", "Also add the second date.");
+    expect(again.status).toBe("draft");
+    expect(again.hrApprovalState).toBe("changes_requested");
+    const rung = bells("marigold@example.com").slice(before);
+    expect(rung).toHaveLength(1);
+    expect(rung[0]).toMatchObject({ title: "HR sent your form back for changes" });
+    expect(String(rung[0]!.body)).toContain("Also add the second date.");
+
+    // Back to "Waiting on the manager": not counted, no Approve until the manager replies again.
+    const [row] = await listHrQueue(hr);
+    expect(row).toMatchObject({ id: replied.id, state: "changes_requested", managerReplied: false });
+    expect((await hrQueueSummary(hr))?.pending).toBe(0);
+    expect((await hrApprovalViewFor(hr, again))?.canApproveSentBack).toBe(false);
+    await expect(decideHrApproval(replied.id, hr, "approve", undefined)).rejects.toThrow(/once the manager replies/);
+  });
+
+  it("control: reject still needs the form to be waiting for HR", async () => {
+    const replied = await sentBack(true);
     await expect(decideHrApproval(replied.id, hr, "reject", "No")).rejects.toThrow(/not waiting for HR approval/);
+  });
+
+  it("control: a sent-back form with no reply cannot be sent back again", async () => {
+    const waiting = await sentBack(false);
+    await expect(decideHrApproval(waiting.id, hr, "send_back", "Again")).rejects.toThrow(/once the manager replies/);
   });
 });
 
