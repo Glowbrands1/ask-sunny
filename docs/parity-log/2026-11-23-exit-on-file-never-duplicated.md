@@ -15,10 +15,14 @@ then", and <P> got a second exit form, with HR's edits on the new draft. "How di
   person's exit card proposed again with no type in the new request keeps it, so how they left is not asked again.
 - No word list: the forms on file, the card record and the form's own option keys.
 
-**Root cause in production (not settled here):** on main with production's flags, find_past_forms lists the finalized
-exit form first. The production result was about half that size and the reply named only four Corrective Actions; the
-exit and coaching forms an Assistant Salon Director reads only through `NEXT_PUBLIC_ASSISTANT_MANAGER_CREATE_ENABLED`
-were missing. Reported to QA to check that build-time flag in production.
+**Root cause in production: open until the next occurrence.** On main and on the commit live at the time (96656dc5),
+with production's flags (HR approval, the forms-on-file flags, the Assistant Salon Director create flag, which QA confirmed
+is "true" in production), the replay lists the finalized exit form first for the same two calls (about 4.8k characters
+each). The production result was about 2.5k characters, roughly four forms; the reply named four Corrective Actions. The
+identical size of the two calls is expected (a named lookup's `form` does not narrow it), not a cap. Ruled out: name
+match, archiving, the HR-approval filter, a date range, onFileKept, the flag. The runtime logs are not available. #1295
+puts each find_past_forms read's forms per kind and its path on the trace (value-free), so the next occurrence shows what
+the read returned. This guard protects managers whatever the cause.
 
 **Ask Bubbles:** the same gaps on Bubbles main 72404b3 (no exit-on-file check in propose_form; no exit type on the card
 record). Port the mechanism with Bubbles' own form names and wording, through QA.
