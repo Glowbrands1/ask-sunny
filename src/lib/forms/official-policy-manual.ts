@@ -546,6 +546,95 @@ export function headingKey(text: string): string {
 
 /**
  * ============================================================================
+ * THE SECTION IN FORCE, READ FROM THE MANUAL'S OWN HEADINGS (board f109, QA, 23 Nov 2026)
+ * ============================================================================
+ *
+ * Production's manual stores chunks 24–26 under "Immigration Law Compliance" (page 9), while chunk 25's text has the
+ * line "Disability Accommodation-Americans with Disability Act" partway through and chunk 26 is all disability text:
+ * ingestion did not advance the section at that heading, so the disability rules were cited as "Immigration Law
+ * Compliance p.9". `metadata.sections` alone cannot settle it (it lists the disability heading for chunk 24 too, whose
+ * text is all immigration). The heading LINE in the text is the signal.
+ *
+ * Read from the manual's own structure, never a word list: the heading set is every chunk's stored section and every
+ * heading its `sections` names. Walking the chunks in order, a content line whose key is one of those headings AND that
+ * ingestion recorded as printed on that chunk's page (its own `sections`) starts that section (a short heading such as
+ * "Eligibility" can also be an ordinary line elsewhere); each chunk is labelled with the heading that covers most of its text (the one in force at its start
+ * for the text before its first heading line). A chunk whose label changes gets that section, and its "Page N — X"
+ * locator names it. Only a stored section that lagged is replaced (the chunk does not open with it); with no heading
+ * set, no heading line, no stored section, or a chunk that opens with its stored heading, the stored section stays.
+ */
+/**
+ * Board f109: search hits from the official manual carry the manual reader's label (the section in force, from
+ * `withSectionsInForce`), found by chunk id. Rows of any other document, and rows the reader did not relabel, stay as they
+ * are.
+ */
+export function relabelManualRows<R extends { readonly chunk_id: string; readonly document_id: string; readonly section: string | null; readonly locator: string }>(
+  rows: readonly R[],
+  manualDocumentId: string,
+  manualChunks: readonly { readonly chunkId?: string; readonly section?: string | null; readonly locator?: string }[],
+): R[] {
+  const labels = new Map(manualChunks.filter((chunk) => chunk.chunkId).map((chunk) => [chunk.chunkId!, chunk]));
+  return rows.map((row) => {
+    if (row.document_id !== manualDocumentId) return row;
+    const label = labels.get(row.chunk_id);
+    if (!label?.section || label.section === row.section) return row;
+    return { ...row, section: label.section, locator: label.locator ?? row.locator };
+  });
+}
+
+export function withSectionsInForce<C extends { readonly chunkIndex: number; readonly content: string; readonly section?: string | null; readonly sections?: readonly { readonly heading: string }[] | null; readonly locator?: string }>(chunks: readonly C[]): C[] {
+  const known = new Map<string, string>();
+  for (const chunk of chunks) {
+    for (const heading of [chunk.section ?? "", ...(chunk.sections ?? []).map((entry) => entry.heading)]) {
+      const key = headingKey(heading);
+      if (key && !known.has(key)) known.set(key, heading.trim());
+    }
+  }
+  if (known.size === 0) return [...chunks];
+  const relabelled = new Map<number, string>();
+  /*
+   * A heading read off a line carries into the next chunk only while the stored section stays the one it lagged under AND
+   * ingestion recorded that heading on the next chunk's page too: its own record corroborates the carry.
+   */
+  let lineHeading: { heading: string; storedUnder: string | null } | null = null;
+  for (const chunk of [...chunks].sort((a, b) => a.chunkIndex - b.chunkIndex)) {
+    const stored = chunk.section?.trim() || null;
+    const printedHere = new Set((chunk.sections ?? []).map((entry) => headingKey(entry.heading)));
+    const carried = lineHeading && headingKey(lineHeading.storedUnder ?? "") === headingKey(stored ?? "") && printedHere.has(headingKey(lineHeading.heading)) ? lineHeading.heading : null;
+    let inForce = carried ?? stored;
+    const spans = new Map<string, number>();
+    /* A line starts a section only when ingestion also recorded that heading as printed on this chunk's page (`sections`). */
+    for (const line of chunk.content.split("\n")) {
+      const key = headingKey(line);
+      const heading = printedHere.has(key) ? known.get(key) : undefined;
+      if (heading) {
+        inForce = heading;
+        lineHeading = { heading, storedUnder: stored };
+      }
+      if (inForce) spans.set(inForce, (spans.get(inForce) ?? 0) + line.length + 1);
+    }
+    if (spans.size === 0) continue;
+    /*
+     * Only a stored section that LAGGED is replaced: one the chunk does not open with (its first line is not that
+     * heading). A chunk that opens with its stored heading is right where it starts (`sections` lists the rest, by
+     * design), and a chunk with no stored section is left to the content scan the section lookup already does.
+     */
+    const firstLine = chunk.content.split("\n").find((line) => line.trim() !== "") ?? "";
+    if (stored === null || headingKey(firstLine) === headingKey(stored)) continue;
+    const label = [...spans.entries()].reduce((best, entry) => (entry[1] > best[1] ? entry : best))[0];
+    if (headingKey(label) !== headingKey(stored)) relabelled.set(chunk.chunkIndex, label);
+  }
+  if (relabelled.size === 0) return [...chunks];
+  return chunks.map((chunk) => {
+    const label = relabelled.get(chunk.chunkIndex);
+    if (!label) return chunk;
+    const locator = chunk.locator && /^(Page \d+) — /.test(chunk.locator) ? chunk.locator.replace(/^(Page \d+) — .*$/, `$1 — ${label}`) : chunk.locator;
+    return { ...chunk, section: label, ...(locator !== undefined ? { locator } : {}) };
+  });
+}
+
+/**
+ * ============================================================================
  * THE SECOND PLACE THE MANUAL SAYS WHERE A SECTION IS: ITS OWN CONTENTS PAGE
  * ============================================================================
  *
