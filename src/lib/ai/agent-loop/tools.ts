@@ -1226,8 +1226,20 @@ export async function findStaff(context: ToolContext, input: { name?: unknown; p
      * asks). The card's person is used only on an exact full name (legal or preferred), which never reaches this branch,
      * or after the manager confirms: a "yes" to the Did-you-mean, after which the model looks up the confirmed name.
      */
+    /*
+     * u35a (port of Ask Bubbles #1055; its coder's live run 2, 22 Nov 2026): the manager confirmed <P> (no card yet: no
+     * account), then new close spellings with <P> the only close candidate ("… <P, two letters swapped>", "<P, first letter
+     * changed>") each asked "Did you mean **<P>**?" again. The manager already confirmed that person in this chat (any
+     * spelling, from the question records): a close spelling with them alone as its candidate is them. A "no" still asks.
+     */
+    const confirmedPerson = close.kind === "confirm" && close.candidates.length === 1 && !saidNo && spellingKeysConfirmedFor(nameQuestionView(context, read.roster), close.candidates[0]!.employee.id).length > 0
+      ? close.candidates[0]!
+      : null;
+    if (confirmedPerson) {
+      return { matches: [staffRow(confirmedPerson.employee)], confirmed_by_manager: { name: confirmedPerson.name, answer: "confirmed" }, note: `The manager already confirmed ${confirmedPerson.name} in this chat; "${typed}" is a close spelling of them. Do not ask again: use ${confirmedPerson.name}.` };
+    }
     const nearMissNever = (await import("@/lib/config/chat-quality-flags")).nearMissNeverSeatedEnabled();
-    const onCard = !nearMissNever && close.kind === "confirm" && close.candidates.length === 1 && !saidNo
+    const onCard =!nearMissNever && close.kind === "confirm" && close.candidates.length === 1 && !saidNo
       ? context.history.some((turn) => turn.role === "assistant" && typeof turn.content === "string" && turn.content.includes(close.candidates[0]!.name))
       : false;
     if (onCard && close.kind === "confirm") {
