@@ -2997,18 +2997,38 @@ export function withoutNamedSalon(account: string, salonId: string): string {
    * phrase (the salon's name, or the place words `isThatSalon` already reads the phrase with) are the phrase's too.
    */
   const ofThePhrase = (words: string) => words.trim() !== "" && words.trim().toLowerCase().split(/\s+/).every((word) => nameWords.has(word) || filler.has(word));
-  const withState = account.replace(/(^|[\s,;])(?:at|in)\s+((?:[A-Za-z0-9'’-]+\s+){0,4}[A-Za-z0-9'’-]+)\s*,\s*([A-Za-z]{2,})(?![A-Za-z0-9'’-])(\.?)(?:((?:\s+[A-Za-z'’]+){1,3})(\s*[,.;!?]|(?=\s*$)))?/gi, (whole, before: string, phrase: string, tail: string, dot: string, after: string | undefined, closer: string | undefined, offset: number) => {
+  /*
+   * Port from Ask Bubbles (#1078, its QA's live re-run 23 Nov 2026, A1): "<P>, at <salon>, was 10 minutes late" left
+   * "<First>, was 10 minutes late": the phrase and its closing comma went, its opening comma stayed. A phrase with a comma
+   * before it is an aside: it leaves with that comma, and the text after it (its closing comma, or the sentence's end)
+   * follows the words before it. With no comma before it, a comma after it closes something earlier (", a tanning
+   * consultant at Kearney, was") and stays; at the very start, the phrase leaves with its comma ("At Kearney, coaching
+   * about …"). Sunny reads the state with the phrase too (R13), so an aside with its state (", at Kearney, NE, was") does
+   * the same. Punctuation and the salon's own data only.
+   */
+  const withState = account.replace(/(^|,\s*|[\s;])(?:at|in)\s+((?:[A-Za-z0-9'’-]+\s+){0,4}[A-Za-z0-9'’-]+)\s*,\s*([A-Za-z]{2,})(?![A-Za-z0-9'’-])(\.?)(?:((?:\s+[A-Za-z'’]+){1,3})(\s*[,.;!?]|(?=\s*$)))?(\s*,)?/gi, (whole, before: string, phrase: string, tail: string, dot: string, after: string | undefined, closer: string | undefined, trail: string | undefined, offset: number) => {
     if (!nameWords.has(tail.toLowerCase()) || !isThatSalon(phrase)) return whole;
-    const lead = offset === 0 ? "" : before.replace(/\s+$/, "");
+    const aside = before.startsWith(",");
+    const lead = offset === 0 || aside ? "" : before.replace(/\s+$/, "");
     if (after !== undefined && ofThePhrase(after)) {
       // The phrase's own closing comma goes with it (the sentence reads on); a sentence's end stays, once.
       const end = (closer ?? "").trim();
-      return offset === 0 ? "" : `${lead}${/[.!?;]/.test(end) ? end : ""}`;
+      return offset === 0 ? "" : `${lead}${/[.!?;]/.test(end) ? end : ""}${aside ? "" : (trail ?? "")}`;
     }
-    return offset === 0 ? `${after ?? ""}${closer ?? ""}`.trimStart() : `${lead}${dot}${after ?? ""}${closer ?? ""}`;
+    // An aside closed by its own comma leaves with it; one that ends the sentence keeps the sentence's end.
+    if (aside && after === undefined) return dot;
+    if (aside) return `${before.replace(/\s+$/, "")}${dot}${after ?? ""}${closer ?? ""}${trail ?? ""}`;
+    return offset === 0 ? `${after ?? ""}${closer ?? ""}${trail ?? ""}`.trimStart() : `${lead}${dot}${after ?? ""}${closer ?? ""}${trail ?? ""}`;
   });
-  const out = withState.replace(/(^|[\s,;])(?:at|in)\s+((?:[A-Za-z0-9'’-]+\s+){0,4}[A-Za-z0-9'’-]+)(?=\s*(?:[,.;!?]|$))(,?)/gi, (whole, before: string, phrase: string, comma: string) =>
-    isThatSalon(phrase) ? (before.trim() === "" ? "" : before.replace(/\s+$/, "")) + (comma && before.trim() !== "" ? comma : "") : whole);
+  // A comma after the phrase closes something earlier only when its sentence opened one before the phrase; otherwise
+  // ("She was late at the Kearney salon, and left early.") it was the phrase's own and leaves with it, as before.
+  const opensAside = (text: string, offset: number) => /,/.test(text.slice(0, offset).split(/[.!?;]/).pop() ?? "");
+  const out = withState.replace(/(^|,\s*|[\s;])(?:at|in)\s+((?:[A-Za-z0-9'’-]+\s+){0,4}[A-Za-z0-9'’-]+)(?=\s*(?:[,.;!?]|$))(,?)/gi, (whole, before: string, phrase: string, comma: string, offset: number, text: string) => {
+    if (!isThatSalon(phrase)) return whole;
+    if (before.startsWith(",")) return "";
+    if (offset === 0 && before === "") return "";
+    return before.replace(/\s+$/, "") + (opensAside(text, offset) ? comma : "");
+  });
   if (out === account) return account;
   const tidy = out.replace(/\s+([,.;!?])/g, "$1").replace(/[ \t]{2,}/g, " ").replace(/^[\s,.;]+/, "").trim();
   return tidy.charAt(0).toUpperCase() + tidy.slice(1);
