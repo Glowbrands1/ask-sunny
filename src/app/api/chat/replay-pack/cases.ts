@@ -47,7 +47,11 @@ export interface ReplayThread {
 }
 
 export interface ReplayContext {
-  thread(): ReplayThread;
+  /**
+   * A browser tab's thread. `options.conversationId`: join this conversation id (a second tab on the same chat, e.g. a
+   * duplicated tab); `options.idPrefix`: this tab's message ids (browsers mint distinct ids; default "m").
+   */
+  thread(options?: { readonly conversationId?: string; readonly idPrefix?: string }): ReplayThread & { readonly conversationId?: string };
   /** `subject`: who is signed in (default "qa-manager"), for a case with two managers. */
   as(role: string, scope: unknown, subject?: string): void;
   directory(rows: readonly DirectoryRow[]): void;
@@ -131,6 +135,8 @@ export interface ReplayContext {
   summaryWrites?(summary: string): void;
   /** The rows a table holds now (`user_memory`, `chat_context_summaries`, …). */
   rows?(table: string): Record<string, unknown>[];
+  /** Adds rows to a table of the case's database (HR approval, 23 Nov 2026: the approver's `form_hr_approvers` row). */
+  addRows?(table: string, rows: readonly Record<string, unknown>[]): void;
   /** Fault injection (DRAFT_WRITE_NEVER_SILENT_ENABLED): the draft route's next one-writer write also carries this field, once; the real writer refuses it and, all or nothing, the whole write. */
   draftWriteCarries?(field: string): void;
   calls(): { chat: number; draft: number; revision: number; tool: number; patch: number };
@@ -164,8 +170,12 @@ export interface ReplayContext {
   loopOn?(): boolean;
   /** AGENT_LOOP_ENABLED: the loop really answers this case's turns (the flag on, a stand-in model, the manager listed). */
   loopActive?(): boolean;
-  /** AGENT_LOOP_ENABLED: the loop's stand-in model for this case (`loop-stand-in.ts`); lists the signed-in manager in AGENT_LOOP_USERS. */
-  loopModel?(standIn: import("./loop-stand-in").LoopStandIn): void;
+  /**
+   * AGENT_LOOP_ENABLED: the loop's stand-in model for this case (`loop-stand-in.ts`); lists the signed-in manager in
+   * AGENT_LOOP_USERS. `scripted` (QA, 22 Nov 2026): the stand-in even in an AGENT_LOOP_LIVE run, for a case whose point is
+   * the app's own path around a model behaviour no real model can be made to show (a turn that stalls past the time limit).
+   */
+  loopModel?(standIn: import("./loop-stand-in").LoopStandIn, options?: { scripted?: boolean }): void;
   /** AGENT_LOOP_ENABLED: find_staff's roster read fails from now on. */
   rosterFails?(): void;
   /**

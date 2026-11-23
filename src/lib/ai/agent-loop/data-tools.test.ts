@@ -89,6 +89,7 @@ function deps(overrides: Partial<DataToolDeps> = {}) {
   const briefings: LoadReportBriefingInput[] = [];
   const base: DataToolDeps = {
     supabaseReady: async () => true,
+    loadHrApprovals: async () => ({ kind: "off" }),
     loadReviewsSnapshot: async () => SNAPSHOT,
     loadReviewFeed: async (storeCode) =>
       ({ reviews: storeCode === null ? Object.values(FEED_BY_STORE).flat() : (FEED_BY_STORE[storeCode] ?? []), total: 0 }) as unknown as ReviewFeed,
@@ -294,7 +295,8 @@ describe("the scope rules", () => {
 
   it("the handlers are keyed as the loop dispatches them", () => {
     // f066 (20 Nov 2026) added read_form_deletions, the admin-only deletion record: a third handler on purpose.
-    expect(Object.keys(dataToolHandlers(ctx(MANAGER, "")))).toEqual(["read_reviews", "read_stats", "read_form_deletions"]);
+    // HR approval (23 Nov 2026) added read_hr_approvals, so the AI can read the new approval step (CLAUDE.md rule 5).
+    expect(Object.keys(dataToolHandlers(ctx(MANAGER, "")))).toEqual(["read_reviews", "read_stats", "read_form_deletions", "read_hr_approvals"]);
   });
 });
 
