@@ -180,6 +180,11 @@ import { rulesBookText } from "./rules-book";
  * was added: forms on file about a topic ("any forms about cash handling at my <place>s this month?", "who's been written
  * up for dress code?") call find_past_forms with about and no employee_name, list each form as given, say the counts, and
  * "showing N of M". It uses the config's place word; nothing else changed.
+ *
+ * Re-taken on purpose on 23 Nov 2026 (HR approval of forms, owner request; CLAUDE.md rule 5): the tool list gained
+ * read_hr_approvals, and "Forms on file and privacy" gained one line: a form waiting for HR is not on file, and HR
+ * approval answers come only from read_hr_approvals, which lists only the asker's own forms. It reads the same under
+ * every config; nothing else changed.
  */
 
 const fixture = (name: string): string => readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), "utf8");
