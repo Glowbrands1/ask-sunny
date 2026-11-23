@@ -413,6 +413,16 @@ async function readOfficialPolicyManual(
 
 /* QA f071 / c259: the headings whose saved Policy Violated keeps "<box> — <section>" are `READERS_LINE_HEADINGS` (forms/readers-line-headings.ts). */
 
+/**
+ * Port from the sibling app (its QA's live re-run, 23 Nov 2026, A1): the topic a loop card's policy line names after
+ * "Other — " ("Other — Opening checklist"), the Coaching Form's Other write-in; null when the card cites "Other" alone or no Other.
+ */
+function cardOtherTopic(line: unknown): string | null {
+  if (typeof line !== "string") return null;
+  const topic = /(?:^|;\s*)other\s*[—–:-]\s*([^;]+)$/i.exec(line.trim())?.[1]?.trim() ?? "";
+  return topic ? topic.slice(0, 120) : null;
+}
+
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   return withSpendMeter("forms_draft", () => postFormsDraft(request, context));
 }
@@ -1709,7 +1719,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       ? guardCoachingFraming({ values: followUp.values, checked: followUp.checked }, notes)
       : { values: followUp.values, checked: followUp.checked, adjusted: [] as string[], underperformanceRefused: false };
     // OTHER_WRITE_IN_GUARD_ENABLED: a ticked "Other" gets its write-in in the manager's words, or is unticked.
-    const otherWritten = guardOtherWriteIn(framed, notes, new Set(fields.map((field) => field.key)), loaded.instance.employeeName, typeof body.cardTopic === "string" ? body.cardTopic.trim().slice(0, 120) : null);
+    const otherWritten = guardOtherWriteIn(framed, notes, new Set(fields.map((field) => field.key)), loaded.instance.employeeName, typeof body.cardTopic === "string" && body.cardTopic.trim() ? body.cardTopic.trim().slice(0, 120) : body.cardFromLoop === true ? cardOtherTopic(body.cardPolicyLine) : null, body.cardFromLoop === true);
     /*
      * Pau via QA (20 Nov 2026, item 14): a loop coaching card's Create saves Observed as what was seen, an Expectation
      * about the employee, and no Type of Coaching the manager did not name. See `loop-coaching-write-up.ts`.
