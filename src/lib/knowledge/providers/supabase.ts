@@ -19,6 +19,8 @@ import {
 } from "../document-roles";
 import {
   resolvePolicyManual,
+  relabelManualRows,
+  withSectionsInForce,
   type ManualChunk,
 } from "@/lib/forms/official-policy-manual";
 import {
@@ -135,11 +137,38 @@ function readSections(
  * `toCitations` is unchanged in spirit from LocalKnowledgeProvider: results in,
  * source cards out. The source-card UI does not know which retriever ran.
  */
+/** Board f109: the manual reader's label for each chunk of the official manual, kept per scope under its version. */
+const manualLabels = new Map<string, { readonly key: string; readonly chunks: readonly ManualChunk[] }>();
+
 export class SupabaseKnowledgeProvider implements KnowledgeProvider {
   readonly name = "Supabase pgvector retrieval";
 
   /** Last raw match rows, so a caller can build citations without re-querying. */
   private lastRows: MatchedChunkRow[] = [];
+
+  /**
+   * Board f109 (QA, 23 Nov 2026): a search hit from the official manual is labelled as the manual reader labels it (the
+   * section in force, `withSectionsInForce`), by its chunk id; a row from any other document is left as it is. The labels
+   * are read once per manual version (the version check is one small query) and kept; on any failure the rows stand.
+   */
+  private async withManualLabels(scopeId: string | undefined, rows: MatchedChunkRow[]): Promise<MatchedChunkRow[]> {
+    if (!scopeId || rows.length === 0) return rows;
+    try {
+      const current = await this.officialPolicyManualVersion(scopeId);
+      if (!current || !rows.some((row) => row.document_id === current.documentId)) return rows;
+      const key = `${current.documentId}@${current.version}`;
+      let kept = manualLabels.get(scopeId);
+      if (kept?.key !== key) {
+        const manual = await this.fetchOfficialPolicyManual(scopeId);
+        if (!manual.ok || manual.documentId !== current.documentId) return rows;
+        kept = { key, chunks: manual.chunks };
+        manualLabels.set(scopeId, kept);
+      }
+      return relabelManualRows(rows, current.documentId, kept.chunks);
+    } catch {
+      return rows;
+    }
+  }
 
   async search(query: KnowledgeQuery): Promise<SearchResult[]> {
     const rows = await this.match(query);
@@ -177,16 +206,17 @@ export class SupabaseKnowledgeProvider implements KnowledgeProvider {
       throw new Error(`Knowledge retrieval failed: ${error.message}`);
     }
 
-    this.lastRows = (data ?? []) as MatchedChunkRow[];
+    this.lastRows = await this.withManualLabels(query.scopeId, (data ?? []) as MatchedChunkRow[]);
     return this.lastRows;
   }
 
   toCitations(results: SearchResult[]): SourceCitation[] {
-    const byChunkId = new Map(this.lastRows.map((row) => [row.chunk_id, row]));
+    /* By chunk and locator: a manual hit split at a heading line is two rows of one chunk (board f109, QA's controls). */
+    const byChunkId = new Map(this.lastRows.map((row) => [`${row.chunk_id}\0${row.locator}`, row]));
     // EXCERPT_EMPTY_CARD_DROP_ENABLED: no empty card, none labelled with the sibling company.
     return shownCitations(
       results
-        .map((result) => byChunkId.get(result.chunkId))
+        .map((result) => byChunkId.get(`${result.chunkId}\0${result.locator}`))
         .filter((row): row is MatchedChunkRow => Boolean(row))
         .map(rowToCitation),
     );
@@ -316,7 +346,8 @@ export class SupabaseKnowledgeProvider implements KnowledgeProvider {
       documentTitle: document.title,
       documentCategory: document.category,
       matchedBy: resolution.matchedBy,
-      chunks: chunks.map((chunk) => ({
+      /* Board f109: each chunk labelled with the section in force, read from the manual's own headings (`withSectionsInForce`). */
+      chunks: withSectionsInForce(chunks.map((chunk) => ({
         chunkIndex: chunk.chunk_index,
         chunkId: chunk.id,
         locator: chunk.locator,
@@ -336,7 +367,7 @@ export class SupabaseKnowledgeProvider implements KnowledgeProvider {
          */
         printedPage: readPrintedPage(chunk.metadata),
         sections: readSections(chunk.metadata),
-      })),
+      }))),
     };
   }
 

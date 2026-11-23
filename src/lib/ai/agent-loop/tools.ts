@@ -41,7 +41,7 @@ import {
   retrievalRecallEnabled,
 } from "@/lib/config/chat-quality-flags";
 import type { AskResponse } from "@/lib/ai/types";
-import { findManualSection, manualSectionHeadings, type ManualChunk } from "@/lib/forms/official-policy-manual";
+import { findManualSection, manualSectionHeadings, withSectionsInForce, type ManualChunk } from "@/lib/forms/official-policy-manual";
 import { sectionWording } from "@/lib/forms/policy-citation";
 import { buildProposal, extractEmployeeNames, extractJobTitle, isJobTitlePhrase, JOB_TITLES, managerContext, samePerson, tidyTypedName } from "@/lib/forms/proposal";
 import { foldName } from "@/lib/forms/fold-name";
@@ -2328,9 +2328,11 @@ export function manualFor(scopeId: string, meta?: TurnReads): Promise<ManualRead
       }
       const manual = await provider.fetchOfficialPolicyManual(scopeId);
       if (!manual.ok) return null;
+      /* Board f109: the section in force, read from the manual's own headings (the provider reads it so too; idempotent). */
+      const chunks = withSectionsInForce(manual.chunks);
       const read = {
-        chunks: manual.chunks,
-        headings: manualSectionHeadings(manual.chunks),
+        chunks,
+        headings: manualSectionHeadings(chunks),
         document: { id: manual.documentId, title: manual.documentTitle, category: manual.documentCategory ?? "policy" },
       };
       /* Kept only under the version this read is known to be (the same document the version check named). */
@@ -2410,7 +2412,8 @@ export async function readPolicy(context: ToolContext, input: { heading?: unknow
       document_id: manual.document.id,
       document_title: manual.document.title,
       category: manual.document.category,
-      locator: chunk.locator,
+      /* Board f109: the card names the section read (its heading and printed page), never the chunk's stored label. */
+      locator: /^Page \d+ — /.test(chunk.locator) ? `Page ${section.page} — ${section.heading}` : chunk.locator,
       page: chunk.page,
       section: section.heading,
       content: chunk.content,
