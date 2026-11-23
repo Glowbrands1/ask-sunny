@@ -3825,6 +3825,16 @@ export function starterFollowUpExampleEnabled(): boolean {
 }
 
 /**
+ * FORM_TOPIC_SEARCH_ENABLED (Pau, 21 Nov 2026; default off; QA flips it). The agent loop's find_past_forms with a topic
+ * and no employee ("any forms about cash handling at my salons this month?", "who's been written up for dress code?")
+ * searches the saved text of every form this manager may see in Form Monitoring (`forms/form-topic-search.ts`). Off, a
+ * topic-only call is refused with a plain "not available yet".
+ */
+export function formTopicSearchEnabled(): boolean {
+  return envFlag("FORM_TOPIC_SEARCH_ENABLED");
+}
+
+/**
  * CORRECTED_DATE_KEPT_ENABLED (QA's round-5 trace of corrective-action-conversation-qa Q6, 8 Nov 2026; coding 5;
  * default off). "the meeting was actually on 10-19-26" after a request dated 10-20-26: PRIOR_SENTENCE_FIX's date step
  * saw two incident dates and dated the card null, so Create saved today's date. On: the incident date the manager

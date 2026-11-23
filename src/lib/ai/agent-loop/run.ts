@@ -1,4 +1,6 @@
 import { EXIT_METHOD_LABELS } from "@/lib/forms/exit-details";
+import { cardLines, historyReply, withoutAppNotes, withoutCardLines } from "./card-lines";
+import { exitReadBackMismatch, withoutUnsavedExitLines } from "./exit-read-back";
 import "server-only";
 
 import { observationDateMismatch, withoutMisdatedRestatements } from "./observation-dates";
@@ -388,10 +390,16 @@ function cardFacts(card: ChatFormProposal | null): Record<string, unknown> {
     observation: card.issue ?? null,
   };
 }
-/* PR 2: a reply that showed a card, by the server's card record (`card-record.ts`), never by reading the reply's text. */
-function withCardNote(message: ChatMessage, showedCard: boolean): string {
+/*
+ * PR 2: a reply that showed a card, by the server's card record (`card-record.ts`), never by reading the reply's text.
+ * Port of Ask Bubbles #1038 (its QA's live re-run 2, 22 Nov 2026, "saved ≠ card"): the full card reply plus CARD_NOTE was
+ * a card reply the model copied on turns where it called no tool (note and all). An earlier reply is now shown without app
+ * notes and without card lines; a card reply's card is one "[card shown under this reply: <form> …]" line (`card-lines.ts`).
+ */
+function withCardNote(message: ChatMessage, card: CardRecord | undefined): string {
   const content = String(message.content);
-  return message.role === "assistant" && showedCard ? `${content}\n\n${CARD_NOTE}` : content;
+  if (message.role !== "assistant") return content;
+  return historyReply(content, card ? (card.templateName ?? "a card") : null);
 }
 
 /**
@@ -399,7 +407,7 @@ function withCardNote(message: ChatMessage, showedCard: boolean): string {
  * manager turn ends with its `[message_id: <id>]` (evidence.ts), so a tool's evidence can name the turn it quotes.
  */
 function conversationOf(history: readonly ChatMessage[], question: string, questionMessageId: string | null | undefined, cards: ReadonlyMap<number, CardRecord>): { role: "user" | "assistant"; content: unknown }[] {
-  const shown = new Map(history.map((message, index) => [message, withCardNote(message, cards.has(index))]));
+  const shown = new Map(history.map((message, index) => [message, withCardNote(message, cards.get(index))]));
   const turns = identifiedTurns(history, question, questionMessageId).map((turn, position, all) => {
     const message = position < all.length - 1 ? history.find((candidate, index) => (candidate.id ?? generatedId(index)) === turn.id) : undefined;
     const content = message ? (shown.get(message) ?? turn.content) : turn.content;
@@ -465,14 +473,14 @@ function buildAgentLoopTools(config: AppConfig, planSteps = false) {
   },
   {
     name: "find_past_forms",
-    description: "List the forms on file (" + config.formsPageName + ") for one employee, or, with no employee_name, every form of a kind or period (\"who got a CA this month?\": form and date_from/date_to). Only when the manager asks about forms on file or history; never otherwise.",
+    description: "List the forms on file (" + config.formsPageName + ") for one employee, or, with no employee_name, every form of a kind or period (\"who got a CA this month?\": form and date_from/date_to), or every form about a topic (\"any forms about cash handling this month?\", \"who's been written up for dress code?\": about, with form and dates if given). Only when the manager asks about forms on file or history; never otherwise.",
     input_schema: object({
       employee_name: { type: "string", description: "The employee the manager named. Leave it out for a list of every form of a kind or period." },
       form: { type: "string", description: "The form the manager named (\"coaching\", \"CA\"), if any." },
       date: { type: "string", description: "The form's date as the manager gave it (\"10/31\"), if any." },
       date_from: { type: "string", description: "First form date of a period the manager asked about (\"this month\": the 1st), YYYY-MM-DD, if any." },
       date_to: { type: "string", description: "Last form date of that period (\"this month\": today), YYYY-MM-DD, if any." },
-      about: { type: "string", description: "Words the manager used about the form (\"" + examples.formAbout + "\"), if any." },
+      about: { type: "string", description: "Words the manager used about the form (\"" + examples.formAbout + "\"), if any. With no employee_name, the topic to search every form's saved text for (\"cash handling\", \"dress code\")." },
       forms_on_file_evidence: FORMS_ON_FILE_EVIDENCE,
       open: { type: "boolean", description: "true when the manager asks to open, edit or see one form on file (not a list of what is on file)." },
       include_archived: { type: "boolean", description: "true only when the manager asks for archived forms. Finalized forms are listed archived or not; this adds archived drafts." },
@@ -723,7 +731,11 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   /* PR 6: the turn's one read of the policy manual starts first, beside the chat's record read (`turnManual`). */
   const turn: TurnReads = {};
   turn.manual = manualFor(input.scopeId, turn);
-  const { cards: records, nameQuestions, personAsked, exitOffers, teamConfirms, whichForms, turns: turnRecords } = await readLoopRecords(input.conversationId, input.actor.subject, input.history.filter((turn) => turn.role === "user" && typeof turn.id === "string").map((turn) => turn.id));
+  const { cards: records, nameQuestions, personAsked, exitOffers, teamConfirms, whichForms, turns: turnRecords } = await readLoopRecords(input.conversationId, input.actor.subject, input.history.filter((turn) => turn.role === "user" && typeof turn.id === "string").map((turn) => turn.id), {
+    /* Port of Ask Bubbles #1079 (duplicate tab): only this tab's own records (`card-record.ts`, `ThisTab`). */
+    messageIds: input.history.filter((turn) => turn.role === "user" && typeof turn.id === "string").map((turn) => turn.id!),
+    questionKeys: input.history.filter((turn) => turn.role === "user").map((turn) => personKey(String(turn.content ?? ""))),
+  });
   const cards = cardTurns(input.history, records);
   const lastReplyIndex = input.history.findLastIndex((turn) => turn.role === "assistant" && !turn.error);
   const cardOnScreen = !input.openFormId && lastReplyIndex >= 0 ? (cards.get(lastReplyIndex) ?? null) : null;
@@ -801,7 +813,14 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     find_past_forms: async (args) => withLookupReplyName(context, await findPastForms(context, args, effects), (args as { employee_name?: unknown }).employee_name),
     read_form: (args) => readForm(context, args, effects),
     read_policy: (args) => readPolicy(context, args, effects),
-    propose_form: (args) => proposeForm(context, effects, args),
+    propose_form: async (args) => {
+      const asked = effects.nameQuestion;
+      const result = await proposeForm(context, effects, args);
+      /* U35(ii) (port of Ask Bubbles #1043): a name question this propose_form call asked belongs to the form it was making (the record's templateKey). */
+      const key = (args as { template_key?: unknown } | null)?.template_key;
+      if (effects.nameQuestion && effects.nameQuestion !== asked && typeof key === "string") effects.nameQuestion = { ...effects.nameQuestion, templateKey: key };
+      return result;
+    },
     /*
      * PR 6 item 3: an edit with no values runs the form's reviser, which makes its own model calls. It runs only when
      * the turn's budget (AGENT_LOOP_MAX_STEPS, loop steps plus every model call a tool made) has room for the reviser
@@ -958,6 +977,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   const [templates, manual] = await Promise.all([templateChoices(input.actor.role), turnManual(context)]);
   const dynamic = agentLoopSystem({
     cardOpen: cardOpenAtStart,
+    cardOpenForm: cardOnScreen?.templateName ?? null,
     managerName: input.actor.displayName,
     role: input.actor.role,
     salons: authorizedSalonIds(input.actor.scope).map((id) => salonLabel(id)!),
@@ -1105,9 +1125,21 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
        * TRUNCATION_RETRY (parity gap #36): a reply cut at the token limit is never shown cut. It is written again once,
        * from the same conversation and this turn's tool results (the cut text left out), with twice the budget and no
        * tools, so nothing is called twice.
+       *
+       * A STEP CUT WHILE THINKING (port of Ask Bubbles #1060, 190a33d; its QA's live regression set, 22 Nov 2026: a
+       * message with many facts answered "I couldn't finish that in the steps I have for one message"). The loop thinks
+       * (adaptive) inside the step's output budget, and a message with many facts, or the reply after a long card result,
+       * can spend the whole budget thinking: the step ends "length" with no text and no tool call. That is no cut reply.
+       * Without its tools the retry could not make the call the step was thinking towards, so it ended with no text and
+       * the turn read as the step limit. That step is asked again as the loop step it was, with the tools and twice the
+       * budget, inside the turn's step budget; nothing was called in it, so nothing is called twice. Its calls and
+       * messages join the turn's (the hand-backs').
        */
       /* F4 (QA, batch F): ONE STEP BUDGET FOR THE TURN. A retry or hand-back gets only the steps left under the cap. */
       const stepsLeft = () => Math.max(0, limit - (stepNumber - 1) - hiddenCalls);
+      /* The turn's messages so far (its tool calls and results): the loop's, or the loop's and a step asked again (below). */
+      let turnMessagesAfterRetry: unknown[] | null = null;
+      const turnMessages = async (): Promise<unknown[]> => turnMessagesAfterRetry ?? (await result.response).messages;
       if (last?.finishReason === "length" && stepsLeft() === 0) {
         text = "";
         stoppedAt = "step_limit";
@@ -1115,6 +1147,8 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
         const response = await result.response;
         const turn = [...response.messages];
         if (turn.at(-1)?.role === "assistant") turn.pop();
+        /* Cut while thinking: no text and no tool call (above). */
+        const cutWhileThinking = (last.text ?? "").trim() === "" && last.toolCalls.length === 0;
         /* QA's audit (item 14a): the retry is its own model call, with its own first-token wait. */
         watch.attempt();
         const again = streamText({
@@ -1124,6 +1158,15 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
             { role: "system", content: dynamic },
           ],
           messages: [...(conversationOf(input.history, input.question, input.questionMessageId, cards) as never[]), ...(turn as never[])],
+          ...(cutWhileThinking
+            ? {
+                tools,
+                /* The turn's one step budget (F4): this step and any after it, with the tools' own model calls. */
+                stopWhen: () => stepNumber - 1 + hiddenCalls >= limit,
+                prepareStep: ({ messages }: { messages: unknown[] }) => ({ messages: withLastMessageCached(messages as never) }),
+                providerOptions: LOOP_PROVIDER_OPTIONS,
+              }
+            : {}),
           maxOutputTokens: CLAUDE_MAX_TOKENS.standard * 2,
           maxRetries: timed.maxRetries,
           abortSignal: timed.signal,
@@ -1144,8 +1187,9 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
         const retried = await again.steps;
         watch.idle();
         const final = retried.at(-1);
-        text = final?.finishReason === "length" ? "" : (final?.text ?? "").trim();
+        text = final?.finishReason === "length" || final?.finishReason === "tool-calls" ? "" : (final?.text ?? "").trim();
         if (text === "") stoppedAt = "step_limit";
+        if (cutWhileThinking) turnMessagesAfterRetry = [...turn, ...(await again.response).messages];
       }
       /*
        * SELF-REVIEW (above, `cardMismatch`): with a card made this turn, or a card on screen and nothing changed this
@@ -1158,7 +1202,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
         if (left === 0) return "";
         const hiddenBefore = hiddenCalls;
         const proposalBefore = effects.proposal;
-        const response = await result.response;
+        const turnSoFar = await turnMessages();
         /* QA's audit (item 14a): the hand-back is its own model call; each of its steps waits for its own first token. */
         watch.attempt();
         const review = streamText({
@@ -1167,7 +1211,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
             { role: "system", content: agentLoopRules(), providerOptions: EPHEMERAL },
             { role: "system", content: dynamic },
           ],
-          messages: [...(conversationOf(input.history, input.question, input.questionMessageId, cards) as never[]), ...(response.messages as never[]), { role: "user", content: note } as never],
+          messages: [...(conversationOf(input.history, input.question, input.questionMessageId, cards) as never[]), ...(turnSoFar as never[]), { role: "user", content: note } as never],
           tools,
           stopWhen: ({ steps: done }) => done.length + (hiddenCalls - hiddenBefore) >= Math.min(4, left),
           /*
@@ -1213,13 +1257,34 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
        * card this turn the reply is compared with the card ON SCREEN (its recorded level and policy line), never with no
        * card: a reply that repeats the card's own policy or level is no mismatch.
        */
-      const cardShownNow = () => effects.proposal !== null || cardOnScreen !== null;
+      /*
+       * Port of Ask Bubbles #1038 ("saved ≠ card"): after one reply with no card the last reply's card is none, and nothing
+       * was checked ("payroll is not deductable" then "verbal warning", both claimed, neither on the card). The card still on
+       * the manager's screen is this chat's latest card (its server record) until a form opens.
+       */
+      const shownCard = cardOnScreen ?? (!input.openFormId ? context.earlierCard ?? null : null);
+      const cardShownNow = () => effects.proposal !== null || shownCard !== null;
+      /* A turn with no card call while a card is shown: a card line is a card nobody proposed (`card-lines.ts`). */
+      const noCardThisTurn = () => effects.proposal === null && shownCard !== null;
+      /* B6 (port of Ask Bubbles #1036): an exit card shown under the last reply, and none proposed this turn. */
+      const exitOnScreenOnly = !effects.proposal && shownCard?.templateKey === appConfig().formKeys.exit;
       const mismatchOf = (reply: string) => {
         const claims = cardClaims(reply);
         /* QA's re-run (22 Nov 2026, A3; port of Ask Bubbles #1004): a restated Observation keeps the Observation's dates (`observation-dates.ts`). */
-        if (effects.proposal) return [...cardMismatch(claims, effects.proposal), ...observationDateMismatch(reply, effects.proposal.issue)];
-        const onScreen = cardOnScreen ? ({ warningLevel: cardOnScreen.level ?? null, policyLine: cardOnScreen.policyLine ?? null } as unknown as ChatFormProposal) : null;
-        return cardMismatch(claims, onScreen);
+        /* U22 (port of Ask Bubbles #1034): an exit card's reply reads back only the lines Create saves (`exit-read-back.ts`). */
+        if (effects.proposal) return [...cardMismatch(claims, effects.proposal), ...observationDateMismatch(reply, effects.proposal.issue), ...exitReadBackMismatch(reply, effects.proposal.exitReadBack)];
+        const onScreen = shownCard ? ({ warningLevel: shownCard.level ?? null, policyLine: shownCard.policyLine ?? null, payrollDeduct: shownCard.payroll ?? null, payrollDeductAmount: shownCard.payrollAmount ?? null } as unknown as ChatFormProposal) : null;
+        /*
+         * B6: no card this turn ("she is resigning due to second job …" called no tool and replied "Noted the reason —
+         * **Reason for Resignation:** Second job."): an exit card on screen saves nothing new, so a Details or answer line
+         * goes back (`exit-read-back.ts`, onScreenOnly).
+         */
+        return [
+          ...cardMismatch(claims, onScreen),
+          ...exitReadBackMismatch(reply, exitOnScreenOnly ? [] : null, true),
+          ...(noCardThisTurn() ? cardLines(reply).map((line) => `card line "${line.label}"`) : []),
+          ...(noCardThisTurn() && /\[app note:/i.test(reply) ? ["card line (an app note copied from an earlier card reply)"] : []),
+        ];
       };
       const reviewed = stoppedAt === "reply" && !effects.formUpdate && !effects.formOpened && !input.openFormId && cardShownNow();
       const wrong = reviewed ? mismatchOf(text) : [];
@@ -1244,7 +1309,11 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
         const caOnly = (field: string) => /^(?:policy|warning level|payroll deduct|payroll amount) \(/.test(field);
         /* A misdated restatement of the Observation is no change the manager asked for: it is never offered as one. */
         const observationDate = (field: string) => /^observation date \(/.test(field);
-        const offer = (shownForm === appConfig().formKeys.corrective ? still : still.filter((field) => !caOnly(field))).filter((field) => !observationDate(field));
+        /* "Saved ≠ card": a card line written with no card call is no change the manager asked for either. */
+        const cardLine = (field: string) => /^card line /.test(field);
+        /* U22: an exit field line the card does not save is no change the manager asked for either. */
+        const exitField = (field: string) => /^exit field "/.test(field);
+        const offer = (shownForm === appConfig().formKeys.corrective ? still : still.filter((field) => !caOnly(field))).filter((field) => !observationDate(field) && !cardLine(field) && !exitField(field));
         const withoutPolicyLine = (reply: string) => (shownForm !== appConfig().formKeys.corrective ? reply.replace(/^\s*\*\*Policy:?\*\*:?.*$\n?/gim, "").trim() : reply);
         selfReview = { mismatched: [...wrong, ...(missing ? ["policy line (missing)"] : [])], fixed: still.length === 0 && Boolean(again) && !noPolicyLine(again) };
         /*
@@ -1286,6 +1355,10 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
         else if (still.length > 0) text = withoutPolicyLine(text);
         /* Still misdated after the hand-back: the false restatement is left out; the card under the reply shows the Observation. */
         if (!(offer.length > 0 && cardShownNow()) && still.some(observationDate)) text = withoutMisdatedRestatements(text, effects.proposal?.issue);
+        /* U22: still reading back an exit line the card does not save: that line is left out (the card shows what is saved). */
+        if (!(offer.length > 0 && cardShownNow()) && still.some(exitField)) text = exitOnScreenOnly ? withoutUnsavedExitLines(text, [], true) : withoutUnsavedExitLines(text, effects.proposal?.exitReadBack);
+        /* Saved ≠ card: still writing card lines with no card call, they are left out (the card under the earlier reply is what is saved). */
+        if (noCardThisTurn() && still.some(cardLine)) text = withoutCardLines(text);
       }
       /*
        * THE DRAFT'S HONESTY CHECK HANDS BACK FIRST (code-check #48, batch D): with a draft open, a reply that claims the
@@ -1388,9 +1461,18 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
          * reader: a salon the reply names that the manager never named and the card does not hold goes back once; if it
          * comes back, the reply asks the salon question plainly. The team card only: a person's card offers that person's
          * own roster salons, which the manager never typed. Sunny has no team-card update tool, so a later turn's team card is
-         * the one shown under the last reply (its card record, `teamNeedsLocation`), as well as one made this turn.
+         * the one shown under the last reply (its card record), as well as one made this turn.
+         *
+         * Ask Bubbles' live re-run 2 (22 Nov 2026, A8; port of #1033): any team card that holds no salon, whatever its
+         * status. A global login's team card with no salon is ready (a global login may file a form with none), and the
+         * check never ran there. A turn with no tool call ("this is perfect", "make that update" repeated the narrowed
+         * question live) reads the team card still shown from its card record (`teamNoSalon`; an older record's
+         * `teamNeedsLocation`). Sunny has no team-card update tool, so a later turn's coach_team is refused and that turn's
+         * reply shows no new card: the card still shown is the last reply's, else this chat's latest card record until a
+         * form opens, as `tools.ts` reads it (`cardOnScreen ?? earlierCard`).
          */
-        const teamNoSalon = effects.proposal ? effects.proposal.subject === "team" && effects.proposal.status === "needs_location" : cardOnScreen?.teamNeedsLocation === true;
+        const teamCardShown = cardOnScreen ?? (!input.openFormId ? records.at(-1) ?? null : null);
+        const teamNoSalon = effects.proposal ? effects.proposal.subject === "team" && !effects.proposal.locationId : teamCardShown?.teamNoSalon === true || teamCardShown?.teamNeedsLocation === true;
         if (stoppedAt === "reply" && teamNoSalon) {
           const guessed = (reply: string) => salonsNamedNotSaid(reply, [...input.history.filter((turn) => turn.role === "user").map((turn) => String(turn.content ?? "")), input.question], effects.proposal?.locationId ?? null);
           if (guessed(text).length > 0) {
@@ -1431,6 +1513,8 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
    * JSON object (bare, or in a ```json fence) with a string "content" is that string; the trace says reply_unwrapped.
    */
   text = unwrapReply(text);
+  /* Port of Ask Bubbles #1038: the app's own notes ("[app note: …]") are never shown to the manager. */
+  text = withoutAppNotes(text);
   const latencyMs = Math.round(performance.now() - started);
   noteModelCall({
     model: CLAUDE_MODEL,
@@ -1483,11 +1567,11 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   }
   if (offRosterNames.size === 1 && text) text = withFullOffRosterName(text, [...offRosterNames][0]!, appConfig().staffSystem);
   const cardSlot: CardSlot | null = effects.proposal
-    ? { proposalId: effects.proposal.proposalId, employeeKey: effects.proposalEmployeeId ? personKey(effects.proposalEmployeeId) : null, nameKey: effects.proposal.employeeName ? personKey(effects.proposal.employeeName) : null, templateKey: effects.proposal.templateKey, templateName: effects.proposal.templateName ?? null, ...(effects.proposalAsked?.length ? { asked: effects.proposalAsked } : {}), ...(effects.proposalLevel ? { level: effects.proposalLevel } : {}), ...(effects.proposalPayroll ? { payroll: effects.proposalPayroll } : {}), ...(effects.proposalPayroll === "yes" && effects.proposalPayrollAmount ? { payrollAmount: effects.proposalPayrollAmount } : {}), ...(effects.proposal.policyLine ? { policyLine: effects.proposal.policyLine } : {}), ...(effects.proposalAccountKey ? { accountKey: effects.proposalAccountKey } : {}), ...(effects.proposal.formDate ? { incidentDate: effects.proposal.formDate } : {}), ...(effects.proposal.subject === "team" && effects.proposal.status === "needs_location" ? { teamNeedsLocation: true } : {}) }
+    ? { proposalId: effects.proposal.proposalId, employeeKey: effects.proposalEmployeeId ? personKey(effects.proposalEmployeeId) : null, nameKey: effects.proposal.employeeName ? personKey(effects.proposal.employeeName) : null, templateKey: effects.proposal.templateKey, templateName: effects.proposal.templateName ?? null, ...(effects.proposalAsked?.length ? { asked: effects.proposalAsked } : {}), ...(effects.proposalLevel ? { level: effects.proposalLevel } : {}), ...(effects.proposalPayroll ? { payroll: effects.proposalPayroll } : {}), ...(effects.proposalPayroll === "yes" && effects.proposalPayrollAmount ? { payrollAmount: effects.proposalPayrollAmount } : {}), ...(effects.proposal.policyLine ? { policyLine: effects.proposal.policyLine } : {}), ...(effects.proposalAccountKey ? { accountKey: effects.proposalAccountKey } : {}), ...(effects.proposal.formDate ? { incidentDate: effects.proposal.formDate } : {}), ...(effects.proposal.subject === "team" && effects.proposal.status === "needs_location" ? { teamNeedsLocation: true } : {}), ...(effects.proposal.subject === "team" && !effects.proposal.locationId ? { teamNoSalon: true } : {}) }
     : null;
   /* Fix batch items 4 and 3: this turn's "Did you mean", for the next turn's name question record (one-way keys only). */
   const nameQuestionSlot: NameQuestionSlot | null = effects.nameQuestion && stoppedAt === "reply"
-    ? { offeredKeys: effects.nameQuestion.offeredIds.map(personKey), typedKey: personKey(effects.nameQuestion.typed), ...(effects.nameQuestion.offeredNames?.length ? { offeredNameKeys: effects.nameQuestion.offeredNames.map(personKey) } : {}), ...(effects.nameQuestion.asksFullName ? { asksFullName: true } : {}) }
+    ? { offeredKeys: effects.nameQuestion.offeredIds.map(personKey), typedKey: personKey(effects.nameQuestion.typed), ...(effects.nameQuestion.offeredNames?.length ? { offeredNameKeys: effects.nameQuestion.offeredNames.map(personKey) } : {}), ...(effects.nameQuestion.asksFullName ? { asksFullName: true } : {}), ...(effects.nameQuestion.templateKey ? { templateKey: effects.nameQuestion.templateKey } : {}) }
     : null;
   /* Fix batch item 6: propose_form asked who the form is for, for the next turn's person asked record (no names). */
   const personAskedSlot: PersonAskedSlot | null = effects.personAsked && stoppedAt === "reply" && !effects.proposal ? { templateKey: effects.personAsked.templateKey } : null;
@@ -1571,6 +1655,16 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   /* Never twice: the reply already asks for a change in its own words (QA: "change" and a question mark in one sentence). */
   const asksForChange = /\bchange\b[^.!?\n]*\?/i.test(content);
   if (effects.replyMustAsk && !content.includes(effects.replyMustAsk) && !asksForChange) content = `${content.trim()}\n\n${effects.replyMustAsk}`.trim();
+  /*
+   * U24 (port of Ask Bubbles #1061, its QA's flaky check): a reply for this turn's exit card that names none of the types
+   * the card ticks gets the card's own "Filed as" line after its opening paragraph (the card's facts, never the manager's
+   * words). The model's input is unchanged.
+   */
+  const exitTicks = effects.proposal?.templateKey === appConfig().formKeys.exit ? (effects.exitTicks ?? []) : [];
+  if (exitTicks.length > 0 && !exitTicks.some((label) => content.toLowerCase().includes(label.toLowerCase()))) {
+    const [opening, ...rest] = content.trim().split(/\n{2,}/);
+    content = [opening, `Filed as: ${exitTicks.join(", ")}.`, ...rest].join("\n\n");
+  }
   /*
    * STARTER_FOLLOW_UP_EXAMPLE_ENABLED (QA's live re-test of #1127, 20 Nov 2026): the same step as the regular chat's. When
    * one of the app's own home starters is the chat's first message and the reply asks who or which, it ends with one

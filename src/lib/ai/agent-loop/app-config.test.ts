@@ -39,6 +39,10 @@ import { rulesBookText } from "./rules-book";
  * follow_up_on_create (say the follow-up date Create sets; never deny a follow-up the form will have). It reads the same
  * under every config; nothing else changed.
  *
+ * Re-taken on purpose on 22 Nov 2026 (the 266-chat run's 039/241, QA's step 3): the Card replies line for the account
+ * now reads its label from card.account_label, the form's own (Details of Coaching on a coaching form), never
+ * "Observation of Offense" on every incident card. It reads the same under every config; nothing else changed.
+ *
  * Re-taken on purpose on 22 Nov 2026 (port from Ask Bubbles 1b34db2, A11): one Forms on file line was added after
  * which_form_question: an answer that gives changes is not a pick; open_form and edit_form need choice_evidence; ask
  * again. It reads the same under every config; nothing else changed.
@@ -152,6 +156,24 @@ import { rulesBookText } from "./rules-book";
  * Re-taken on purpose on 22 Nov 2026 (port from Ask Bubbles #1026, U21): one line was added after the "policy and no
  * person" line: "make this for <B> instead of <A>" / "the same corrective action but for <B>" go with same_card_evidence
  * (kind same_form or this_card_for) and copied_from_card. It reads the same under every config; nothing else changed.
+ * Re-taken on purpose on 22 Nov 2026 (port from Ask Bubbles #1038, "saved ≠ card"): the earlier-card line now names the
+ * "[card shown under this reply: …]" line instead of the app note, and one line was added after it: a card comes only
+ * from propose_form, never card lines written on a turn without it. It reads the same under every config; nothing else
+ * changed.
+ * Re-taken on purpose on 22 Nov 2026 (port from Ask Bubbles #1044, U16): the "Open / edit / pull up / show me" line now
+ * says a form referred to as one that exists is a form on file whatever the verb ("put up" included), and only words
+ * asking to make one start a card; one line was added before the "In the format of" line ("with all the same
+ * information" copies the form on file); the level-evidence line no longer gives "put up the verbal CA" as an example.
+ * It reads the same under every config; nothing else changed.
+ * Re-taken on purpose on 22 Nov 2026 (port from Ask Bubbles #1034 + #1036, U22 and B6): one line was added after the
+ * exit_dates line: an exit card's reads_back is the only exit lines the reply reads back, every one is saved at Create,
+ * and a detail added after the card reaches the form only through propose_form. It reads the same under every config;
+ * nothing else changed.
+ *
+ * Re-taken on purpose on 21 Nov 2026 (Pau: a search of past forms by topic, FORM_TOPIC_SEARCH_ENABLED): one Replies line
+ * was added: forms on file about a topic ("any forms about cash handling at my <place>s this month?", "who's been written
+ * up for dress code?") call find_past_forms with about and no employee_name, list each form as given, say the counts, and
+ * "showing N of M". It uses the config's place word; nothing else changed.
  */
 
 const fixture = (name: string): string => readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), "utf8");

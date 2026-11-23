@@ -1,4 +1,5 @@
 import { agentLoopStepLimit } from "@/lib/ai/agent-loop/switch";
+import { historyReply } from "@/lib/ai/agent-loop/card-lines";
 import { appendFileSync } from "node:fs";
 
 import { expect, vi } from "vitest";
@@ -47,14 +48,15 @@ function measure(t: ReplayContext, id: string, turns: number, loopCalls: number)
   appendFileSync(process.env.AGENT_LOOP_MEASURE, `${JSON.stringify({ id, loop: t.loopOn?.() === true, turns, calls, loopCalls, tokens })}\n`);
 }
 
-/** After every turn: the history the next turn is given holds the previous reply exactly as the model wrote it. */
+/** After every turn: the history the next turn is given holds the previous reply as the model wrote it. */
 function historyIsTheModelsOwn(views: readonly LoopView[], replies: readonly ReplayAnswer[]) {
   for (const [index, reply] of replies.slice(0, -1).entries()) {
     const next = views.find((view) => view.step === 0 && view.turns.filter((turn) => turn.role === "user").length === index + 2);
     if (!next) continue;
-    // Changed on purpose (the earlier-card note, `run.ts` CARD_NOTE): a card's reply is given as written, plus the app's note after it.
-    const given = next.turns.filter((turn) => turn.role === "assistant").map((turn) => turn.text.replace("\n\n[app note: this reply showed a card built with propose_form]", ""));
-    expect(given, `turn ${index + 2} was not given reply ${index + 1} as written`).toContain(reply.content);
+    // Changed on purpose (port of Ask Bubbles #1038, "saved ≠ card"): a card's reply is given as written without its card lines
+    // (the card is one "[card shown under this reply: …]" line after it, `card-lines.ts`), so the model has no card reply to imitate.
+    const given = next.turns.filter((turn) => turn.role === "assistant").map((turn) => turn.text.replace(/\n\n\[card shown under this reply: [^\]]*\]$/, ""));
+    expect(given, `turn ${index + 2} was not given reply ${index + 1} as written`).toContain(historyReply(reply.content, null));
   }
 }
 

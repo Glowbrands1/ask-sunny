@@ -698,6 +698,8 @@ const NEW_FLAGS = [
   "FORMS_ON_FILE_COUNTS_ENABLED",
   // coding B: CARD_PERSON_THIS_REQUEST (the outside audit's wrong-person risk, 21 Nov 2026; default off).
   "CARD_PERSON_THIS_REQUEST_ENABLED",
+  // coding G: FORM_TOPIC_SEARCH (Pau, 21 Nov 2026; default off).
+  "FORM_TOPIC_SEARCH_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -1302,6 +1304,10 @@ describe("new flags default off and wrappers are inert", () => {
           ":(exclude)src/features/reviews/reviews-demo-screen.tsx",
           ":(exclude)src/features/reviews/reviews-screen.tsx",
           ":(exclude)src/features/reviews/reviews-monthly-table.tsx",
+          // Salon leaderboard monthly only (Pau, 23 Nov 2026: "for google reviews can you make it monthly
+          // not weekly … i mean salon leaderboard"): the This week column and the Rank by this week toggle
+          // are removed. Reviews page only; no chat or form behaviour changes.
+          ":(exclude)src/features/reviews/reviews-leaderboard.tsx",
         ]),
       ).toBe("");
       expect(changedLines(diff(uiBase, [MONITORING_TABLE])).filter((line) => !MONITORING_MOUNT.includes(line))).toEqual([]);
@@ -1359,7 +1365,7 @@ function chatHalf(half: 0 | 1): string[] {
   return half === 0 ? all.slice(0, middle) : all.slice(middle);
 }
 /*
- * THE REPLAY PACK IN EIGHTHS (QA, 9 Nov 2026 in halves; thirds 12 Nov; quarters 13 Nov; fifths 15 Nov 2026, "QA 15 Nov:
+ * THE REPLAY PACK IN NINTHS (QA, 9 Nov 2026 in halves; thirds 12 Nov; quarters 13 Nov; fifths 15 Nov 2026, "QA 15 Nov:
  * quarter 2 passed 9 min after batch G's cases", ETIMEDOUT at 540 s on ask-sunny#1011; sixths 16 Nov 2026: fifth 4 of 5
  * timed out at 540 s on ask-sunny#1056 after #1054's and #1056's cases, ETIMEDOUT, no assertion failed): its child timed out at
  * 540 s on CI (ask-sunny#713, #717; main 7e8dcdb6 with halves; ask-sunny#839 with thirds, its first third at 540 s;
@@ -1369,8 +1375,11 @@ function chatHalf(half: 0 | 1): string[] {
  * seconds). Every case and every file still runs exactly once, with every new flag off. No timeout is raised.
  * Eighths since 18 Nov 2026: sixth 6 of 6 timed out at 540 s on main 063fd1a (after #1094) and on ask-sunny#1099, twice,
  * ETIMEDOUT, no assertion failed; the passing run before it (main d2e0d78) already took about 9 of its 10 minutes.
+ * Ninths since 22 Nov 2026: eighth 7 of 8 timed out at 540 s on ask-sunny#1229 (ETIMEDOUT, no assertion failed; its five
+ * new cases take under a second, but they reshuffle the parts by id), while the eighths on ask-sunny#1227 already took
+ * 6 to 8.4 of their 9 minutes.
  */
-const REPLAY_PACK_PARTS = 8;
+const REPLAY_PACK_PARTS = 9;
 const REPLAY_PACK_E2E = `${REPLAY_PACK}/replay-pack-e2e.test.ts`;
 /** The pack's own test files besides the e2e (registry, policy-line, step-b-live-check, …): one child, a few seconds. */
 function replayPackOtherFiles(): string[] {
@@ -1386,7 +1395,7 @@ const CHILDREN: readonly { readonly name: string; readonly paths: () => readonly
   { name: "src/app/api/forms", paths: () => ["src/app/api/forms"] },
   { name: `${REPLAY_PACK}, its test files other than the e2e`, paths: () => replayPackOtherFiles() },
   ...Array.from({ length: REPLAY_PACK_PARTS }, (_part, i) => ({
-    name: `${REPLAY_PACK}, the cases in eighth ${i + 1} of ${REPLAY_PACK_PARTS}`,
+    name: `${REPLAY_PACK}, the cases in part ${i + 1} of ${REPLAY_PACK_PARTS}`,
     paths: () => [REPLAY_PACK_E2E],
     env: { REPLAY_PACK_PART: `${i}/${REPLAY_PACK_PARTS}` },
   })),
