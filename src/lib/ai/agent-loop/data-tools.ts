@@ -14,6 +14,7 @@ import type { ReviewsSnapshot, ReviewFeed } from "@/lib/reviews/queries";
 import type { MonthlyProgress } from "@/lib/reviews/monthly-progress";
 import { reviewDateOf } from "@/lib/reviews/timeline";
 import { asksForMonthlyPeriods } from "@/lib/ai/google-reviews-chat";
+import { assignmentTrackerText, canSeeAssignmentTracker, type AssignmentTracker } from "@/lib/ai-training/assignments";
 import type { AccessScope, Role } from "@/types";
 
 import { rowToCitation } from "@/lib/knowledge/mappers";
@@ -151,6 +152,8 @@ export interface DataToolDeps {
   readonly fetchDailyStatsGuide: (scopeId: string) => Promise<RoleGroundingResult>;
   /** The form deletion record (f066), newest first; `employeeName` narrows it (case-insensitive, part of the name). */
   readonly loadFormDeletions: (input: { employeeName: string | null; limit: number }) => Promise<FormDeletionRow[]>;
+  /** AI Training -> Assignments: the tracker's people and marks (`ai_assignment_people`, `ai_assignment_marks`). */
+  readonly loadAssignmentTracker: () => Promise<AssignmentTracker>;
 }
 
 /** One row of `form_instance_deletions`, as read_form_deletions reads it (never the snapshot). */
@@ -220,10 +223,12 @@ export const DEFAULT_DATA_TOOL_DEPS: DataToolDeps = {
       deletedAt: String(row.deleted_at ?? ""),
     }));
   },
+  loadAssignmentTracker: async () => (await import("@/lib/ai-training/assignments-repository")).loadAssignmentTracker(),
 };
 
 export interface DataToolContext {
-  readonly actor: Pick<ToolActor, "role" | "scope">;
+  /** `email`: who is signed in, for read_ai_assignments's named list. */
+  readonly actor: Pick<ToolActor, "role" | "scope"> & { readonly email?: string };
   readonly question: string;
   readonly scopeId: string;
   readonly today: string;
@@ -497,6 +502,30 @@ export async function readFormDeletions(context: DataToolContext, input: { emplo
   };
 }
 
+/* ---------------------------------------------------------------- read_ai_assignments --- */
+
+export const AI_ASSIGNMENTS_SOURCE = "AI Training > Assignments";
+
+/**
+ * read_ai_assignments() (Pau, 23 Nov 2026): the AI assignment tracker (AI Training -> Assignments), as the page's grid
+ * shows it: the current half's done / due / more time, and each person's totals and latest halves. ONLY FOR THE
+ * TRACKER'S NAMED PEOPLE (`canSeeAssignmentTracker`, the page's own check): anyone else is refused and nothing is read.
+ */
+export async function readAiAssignments(context: DataToolContext, deps: DataToolDeps = DEFAULT_DATA_TOOL_DEPS): Promise<ToolResult> {
+  if (!hasPermission(DEFAULT_PERMISSION_MATRIX, context.actor.role, "view_ai_training") || !canSeeAssignmentTracker(context.actor)) {
+    return {
+      source: AI_ASSIGNMENTS_SOURCE,
+      refused: "The AI assignment tracker is only for the people it was set up for. Nothing was read; say so plainly, in one line, and give nothing from it.",
+    };
+  }
+  const tracker = await deps.loadAssignmentTracker();
+  return {
+    source: AI_ASSIGNMENTS_SOURCE,
+    tracker: untrusted(assignmentTrackerText(tracker, context.today), AI_ASSIGNMENTS_SOURCE),
+    note: "Give who is done, due, missing or has more time exactly as listed, with the half each is for. Never guess a person or a half not listed.",
+  };
+}
+
 /* ---------------------------------------------------------------- registration --- */
 
 /** The two tools' specs, in the loop's tool-list shape (`run.ts`), with the app config's place word. */
@@ -544,6 +573,12 @@ export function dataToolSpecs(config: AppConfig) {
       required: [],
     },
   },
+  {
+    name: "read_ai_assignments",
+    description:
+      "The AI assignment tracker (AI Training > Assignments), for the people it was set up for only: two AI assignments a month per person (the 1st to 15th, the 16th to month end); who is done, still due or has more time this half, and each person's done and missing halves. Anyone else is refused.",
+    input_schema: { type: "object", properties: {}, required: [] },
+  },
 ] as const;
 }
 
@@ -563,5 +598,6 @@ export function dataToolHandlers(
     read_reviews: (args) => readReviews(context, args, deps),
     read_stats: (args) => readStats(context, args, deps, effects),
     read_form_deletions: (args) => readFormDeletions(context, args, deps),
+    read_ai_assignments: () => readAiAssignments(context, deps),
   };
 }

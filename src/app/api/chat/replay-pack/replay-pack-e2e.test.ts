@@ -62,6 +62,9 @@ const store: FakeStore = {
   chat_context_summaries: [],
   // Board f066 (20 Nov 2026): the deletion record, written by the fake as the BEFORE DELETE trigger writes it.
   form_instance_deletions: [],
+  // AI Training -> Assignments (23 Nov 2026): the AI assignment tracker read_ai_assignments reads.
+  ai_assignment_people: [],
+  ai_assignment_marks: [],
 } as unknown as FakeStore;
 
 // As production builds the role table when the ASD may create forms (NEXT_PUBLIC_, read once at load).
@@ -1194,6 +1197,10 @@ function context(): ReplayContext {
       summaries.reply = summary;
     },
     rows: (table) => [...(((store as unknown as Record<string, unknown[] | undefined>)[table] ?? []) as Record<string, unknown>[])],
+    seedRows: (table, rows) => {
+      const tables = store as unknown as Record<string, unknown[] | undefined>;
+      (tables[table] ??= []).push(...rows);
+    },
     draftWriteCarries: (field) => {
       faults.strayDraftField = field;
     },
