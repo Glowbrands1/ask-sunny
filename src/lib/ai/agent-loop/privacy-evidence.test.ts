@@ -29,8 +29,24 @@ describe("formsOnFileAsked", () => {
 
   it("refused: no evidence, the app's own words, or words the manager never typed", () => {
     expect(formsOnFileAsked({ question: "she was late again", history, questionMessageId: "q2" }, undefined)).toEqual({ ok: false, reason: "evidence_not_manager_turn" });
-    expect(formsOnFileAsked({ question: "she was late again", history, questionMessageId: "q2" }, { message_id: "m2", quote: "Coaching Forms on file" })).toEqual({ ok: false, reason: "evidence_not_manager_turn" });
     expect(formsOnFileAsked({ question: "she was late again", history, questionMessageId: "q2" }, { message_id: "q2", quote: "show me her write ups" })).toEqual({ ok: false, reason: "evidence_quote_not_found" });
+  });
+
+  /*
+   * Changed on purpose (22 Nov 2026, port of Ask Bubbles #1059, its QA's follow-up): the app's own question RIGHT BEFORE
+   * the manager's current message, quoted under that question's id or the current one's, is evidence; the ask is then
+   * the manager's reply. This line used to expect "evidence_not_manager_turn" for m2's words; the app's words from any
+   * earlier turn are still refused (below), and the person check (formsOnFileAskedFor) still decides whose forms.
+   */
+  it("ok: the app's own question right before this message, quoted under its id or this message's", () => {
+    expect(formsOnFileAsked({ question: "yes please", history, questionMessageId: "q2" }, { message_id: "m2", quote: "Coaching Forms on file" })).toMatchObject({ ok: true, said: "yes please" });
+    expect(formsOnFileAsked({ question: "yes please", history, questionMessageId: "q2" }, { message_id: "q2", quote: "Which one should I open" })).toMatchObject({ ok: true, said: "yes please" });
+  });
+
+  it("refused: the app's words from an earlier turn, or a quote not in the app's question", () => {
+    const later = [...history, turn("m3", "user", "ok"), turn("m4", "assistant", "Sure.")];
+    expect(formsOnFileAsked({ question: "yes please", history: later, questionMessageId: "q3" }, { message_id: "m2", quote: "Coaching Forms on file" })).toEqual({ ok: false, reason: "evidence_not_manager_turn" });
+    expect(formsOnFileAsked({ question: "yes please", history, questionMessageId: "q2" }, { message_id: "m2", quote: "Juno Paxton's forms" })).toEqual({ ok: false, reason: "evidence_not_manager_turn" });
   });
 
   it("refused: an ask more than three manager messages back no longer opens forms on file", () => {
