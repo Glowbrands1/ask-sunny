@@ -27,7 +27,7 @@ import type { Permission } from "@/types";
  */
 
 /** The loop tools that read a page's figures. */
-export type PageReaderTool = "read_reviews" | "read_stats" | "find_past_forms";
+export type PageReaderTool = "read_reviews" | "read_stats" | "find_past_forms" | "read_hr_approvals";
 
 export interface PageReader {
   readonly tool: PageReaderTool;
@@ -62,7 +62,7 @@ export type AiReadablePage =
 const REVIEWS_READER: PageReader = {
   tool: "read_reviews",
   args: {},
-  figures: ["qualifying reviews against the monthly goal", "this week and last week", "the average star", "the latest reviews"],
+  figures: ["qualifying reviews against the monthly goal", "this week and last week", "the average star", "the latest reviews", "each salon's figure for one month (the leaderboard's Period)"],
   periods: ["month to date", "this week", "last week", "L3", "L6", "YTD", "each month"],
   replayCase: "nov19-google-reviews-l3-l6-ytd-agent-loop",
 };
@@ -76,7 +76,7 @@ const UNNAMED_REPORT =
 
 export const AI_READABLE_PAGES: readonly AiReadablePage[] = [
   { kind: "page", route: "/", title: "Overview", access: { permission: "view_overview" },
-    notReadable: "The follow-up queue (overdue, due this week, needs attention): find_past_forms lists forms on file, not this queue's due dates." },
+    notReadable: "The follow-up queue (overdue, due this week, needs attention): find_past_forms lists forms on file, not this queue's due dates. The Notifications bar (its × and Clear all) is each viewer's own notices; no tool reads it, and an HR decision in it is read by read_hr_approvals." },
   { kind: "page", route: "/chat", title: "Chat", access: { permission: "ask_questions" }, notReadable: "The chat itself: nothing on it to read." },
 
   { kind: "page", route: "/reviews", title: "Google Reviews", access: { permission: "view_google_reviews" }, reader: REVIEWS_READER },
@@ -95,6 +95,10 @@ export const AI_READABLE_PAGES: readonly AiReadablePage[] = [
 
   { kind: "page", route: "/forms/monitoring", title: "Form Monitoring", access: { permission: "view_form_monitoring" },
     reader: { tool: "find_past_forms", args: {}, figures: ["the forms on file per person, form and date", "their counts", "each form's status"], periods: ["a date", "a date range", "this month"], replayCase: "nov20-f081-c-month-list-counts" } },
+  { kind: "page", route: "/forms/monitoring/[id]", title: "One form on file", access: { permission: "view_form_monitoring" },
+    reader: { tool: "find_past_forms", args: {}, figures: ["one form on file: its fields and status (then read_form)"], periods: ["the form's date"], replayCase: "nov20-f081-c-month-list-counts" } },
+  { kind: "page", route: "/forms/hr-approval/[id]", title: "HR approval of one form", access: { permission: "view_form_monitoring" },
+    reader: { tool: "read_hr_approvals", args: {}, figures: ["whether HR approved, sent back or rejected the form", "HR's latest note", "the sender's receipt that it went to HR", "for HR, the forms waiting and overdue"], periods: ["now"], replayCase: "nov23-hr-approval-manager-asks-has-hr-approved-it" } },
   { kind: "page", route: "/forms/templates", title: "Form templates", access: { permission: "manage_form_templates" },
     notReadable: "The template list (versions, required permission): " + NO_LOOP_READER + " propose_form uses the active templates but does not read this page." },
   { kind: "page", route: "/forms/templates/[key]", title: "Form template editor", access: { permission: "manage_form_templates" },

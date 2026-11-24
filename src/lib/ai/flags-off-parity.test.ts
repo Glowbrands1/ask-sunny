@@ -1,5 +1,7 @@
 import { execFileSync } from "node:child_process";
-import { readdirSync, readFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
@@ -927,46 +929,108 @@ function changedLines(patch: string): string[] {
   return patch.split("\n").filter((line) => /^[+-](?![+-]{2} )/.test(line));
 }
 
-function diff(ref: string, args: string[]): string {
-  return execFileSync("git", ["diff", ref, "--", ...args], { encoding: "utf8" });
+function diff(ref: string, args: string[], cwd: string = process.cwd()): string {
+  return execFileSync("git", ["diff", ref, "--", ...args], { encoding: "utf8", cwd });
 }
 
-function hasRef(ref: string): boolean {
+function hasRef(ref: string, cwd: string = process.cwd()): boolean {
   try {
-    execFileSync("git", ["rev-parse", "--verify", "--quiet", ref], { stdio: "pipe" });
+    execFileSync("git", ["rev-parse", "--verify", "--quiet", ref], { stdio: "pipe", cwd });
     return true;
   } catch {
     return false;
   }
 }
 
-/**
- * The Actions checkout is often a single commit, so `origin/main` is absent.
- * Use it when it is already there, fetch it when the remote can provide it,
- * otherwise diff against the merge-base with a local main. Null means this
- * checkout cannot see main at all, and only the UI diff is skipped.
- */
-function uiDiffBase(): string | null {
-  if (!hasRef("origin/main")) {
-    try {
-      execFileSync("git", ["fetch", "--depth=1", "origin", "main:refs/remotes/origin/main"], {
-        stdio: "pipe",
-        timeout: 20_000,
-        env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
-      });
-    } catch {
-      // The remote ref is unavailable. Fall through to a local main.
-    }
-  }
-  if (hasRef("origin/main")) return "origin/main";
-  if (!hasRef("main")) return null;
+function mergeBase(a: string, b: string, cwd: string): string | null {
   try {
-    const base = execFileSync("git", ["merge-base", "HEAD", "main"], { encoding: "utf8", stdio: "pipe" }).trim();
-    return base || null;
+    return execFileSync("git", ["merge-base", a, b], { encoding: "utf8", stdio: "pipe", cwd }).trim() || null;
   } catch {
     return null;
   }
 }
+
+function quietFetch(args: string[], cwd: string): void {
+  try {
+    execFileSync("git", ["fetch", ...args], { stdio: "pipe", timeout: 30_000, cwd, env: { ...process.env, GIT_TERMINAL_PROMPT: "0" } });
+  } catch {
+    // The remote cannot give it. The caller falls back.
+  }
+}
+
+/**
+ * CHANGED ON PURPOSE (QA, 23 Nov 2026): the UI diff is taken from this branch's MERGE BASE with main, so it checks only
+ * this pull request's own changes. It used to diff against the live `origin/main`, fetched while the run was going: when
+ * main moved during a run (#1268 added src/features/forms/hr-approval-lists.tsx), every open pull request went red, the
+ * new main file reading as "deleted" by a branch that never touched it. A pull request that edits a protected or UI file
+ * itself still fails, as before (see "the UI diff checks only this branch's own changes" below).
+ *
+ * The Actions checkout is often a single commit, so main and the merge base may be absent: main is fetched with some
+ * history, and if the merge base is still unknown this commit's own history is deepened. Without any merge base, the
+ * old reference is used (`origin/main`, else the merge-base with a local main). Null means this checkout cannot see main
+ * at all, and only the UI diff is skipped.
+ */
+function uiDiffBase(cwd: string = process.cwd()): string | null {
+  if (!hasRef("origin/main", cwd)) quietFetch(["--depth=200", "origin", "main:refs/remotes/origin/main"], cwd);
+  if (hasRef("origin/main", cwd)) {
+    const base = mergeBase("HEAD", "origin/main", cwd);
+    if (base) return base;
+    const head = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8", cwd }).trim();
+    quietFetch(["--depth=200", "origin", head], cwd);
+    quietFetch(["--deepen=200", "origin", "main:refs/remotes/origin/main"], cwd);
+    return mergeBase("HEAD", "origin/main", cwd) ?? "origin/main";
+  }
+  if (!hasRef("main", cwd)) return null;
+  return mergeBase("HEAD", "main", cwd);
+}
+
+describe("the UI diff checks only this branch's own changes (CHANGED ON PURPOSE, QA, 23 Nov 2026)", () => {
+  /* A throwaway repository: main gains a UI file after the branch was cut (as #1268 did during a run). */
+  function repo(): { dir: string; git: (...args: string[]) => string } {
+    const dir = mkdtempSync(join(tmpdir(), "ui-diff-base-"));
+    const git = (...args: string[]) =>
+      execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "init.defaultBranch=main", "-c", "commit.gpgsign=false", ...args], { encoding: "utf8", cwd: dir, stdio: "pipe" });
+    git("init", "-q");
+    writeFileSync(join(dir, "ui.tsx"), "export const A = 1;\n");
+    writeFileSync(join(dir, "lib.ts"), "export const x = 1;\n");
+    git("add", "-A");
+    git("commit", "-q", "-m", "base");
+    git("checkout", "-q", "-b", "feature");
+    writeFileSync(join(dir, "lib.ts"), "export const x = 2;\n");
+    git("commit", "-q", "-am", "the branch's own change, no UI file");
+    git("checkout", "-q", "main");
+    writeFileSync(join(dir, "new-ui.tsx"), "export const B = 1;\n");
+    git("add", "-A");
+    git("commit", "-q", "-m", "main moves on: a new UI file");
+    git("update-ref", "refs/remotes/origin/main", "main");
+    git("checkout", "-q", "feature");
+    return { dir, git };
+  }
+
+  it("a UI file added only on main does not trip it", () => {
+    const { dir } = repo();
+    try {
+      const base = uiDiffBase(dir);
+      expect(base).not.toBeNull();
+      expect(diff(base!, ["new-ui.tsx", "ui.tsx"], dir)).toBe("");
+      // The old reference (the live origin/main) read main's new file as deleted by this branch.
+      expect(diff("origin/main", ["new-ui.tsx"], dir)).not.toBe("");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("a branch that edits a UI file itself still trips it", () => {
+    const { dir, git } = repo();
+    try {
+      writeFileSync(join(dir, "ui.tsx"), "export const A = 2;\n");
+      git("commit", "-q", "-am", "the branch edits a UI file");
+      expect(diff(uiDiffBase(dir)!, ["ui.tsx"], dir)).not.toBe("");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
 
 describe("new flags default off and wrappers are inert", () => {
   it("treats unset flags as off and returns the caller's own values", () => {
@@ -1221,6 +1285,26 @@ describe("new flags default off and wrappers are inert", () => {
           // invitation Continue page and its form. Off, the page never shows Continue.
           ":(exclude)src/app/auth/invite-continue/page.tsx",
           ":(exclude)src/features/auth/invite-continue-form.tsx",
+          // HR approval of forms (owner request, 23 Nov 2026, both apps): the approval panel, HR's tab and Overview
+          // card, the manager's "Your forms with HR" list, and the review page. Behind FORMS_HR_APPROVAL_ENABLED:
+          // off, the server sends no approval data, so none of them renders and the page answers 404.
+          // Then (Pau, via QA, 23 Nov 2026, QA approved, both apps): "when manager replies in note, there should be
+          // approve button here please and notify manager ... then the manager once sent back, will have option to print
+          // and save as PDF" — the panel's Approve beside Add note, the card's Print beside Download PDF (inline-form.tsx,
+          // above); and "its so small pending approval, make it red button and animated shaking if theres a pending" —
+          // HR's tab in hr-approval-lists.tsx and its .hr-pending-shake in globals.css (below), off under reduced motion.
+          // The Approve button and the tab are behind the same flag: off, no approval data, so neither renders. Print
+          // shows on any finalized form and opens the same server PDF as Download PDF. And the sibling app's approvals
+          // as a tab next to Pending HR approval (owner, 23 Nov 2026: "i dont want the sunny approval in a different page
+          // and link, just a tab pls"): shown only to an HR approver with SIBLING_HR_SECRET set, so off, never.
+          ":(exclude)src/features/forms/hr-approval-panel.tsx",
+          ":(exclude)src/features/forms/hr-approval-lists.tsx",
+          ":(exclude)src/features/forms/hr-approval-screen.tsx",
+          ":(exclude)src/app/(app)/forms/hr-approval/**",
+          // "Bubbles approvals ↗" on Form Monitoring (Pau, 23 Nov 2026: an approver in both apps needs Ask Bubbles'
+          // approvals from here): a link tab in hr-approval-lists.tsx, mounted by forms/monitoring/page.tsx, both
+          // excluded above. Only for people who already get the app switcher; a plain link to Ask Bubbles' own Pending
+          // HR approval view, with no count and no data crossing. No chat or form behaviour changes.
           // Import's "belongs to another account" line (QA, 31 Oct 2026, both apps): shown only
           // when the server declines a chat as another account's, i.e. only with
           // CHAT_IMPORT_OWN_ONLY_ENABLED on. Off, the server never declines that way, so it never shows.
@@ -1292,6 +1376,14 @@ describe("new flags default off and wrappers are inert", () => {
           // or with a notification; its mount line is in app-shell.tsx and its read in layout.tsx, both
           // excluded above. No chat or form behaviour changes.
           ":(exclude)src/features/notifications",
+          // The bell as a rail item, directly under Overview (Pau, 23 Nov 2026, as an HR approver: "why no notification
+          // for [the approver]? should be same as bubbles … for the form acceptance", then of the top-bar bell: "can we
+          // remove this and add a notification bar instead below the overview"): the rail variant in
+          // notification-bell.tsx, its place in sidebar.tsx (desktop and phone drawer), and app-shell.tsx dropping the
+          // top-bar bell. All three paths are already excluded here; the same people get the same panel. No chat or
+          // form behaviour changes.
+          // The phone menu button's red unread dot (QA for Pau, 23 Nov 2026, once the top-bar bell went): app-shell.tsx,
+          // excluded above. Shown only to someone with unread notifications. No chat or form behaviour changes.
           // Times shown in the business zone (CT) (Pau via QA, 15 Nov 2026: "The whole app and chat should be in CT"):
           // display formatting only, on purpose and not behind a flag; the stored values stay UTC.
           ":(exclude)src/features/admin/analytics/feedback-queue.tsx",

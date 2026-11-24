@@ -23,7 +23,8 @@ function pageFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((entry) => {
     const path = join(dir, entry);
     if (statSync(path).isDirectory()) return pageFiles(path);
-    return entry === "page.tsx" ? [path] : [];
+    /* A route module with no JSX is page.ts (the HR approval page, a form's own page): a page all the same. */
+    return entry === "page.tsx" || entry === "page.ts" ? [path] : [];
   });
 }
 
@@ -31,7 +32,10 @@ function pageFiles(dir: string): string[] {
 const routeOf = (file: string) => "/" + relative(APP, file).split(sep).slice(0, -1).join("/");
 
 const PAGES = AI_READABLE_PAGES.filter((page) => page.kind === "page");
-const fileOf = (route: string) => join(APP, ...route.split("/").filter(Boolean), "page.tsx");
+const fileOf = (route: string) => {
+  const tsx = join(APP, ...route.split("/").filter(Boolean), "page.tsx");
+  return existsSync(tsx) ? tsx : join(APP, ...route.split("/").filter(Boolean), "page.ts");
+};
 
 /** The gate a page calls first, read from its source. */
 function gateOf(source: string): { permission: string; adminConsole: boolean } | "signedIn" | null {
@@ -101,6 +105,7 @@ describe("the pages the AI can read (board f039)", () => {
     const dataTools = readFileSync(join(ROOT, "src", "lib", "ai", "agent-loop", "data-tools.ts"), "utf8");
     expect(dataTools).toContain("READER_PERMISSION.read_reviews)");
     expect(dataTools).toContain("READER_PERMISSION.read_stats)");
+    expect(dataTools).toContain("READER_PERMISSION.read_hr_approvals)");
     const formRecords = readFileSync(join(ROOT, "src", "lib", "forms", "chat-form-records.ts"), "utf8");
     expect(formRecords.match(/hasPermission\(DEFAULT_PERMISSION_MATRIX, actor\.role, FORM_RECORDS_PERMISSION\)/g)?.length, "find_past_forms' reads check Form Monitoring's permission").toBe(2);
   });

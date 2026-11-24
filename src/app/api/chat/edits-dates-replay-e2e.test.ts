@@ -616,7 +616,8 @@ describe("sibling conv_mvnsqglc2v7zuyk: a corrected prior-coaching date never da
 describe("S21 conv_mvnt79t822zud9j: \"change the date\" on a FINALIZED form opens a revision", () => {
   it("opens a new draft of the finalized form, dated 10/20/2026, and appends nothing", async () => {
     const earlier = new Thread();
-    await earlier.say("create a corrective action form for Test Employee for opening the salon late on 10-17-26. payroll deduct no", {
+    // Port of Ask Bubbles #1072 (board f140): the setup names its salon; Create no longer saves a card that still asks which salon.
+    await earlier.say("create a corrective action form for Test Employee at Kearney for opening the salon late on 10-17-26. payroll deduct no", {
       employee: "Test Employee",
       formType: "Corrective Action Form",
     });

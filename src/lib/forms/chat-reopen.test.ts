@@ -51,6 +51,8 @@ vi.mock("./instance-scope", () => ({
   },
   instanceListFilterFor: () => undefined,
   visibleInstances: (_actor: unknown, rows: Row[]) => rows,
+  // `openEditableDraft` checks an open revision against the reader (leak audit, 23 Nov 2026); every row is visible here, as above.
+  actorMaySeeInstance: () => true,
 }));
 
 /*

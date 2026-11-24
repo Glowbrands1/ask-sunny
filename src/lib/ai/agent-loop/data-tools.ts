@@ -17,6 +17,7 @@ import type { ReviewsSnapshot, ReviewFeed } from "@/lib/reviews/queries";
 import type { MonthlyProgress } from "@/lib/reviews/monthly-progress";
 import { reviewDateOf } from "@/lib/reviews/timeline";
 import { asksForMonthlyPeriods } from "@/lib/ai/google-reviews-chat";
+import { assignmentTrackerText, canSeeAssignmentTracker, type AssignmentTracker } from "@/lib/ai-training/assignments";
 import type { AccessScope, Role } from "@/types";
 
 import { rowToCitation } from "@/lib/knowledge/mappers";
@@ -154,7 +155,45 @@ export interface DataToolDeps {
   readonly fetchDailyStatsGuide: (scopeId: string) => Promise<RoleGroundingResult>;
   /** The form deletion record (f066), newest first; `employeeName` narrows it (case-insensitive, part of the name). */
   readonly loadFormDeletions: (input: { employeeName: string | null; limit: number }) => Promise<FormDeletionRow[]>;
+  /** AI Training -> Assignments: the tracker's people and marks (`ai_assignment_people`, `ai_assignment_marks`). */
+  readonly loadAssignmentTracker: () => Promise<AssignmentTracker>;
+  /** HR approval (`readHrApprovalsFor`): HR's queue, or the asker's own forms with HR. */
+  readonly loadHrApprovals: (input: { subject: string; verified: boolean; now: Date }) => Promise<HrApprovalsRead>;
 }
+
+/** What read_hr_approvals reads (`hr-approval.ts`, `readHrApprovalsFor`). */
+export type HrApprovalsRead =
+  | { readonly kind: "off" }
+  | {
+      readonly kind: "hr";
+      readonly queue: readonly {
+        line: string;
+        createdByName: string;
+        state: string;
+        requestedAt: string | null;
+        waiting: string;
+        overdue: boolean;
+        /** Sent back, and the manager has replied since: HR may approve it now (Pau, via QA, 23 Nov 2026). */
+        managerReplied?: boolean;
+      }[];
+      /**
+       * The same approver's queue in the sibling app (`siblingHrReadFor`): null when the link is not configured,
+       * "unavailable" when the sibling did not answer. Optional, so a dep that predates it reads as not configured.
+       */
+      readonly sibling?:
+        | null
+        | "unavailable"
+        | {
+            app: string;
+            approver: boolean;
+            /** `managerReplied`: sent back, and the manager replied since (absent from an older sibling: not replied). */
+            forms: readonly { line: string; from: string; state: string; requestedAt: string | null; waiting: string; overdue: boolean; managerReplied?: boolean }[];
+          };
+    }
+  | {
+      readonly kind: "manager";
+      readonly forms: readonly { line: string; label: string; state: string; requestedAt: string | null; latestNote: string | null }[];
+    };
 
 /** One row of `form_instance_deletions`, as read_form_deletions reads it (never the snapshot). */
 export interface FormDeletionRow {
@@ -193,17 +232,28 @@ export const DEFAULT_DATA_TOOL_DEPS: DataToolDeps = {
   },
   fetchDailyStatsGuide: async (scopeId) =>
     new (await import("@/lib/knowledge/providers/supabase")).SupabaseKnowledgeProvider().fetchRoleGrounding(DAILY_STATS_INTERPRETATION_FRAMEWORK, scopeId),
+  loadHrApprovals: async ({ subject, verified, now }) =>
+    (await import("@/lib/forms/hr-approval")).readHrApprovalsFor(subject, verified, now),
   loadFormDeletions: async ({ employeeName, limit }) => {
     const { getSupabaseAdmin } = await import("@/lib/supabase/server");
     let query = getSupabaseAdmin()
       .from("form_instance_deletions")
-      .select("template_name, employee_name, form_date, status, location_name, deleted_by, deleted_by_role, deleted_via, deleted_at");
+      .select(
+        "template_name, employee_name, form_date, status, location_name, deleted_by, deleted_by_role, deleted_via, deleted_at, hr_state:snapshot->instance->>hr_approval_state",
+      );
     // The forms' own employee-name search shape (part of the name, any case); characters the filter syntax reads are dropped.
     const said = (employeeName ?? "").replace(/[^\p{L}\p{N}' -]/gu, " ").replace(/\s+/g, " ").trim();
     if (said) query = query.or(`employee_name.ilike.*${said}*`);
     const { data, error } = await query.order("deleted_at", { ascending: false }).limit(limit);
     if (error) throw new Error(`Could not read the form deletion record: ${error.message}`);
-    const rows = (data ?? []) as Record<string, unknown>[];
+    /*
+     * A FORM DELETED WHILE IT WAS WITH HR IS LEFT OUT (owner, 23 Nov 2026: "are u sure this doesnt leak information,
+     * that other people cant see what a certain manager created?"). While it waited only its creator, its senders and
+     * HR knew it existed; this record is read by administrators. The state is read from the deletion trigger's
+     * snapshot of the row; older records carry none and show as before.
+     */
+    const withHr = new Set(["pending", "changes_requested", "rejected"]);
+    const rows = ((data ?? []) as Record<string, unknown>[]).filter((row) => !withHr.has(String(row.hr_state ?? "")));
     // The deleter's name, from the user directory; an account it cannot find keeps its id.
     const { readUser } = await import("@/lib/admin/user-directory");
     const names = new Map<string, string | null>();
@@ -223,10 +273,15 @@ export const DEFAULT_DATA_TOOL_DEPS: DataToolDeps = {
       deletedAt: String(row.deleted_at ?? ""),
     }));
   },
+  loadAssignmentTracker: async () => (await import("@/lib/ai-training/assignments-repository")).loadAssignmentTracker(),
 };
 
 export interface DataToolContext {
-  readonly actor: Pick<ToolActor, "role" | "scope">;
+  /**
+   * `email`: who is signed in, for read_ai_assignments's named list. `subject` and `verified` (the loop passes its
+   * whole actor): read_hr_approvals reads only the asker's own forms.
+   */
+  readonly actor: Pick<ToolActor, "role" | "scope"> & { readonly email?: string } & Partial<Pick<ToolActor, "subject" | "verified">>;
   readonly question: string;
   readonly scopeId: string;
   readonly today: string;
@@ -509,7 +564,126 @@ export const READER_PERMISSION = {
   read_reviews: "view_google_reviews",
   read_stats: "view_reports",
   find_past_forms: FORM_RECORDS_PERMISSION,
+  read_hr_approvals: "view_form_monitoring",
 } as const satisfies Record<PageReaderTool, Permission>;
+
+/* ---------------------------------------------------------------- read_ai_assignments --- */
+
+export const AI_ASSIGNMENTS_SOURCE = "AI Training > Assignments";
+
+/**
+ * read_ai_assignments() (Pau, 23 Nov 2026): the AI assignment tracker (AI Training -> Assignments), as the page's grid
+ * shows it: the current half's done / due / more time, and each person's totals and latest halves. ONLY FOR THE
+ * TRACKER'S NAMED PEOPLE (`canSeeAssignmentTracker`, the page's own check): anyone else is refused and nothing is read.
+ */
+export async function readAiAssignments(context: DataToolContext, deps: DataToolDeps = DEFAULT_DATA_TOOL_DEPS): Promise<ToolResult> {
+  if (!hasPermission(DEFAULT_PERMISSION_MATRIX, context.actor.role, "view_ai_training") || !canSeeAssignmentTracker(context.actor)) {
+    return {
+      source: AI_ASSIGNMENTS_SOURCE,
+      refused: "The AI assignment tracker is only for the people it was set up for. Nothing was read; say so plainly, in one line, and give nothing from it.",
+    };
+  }
+  const tracker = await deps.loadAssignmentTracker();
+  return {
+    source: AI_ASSIGNMENTS_SOURCE,
+    tracker: untrusted(assignmentTrackerText(tracker, context.today), AI_ASSIGNMENTS_SOURCE),
+    note: "Give who is done, due, missing or has more time exactly as listed, with the half each is for. Never guess a person or a half not listed.",
+  };
+}
+
+/* ---------------------------------------------------------------- read_hr_approvals --- */
+
+/** The source label, with this app's own forms page name (Form Monitoring / Forms Register). */
+function hrApprovalsSource(): string {
+  return `HR approval (${appConfig().formsPageName})`;
+}
+
+/**
+ * read_hr_approvals() (owner, 23 Nov 2026; CLAUDE.md rule 5): what is waiting for HR. HR reads every form waiting for
+ * their approval (oldest first, overdue marked: one business day) and the ones they sent back or rejected; any other
+ * manager reads ONLY the forms they created that went to HR, with HR's latest note to them. A form waiting for HR is
+ * not on file: never call it filed, finalized or a prior warning.
+ */
+/**
+ * HR's queue in the sibling app (owner, 23 Nov 2026: HR sees both apps' queues), under its own key so the model never
+ * mixes the two apps' forms. Named by the sibling's own answer; nothing when the link is not configured.
+ */
+function siblingHrSection(sibling: NonNullable<Extract<HrApprovalsRead, { kind: "hr" }>["sibling"]> | null): Record<string, unknown> {
+  if (sibling === null) return {};
+  if (sibling === "unavailable") {
+    return { other_app: { note: "The other app's HR queue could not be read just now. Say so, and that its forms are listed under its own tab next to Pending HR approval." } };
+  }
+  const source = `HR approval (${sibling.app})`;
+  if (!sibling.approver) {
+    return { other_app: { app: sibling.app, note: `This account is not the HR approver in ${sibling.app}, so nothing waits for them there.` } };
+  }
+  return {
+    other_app: {
+      app: sibling.app,
+      waiting_for_you: sibling.forms
+        .filter((row) => row.state === "pending" || row.managerReplied === true)
+        .map((row) => ({
+          form: untrusted(row.line, source),
+          from: row.from,
+          state: row.managerReplied ? "manager replied to changes: you can approve it now, or send it back again" : "waiting for approval",
+          sent: formatBusinessTime(row.requestedAt) ?? row.requestedAt,
+          waiting: row.waiting,
+          overdue: row.overdue,
+        })),
+      sent_back_or_rejected: sibling.forms
+        .filter((row) => !(row.state === "pending" || row.managerReplied === true))
+        .map((row) => ({ form: untrusted(row.line, source), from: row.from, state: row.state === "rejected" ? "rejected" : "sent back for changes" })),
+      note: `These forms are in ${sibling.app}, not this app: list them separately, under ${sibling.app}'s name. They are approved in ${sibling.app}, opened from the ${sibling.app} approvals tab next to Pending HR approval.`,
+    },
+  };
+}
+
+export async function readHrApprovals(context: DataToolContext, deps: DataToolDeps = DEFAULT_DATA_TOOL_DEPS): Promise<ToolResult> {
+  /* Board f039 (CLAUDE.md §5): the HR approval page's own permission first, so the AI never reads more than the page shows. */
+  if (!hasPermission(DEFAULT_PERMISSION_MATRIX, context.actor.role, READER_PERMISSION.read_hr_approvals)) {
+    return { source: hrApprovalsSource(), refused: `HR approval is on ${appConfig().formsPageName}, which this manager cannot open. Nothing was read; say so plainly, in one line.` };
+  }
+  const subject = context.actor.subject ?? "";
+  const read = await deps.loadHrApprovals({ subject, verified: context.actor.verified === true, now: context.now ?? new Date() });
+  if (read.kind === "off") {
+    return { source: hrApprovalsSource(), note: "HR approval of forms is not turned on. Say that forms are finalized directly, and nothing else about HR approval." };
+  }
+  if (read.kind === "hr") {
+    return {
+      source: hrApprovalsSource(),
+      reader: "HR approver",
+      waiting_for_you: read.queue
+        .filter((row) => row.state === "pending" || row.managerReplied === true)
+        .map((row) => ({
+          form: untrusted(row.line, hrApprovalsSource()),
+          from: row.createdByName,
+          ...(row.managerReplied ? { state: "manager replied to changes: you can approve it, or send it back again with a note" } : {}),
+          sent: formatBusinessTime(row.requestedAt) ?? row.requestedAt,
+          waiting: row.waiting,
+          overdue: row.overdue,
+        })),
+      sent_back_or_rejected: read.queue
+        .filter((row) => row.state !== "pending" && row.managerReplied !== true)
+        .map((row) => ({ form: untrusted(row.line, hrApprovalsSource()), from: row.createdByName, state: row.state === "rejected" ? "rejected" : "sent back for changes" })),
+      note: "List the forms waiting for this HR approver, oldest first, saying which are overdue (waited more than one business day). They approve, send back or reject each one from Pending HR approval in " + appConfig().formsPageName + ".",
+      ...siblingHrSection(read.sibling ?? null),
+    };
+  }
+  return {
+    source: hrApprovalsSource(),
+    reader: "the manager who created these forms",
+    your_forms_with_hr: read.forms.map((row) => ({
+      form: untrusted(row.line, hrApprovalsSource()),
+      state: row.label,
+      sent: formatBusinessTime(row.requestedAt) ?? row.requestedAt,
+      ...(row.latestNote ? { hr_note: untrusted(row.latestNote, hrApprovalsSource()) } : {}),
+    })),
+    note:
+      read.forms.length === 0
+        ? "This manager has no form with HR right now (none waiting, sent back, rejected, or approved in the last 30 days)."
+        : "These are only this manager's own forms. A form waiting for HR approval is not on file yet: never call it filed or finalized. Give HR's note to them only as written.",
+  };
+}
 
 /* ---------------------------------------------------------------- registration --- */
 
@@ -547,6 +721,12 @@ export function dataToolSpecs(config: AppConfig) {
     },
   },
   {
+    name: "read_hr_approvals",
+    description:
+      "HR approval of forms: for HR, every form waiting for their approval (oldest first, overdue after one business day) and the ones they sent back or rejected, plus (other_app) the forms waiting for them in the sibling app; for any other manager, only the forms THEY created that went to HR (waiting, sent back, rejected, or approved in the last 30 days) with HR's latest note to them. Use it for \"has HR approved it?\", \"what's waiting on me?\", \"did HR send my form back?\". A form waiting for HR is not on file.",
+    input_schema: { type: "object", properties: {}, required: [] },
+  },
+  {
     name: "read_form_deletions",
     description:
       "Administrators only: who deleted a form, when and how (" + appConfig().formsPageName + ", chat, or outside the app), from the permanent deletion record, newest first. Pass employee_name for one employee's forms (\"who deleted <name>'s form?\"). A manager is refused.",
@@ -557,6 +737,12 @@ export function dataToolSpecs(config: AppConfig) {
       },
       required: [],
     },
+  },
+  {
+    name: "read_ai_assignments",
+    description:
+      "The AI assignment tracker (AI Training > Assignments), for the people it was set up for only: two AI assignments a month per person (the 1st to 15th, the 16th to month end); who is done, still due or has more time this half, and each person's done and missing halves. Anyone else is refused.",
+    input_schema: { type: "object", properties: {}, required: [] },
   },
 ] as const;
 }
@@ -577,5 +763,7 @@ export function dataToolHandlers(
     read_reviews: (args) => readReviews(context, args, deps),
     read_stats: (args) => readStats(context, args, deps, effects),
     read_form_deletions: (args) => readFormDeletions(context, args, deps),
+    read_ai_assignments: () => readAiAssignments(context, deps),
+    read_hr_approvals: () => readHrApprovals(context, deps),
   };
 }

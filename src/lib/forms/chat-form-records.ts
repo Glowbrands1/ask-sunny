@@ -11,8 +11,10 @@ import type { FormsActor } from "./access";
 import { FOLLOW_UP_LABEL, followUpState } from "./follow-up";
 import { resolveFormsVisibility } from "./forms-visibility";
 import { instanceListFilterFor, visibleInstances } from "./instance-scope";
+import { resolveHrApprover } from "./hr-approval-approvers";
 import { listInstances, type InstanceRow } from "./instances";
 import { privateAwareLimit } from "./private-creators";
+import { HR_STATE_LABEL, awaitingHr } from "./hr-approval-rules";
 
 /**
  * ============================================================================
@@ -412,6 +414,16 @@ function describeRow(row: InstanceRow, today: string, viewerId?: string | null):
   if (row.followUpDate) parts.push(`follow-up date: ${row.followUpDate}`);
   if (state !== "drafted" && state !== "untracked") parts.push(`follow-up: ${FOLLOW_UP_LABEL[state]}`);
   if (row.archivedAt) parts.push("archived");
+  /*
+   * HR APPROVAL. A form HR has not approved reaches this list only for its creator, its sender and HR
+   * (`hiddenWhileAwaitingHr`), so its state is said here. "Approved by HR" is said only to its creator and sender: everybody else reads an
+   * approved form as an ordinary finalized one (owner, 23 Nov 2026).
+   */
+  if (awaitingHr(row.hrApprovalState)) {
+    parts.push(`HR approval: ${HR_STATE_LABEL[row.hrApprovalState!].toLowerCase()} — not on file until HR approves it`);
+  } else if (row.hrApprovalState === "approved" && viewerId && (row.createdBy === viewerId || row.hrApprovalRequestedBy === viewerId || row.hrApprovalSenders.includes(viewerId))) {
+    parts.push("HR approval: approved by HR");
+  }
   parts.push(...createdByPart(row, viewerId));
   return `- ${parts.join("; ")}`;
 }
@@ -612,7 +624,14 @@ export async function chatFormsActor(actor: FormRecordsActor): Promise<FormsActo
     role: actor.role,
     scope: actor.scope,
   });
-  return { id: actor.subject, role: actor.role, verified: true, scope: actor.scope, visibility };
+  return {
+    id: actor.subject,
+    role: actor.role,
+    verified: true,
+    scope: actor.scope,
+    visibility,
+    hrApprover: await resolveHrApprover(actor.subject),
+  };
 }
 
 const MATCH_LIMIT = 50;

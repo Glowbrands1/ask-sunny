@@ -15,6 +15,7 @@ import {
   WEEK_YEAR_TO_DATE,
   NAMED_PERIODS,
   lastFullMonthsOf,
+  isMonthWeek,
   type ReviewFilters,
 } from "@/lib/reviews/filters";
 import { DEFAULT_MONTHLY_REVIEW_GOAL, goalContext, isCounting } from "@/lib/reviews/goal";
@@ -157,7 +158,9 @@ function matchesFeed(review: DashboardReview, filters: ReviewFilters, today: str
   if (filters.week === WEEK_YEAR_TO_DATE && review.firstSeenAt.slice(0, 4) !== today.slice(0, 4)) {
     return false;
   }
-  if (!NAMED_PERIODS.includes(filters.week)) {
+  if (isMonthWeek(filters.week)) {
+    if (review.firstSeenAt.slice(0, 7) !== filters.week) return false;
+  } else if (!NAMED_PERIODS.includes(filters.week)) {
     if (review.periodStart !== filters.week) return false;
   }
   if (filters.assignment === "historical") return false;

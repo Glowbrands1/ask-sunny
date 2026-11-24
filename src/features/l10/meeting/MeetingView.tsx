@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Button, ButtonLink, Card, Modal, cx } from "@/features/l10/ui/ui";
 import { agendaFromRoster, salonsFor, bloomStyle, cadenceLabel, hintsFromRoster, referenceFromRoster, segueName, type AgendaKey, type MeetingKey, type Roster } from "@/features/l10/lib/config";
-import { buildRecap, effectiveAttendees, keepHiddenAttendees, markRecapped, newItemId, ratingAttendees } from "@/features/l10/lib/doc";
+import { buildRecap, effectiveAttendees, keepHiddenAttendees, markRecapped, newItemId, raterName, ratingAttendees } from "@/features/l10/lib/doc";
 import { elapsedSeconds, emptyTimer, endedTimer, formatClock, pausedTimer, plannedSeconds, isReferenceView, readTimer, resumedTimer, startMeeting, type View } from "@/features/l10/lib/timer";
 import type { LoadedMeeting, MeetingInfo, RecapRow } from "@/features/l10/lib/types";
 import { pastMeetings } from "@/features/l10/lib/past";
@@ -99,12 +99,10 @@ export function MeetingView({
   const refuse = { ok: false as const, kind: "forbidden" as const, message: "This is an old version and cannot be changed." };
   const saveFn: SaveFn = readOnly || !save ? async () => refuse : save;
   const endFn: EndFn = readOnly || !end ? async () => refuse : end;
-  const { doc, edit, status, conflict, resolveConflict, retry, flushNow, serverNow } = useMeetingSync({ meetingKey: info.key, initial, save: saveFn, load, serverTime, debounceMs, pollMs });
+  const { doc, edit, status, offline, mergeNote, dismissMergeNote, retry, flushNow, serverNow } = useMeetingSync({ meetingKey: info.key, initial, save: saveFn, load, serverTime, debounceMs, pollMs });
 
   const [sectionElapsed, setSectionElapsed] = useState<Partial<Record<AgendaKey, number>>>({});
   const [extras, setExtras] = useState<Partial<Record<AgendaKey, number>>>({});
-  const advanced = useRef<Partial<Record<AgendaKey, boolean>>>({});
-  const [notice, setNotice] = useState("");
   const people = roster.members.map((m) => m.name);
   // Ask Sunny: the owner menus for to-dos, issues and rocks also list every DM-or-higher person from Woven (owners.server.ts).
   const owners = ownerMenu(people, ownerPeople);
@@ -124,7 +122,8 @@ export function MeetingView({
   // Only a person the Hub lists for this meeting (by their sign-in id), with their full name, gets a rating row of their own.
   const meListed = (mentionPeople.find((p) => p.id === viewer.id)?.name ?? "").trim();
   /** Who rates the meeting at Conclude: the attendees, plus the signed-in person if they are not listed (see ratingAttendees). */
-  const raters = ratingAttendees(attendees, doc.attendees ?? [], meListed);
+  const meRating = raterName(attendees, meListed, viewer.name ?? "");
+  const raters = ratingAttendees(attendees, doc.attendees ?? [], meRating);
   const live = timer.started && !timer.ended;
   // The first render uses the server's render time (the same number on the server and in the browser), so the clock
   // text the server sent matches what the browser renders first (no hydration mismatch); it catches up right after.
@@ -164,34 +163,20 @@ export function MeetingView({
     setNow(serverNow());
     setViewLocal(agenda[0].key);
     elapsedBySection.current = {};
-    advanced.current = {};
     setSectionElapsed({});
     setExtras({});
   };
 
-  // Time in each section is this screen's own count, as in Lovable. The leader's screen moves on when a
-  // section's planned time (plus any extra) runs out; that check lives in the clock's own tick.
-  const latest = useRef({ isLeader, extras, section, index, agenda, go });
-  useEffect(() => {
-    latest.current = { isLeader, extras, section, index, agenda, go };
-  });
-  // The count itself lives in a ref (state is only for showing it), so the check below never reads a stale value.
+  // Time in each section is this screen's own count, as in Lovable. It only shows the clock: the meeting never moves
+  // itself to the next section when a section's planned time runs out (the DM L10 facilitator, 23 Nov 2026: "it moves us
+  // to the next section after a certain timeframe, even when we aren't ready yet"). The leader moves on with Next.
+  // The count itself lives in a ref (state is only for showing it).
   const elapsedBySection = useRef<Partial<Record<AgendaKey, number>>>({});
   useEffect(() => {
     if (!timer.running || isReferenceView(view)) return;
     const id = setInterval(() => {
-      const L = latest.current;
-      const elapsedHere = (elapsedBySection.current[view] ?? 0) + 1;
-      elapsedBySection.current = { ...elapsedBySection.current, [view]: elapsedHere };
+      elapsedBySection.current = { ...elapsedBySection.current, [view]: (elapsedBySection.current[view] ?? 0) + 1 };
       setSectionElapsed(elapsedBySection.current);
-      if (!L.isLeader || view === "conclude" || advanced.current[view]) return;
-      const limit = plannedSeconds(L.section?.minutes ?? 0, L.extras[view] ?? 0);
-      const next = L.agenda[L.index + 1];
-      if (limit > 0 && elapsedHere >= limit && next) {
-        advanced.current[view] = true;
-        setNotice(`${L.section?.title} ran out of time. Moved to ${next.title}.`);
-        L.go(L.index + 1);
-      }
     }, 1000);
     return () => clearInterval(id);
   }, [timer.running, view]);
@@ -275,7 +260,11 @@ export function MeetingView({
         return false;
       }
       edit((d) => ({ ...d, issues: markRecapped(d.issues, sessionKey, id), timer: endedTimer(readTimer(d), serverNow()) }));
-      await flushNow();
+      if (!(await flushNow())) {
+        // The recap is saved, but the "meeting ended" mark on the shared page is not: say so rather than leave quietly.
+        setEndError("The recap is saved, but this page could not save that the meeting has ended. Check the save status and try again.");
+        return false;
+      }
       return true;
     } catch {
       setEndError("The recap was not saved. Nothing was lost: try again.");
@@ -347,7 +336,7 @@ export function MeetingView({
               Signed in as <b className="text-ink">{viewer.name}</b>
             </span>
           )}
-          <p role="status" aria-live="polite" data-testid="save-status" data-status={status.kind} className={cx("m-0 rounded-lg px-3 py-1.5 text-[13px] font-semibold", status.kind === "failed" || status.kind === "conflict" ? "bg-warn text-warn-ink" : "bg-cream text-muted")}>
+          <p role="status" aria-live="polite" data-testid="save-status" data-status={status.kind} className={cx("m-0 rounded-lg px-3 py-1.5 text-[13px] font-semibold", status.kind === "failed" ? "bg-warn text-warn-ink" : "bg-cream text-muted")}>
             {statusText(status)}
             {status.kind === "failed" && (
               <Button variant="link" className="ml-2" onClick={retry}>
@@ -358,6 +347,19 @@ export function MeetingView({
         </div>
         )}
       </header>
+      {offline && !readOnly && (
+        <p role="status" data-testid="sync-offline" className="m-0 rounded-lg bg-warn/30 px-4 py-2 text-sm font-semibold">
+          Not live: this page cannot reach the meeting right now, so other people&rsquo;s changes are not showing. Your changes are kept and will save when it is back.
+        </p>
+      )}
+      {mergeNote && (
+        <p role="status" data-testid="merge-note" className="m-0 flex flex-wrap items-center gap-2 rounded-lg bg-cream px-4 py-2 text-sm">
+          <span>Someone else was editing too. Both sets of changes are saved; where you changed the same thing, yours was kept ({mergeNote.join("; ")}).</span>
+          <Button variant="link" onClick={dismissMergeNote}>
+            Dismiss
+          </Button>
+        </p>
+      )}
 
       {readOnly && (
         <div role="note" data-testid="history-banner" className="rounded-[10px] border-2 border-ink bg-sunny px-4 py-3 text-sm font-semibold">
@@ -370,11 +372,6 @@ export function MeetingView({
       {help && (
         <p role="note" className="m-0 rounded-lg bg-cream px-4 py-2 text-sm">
           {SHORTCUTS}
-        </p>
-      )}
-      {notice && (
-        <p role="status" className="m-0 rounded-lg bg-sunny px-4 py-2 text-sm">
-          {notice}
         </p>
       )}
 
@@ -436,23 +433,6 @@ export function MeetingView({
           </p>
         )}
       </Modal>
-
-      {conflict && (
-        <div role="alert" className="rounded-[10px] border border-warn bg-warn/30 p-4 text-sm">
-          <b>Someone else changed this while you were editing.</b> Your other changes were kept. The page is paused until you choose. These places were changed by both of you:
-          <ul className="my-2 list-disc pl-5">
-            {conflict.places.map((p) => (
-              <li key={p}>{p}</li>
-            ))}
-          </ul>
-          <div className="flex flex-wrap gap-2">
-            <Button variant="primary" onClick={() => resolveConflict("mine")}>
-              Keep my version
-            </Button>
-            <Button onClick={() => resolveConflict("theirs")}>Use their version</Button>
-          </div>
-        </div>
-      )}
 
       {timer.ended ? (
         <Card aria-label="Meeting over" className="flex flex-col gap-3">
@@ -528,7 +508,7 @@ export function MeetingView({
           </Card>
           )}
 
-          <div className="flex min-w-0 flex-[999_1_520px] flex-col gap-4" inert={conflict ? true : undefined} aria-busy={conflict ? true : undefined}>
+          <div className="flex min-w-0 flex-[999_1_520px] flex-col gap-4">
             {bloom && <LastMeetingSummary last={last} />}
             {bloom && view === "business-best" && <LastWeekFeedback last={last} />}
             {!isReferenceView(view) && index >= 0 && (
@@ -546,10 +526,7 @@ export function MeetingView({
                   <Button
                     variant="outline"
                     aria-label="Add 5 minutes to this section"
-                    onClick={() => {
-                      setExtras((x) => ({ ...x, [view]: (x[view] ?? 0) + 5 }));
-                      advanced.current[view] = false;
-                    }}
+                    onClick={() => setExtras((x) => ({ ...x, [view]: (x[view] ?? 0) + 5 }))}
                   >
                     +5m
                   </Button>
@@ -575,7 +552,7 @@ export function MeetingView({
             {view === "business-best" && <BusinessBest attendees={attendees} onChange={(next) => edit((d) => ({ ...d, attendees: keepHiddenAttendees(d.attendees, next) }))} />}
             {view === "scorecard" && <Scorecard doc={doc} edit={edit} people={people} bloom={bloom} today={today} {...(bloom ? { wide: scorecardWide, onWide: setScorecardWide } : {})} salons={salonsFor(key)} />}
             {view === "rocks" && <Rocks rocks={doc.rocks} onChange={(rocks) => edit((d) => ({ ...d, rocks }))} people={people} ownerOptions={owners} today={today} saveStatus={statusText(status)} bloom={bloom} />}
-            {view === "headlines" && <Headlines headlines={doc.headlines} onChange={(headlines) => edit((d) => ({ ...d, headlines }))} author={people[0] ?? ""} />}
+            {view === "headlines" && <Headlines headlines={doc.headlines} onChange={(headlines) => edit((d) => ({ ...d, headlines }))} author={myName || (people[0] ?? "")} />}
             {view === "todos" && <Todos todos={doc.todos} onChange={(todos) => edit((d) => ({ ...d, todos }))} people={owners} today={today} bloom={bloom} />}
             {view === "ids" && <Ids doc={doc} edit={edit} session={timer.sessionId ?? "pending"} meetingKey={info.key} voter={{ id: viewer.id, name: viewer.name || viewer.label }} attendees={attendees} addedBy={myName} headlines={agenda.some((a) => a.key === "headlines")} rocks={agenda.some((a) => a.key === "rocks")} bloom={bloom} people={owners} />}
             {view === "conclude" && !(bloom && !timer.started) && (
@@ -583,12 +560,12 @@ export function MeetingView({
                 meetingKey={info.key}
                 doc={doc}
                 attendees={raters}
-                me={meListed || myName}
+                me={meRating}
                 edit={edit}
                 // Only the row pressed changes (read from the latest document, so two people rating at once both keep theirs).
                 onRate={(id, rating) =>
                   edit((d) => {
-                    const rows = ratingAttendees(effectiveAttendees(roster, d.attendees ?? []), d.attendees ?? [], meListed);
+                    const rows = ratingAttendees(effectiveAttendees(roster, d.attendees ?? []), d.attendees ?? [], meRating);
                     const row = rows.find((a) => a.id === id);
                     return row ? { ...d, attendees: keepHiddenAttendees(d.attendees ?? [], rows.map((a) => (a.id === id ? { ...a, rating } : a))) } : d;
                   })
