@@ -639,14 +639,18 @@ function siblingHrSection(sibling: NonNullable<Extract<HrApprovalsRead, { kind: 
 }
 
 export async function readHrApprovals(context: DataToolContext, deps: DataToolDeps = DEFAULT_DATA_TOOL_DEPS): Promise<ToolResult> {
-  /* Board f039 (CLAUDE.md §5): the HR approval page's own permission first, so the AI never reads more than the page shows. */
-  if (!hasPermission(DEFAULT_PERMISSION_MATRIX, context.actor.role, READER_PERMISSION.read_hr_approvals)) {
-    return { source: hrApprovalsSource(), refused: `HR approval is on ${appConfig().formsPageName}, which this manager cannot open. Nothing was read; say so plainly, in one line.` };
-  }
   const subject = context.actor.subject ?? "";
   const read = await deps.loadHrApprovals({ subject, verified: context.actor.verified === true, now: context.now ?? new Date() });
   if (read.kind === "off") {
     return { source: hrApprovalsSource(), note: "HR approval of forms is not turned on. Say that forms are finalized directly, and nothing else about HR approval." };
+  }
+  /*
+   * Board f039 (CLAUDE.md §5), scoped as the HR approval page is (QA on #1280, 24 Nov 2026): an HR approver reads their
+   * queue, and a manager who sent a form reads their own forms' state (the receipt, "did HR approve my form?"), whatever
+   * their role. Only someone with neither, and without the page's own permission, is refused; never a blanket refusal.
+   */
+  if (read.kind !== "hr" && read.forms.length === 0 && !hasPermission(DEFAULT_PERMISSION_MATRIX, context.actor.role, READER_PERMISSION.read_hr_approvals)) {
+    return { source: hrApprovalsSource(), refused: `HR approval is on ${appConfig().formsPageName}, which this manager cannot open, and they have no forms with HR. Nothing was read; say so plainly, in one line.` };
   }
   if (read.kind === "hr") {
     return {
