@@ -1134,7 +1134,7 @@ export interface FinalizeOptions {
 
 /**
  * WHAT FINALIZE CHECKS BEFORE IT FREEZES ANYTHING: required fields, and an unverified policy the manager has not
- * acknowledged. Shared with "Finalize and send to HR for approval" (`hr-approval.ts`), so a form sent to HR has passed exactly
+ * acknowledged. Shared with "Finalize and send for approval" (`hr-approval.ts`), so a form sent to HR has passed exactly
  * what Finalize would have asked of it, while the manager can still fix it.
  */
 export function finalizePreflight(
