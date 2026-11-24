@@ -48,7 +48,9 @@ import {
   manualSectionDedupeEnabled,
   retrievalRecallEnabled,
   priorFormsUpToTodayEnabled,
+  typedEmployeeEveryCardEnabled,
 } from "@/lib/config/chat-quality-flags";
+import { typedEmployeeName } from "@/lib/forms/typed-employee-name";
 import type { AskResponse } from "@/lib/ai/types";
 import { findManualSection, manualSectionHeadings, withSectionsInForce, type ManualChunk } from "@/lib/forms/official-policy-manual";
 import { sectionWording } from "@/lib/forms/policy-citation";
@@ -3493,6 +3495,12 @@ export function replyNameFor(name: string, roster: readonly RosterEmployee[], me
   const full = name.replace(/\s+/g, " ").trim();
   const words = full.split(" ");
   if (words.length < 2) return full;
+  /*
+   * TYPED_EMPLOYEE_EVERY_CARD_ENABLED (QA, 24 Nov 2026; the owner: "Test Employee" is a valid name managers type on
+   * purpose): "Here's the Corrective Action Form for **Test**" and "Test had a till shortage." A stand-in name nobody on
+   * the roster has, "<First> Employee", is called by its whole name, never its first word alone.
+   */
+  if (!ownId && words.length === 2 && /^employee$/i.test(words[1]!) && typedEmployeeEveryCardEnabled()) return full;
   const first = words[0]!.toLowerCase();
   const firstOf = (other: string) => other.trim().split(/\s+/)[0]!.toLowerCase();
   const onRoster = roster.filter((row) => row.id !== ownId).flatMap(fullNamesOf).filter((other) => !samePerson(other, full));
@@ -4049,7 +4057,21 @@ export async function proposeForm(
     /* R14: "Test Employee", the exact full name the manager typed, is a name; its last word is not a title to strip. */
     const typedAsPassed = titleless !== rawTyped && words(titleless).length === 1 && typedFullNameOf(titleless, requestTurnsText(context, read.roster))?.toLowerCase() === rawTyped.toLowerCase() ? rawTyped : titleless;
     /* C3 (port of Ask Bubbles #1054): "<First> <Last>" for the manager's "<Last>, <First>" is read in the manager's own order. */
-    const typed = asManagerCommaWrote(typedAsPassed, requestTurnsText(context, read.roster));
+    const typedByModel = asManagerCommaWrote(typedAsPassed, requestTurnsText(context, read.roster));
+    /*
+     * TYPED_EMPLOYEE_EVERY_CARD_ENABLED (QA, 24 Nov 2026, live as an Admin): "Draft a coaching form for … a made-up
+     * employee named Test Employee" got a card for "Employee" (the rules book calls "employee" a placeholder, so the
+     * model dropped "Test" or split the name). When the manager typed "<First> Employee" as the person in this request
+     * (`typed-employee-name.ts`) and the model passed no id and only a part of it, or nothing, the card's name is that
+     * full name, deterministically, on every card type.
+     */
+    const typed = (() => {
+      if (!typedEmployeeEveryCardEnabled() || id) return typedByModel;
+      const full = typedEmployeeName(requestTurnsText(context, read.roster));
+      if (!full) return typedByModel;
+      const passed = typedByModel.replace(/\s+/g, " ").trim().toLowerCase().replace(/^(?:the|an?|my)\s+/, "");
+      return ["", "employee", full.split(" ")[0]!.toLowerCase(), full.toLowerCase()].includes(passed) ? full : typedByModel;
+    })();
     /*
      * HARD GUARD, A "NO" NEVER SEATS THE NAME (NEAR_MISS_QUESTION_RULES, parity gap #45): when the manager answered
      * "no" to this chat's own "Did you mean **<A>**?" or "Is this for **<A>**?", <A> is not put on the card.

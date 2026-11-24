@@ -5068,3 +5068,16 @@ export function formDateIsTodayEnabled(): boolean {
 export function priorFormsUpToTodayEnabled(): boolean {
   return envFlag("PRIOR_FORMS_UP_TO_TODAY_ENABLED");
 }
+
+/**
+ * TYPED_EMPLOYEE_EVERY_CARD (QA, 24 Nov 2026, live as an Admin; default off; same flag in both apps): "Draft a coaching
+ * form for a performance concern for a made-up employee named Test Employee" drafted the Observation "… named the
+ * employee Employee" and asked who the form was for, also after the answer "Test Employee"; "Draft a corrective action
+ * form for a till shortage for Test Employee" put **Test** on the loop's card. The full name the manager typed as the
+ * person ("<First> Employee", `forms/typed-employee-name.ts`) is the card's name on every card type, on both paths:
+ * "named <First> Employee" is read as typed, the roster step keeps it as typed (never "the employee"), and the agent
+ * loop's propose_form puts it on the card when the model passed only one of its words or none. Off, as before.
+ */
+export function typedEmployeeEveryCardEnabled(): boolean {
+  return envFlag("TYPED_EMPLOYEE_EVERY_CARD_ENABLED");
+}

@@ -1,4 +1,5 @@
-import { addressNotPersonEnabled, formNameFromRosterEnabled, metricChoiceOneQuestionEnabled, metricGuardEnabled, offRosterConfirmEnabled, rosterNearMissEnabled, rosterNotFoundAnyPhrasingEnabled, nearMissQuestionRulesEnabled, formNameOffRosterAskEnabled, offRosterAskBeforeCardEnabled, terminationRequestIsCaEnabled } from "@/lib/config/chat-quality-flags";
+import { addressNotPersonEnabled, formNameFromRosterEnabled, metricChoiceOneQuestionEnabled, metricGuardEnabled, offRosterConfirmEnabled, rosterNearMissEnabled, rosterNotFoundAnyPhrasingEnabled, nearMissQuestionRulesEnabled, formNameOffRosterAskEnabled, offRosterAskBeforeCardEnabled, terminationRequestIsCaEnabled, typedEmployeeEveryCardEnabled } from "@/lib/config/chat-quality-flags";
+import { typedEmployeeName } from "./typed-employee-name";
 import { isGlossaryTerm } from "@/lib/ai/chat-glossary";
 import type { AskResponse } from "@/lib/ai/types";
 
@@ -116,6 +117,21 @@ export function rosterOnlyNames(response: AskResponse, names: readonly string[],
   let offerMade = false;
 
   const employee = proposal?.employeeName?.trim() ?? "";
+  /*
+   * TYPED_EMPLOYEE_EVERY_CARD_ENABLED (QA, 24 Nov 2026, live as an Admin; the owner: managers use "Test Employee" on
+   * purpose, it is a valid name). "… a made-up employee named Test Employee" became "named the employee Employee" with
+   * "Who is this form for?". The full name the manager typed as the person (`typed-employee-name.ts`), on nobody's
+   * roster, is the card's name whenever the card holds it, its first word, or no one: kept whole in the reply and on the
+   * card, with the honest not-in-Woven line, never "the employee" or its first word alone.
+   */
+  const typedFull = typedEmployeeEveryCardEnabled() && proposal && proposal.subject !== "team" && message ? typedEmployeeName(message) : null;
+  if (proposal && typedFull && !rosterSpelling(typedFull, names) && !oneCloseRosterPerson(typedFull, names)) {
+    const first = typedFull.split(" ")[0]!;
+    const shown = employee.toLowerCase();
+    if (shown === "" || shown === typedFull.toLowerCase() || shown === first.toLowerCase()) {
+      return { ...response, ...keepTypedFullName(content, proposal, typedFull) };
+    }
+  }
   /*
    * FORM_NAME_OFF_ROSTER_ASK_ENABLED (QA, 10 Nov 2026, sf-s36 with an off-roster name): the manager took the offer
    * ("yes", "use <name>"), but the card came back with no one on it — the request's "for <name> TC." was read with the
@@ -512,7 +528,12 @@ function typedWholeRosterName(partial: string, message: string, names: readonly 
 export function offRosterTyped(employee: string, message: string | undefined, names: readonly string[]): string | null {
   const typed = employee.trim();
   if (!NAME_SHAPE.test(typed) || rosterSpelling(typed, names) || anyRosterPersonClose(typed, names) || namesAForm(typed)) return null;
-  if (normalizeTypedName(typed).split(/\s+/).includes(UNNAMED_PERSON_WORD)) return null;
+  /*
+   * TYPED_EMPLOYEE_EVERY_CARD_ENABLED (QA, 24 Nov 2026): "<First> Employee" the manager typed as the person ("named Test
+   * Employee", "for Test Employee", the answer "Test Employee"; `typed-employee-name.ts`) is a name, not the placeholder.
+   */
+  const typedAsName = typedEmployeeEveryCardEnabled() && Boolean(message) && typedEmployeeName(message!)?.toLowerCase() === normalizeTypedName(typed);
+  if (!typedAsName && normalizeTypedName(typed).split(/\s+/).includes(UNNAMED_PERSON_WORD)) return null;
   // B1: a company position title is never offered as a person.
   if (namesCompanyPositionTitle(typed)) return null;
   // QA, 7 Nov 2026: nor is the company's own name or initials.
@@ -701,4 +722,23 @@ export function withoutMetricChoices(response: AskResponse, message: string | un
   });
   content = content.replace(/Is this for \*\*([^*]+)\*\*\?/g, (whole, name: string) => (isMetric(name) ? ASK_WHO : whole));
   return content === response.content ? response : { ...response, content };
+}
+
+/**
+ * TYPED_EMPLOYEE_EVERY_CARD_ENABLED: the reply and the card carry the typed full name ("Test Employee") wherever its
+ * first word alone stood ("for **Test**", "with Test."), with the not-in-Woven line once and the who-question gone.
+ */
+export function keepTypedFullName(content: string, proposal: NonNullable<AskResponse["formProposal"]>, full: string): Pick<AskResponse, "content" | "formProposal"> {
+  const first = full.split(" ")[0]!;
+  const last = full.split(" ").slice(1).join(" ");
+  const alone = new RegExp(String.raw`(?<![\p{L}'’-])${escape(first)}(?![\p{L}'’-])(?!\s+${escape(last)})`, "gu");
+  let text = content.replace(alone, full).split(ASK_WHO).join("");
+  if (!/isn['’]t (?:in|on) the Woven/i.test(text)) text = `${offRosterTakenLine(full)}\n\n${text.trim()}`;
+  const next = {
+    ...proposal,
+    employeeName: full,
+    wovenCloseMatch: offRosterCardNote(full),
+    ...(proposal.status === "needs_employee" ? { status: "ready" as const } : {}),
+  };
+  return { content: text.replace(/\n{3,}/g, "\n\n").trim(), formProposal: next };
 }
