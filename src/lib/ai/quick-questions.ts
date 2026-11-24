@@ -68,7 +68,7 @@ import type { AccessScope, Permission, ScopeLevel } from "@/types";
  * ============================================================================
  *
  * Every question declares the permission it needs, checked through the same
- * `can()` the navigation uses — `DEFAULT_PERMISSION_MATRIX`, server-owned, not
+ * `can()` the navigation uses — the active matrix (defaults plus saved changes), server-owned, not
  * the store's editable copy. `view_daily_stats` already exists and already
  * means this; nothing new was invented to gate a chip.
  *

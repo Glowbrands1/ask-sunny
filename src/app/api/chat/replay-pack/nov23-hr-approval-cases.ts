@@ -290,7 +290,7 @@ export const NOV23_HR_APPROVAL_CASES: ReplayCase[] = [
   },
   {
     id: "nov23-hr-approval-archived-form-leaves-hrs-queue",
-    title: 'HR: "what\'s waiting on me?" after a duplicate pending draft was archived: read_hr_approvals lists only the form still in use',
+    title: 'HR: "what\'s waiting on me?" after a duplicate pending draft was removed (was: archived; archiving is gone): read_hr_approvals lists only the form still in use',
     report: "QA, 23 Nov 2026: a duplicate exit draft archived while still pending kept showing in HR's \"Needs your decision\"",
     status: "fixed",
     fixFlags: FLAGS,
@@ -298,17 +298,16 @@ export const NOV23_HR_APPROVAL_CASES: ReplayCase[] = [
       if (!t.loopOn?.() || !hrApprovalEnabled()) return;
       await sentToHr(t);
       const duplicate = await sentToHr(t);
-      // As `archiveInstance` leaves it: archived, its HR state untouched.
-      const row = (t.rows?.("form_instances") ?? []).find((candidate) => candidate.id === duplicate);
-      row!.archived_at = "2026-11-23T15:30:00Z";
+      // Archiving was removed (Pau, 23 Nov 2026), so the duplicate is taken away the way it still can be: deleted.
+      const rows = t.forms!();
+      rows.splice(rows.findIndex((candidate) => candidate.id === duplicate), 1);
       t.addRows!("form_hr_approvers", [{ app_user_id: HR_ACCOUNT, revoked_at: null }]);
       const result = asksHr(t, "district_manager", GLOBAL, HR_ACCOUNT);
       await t.thread().say("what's waiting on me?");
       // The two forms read the same; the reader gives the model no ids, so the count is what tells them apart.
       const waiting = result().waiting_for_you as Record<string, unknown>[];
-      expect(waiting, "the archived duplicate reached HR's queue, or the form still in use did not").toHaveLength(1);
+      expect(waiting, "the removed duplicate reached HR's queue, or the form still in use did not").toHaveLength(1);
       expect(JSON.stringify(waiting[0])).toMatch(/Corrective Action Form for Peregrine Ashdown/);
-      expect(row!.hr_approval_state, "archiving changed the stored state").toBe("pending");
     },
   },
   {

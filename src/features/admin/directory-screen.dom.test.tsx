@@ -176,27 +176,42 @@ describe("the last administrator cannot be demoted from this screen", () => {
 });
 
 describe("the permissions matrix under real authentication", () => {
-  it("is read-only: every checkbox disabled, no Save, and it says so", () => {
+  it("is editable once the server's matrix has loaded, and the locked cells stay locked", async () => {
     /*
-     * OPTION A, in full. Persisted policy editing is a project — versioning,
-     * auditing, and deciding what happens to somebody already signed in under
-     * the old policy — and a half-built version is worse than none: an
-     * administrator ticks a box, sees it saved, and nothing changes anywhere.
+     * CHANGED ON PURPOSE (Pau, 23 Nov 2026). This test used to assert the
+     * opposite — every checkbox disabled, no Save, "fixed in this release" —
+     * because a saved matrix nobody enforced would have been worse than none.
+     * The matrix is saved to the database and enforced on the server now
+     * (`/api/admin/permissions`), so under real authentication an administrator
+     * can tick and save. What must STILL hold is the locked cells; the tick /
+     * save / refresh behaviour is in `permissions-matrix.dom.test.tsx`.
      */
     sessionMock.authenticated = true;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ overrides: {} }), { status: 200 })),
+    );
     const { container } = renderMatrix();
+    await screen.findByText(/No unsaved changes/i);
 
-    const boxes = [...container.querySelectorAll('[role="checkbox"], input[type="checkbox"]')];
+    const boxes = [...container.querySelectorAll('[role="checkbox"]')];
     expect(boxes.length).toBeGreaterThan(20);
-    for (const box of boxes) {
-      const disabled =
-        box.hasAttribute("disabled") || box.getAttribute("aria-disabled") === "true";
-      expect(disabled, box.getAttribute("aria-label") ?? "").toBe(true);
+    const enabled = boxes.filter((box) => !box.hasAttribute("disabled"));
+    expect(enabled.length).toBeGreaterThan(20);
+    for (const label of [
+      "Manage users for Salon Director",
+      "Manage integrations for District Manager",
+      "Open the L10 meeting link for Regional Manager",
+      "Ask Sunny questions for Admin",
+    ]) {
+      const box = container.querySelector(`[aria-label="${label}"]`);
+      expect(box?.hasAttribute("disabled"), label).toBe(true);
     }
 
-    expect(screen.queryByRole("button", { name: /Save changes/i })).toBeNull();
-    expect(screen.queryByRole("button", { name: /Reset to defaults/i })).toBeNull();
-    expect(screen.getByText(/current policy, shown for reference/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Save changes/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Reset to defaults/i })).toBeTruthy();
+    expect(screen.queryByText(/fixed in this release/i)).toBeNull();
+    vi.unstubAllGlobals();
   });
 
   it("stays editable in demo mode, where changing it is the point", () => {
@@ -204,11 +219,11 @@ describe("the permissions matrix under real authentication", () => {
     renderMatrix();
 
     expect(screen.getByRole("button", { name: /Save changes/i })).toBeTruthy();
-    expect(screen.queryByText(/current policy, shown for reference/i)).toBeNull();
+    expect(screen.queryByText(/fixed in this release/i)).toBeNull();
     sessionMock.authenticated = true;
   });
 
-  it("shows the client Admin holding manage_users, not locked off", () => {
+  it("shows the client Admin holding manage_users, not locked off", async () => {
     /*
      * THE BUG THIS PINS. `isPermissionLockedFor` tested `owner || developer`
      * and was left behind when `admin` was added, so the matrix rendered the
@@ -217,7 +232,12 @@ describe("the permissions matrix under real authentication", () => {
      * was never affected; only the picture of it was.
      */
     sessionMock.authenticated = true;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ overrides: {} }), { status: 200 })),
+    );
     const { container } = renderMatrix();
+    await screen.findByText(/No unsaved changes/i);
 
     const cell = container.querySelector('[aria-label="Manage users for Admin"]');
     expect(cell, "no Manage users / Admin cell").toBeTruthy();
@@ -226,5 +246,6 @@ describe("the permissions matrix under real authentication", () => {
         cell!.getAttribute("aria-checked") === "true" ||
         (cell as HTMLInputElement).checked === true,
     ).toBe(true);
+    vi.unstubAllGlobals();
   });
 });

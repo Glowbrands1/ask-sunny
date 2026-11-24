@@ -96,7 +96,6 @@ function instanceRow(row: Row) {
     followedUpBy: null,
     finalizedAt: null,
     exportedAt: null,
-    archivedAt: null,
     revisesInstanceId: null,
     createdAt: "2026-09-07T12:00:00Z",
     updatedAt: "2026-09-07T12:00:00Z",
@@ -105,7 +104,6 @@ function instanceRow(row: Row) {
 
 interface Touched {
   saved: string[];
-  archived: string[];
   deleted: string[];
   finalized: string[];
 }
@@ -124,7 +122,7 @@ async function load(
   process.env.NEXT_PUBLIC_DEMO_MODE = demo ? "true" : "false";
   vi.resetModules();
 
-  const touched: Touched = { saved: [], archived: [], deleted: [], finalized: [] };
+  const touched: Touched = { saved: [], deleted: [], finalized: [] };
 
   vi.doMock("@/lib/auth/server", async () => {
     const { AuthError } = await import("@/lib/auth/types");
@@ -208,7 +206,6 @@ async function load(
      * exact regression — go on passing.
      */
     listInstances: async (
-      _view: string,
       _limit: number | undefined,
       filter?: { locationIds?: string[]; ownNullLocationCreatedBy?: string },
     ) => {
@@ -231,10 +228,6 @@ async function load(
       return instanceRow(ROWS[id]!);
     },
     reviseInstance: async (id: string) => instanceRow(ROWS[id]!),
-    archiveInstance: async (id: string) => {
-      touched.archived.push(id);
-      return instanceRow(ROWS[id]!);
-    },
     deleteInstance: async (id: string) => {
       touched.deleted.push(id);
       return { id, employeeName: "Synthetic Person" };
@@ -347,19 +340,9 @@ describe("F4. a foreign form cannot be written by knowing its UUID", () => {
     expect(touched.finalized).toEqual([]);
   });
 
-  it("refuses archiving, and archives nothing", async () => {
-    /*
-     * `manage_form_records` sits with the roles that administer Forms, and a
-     * Salon Director does not hold it — so they get a 403 before the scope
-     * check ever runs, which proves nothing about scope. Role and assignment
-     * are independent columns on `app_users`, so the actor that tests THIS
-     * boundary is one who holds the permission and covers one salon.
-     */
-    const { detail, touched } = await load({ role: "district_manager", scope: SALON_A });
-    const response = await detail.PUT(req("PUT", { archived: true }), params(THEIRS));
-
-    expect(response.status).toBe(404);
-    expect(touched.archived).toEqual([]);
+  it("has no archive verb at all: PUT is not a handler, so the framework answers 405 (Pau, 23 Nov 2026)", async () => {
+    const { detail } = await load({ role: "district_manager", scope: SALON_A });
+    expect((detail as Record<string, unknown>).PUT).toBeUndefined();
   });
 
   it("refuses deleting, and deletes nothing", async () => {
@@ -370,14 +353,15 @@ describe("F4. a foreign form cannot be written by knowing its UUID", () => {
     expect(touched.deleted).toEqual([]);
   });
 
-  it("still lets that actor archive a form at their OWN salon", async () => {
-    // The guard on the guard for the two above: the permission and the fixture
-    // can reach the action, so the refusals are scope and not a blanket no.
+  it("still lets that actor delete a form at their OWN salon", async () => {
+    // The guard on the guard for the refusals above: the permission and the
+    // fixture can reach the action, so the refusals are scope and not a blanket no.
+    // (Was "archive" until Pau, 23 Nov 2026 removed archiving: a form is only Draft or Finalized.)
     const { detail, touched } = await load({ role: "district_manager", scope: SALON_A });
-    const response = await detail.PUT(req("PUT", { archived: true }), params(MINE));
+    const response = await detail.DELETE(req("DELETE"), params(MINE));
 
     expect(response.status).toBe(200);
-    expect(touched.archived).toEqual([MINE]);
+    expect(touched.deleted).toEqual([MINE]);
   });
 
   it("still lets the caller save their OWN form", async () => {
@@ -608,7 +592,7 @@ describe("F4. preview mode is not enforced against a browser-asserted scope", ()
  *   A manager files a coaching record at salon A.
  *   They transfer; their scope becomes salon B.
  *   Their AccessScope no longer covers salon A at all.
- *   They could still open, edit, finalize, archive, delete and export that
+ *   They could still open, edit, finalize, delete and export that
  *   record — because they had once created it.
  *
  * Authorization here answers "may this person see this salon's HR records
@@ -639,10 +623,9 @@ describe("R2-F2. a transferred manager loses access to the salon they left", () 
 
     expect((await detail.PATCH(req("PATCH", { values: {} }), params(MINE))).status).toBe(404);
     expect((await detail.POST(req("POST", { action: "finalize" }), params(MINE))).status).toBe(404);
-    expect((await detail.PUT(req("PUT", { archived: true }), params(MINE))).status).toBe(404);
     expect((await detail.DELETE(req("DELETE"), params(MINE))).status).toBe(404);
 
-    expect(touched).toEqual({ saved: [], archived: [], deleted: [], finalized: [] });
+    expect(touched).toEqual({ saved: [], deleted: [], finalized: [] });
   });
 
   it("does not see it in Form Monitoring", async () => {

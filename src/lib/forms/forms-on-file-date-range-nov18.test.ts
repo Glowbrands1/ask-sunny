@@ -17,7 +17,7 @@ const TODAY = "2026-11-18";
 
 const state = vi.hoisted(() => ({
   visibility: null as AccessScope | null,
-  listCalls: [] as { view: string; limit: number; filter: InstanceListFilter | undefined }[],
+  listCalls: [] as { limit: number; filter: InstanceListFilter | undefined }[],
   rows: [] as InstanceRow[],
 }));
 
@@ -25,10 +25,9 @@ vi.mock("./forms-visibility", () => ({ resolveFormsVisibility: async () => state
 
 /* The query's filters, as the database applies them: before the limit, not after. */
 vi.mock("./instances", () => ({
-  listInstances: async (view: string, limit: number, filter?: InstanceListFilter) => {
-    state.listCalls.push({ view, limit, filter });
+  listInstances: async (limit: number, filter?: InstanceListFilter) => {
+    state.listCalls.push({ limit, filter });
     return state.rows
-      .filter((row) => (view === "active" ? !row.archivedAt : true))
       .filter((row) => !filter?.employeeNameWords || filter.employeeNameWords.some((word) => row.employeeName.toLowerCase().includes(word)))
       .filter((row) => !filter?.templateNameWords || filter.templateNameWords.some((word) => row.templateName.toLowerCase().includes(word)))
       .filter((row) => !filter?.formDateFrom || row.formDate >= filter.formDateFrom)
@@ -77,7 +76,6 @@ function row(overrides: Partial<InstanceRow>): InstanceRow {
     followedUpBy: null,
     finalizedAt: null,
     exportedAt: null,
-    archivedAt: null,
     revisesInstanceId: null,
     createdAt: `${formDate}T15:00:${String(next % 60).padStart(2, "0")}Z`,
     updatedAt: `${formDate}T15:00:00Z`,
@@ -126,7 +124,6 @@ describe("the owner's question: who got a CA this month?", () => {
     busyNovember();
     const read = await loadFormRecords({ actor: ADMIN, question: QUESTION, today: TODAY, narrowFromQuestion: true });
     const call = state.listCalls.at(-1)!;
-    expect(call.view).toBe("all");
     expect(call.limit).toBe(100);
     expect(call.filter).toMatchObject({ formDateFrom: "2026-11-01", formDateTo: TODAY, templateNameWords: ["corrective"] });
     const block = read!.block;

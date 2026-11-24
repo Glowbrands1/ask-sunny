@@ -1,6 +1,6 @@
 import "server-only";
 
-import { hasPermission, DEFAULT_PERMISSION_MATRIX } from "@/lib/permissions";
+import { hasPermission, activePermissionMatrix } from "@/lib/permissions";
 import { reportingScopeOf } from "@/lib/reporting/scope/authorized-salons";
 import { EMPTY_REVIEW_FILTERS } from "@/lib/reviews/filters";
 import { loadReviewFeed } from "@/lib/reviews/queries";
@@ -25,8 +25,8 @@ export async function readFlaggedBreakdown(input: {
 }): Promise<string> {
   const plan = input.plan;
   if (plan.kind === "unavailable" || plan.unavailable) return formatBreakdown(plan, [], null);
-  const reports = input.role !== null && hasPermission(DEFAULT_PERMISSION_MATRIX, input.role, "view_reports");
-  const reviews = input.role !== null && hasPermission(DEFAULT_PERMISSION_MATRIX, input.role, "view_google_reviews");
+  const reports = input.role !== null && hasPermission(activePermissionMatrix(), input.role, "view_reports");
+  const reviews = input.role !== null && hasPermission(activePermissionMatrix(), input.role, "view_google_reviews");
   if (plan.kind === "reviews") {
     if (!reviews) return "Google review breakdowns require the view_google_reviews permission. No reviews were read.";
     return formatBreakdown(plan, await reviewRows(input.scope, plan), null);

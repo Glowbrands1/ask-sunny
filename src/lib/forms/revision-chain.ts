@@ -26,8 +26,7 @@ import {
  * BACK through `revises_instance_id`, which every revision carries. FORWARD
  * through the original's own `revised` event, which names the revision that
  * replaced it (the same pointer "Open newer version" follows), or, for a
- * finalized form, the revision draft still open on it. An archived draft is
- * not part of the chain: somebody put it away.
+ * finalized form, the revision draft still open on it.
  *
  * The number of a record is its place in the chain, the original being 0. It
  * is the number `reviseFinalizedForm` records on the revision's `created`
@@ -55,7 +54,7 @@ async function nextInChain(loaded: LoadedInstance): Promise<LoadedInstance | nul
   }
   if (loaded.instance.status === "finalized") {
     const open = await findOpenRevision(loaded.instance.id);
-    if (!open || open.archivedAt) return null;
+    if (!open) return null;
     return loadInstance(open.id);
   }
   return null;

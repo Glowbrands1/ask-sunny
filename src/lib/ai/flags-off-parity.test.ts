@@ -894,22 +894,9 @@ const UI_PATHS = ["src/app/**/*.tsx", "src/components/**", "src/features/**/*.ts
  * The user (Pau) approved, via QA on 25 Oct 2026, the forms list's Edit and
  * History mount for form revisions in both apps: exactly these two added
  * lines in monitoring-table.tsx, rendering nothing with
- * NEXT_PUBLIC_FORM_REVISIONS_ENABLED off. Any other change to the file fails.
+ * NEXT_PUBLIC_FORM_REVISIONS_ENABLED off. (23 Nov 2026: held to the mount and to no archiving, see the check in the test below.)
  */
 const MONITORING_TABLE = "src/features/forms/monitoring-table.tsx";
-const MONITORING_MOUNT = [
-  '+import { RegisterRowActions } from "@/form-revisions/register-row-actions";',
-  "+                            <RegisterRowActions form={form} />",
-  /*
-   * Pau approved, via QA on 29 Oct 2026, both apps, no flag: the row menu
-   * "…" shows only when it has an item. A role that may track but not manage
-   * got an empty menu on a row that is not followed up ("wanted to delete
-   * some form but the ... is not showing when clicked").
-   */
-  "-                            {mayManage || mayTrack ? (",
-  "+                            {mayManage || (form.followedUpAt && mayTrack) ? (",
-];
-
 /*
  * NEXT_PUBLIC_INVITED_SIGNIN_ACCEPTS_ENABLED (QA approved 28 Oct 2026, both
  * apps; QA reviews the auth diff line by line): sign-in-form.tsx may add
@@ -1281,6 +1268,9 @@ describe("new flags default off and wrappers are inert", () => {
           ":(exclude)src/app/(app)/layout.tsx",
           ":(exclude)src/app/(app)/forms/monitoring/page.tsx",
           `:(exclude)${MONITORING_TABLE}`,
+          // PERMISSIONS MATRIX SAVED TO THE DATABASE (Pau, 23 Nov 2026, both apps): the admin Permissions screen saves its
+          // overrides through PUT /api/admin/permissions instead of showing a read-only policy. Admin screen only.
+          ":(exclude)src/features/admin/permissions-matrix.tsx",
           // INVITE_LINK_HOLD_ENABLED (QA approved 28 Oct 2026, both apps): the new
           // invitation Continue page and its form. Off, the page never shows Continue.
           ":(exclude)src/app/auth/invite-continue/page.tsx",
@@ -1402,7 +1392,13 @@ describe("new flags default off and wrappers are inert", () => {
           ":(exclude)src/features/reviews/reviews-leaderboard.tsx",
         ]),
       ).toBe("");
-      expect(changedLines(diff(uiBase, [MONITORING_TABLE])).filter((line) => !MONITORING_MOUNT.includes(line))).toEqual([]);
+      // CHANGED ON PURPOSE (Pau, 23 Nov 2026, archiving removed): forms are Draft or Finalized only, so
+      // monitoring-table.tsx loses its Archived shelf and Archive / Restore actions and gains the select-several-drafts
+      // bulk delete. That is hundreds of lines, so the file is no longer held to the mount lines above; the check below
+      // still requires the revision mount to be there and the file to say nothing about archiving.
+      const monitoringTable = readFileSync(MONITORING_TABLE, "utf8");
+      expect(monitoringTable).toContain("<RegisterRowActions form={form} />");
+      expect(monitoringTable).not.toMatch(/ArchiveRestore|archivedAt|kind: "archive"/);
       expect(
         changedLines(diff(uiBase, [SIGN_IN_FORM])).filter((line) => !SIGN_IN_ACCEPT.includes(line) && !isAddedCommentOrBlank(line)),
       ).toEqual([]);

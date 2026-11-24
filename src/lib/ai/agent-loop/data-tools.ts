@@ -6,7 +6,7 @@ import { DAILY_STATS_INTERPRETATION_FRAMEWORK } from "@/lib/knowledge/document-r
 import type { RoleGroundingResult } from "@/lib/knowledge/role-grounding";
 import { pagesToolLine, type PageReaderTool } from "@/config/ai-readable-pages";
 import { FORM_RECORDS_PERMISSION } from "@/lib/forms/chat-form-records";
-import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
+import { activePermissionMatrix, hasPermission } from "@/lib/permissions";
 import type { Permission } from "@/types";
 import type { ReportBriefing, LoadReportBriefingInput } from "@/lib/reporting/read/report-briefing";
 import { REPORT_FAMILIES_BY_ID, type ReportFamilyId } from "@/lib/reporting/read/report-families";
@@ -306,7 +306,7 @@ function sumOf<T>(rows: readonly T[], pick: (row: T) => number): number {
  * words; never the reviewer's name).
  */
 export async function readReviews(context: DataToolContext, input: { salon?: unknown; period?: unknown }, deps: DataToolDeps = DEFAULT_DATA_TOOL_DEPS): Promise<ToolResult> {
-  if (!hasPermission(DEFAULT_PERMISSION_MATRIX, context.actor.role, READER_PERMISSION.read_reviews)) {
+  if (!hasPermission(activePermissionMatrix(), context.actor.role, READER_PERMISSION.read_reviews)) {
     return { source: REVIEWS_SOURCE, refused: "This account's role does not include View Google reviews. No review figures were read; say so plainly and give none." };
   }
   const turn = salonsForTurn(context.actor.scope, text(input.salon));
@@ -452,7 +452,7 @@ export async function readStats(
 ): Promise<ToolResult> {
   const report = (text(input.report) ?? "").toLowerCase();
   const source = report === "comp" ? "Comp report" : report === "sales totals" ? "Sales Totals report" : report === "daily stats" ? "Daily Stats" : "Reports";
-  if (!hasPermission(DEFAULT_PERMISSION_MATRIX, context.actor.role, READER_PERMISSION.read_stats)) {
+  if (!hasPermission(activePermissionMatrix(), context.actor.role, READER_PERMISSION.read_stats)) {
     return { source, refused: "This account's role does not include View reports. No report figures were read; say so plainly and give none." };
   }
   const turn = salonsForTurn(context.actor.scope, text(input.salon));
@@ -532,7 +532,7 @@ const DELETED_VIA: Record<string, string> = {
  * itself is: a manager is refused and nothing is read.
  */
 export async function readFormDeletions(context: DataToolContext, input: { employee_name?: unknown }, deps: DataToolDeps = DEFAULT_DATA_TOOL_DEPS): Promise<ToolResult> {
-  if (!hasPermission(DEFAULT_PERMISSION_MATRIX, context.actor.role, "manage_users")) {
+  if (!hasPermission(activePermissionMatrix(), context.actor.role, "manage_users")) {
     return { source: FORM_DELETIONS_SOURCE, refused: "Who deleted a form is for administrators only. Nothing was read; say so plainly, in one line, and give nothing from the record." };
   }
   const employeeName = text(input.employee_name);
@@ -581,7 +581,7 @@ export const AI_ASSIGNMENTS_SOURCE = "AI Training > Assignments";
  * TRACKER'S NAMED PEOPLE (`canSeeAssignmentTracker`, the page's own check): anyone else is refused and nothing is read.
  */
 export async function readAiAssignments(context: DataToolContext, deps: DataToolDeps = DEFAULT_DATA_TOOL_DEPS): Promise<ToolResult> {
-  if (!hasPermission(DEFAULT_PERMISSION_MATRIX, context.actor.role, "view_ai_training") || !canSeeAssignmentTracker(context.actor)) {
+  if (!hasPermission(activePermissionMatrix(), context.actor.role, "view_ai_training") || !canSeeAssignmentTracker(context.actor)) {
     return {
       source: AI_ASSIGNMENTS_SOURCE,
       refused: "The AI assignment tracker is only for the people it was set up for. Nothing was read; say so plainly, in one line, and give nothing from it.",
@@ -654,7 +654,7 @@ export async function readHrApprovals(context: DataToolContext, deps: DataToolDe
    * queue, and a manager who sent a form reads their own forms' state (the receipt, "did HR approve my form?"), whatever
    * their role. Only someone with neither, and without the page's own permission, is refused; never a blanket refusal.
    */
-  if (read.kind !== "hr" && read.forms.length === 0 && !hasPermission(DEFAULT_PERMISSION_MATRIX, context.actor.role, READER_PERMISSION.read_hr_approvals)) {
+  if (read.kind !== "hr" && read.forms.length === 0 && !hasPermission(activePermissionMatrix(), context.actor.role, READER_PERMISSION.read_hr_approvals)) {
     return { source: hrApprovalsSource(), refused: `HR approval is on ${appConfig().formsPageName}, which this manager cannot open, and they have no forms with HR. Nothing was read; say so plainly, in one line.` };
   }
   if (read.kind === "hr") {

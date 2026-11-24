@@ -113,7 +113,7 @@ export function AskBand({
    * fixed list, because the four openings a District Manager needs are not the
    * four a Salon Director needs, and an employee with no reporting access needs
    * none of the reporting ones at all. `can` is the session's own check against
-   * `DEFAULT_PERMISSION_MATRIX`; the boundary on what may actually be READ is
+   * the active matrix; the boundary on what may actually be READ is
    * enforced server-side in the briefing's queries, not here.
    */
   const bandPrompts = useMemo(

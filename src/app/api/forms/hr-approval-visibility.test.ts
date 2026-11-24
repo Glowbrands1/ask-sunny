@@ -71,7 +71,6 @@ function instanceRow(row: Row) {
     followedUpBy: null,
     finalizedAt: row.status === "finalized" ? "2026-11-21T12:00:00Z" : null,
     exportedAt: null,
-    archivedAt: null,
     revisesInstanceId: null,
     createdAt: "2026-11-20T12:00:00Z",
     updatedAt: "2026-11-20T12:00:00Z",
@@ -159,7 +158,7 @@ async function load(viewer: Viewer, env: { flag?: boolean } = {}) {
         : null;
     },
     // The query filter is recorded; the predicate (`visibleInstances`) is what each test checks.
-    listInstances: async (_view: string, _limit?: number, filter?: unknown) => {
+    listInstances: async (_limit?: number, filter?: unknown) => {
       listFilters.push(filter);
       return rows.map(instanceRow);
     },
