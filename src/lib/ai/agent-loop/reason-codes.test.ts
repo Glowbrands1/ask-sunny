@@ -81,6 +81,9 @@ const KNOWN = new Set([
   // Added on purpose (port of Ask Bubbles #1111, board f099 on the loop): the form the manager asked for by its title is
   // another library form, or no form in the library; never a silent swap.
   "form_asked_is_another", "form_not_in_library",
+  // Added on purpose (owner, 24 Nov 2026: "the chat should say "waiting for HR approval" instead of a general save
+  // error"): edit_form on a form waiting for HR writes nothing and says it is waiting for HR approval.
+  "waiting_for_hr_approval",
 ]);
 
 /** A line that returns a refusal: `error:` followed by a string, a template or a named message (not `error: Boolean(...)`). */

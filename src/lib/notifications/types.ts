@@ -8,6 +8,12 @@ export interface AppNotification {
   href: string | null;
   createdAt: string;
   readAt: string | null;
+  /**
+   * Stays unread and in the list until its matter is settled (owner, 24 Nov 2026: HR's "A form is waiting for your
+   * approval" stays for every approver until someone approves, rejects or sends it back). Opening it, Mark all as read,
+   * the × and Clear all leave it alone. Absent means no.
+   */
+  pinned?: boolean;
 }
 
 export interface NewNotification {

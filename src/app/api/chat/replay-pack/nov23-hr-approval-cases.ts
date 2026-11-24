@@ -38,6 +38,11 @@ const PEREGRINE: DirectoryRow = {
 
 /** A Corrective Action draft for Peregrine Ashdown, created from a card by a Kearney salon director, then sent to HR. */
 async function sentToHr(t: ReplayContext): Promise<string> {
+  return (await sentToHrIn(t)).id;
+}
+
+/** The same, with the thread the card was opened in (a chat edit of the form happens there). */
+async function sentToHrIn(t: ReplayContext): Promise<{ id: string; thread: ReturnType<ReplayContext["thread"]> }> {
   vi.setSystemTime(new Date("2026-11-23T16:00:00Z"));
   t.directory([PEREGRINE]);
   t.as("salon_director", KEARNEY);
@@ -54,7 +59,7 @@ async function sentToHr(t: ReplayContext): Promise<string> {
   // As `sendForHrApproval` leaves it: still a draft, pending HR.
   row!.hr_approval_state = "pending";
   row!.hr_approval_requested_at = "2026-11-20T15:00:00Z";
-  return id;
+  return { id, thread };
 }
 
 function asksHr(t: ReplayContext, role: string, scope: unknown, subject?: string) {
@@ -188,6 +193,34 @@ export const NOV23_HR_APPROVAL_CASES: ReplayCase[] = [
       const waiting = result().waiting_for_you as Record<string, unknown>[];
       expect(waiting, "the edited form left HR's queue").toHaveLength(1);
       expect(JSON.stringify(waiting[0])).toMatch(/Corrective Action Form for Peregrine Ashdown/);
+    },
+  },
+  {
+    id: "nov24-hr-approval-chat-edit-of-a-waiting-form-says-waiting-for-hr",
+    title:
+      'owner: "the chat should say "waiting for HR approval" instead of a general save error": the manager asks the chat to change the form they sent to HR; edit_form writes nothing and says it is waiting for HR approval, to be changed on the form itself',
+    report: 'Owner, 24 Nov 2026: "In both apps, the chat should say "waiting for HR approval" instead of a general save error."',
+    status: "fixed",
+    fixFlags: FLAGS,
+    async run(t) {
+      if (!t.loopOn?.() || !hrApprovalEnabled()) return;
+      const { id, thread } = await sentToHrIn(t);
+      const before = JSON.stringify(t.values(id));
+      const model = loopStandIn((view: LoopView): LoopDecision => {
+        const edited = lastResult(view, "edit_form") as Record<string, unknown> | undefined;
+        return edited ? { text: String(edited.error ?? JSON.stringify(edited)) } : { tool: "edit_form", input: { instance_id: id, values: { form_date: "2026-11-20" } } };
+      });
+      t.loopModel!(model);
+      const reply = await thread.say("change the date on Peregrine's write up to 11/20");
+      const result = lastResult(model.views.at(-1)!, "edit_form") as Record<string, unknown>;
+      expect(result?.reason_code, `edit_form did not say the form is waiting for HR:\n${JSON.stringify(result)}`).toBe("waiting_for_hr_approval");
+      expect(String(result.error)).toMatch(/waiting for HR approval/);
+      expect(String(result.error)).toMatch(/on the form itself/);
+      expect(reply.content).toMatch(/waiting for HR approval/);
+      expect(reply.content, "a generic save failure reached the manager").not.toMatch(/couldn't save|could not be saved|not_draft/i);
+      expect(JSON.stringify(t.values(id)), "the chat wrote a form waiting for HR").toBe(before);
+      const row = (t.rows?.("form_instances") ?? []).find((candidate) => candidate.id === id);
+      expect(row?.hr_approval_state, "the form left HR").toBe("pending");
     },
   },
   {
