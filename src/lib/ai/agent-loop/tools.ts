@@ -1165,6 +1165,8 @@ export interface ToolEffects {
    * Only the ones the reply cites become source cards (run.ts, QA's live-app item 12), as today's grounded path does.
    */
   sources?: SourceCitation[];
+  /** SOURCES_ON_TOPIC (QA, 24 Nov 2026): the Daily Stats framework's cards this turn's tools read (read_stats, search_knowledge), for run.ts. */
+  frameworkSources?: SourceCitation[];
   /** Kept for callers that set cards directly; run.ts shows `sources` the reply cites. */
   citations?: SourceCitation[];
   /** A new draft revising a finalized form, opened on the manager's screen (`editable-draft.ts`). */
@@ -7233,6 +7235,23 @@ export async function searchKnowledge(context: ToolContext, effects: ToolEffects
   }
   if (scopeManual) rows = scopeToCurrentManual(rows, { limit, dedupeBySection: manualSectionDedupeEnabled() });
   rows = rows.slice(0, limit);
+  /*
+   * SOURCES_ON_TOPIC (QA's live test, 24 Nov 2026: "What are the top coaching priorities in a Daily Stats report?" was
+   * answered with the Confidential Information Policy as its only source): a Daily Stats coaching-priorities question's
+   * search also reads the Daily Stats Interpretation Framework, first, as read_stats does for a focus question. A missing
+   * or unhealthy framework adds nothing.
+   */
+  const { sourcesOnTopicEnabled } = await import("@/lib/config/chat-quality-flags");
+  const { asksDailyStatsCoaching } = await import("@/lib/ai/on-topic-sources");
+  if (sourcesOnTopicEnabled() && asksDailyStatsCoaching(context.question) && !rows.some((row) => (effects.frameworkSources ?? []).some((card) => card.documentId === row.document_id))) {
+    const { DAILY_STATS_INTERPRETATION_FRAMEWORK } = await import("@/lib/knowledge/document-roles");
+    const guide = await new SupabaseKnowledgeProvider().fetchRoleGrounding(DAILY_STATS_INTERPRETATION_FRAMEWORK, context.scopeId).catch(() => null);
+    if (guide?.ok && guide.grounding.rows.length > 0) {
+      const framework = guide.grounding.rows.slice(0, 4);
+      (effects.frameworkSources ??= []).push(...framework.map(rowToCitation));
+      rows = [...framework, ...rows.filter((row) => row.document_id !== guide.grounding.documentId)];
+    }
+  }
   const markers = rows.map((row) => addSource(effects, rowToCitation(row)));
   if (rows.length === 0) return { results: [], note: "Nothing in the company knowledge base matches. Say so; never answer from memory." };
   return {

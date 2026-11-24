@@ -71,6 +71,8 @@ export interface ReplayContext {
    * loads for a policy question (not by default: the loader finds no manual offline).
    */
   knowledgeHas?(rows: readonly Record<string, unknown>[]): void;
+  /** SOURCES_ON_TOPIC (24 Nov 2026): what a knowledge role's lookup returns (`fetchRoleGrounding`), e.g. the Daily Stats framework. */
+  roleDocumentHas?(roleId: string, grounding: Record<string, unknown>): void;
   /** Every knowledge search's query this case, in order (POLICY_CARRY_RETRIEVAL, 12 Nov 2026). */
   searches?(): string[];
   normalizerReads?(intent: "policy_question" | "form_command" | "other"): void;

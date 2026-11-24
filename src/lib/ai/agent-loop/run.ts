@@ -106,6 +106,7 @@ export const TOOL_SETTLE_MS = 5_000;
 import { pagesToolLine } from "@/config/ai-readable-pages";
 import { LOOP_FAILED_REPLY, STEP_LIMIT_REPLY } from "./replies";
 import { fieldLabel, readableValue } from "./saved-diff";
+import { onTopicCards } from "@/lib/ai/on-topic-sources";
 
 /*
  * QA's f074 (20 Nov 2026): the MODEL's reply says a form or card was made ("I made the coaching form", "I've created the
@@ -1750,9 +1751,15 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
    */
   const sources = effects.sources ?? [];
   const used = extractUsedMarkers(content, sources.map((_, index) => index + 1));
-  const cited = used.length > 0
+  const marked = used.length > 0
     ? used.map((marker) => sources[marker - 1]!)
     : sources.filter((source, index, all) => content.toLowerCase().includes(source.documentTitle.toLowerCase()) && all.findIndex((row) => row.documentId === source.documentId) === index);
+  /*
+   * SOURCES_ON_TOPIC (QA's live test, 24 Nov 2026): a Daily Stats question's cards are on its topic, and a coaching-
+   * priorities answer shows the framework its tools read (`on-topic-sources.ts`). Off, the marked sources as before.
+   */
+  const framework = effects.frameworkSources ?? [];
+  const cited = onTopicCards({ question: input.question, cards: marked, framework: framework.find((card) => /priorit/i.test(card.excerpt)) ? [framework.find((card) => /priorit/i.test(card.excerpt))!] : framework.slice(0, 1), frameworkIds: new Set(framework.map((card) => card.documentId)) });
   content = content.replace(/\s?\[S\d{1,2}\]/g, "");
   /* A question code decided (effects.replyMustAsk) ends the reply even when the model left it out (QA, the live re-run of #1067). */
   /* Never twice: the reply already asks for a change in its own words (QA: "change" and a question mark in one sentence). */
