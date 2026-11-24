@@ -248,7 +248,16 @@ function LessonBlocks({ layout, mine, onSubmit }: { layout: LessonLayout; mine: 
           </ol>
         ) : null}
         {layout.practice.after.length ? (
-          <div className="mt-5 rounded-[var(--radius-lg)] border border-border bg-surface p-5 shadow-soft sm:p-6">
+          // After numbered steps, the card sits in the steps' column (past the
+          // number rail: 2.25rem + gap 0.75rem, sm 3rem + gap 1rem), so its left
+          // edge lines up with the step cards above it (Pau, 24 Nov 2026).
+          <div
+            data-testid="lesson-practice-after"
+            className={cn(
+              "rounded-[var(--radius-lg)] border border-border bg-surface p-5 shadow-soft sm:p-6",
+              layout.practice.steps.length ? "mt-4 ml-12 sm:ml-16" : "mt-5",
+            )}
+          >
             <TrainingBlocks blocks={layout.practice.after} practice={layout.practiceIds} className="training-tight" />
           </div>
         ) : null}

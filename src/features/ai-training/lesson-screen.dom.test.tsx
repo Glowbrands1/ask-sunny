@@ -122,6 +122,17 @@ describe("the lesson page", () => {
     expect(screen.getByText("4 steps")).toBeTruthy();
   });
 
+  // Pau, 24 Nov 2026, on the 🔒 box after the last step: "can you align this".
+  // It was drawn full width while the step cards sit past the number rail.
+  it("lines the card after the steps up with the step cards, past the number rail", () => {
+    render(<LessonScreen problem={null} view={view(OLDER_LESSON)} mine={[]} nav={nav} isAdmin={false} />);
+    const after = screen.getByTestId("lesson-practice-after");
+    expect(within(after).getByText(/Before you share:/)).toBeTruthy();
+    // 3rem rail + 1rem gap (sm), 2.25rem + 0.75rem below: the steps' grid columns.
+    expect(after.className).toMatch(/(^|\s)ml-12(\s|$)/);
+    expect(after.className).toMatch(/(^|\s)sm:ml-16(\s|$)/);
+  });
+
   it("puts the required checklist and the Submit button on the Submit block", () => {
     render(<LessonScreen problem={null} view={view(OLDER_LESSON)} mine={[]} nav={nav} isAdmin={false} />);
     const submit = within(document.getElementById("lesson-submit")!);
