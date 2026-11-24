@@ -67,6 +67,27 @@ export function ratingAttendees(shown: Attendee[], saved: Attendee[], me: string
   return [...shown, was ?? { id: `att-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`, name, role: "", shared: false, rating: null }];
 }
 
+/**
+ * The name the signed-in person rates the meeting under. Their full name from the meeting's people list when it is there.
+ * When it is not (they are not on that list, or the list did not load), their sign-in name: an attendee whose full name, or
+ * whose first name alone (when only one attendee has it), is that name is them; otherwise a row of their own is added under
+ * that name. Never nobody, so whoever is in the meeting can always rate it (23 Nov 2026 audit: an unlisted viewer had no
+ * "(you)" row and so no way to give their own rating).
+ */
+export function raterName(shown: Pick<Attendee, "name">[], listed: string, signIn: string): string {
+  if (listed.trim()) return listed.trim();
+  const name = signIn.trim();
+  if (!name) return "";
+  const low = name.toLowerCase();
+  const full = shown.filter((a) => a.name.trim().toLowerCase() === low);
+  if (full.length === 1) return full[0].name.trim();
+  if (!/\s/.test(name)) {
+    const first = shown.filter((a) => a.name.trim().split(/\s+/)[0]?.toLowerCase() === low);
+    if (first.length === 1) return first[0].name.trim();
+  }
+  return name;
+}
+
 /* ── Scorecard ──────────────────────────────────────────────────────────── */
 
 /** Newest week first, as indexes into `weeks`. */
