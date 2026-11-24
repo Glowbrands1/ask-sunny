@@ -16,11 +16,10 @@ import { markNotificationsReadAction } from "./actions";
  * the unread ones. Opening one marks it read and goes to it. First used for AI
  * Training submissions (Pau, 20 Nov 2026), then the HR form approval.
  *
- * WHERE IT SITS (Pau, 23 Nov 2026, as an HR approver: "why no notification for [the approver]? should be same as
- * bubbles … for the form acceptance"), then, seeing the top-bar bell: "can we remove this and add a notification bar
- * instead below the overview". So it is a "Notifications" item in the rail (`rail`), directly under Overview, on desktop
- * and in the phone drawer alike, and the top bar has no bell. Same people, same panel, same count. (`bar`, the old
- * top-bar button, is kept for any other caller.)
+ * WHERE IT SITS (Pau, 23 Nov 2026): first "can we remove this and add a notification bar instead below the overview",
+ * then, with the sibling app's rail as the picture, "i dont want a bell, i need a bar". So it is a labelled
+ * "Notifications" bar in the rail (`rail`), directly under Overview, on desktop and in the phone drawer alike, and the
+ * top bar has no bell. Same people, same panel, same count. (`bar`, the top-bar button, is kept for any other caller.)
  */
 export function NotificationBell({
   data,
@@ -28,15 +27,18 @@ export function NotificationBell({
   collapsed = false,
   onNavigate,
   panelSide = "right",
+  className,
 }: {
   data: BellData;
   variant?: "bar" | "rail";
   /** The rail is collapsed to icons: no label, a tooltip instead. */
   collapsed?: boolean;
-  /** Called after opening a notification. */
+  /** Called after opening a notification (closes the drawer on a phone). */
   onNavigate?: () => void;
   /** Rail only: where the panel opens. The phone drawer is too narrow to open it to the side, so it opens below. */
   panelSide?: "right" | "bottom";
+  /** Extra classes for the top-bar button (its colour on the band). */
+  className?: string;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -87,11 +89,11 @@ export function NotificationBell({
           type="button"
           aria-label={label}
           className={cn(
-            "group relative flex w-full items-center gap-2.5 rounded-full text-[13.5px] font-semibold text-sidebar-foreground transition-colors hover:bg-hover-surface hover:text-foreground",
+            "relative flex w-full items-center gap-2.5 rounded-full border border-rail-border text-[13.5px] font-semibold text-sidebar-foreground transition-colors hover:bg-hover-surface hover:text-foreground",
             collapsed ? "justify-center px-0 py-2.5" : "px-3.5 py-2.5",
           )}
         >
-          <Bell className="size-4 shrink-0 text-sidebar-foreground group-hover:text-foreground" aria-hidden />
+          <Bell className="size-4 shrink-0" aria-hidden />
           {!collapsed ? <span className="truncate">Notifications</span> : null}
           {badge}
         </button>
@@ -102,7 +104,7 @@ export function NotificationBell({
           variant="ghost"
           size="icon"
           aria-label={label}
-          className="relative text-chrome-foreground hover:bg-hover-surface hover:text-hover-surface-foreground"
+          className={cn("relative text-chrome-foreground hover:bg-hover-surface hover:text-hover-surface-foreground", className)}
         >
           <Bell />
           {badge}

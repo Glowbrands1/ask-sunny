@@ -694,6 +694,9 @@ export interface ChatFormProposal {
    */
   exitMethod?: string;
   exitMethodQuote?: string;
+  /** The agent loop's exit card (port of Ask Bubbles #1047, B6, 22 Nov 2026): Reason for Resignation in the manager's words, and their quote; Create checks it again. */
+  exitReason?: string;
+  exitReasonQuote?: string;
   /** The agent loop's card (QA's third review): Create never runs today's termination reader for it. */
   fromAgentLoop?: true;
   /** The agent loop's coaching card: the topic, in the manager's words, checked against their message (QA, 17 Nov 2026). */

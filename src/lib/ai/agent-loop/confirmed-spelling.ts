@@ -5,6 +5,7 @@ import type { ChatMessage } from "@/types";
 
 import { personKey, replyTurns, type NameQuestionRecord } from "./card-record";
 import { holdsPhrase } from "./evidence";
+import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
 
 /**
  * ============================================================================
@@ -39,9 +40,11 @@ export interface AnsweredNameQuestion {
   readonly latest: boolean;
   /** The person the answer confirmed, and how; null when it confirmed nobody. */
   readonly confirmed: RosterEmployee | null;
-  readonly by: "yes" | "full_name" | null;
+  readonly by: "yes" | "full_name" | "correction" | "surname" | "salon" | null;
   /** No manager turn has answered it yet (QA, c163): the question is still waiting, and its person is not settled. */
   readonly open?: boolean;
+  /** The name the question was about, as the manager typed it (found in their earlier words by the record's key), or null. */
+  readonly typed?: string | null;
 }
 
 /** A roster person's full names: legal, and preferred first name with the surname. */
@@ -52,11 +55,78 @@ function fullNames(person: RosterEmployee): string[] {
 }
 
 /** The person a message confirms in answer to this question, and how (a bare yes to one offer, or an offered full name). */
-function confirmsIn(answer: string, record: NameQuestionRecord, offered: readonly RosterEmployee[]): { confirmed: RosterEmployee | null; by: AnsweredNameQuestion["by"] } {
+function confirmsIn(answer: string, record: NameQuestionRecord, offered: readonly RosterEmployee[], typed: string | null = null): { confirmed: RosterEmployee | null; by: AnsweredNameQuestion["by"] } {
   // A bare yes confirms only a question that offered one person (an offered name off the roster counts as one).
   if (offered.length === 1 && (record.offeredNameKeys?.length ?? 0) === 0 && AFFIRMATIVE.test(answer)) return { confirmed: offered[0]!, by: "yes" };
   const held = offered.filter((person) => fullNames(person).some((name) => holdsPhrase(answer, name)));
-  return held.length === 1 ? { confirmed: held[0]!, by: "full_name" } : { confirmed: null, by: null };
+  if (held.length === 1) return { confirmed: held[0]!, by: "full_name" };
+  /*
+   * Port of Ask Bubbles #1040 (its QA's live round-2 re-run, 22 Nov 2026, U35(a)): "Did you mean **<First> <Mid> <Last>**?"
+   * for the typed "<First> <Mid> <Lastx>", answered "fix her last name <last>": the typed name with the answer's word in
+   * place of the one word that differs IS the offered name. That word corrects the typo, so the answer confirms the person
+   * offered. A substitution on the manager's own typed words, never a list of phrasings. With several people offered, the
+   * one (only one) whose name the word makes is the one confirmed; a word that makes no offered name confirms nobody.
+   */
+  /*
+   * Sunny (item 4's ruling, kept): a bare one-word answer ("remy") is a name, read by the name readers, never a correction:
+   * a first name alone confirms nobody. The correcting word counts when the answer says more than it ("fix her last name
+   * <surname>").
+   */
+  const answerWords = answer.toLowerCase().match(/[\p{L}'-]+/gu) ?? [];
+  if (typed && offered.length > 0 && (record.offeredNameKeys?.length ?? 0) === 0 && answerWords.length > 1) {
+    const plain = (text: string) => text.toLowerCase().match(/[\p{L}'-]+/gu) ?? [];
+    const typedWords = plain(typed);
+    const said = new Set(answerWords);
+    const corrected = offered.filter((person) => fullNames(person).some((name) => {
+      const own = plain(name);
+      if (own.length !== typedWords.length) return false;
+      const differ = own.map((word, at) => (word === typedWords[at] ? -1 : at)).filter((at) => at >= 0);
+      return differ.length === 1 && said.has(own[differ[0]!]!);
+    }));
+    if (corrected.length === 1) return { confirmed: corrected[0]!, by: "correction" };
+  }
+  /*
+   * Port of Ask Bubbles #1081 (its tester's A9: two staff share a first name; its QA's ruling (b), 23 Nov 2026): with
+   * several people offered, the answer names one of them by what only that person has: their surname, or a salon only they
+   * are at (as the salon reader reads it, or a part of the person's own salon name as whole words). Read from the people
+   * the question offered, never a list of phrasings.
+   */
+  if (offered.length > 1) {
+    const sameSurname = (a: RosterEmployee, b: RosterEmployee) => a.lastName.trim().toLowerCase() === b.lastName.trim().toLowerCase();
+    const surname = offered.filter((person) => person.lastName.trim() !== "" && holdsPhrase(answer, person.lastName) && offered.filter((other) => sameSurname(other, person)).length === 1);
+    if (surname.length === 1) return { confirmed: surname[0]!, by: "surname" };
+    const salons = new Set(readSalonMentions(answer).flatMap((mention) => [...mention.salonIds]));
+    /*
+     * Sunny's salon names lead with the state ("NE Kearney", "NE Lincoln O Street"), where Bubbles' store names end with it
+     * ("Bellevue, NE"): the name, the name without its leading state, and each trailing run of its words ("O Street",
+     * "Lincoln O Street"), as whole words. Only a part one offered person's salon has picks them (`atSalon` below).
+     */
+    const salonParts = (id: string) => {
+      const name = (rosterSalonName(id) ?? "").trim();
+      const words = name.replace(/^[A-Z]{2}\s+/, "").split(/\s+/).filter(Boolean);
+      return [name, ...words.map((_word, at) => words.slice(at).join(" "))].map((part) => part.trim()).filter((part) => part.length >= 3);
+    };
+    /* A part another offered person's salon also has ("Street" of two Lincoln salons) names neither. */
+    const partsOf = (person: RosterEmployee) => person.salonIds.flatMap((id) => salonParts(id).map((part) => part.toLowerCase()));
+    const ownParts = (person: RosterEmployee) => partsOf(person).filter((part) => !offered.some((other) => other !== person && partsOf(other).includes(part)));
+    const atSalon = offered.filter((person) => person.salonIds.some((id) => salons.has(id)) || ownParts(person).some((part) => holdsPhrase(answer, part)));
+    if (atSalon.length === 1) return { confirmed: atSalon[0]!, by: "salon" };
+  }
+  return { confirmed: null, by: null };
+}
+
+/** The name the question was about, as the manager typed it in their earlier words (its key is the record's typedKey). */
+function typedIn(turns: readonly string[], typedKey: string): string | null {
+  for (const turn of turns) {
+    const plain = turn.replace(/[^\p{L}\p{N}'\s-]+/gu, " ").split(/\s+/).filter(Boolean);
+    for (let size = 1; size <= 4; size += 1) {
+      for (let at = 0; at + size <= plain.length; at += 1) {
+        const words = plain.slice(at, at + size).join(" ");
+        if (personKey(words) === typedKey) return words;
+      }
+    }
+  }
+  return null;
 }
 
 /** The message holds the name the question was about, as typed (its key): "use <typed>", "keep <typed>". */
@@ -76,8 +146,8 @@ function holdsTyped(answer: string, typedKey: string): boolean {
  * in it: a yes or an offered person's full name, a no, the typed name itself ("use <typed>"), or somebody's full name.
  * Any other turn leaves the question open, and the next turn is read.
  */
-function answersQuestion(answer: string, record: NameQuestionRecord, offered: readonly RosterEmployee[], roster: readonly RosterEmployee[]): boolean {
-  if (confirmsIn(answer, record, offered).confirmed) return true;
+function answersQuestion(answer: string, record: NameQuestionRecord, offered: readonly RosterEmployee[], roster: readonly RosterEmployee[], typed: string | null = null): boolean {
+  if (confirmsIn(answer, record, offered, typed).confirmed) return true;
   if (AFFIRMATIVE.test(answer.split(/[,.;!\n]/)[0] ?? "") || saysNo(answer) || holdsTyped(answer, record.typedKey)) return true;
   if (extractEmployeeNames(answer).some((name) => name.trim().split(/\s+/).length > 1 && !notAPerson(name))) return true;
   return roster.some((person) => fullNames(person).some((name) => holdsPhrase(answer, name)));
@@ -93,15 +163,27 @@ export function answeredNameQuestions(view: NameQuestionView): AnsweredNameQuest
       ...view.history.flatMap((turn, at) => (at > reply && turn.role === "user" ? [String(turn.content ?? "")] : [])).map((text) => ({ text, latest: false })),
       { text: view.question, latest: true },
     ];
-    const answered = later.find((turn) => answersQuestion(turn.text, record, offered, view.roster));
+    const typed = typedIn(view.history.flatMap((turn, at) => (at < reply && turn.role === "user" ? [String(turn.content ?? "")] : [])).reverse(), record.typedKey);
+    const answered = later.find((turn) => answersQuestion(turn.text, record, offered, view.roster, typed));
     if (!answered) {
       out.push({ record, offered, answer: "", latest: false, confirmed: null, by: null, open: true });
       continue;
     }
-    const { confirmed, by } = confirmsIn(answered.text, record, offered);
-    out.push({ record, offered, answer: answered.text, latest: answered.latest, confirmed, by });
+    const { confirmed, by } = confirmsIn(answered.text, record, offered, typed);
+    out.push({ record, offered, answer: answered.text, latest: answered.latest, confirmed, by, typed });
   }
   return out;
+}
+
+/**
+ * Port of Ask Bubbles #1040 (U35(a) follow-up): the names the manager typed that this chat confirmed as this roster person,
+ * as typed, with each one's first and last word ("<First> <Mid> <Lastx>", "<First> <Lastx>"): spellings the card's account
+ * puts the settled name in place of, even when the roster alone cannot tell (another staff member spelled close).
+ */
+export function spellingsConfirmedFor(view: NameQuestionView, employeeId: string): string[] {
+  const typed = answeredNameQuestions(view).filter((asked) => asked.confirmed?.id === employeeId).map((asked) => asked.typed?.trim() ?? "").filter((name) => name.split(/\s+/).length >= 2);
+  const firstLast = typed.map((name) => name.split(/\s+/)).filter((words) => words.length > 2).map((words) => `${words[0]} ${words.at(-1)}`);
+  return [...new Set([...typed, ...firstLast])];
 }
 
 /** The typed-name keys the manager confirmed as this roster person: a name with one of these keys is this person. */

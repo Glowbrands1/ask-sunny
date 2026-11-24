@@ -118,7 +118,7 @@ export function AppShell({
           ) : null}
           {/*
             No bell here (Pau, 23 Nov 2026: "can we remove this and add a notification bar instead below the
-            overview"). Notifications is a rail item under Overview, on desktop and in the phone drawer (sidebar.tsx).
+            overview"). Notifications is a rail bar ("i dont want a bell, i need a bar") under Overview, on desktop and in the phone drawer (sidebar.tsx).
           */}
           <Dialog>
             <DialogTrigger asChild>

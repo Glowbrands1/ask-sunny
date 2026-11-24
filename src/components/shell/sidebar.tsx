@@ -42,9 +42,9 @@ export function SidebarNav({
    */
   meetingTabs?: { href: string; label: string }[];
   /**
-   * The signed-in person's notifications (the layout's `bellForLayout`). On desktop the bell is the rail's first
-   * item, as in Ask Bubbles (Pau, 23 Nov 2026); on phones the top bar shows it (app-shell.tsx), so the drawer does
-   * not repeat it. Null: no bell.
+   * The signed-in person's notifications (the layout's `bellForLayout`): a labelled "Notifications" bar in the rail
+   * (Pau, 23 Nov 2026: "i dont want a bell, i need a bar"), directly under Overview, on desktop and in the phone drawer
+   * ("a notification bar instead below the overview"). The top bar has no bell. Null: no bar.
    */
   bell?: BellData | null;
 }) {
