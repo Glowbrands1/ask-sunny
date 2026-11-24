@@ -10,7 +10,7 @@ import { evidenceFrom, lastResult, loopStandIn, type LoopDecision, type LoopView
  * HR APPROVAL OF FORMS (owner request, 23 Nov 2026; CLAUDE.md rule 5)
  * ============================================================================
  *
- * Every form but the Coaching Form waits for HR after "Finalize and send to HR for approval", and while it waits only the
+ * Every form but the Coaching Form waits for HR after "Finalize and send for approval", and while it waits only the
  * manager who created it and HR may know it exists (owner: "only me and HR can see its waiting and im the only one
  * to see HR's note or approval"). The AI reads the step through read_hr_approvals, scoped like the page:
  *
@@ -104,6 +104,37 @@ export const NOV23_HR_APPROVAL_CASES: ReplayCase[] = [
       expect(JSON.stringify(waiting[0])).toMatch(/Corrective Action Form for Peregrine Ashdown/);
       // Sent Friday 20 Nov 9:00 AM Central; Monday 23 Nov 10:00 AM is past one business day.
       expect(waiting[0]!.overdue).toBe(true);
+    },
+  },
+  {
+    id: "nov24-hr-approval-manager-edits-while-waiting-hr-reads-the-update",
+    title:
+      'owner: "have the option to edit the form but also make ure the edited form carries over to [HR] as approver so she sees the updated version": the manager saves the waiting form on the card, it stays with HR, and HR\'s "what\'s waiting on me?" still lists it',
+    report:
+      "Owner request, 24 Nov 2026: the sender is told HR approves the form before it is final and gets a notification; they may still edit it, and HR sees the updated version",
+    status: "fixed",
+    fixFlags: FLAGS,
+    async run(t) {
+      if (!t.loopOn?.() || !hrApprovalEnabled() || !t.saveOnCard) return;
+      const id = await sentToHr(t);
+      t.addRows!("form_hr_approvers", [{ app_user_id: HR_ACCOUNT, revoked_at: null }]);
+      t.addRows!("app_users", [{ id: HR_ACCOUNT, email: "hr.wren@example.com", display_name: "Wren", status: "active" }]);
+
+      // The salon director who sent it saves a change on the card, through the real route.
+      t.as("salon_director", KEARNEY);
+      await t.saveOnCard(id, { form_date: "2026-11-20" });
+      expect(t.values(id).form_date, "the manager's change to the waiting form was not saved").toBe("2026-11-20");
+      const row = (t.rows?.("form_instances") ?? []).find((candidate) => candidate.id === id);
+      expect(row?.hr_approval_state, "editing took the form away from HR").toBe("pending");
+      const updated = (t.rows?.("app_notifications") ?? []).filter((bell) => bell.kind === "form_hr_approval_updated");
+      expect(updated.map((bell) => bell.recipient_email), "HR was not told the form was updated").toEqual(["hr.wren@example.com"]);
+
+      // HR reads the same, updated form.
+      const result = asksHr(t, "district_manager", GLOBAL, HR_ACCOUNT);
+      await t.thread().say("what's waiting on me?");
+      const waiting = result().waiting_for_you as Record<string, unknown>[];
+      expect(waiting, "the edited form left HR's queue").toHaveLength(1);
+      expect(JSON.stringify(waiting[0])).toMatch(/Corrective Action Form for Peregrine Ashdown/);
     },
   },
   {

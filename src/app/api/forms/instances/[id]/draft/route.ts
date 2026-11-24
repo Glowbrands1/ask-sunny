@@ -450,10 +450,10 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         { status: 409 },
       );
     }
-    // HR APPROVAL: a form waiting for HR is changed only by HR until they send it back.
+    // HR APPROVAL: a waiting form is not redrafted by the assistant; its creator, a sender or HR edits it on the form (owner, 24 Nov 2026).
     if (heldForHr(loaded.instance.hrApprovalState)) {
       return NextResponse.json(
-        { error: "This form is waiting for HR approval. You can change it again if HR sends it back.", code: "HELD_FOR_HR" },
+        { error: "This form is waiting for HR approval. Change it on the form itself; HR sees your changes.", code: "HELD_FOR_HR" },
         { status: 409 },
       );
     }
