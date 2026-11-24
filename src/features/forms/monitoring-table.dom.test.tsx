@@ -621,6 +621,20 @@ describe("the row menu \"…\" opens with something in it", () => {
 });
 
 /*
+ * Owner, 24 Nov 2026: "the manager will be able to see that in form monitoring with a note "approved"". The page sets
+ * `hrApproved` only for the form's creator, its senders and HR (`mayReadHrDecision`); the row says it.
+ */
+describe("a form HR approved", () => {
+  it("reads \"Approved by HR\" in its row; a form without it says nothing about HR", () => {
+    table([form({ id: "approved-1", hrApproved: true }), form({ id: "plain-1", employeeName: "Rowan Pike (test)" })]);
+    const notes = screen.getAllByTestId("hr-approved-note");
+    expect(notes).toHaveLength(1);
+    expect(notes[0]!.textContent).toBe(" · Approved by HR");
+    expect(notes[0]!.closest("tr")!.textContent).toContain("Jordan Vance (test)");
+  });
+});
+
+/*
  * Pau, 24 Nov 2026: "can u just create a multi click button and delete inside
  * both apps so we can easily delete the ones we dont want"
  */

@@ -154,6 +154,28 @@ describe("a form the manager replied to after HR sent it back, in the sibling's 
   });
 });
 
+describe("HR's approved forms in the sibling's answer (owner, 24 Nov 2026: the Approved tab for both apps)", () => {
+  it("answered with each approved form's line, sender, when and by whom, and its review path; an older sibling's answer reads as none", async () => {
+    const id = await waitingForm();
+    const row = store.form_instances.find((candidate) => (candidate as { id: string }).id === id) as Record<string, unknown>;
+    row.hr_approval_state = "approved";
+    row.status = "finalized";
+    row.hr_approval_decided_at = "2026-11-24T15:00:00Z";
+    row.hr_approval_decided_by = HR;
+    const answer = await hrQueueForPartner("hr.wren@example.com", new Date("2026-11-24T16:00:00Z"));
+    expect(answer.approved).toEqual([
+      { line: expect.stringMatching(/for Juniper Calloway at Invented Place$/), from: "Thistle", approvedAt: "2026-11-24T15:00:00Z", approvedBy: "You", path: `/forms/hr-approval/${id}` },
+    ]);
+    expect(JSON.stringify(answer)).not.toContain(MANAGER);
+
+    const path = "/forms/hr-approval/0b6f1c1e-2a8d-4c55-9a10-5f3b6c7d8e9f";
+    const parsed = parseSiblingHrAnswer({ app: "Sibling App", approver: true, forms: [], approved: [{ line: "ok", from: "Ines", approvedAt: null, approvedBy: "Wren", path }, { line: "outside", path: "https://evil.test/x" }] }, "https://sibling.test");
+    expect(parsed.status === "ok" && parsed.approved.map((form) => [form.line, form.href])).toEqual([["ok", `https://sibling.test${path}`]]);
+    const older = parseSiblingHrAnswer({ app: "Sibling App", approver: true, forms: [] }, "https://sibling.test");
+    expect(older.status === "ok" && older.approved).toEqual([]);
+  });
+});
+
 describe("what this app asks the sibling", () => {
   it("without SIBLING_HR_SECRET: off, and nothing is sent", async () => {
     const fetchImpl = vi.fn();

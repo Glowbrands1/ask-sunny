@@ -46,7 +46,8 @@ import { isIsoCalendarDate } from "./form-date-answer";
 import { refreshedActionPlan } from "./ca-action-plan";
 import { blankRequiredFields, requiredFieldsMessage } from "./required-fields";
 import { getCurrentVersion, getVersion, type TemplateVersionRow } from "./repository";
-import { HELD_FOR_HR, asHrApprovalState, editableDraft, heldForHr, withoutHeldForHr, type HrApprovalState } from "./hr-approval-rules";
+import { HELD_FOR_HR, asHrApprovalState, heldForHr, withoutHeldForHr, type HrApprovalState } from "./hr-approval-rules";
+import { editableDraftNow, inHrEditScope } from "./hr-edit-scope";
 import { hrHoldLive, releaseStaleHold } from "./hr-approval-approvers";
 
 /** The form's own Date line — the same day as `form_instances.form_date`. */
@@ -727,7 +728,7 @@ async function writeValues(
    * HR's edit of a form waiting for them goes through the one function the value guard lets past the hold
    * (migration 20261123001000); every other writer is refused there while the form is pending.
    */
-  const { error } = options.viaHrApproval
+  const { error } = options.viaHrApproval || inHrEditScope(instanceId)
     ? await supabase.rpc("form_hr_approval_write_values", {
         p_instance_id: instanceId,
         p_rows: rows.map(({ field_key, value, checked, filled_by, provenance: rowProvenance }) => ({
@@ -792,7 +793,7 @@ export async function applyStatedFacts(
   allowedKeys?: ReadonlySet<string>,
 ): Promise<string[]> {
   const loaded = await loadInstance(instanceId);
-  if (!loaded || !editableDraft(loaded.instance)) return [];
+  if (!loaded || !editableDraftNow(loaded.instance)) return [];
 
   const selected = selectStatedFacts({
     document: parseFormDocument(loaded.version.document),
@@ -844,7 +845,8 @@ export async function saveInstanceValues(
   if (loaded.instance.status !== "draft") {
     throw new Error("This form is finalized. Create a revision to change it.");
   }
-  const hrEdit = options.pastHrHold === true && heldForHr(loaded.instance.hrApprovalState);
+  // The card's checked edit (`pastHrHold`), or the chat's, inside its scope for this form (`hr-edit-scope.ts`).
+  const hrEdit = (options.pastHrHold === true || inHrEditScope(instanceId)) && heldForHr(loaded.instance.hrApprovalState);
   if (heldForHr(loaded.instance.hrApprovalState) && !hrEdit) {
     // Held only while the hold is live; otherwise (flag off, no approver left) the form goes back to a plain draft.
     if (await hrHoldLive()) throw new HeldForHrError();
@@ -902,6 +904,17 @@ export async function saveInstanceValues(
    * HR read: the form's general history is served to every reader once it is approved, and naming HR there would tell
    * them it went through HR (owner, 23 Nov 2026).
    */
+  /*
+   * A SENT-BACK FORM THE MANAGER EDITS IS THEIR REPLY (owner, 24 Nov 2026: "yeh" to editing alone counting): recorded
+   * in the approval history, and HR is told, whichever path saved it. Only a real change counts.
+   */
+  if (
+    loaded.instance.hrApprovalState === "changes_requested" &&
+    options.hrHistoryOnly !== true &&
+    (Object.keys(changedValues).length > 0 || Object.keys(changedChecked).length > 0)
+  ) {
+    await (await import("./hr-approval")).recordSentBackEdit(loaded.instance, actor);
+  }
   if (!hrEdit && options.hrHistoryOnly !== true) {
     await recordEvent(instanceId, "edited", actor, {
       fields: Object.keys(changedValues).length,

@@ -92,6 +92,8 @@ export interface MonitoredForm {
    * server when it was created, not a guess from the employee's name.
    */
   isDemo: boolean;
+  /** HR approved it, shown only to its creator, its senders and HR (the page decides, `mayReadHrDecision`). */
+  hrApproved?: boolean;
   updatedAt: string;
 }
 
@@ -686,6 +688,11 @@ export function MonitoringTable({
                           </span>
                           <span className="block text-[11px] text-subtle-foreground">
                             v{form.templateVersion} · {DOC_STATUS_LABEL[form.status]}
+                            {form.hrApproved ? (
+                              <span className="font-semibold text-status-ready" data-testid="hr-approved-note">
+                                {" · Approved by HR"}
+                              </span>
+                            ) : null}
                             {form.source === "ask_sunny" ? " · Ask Sunny" : ""}
                           </span>
                         </td>
