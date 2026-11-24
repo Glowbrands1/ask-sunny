@@ -1453,7 +1453,7 @@ function chatHalf(half: 0 | 1): string[] {
   return half === 0 ? all.slice(0, middle) : all.slice(middle);
 }
 /*
- * THE REPLAY PACK IN NINTHS (QA, 9 Nov 2026 in halves; thirds 12 Nov; quarters 13 Nov; fifths 15 Nov 2026, "QA 15 Nov:
+ * THE REPLAY PACK IN TENTHS (QA, 9 Nov 2026 in halves; thirds 12 Nov; quarters 13 Nov; fifths 15 Nov 2026, "QA 15 Nov:
  * quarter 2 passed 9 min after batch G's cases", ETIMEDOUT at 540 s on ask-sunny#1011; sixths 16 Nov 2026: fifth 4 of 5
  * timed out at 540 s on ask-sunny#1056 after #1054's and #1056's cases, ETIMEDOUT, no assertion failed): its child timed out at
  * 540 s on CI (ask-sunny#713, #717; main 7e8dcdb6 with halves; ask-sunny#839 with thirds, its first third at 540 s;
@@ -1466,8 +1466,10 @@ function chatHalf(half: 0 | 1): string[] {
  * Ninths since 22 Nov 2026: eighth 7 of 8 timed out at 540 s on ask-sunny#1229 (ETIMEDOUT, no assertion failed; its five
  * new cases take under a second, but they reshuffle the parts by id), while the eighths on ask-sunny#1227 already took
  * 6 to 8.4 of their 9 minutes.
+ * Tenths since 24 Nov 2026: ninth 5 of 9 timed out at 540 s on ask-sunny#1313, twice (the run and its one re-run;
+ * ETIMEDOUT, no assertion failed), after #1308's and #1310's replay cases on main. That PR changes no chat code.
  */
-const REPLAY_PACK_PARTS = 9;
+const REPLAY_PACK_PARTS = 10;
 const REPLAY_PACK_E2E = `${REPLAY_PACK}/replay-pack-e2e.test.ts`;
 /** The pack's own test files besides the e2e (registry, policy-line, step-b-live-check, …): one child, a few seconds. */
 function replayPackOtherFiles(): string[] {
