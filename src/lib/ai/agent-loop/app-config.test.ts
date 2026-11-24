@@ -233,6 +233,11 @@ import { rulesBookText } from "./rules-book";
  * actions, and the reply offers the forms on file (prior_on_file.ask_exactly); the stated read-back adds "as you said" to
  * prior_actions only when stated_this_turn lists it, and asks for prior_actions_evidence quoting the manager's words. They
  * read the same under every config; nothing else changed.
+ *
+ * Re-taken on purpose on 24 Nov 2026 (port of Ask Bubbles #1123; Pau's review, the owner's request): "Forms on file and
+ * privacy" gained one line, same_incident_on_file (say this person already has this form on file for this date, ask
+ * exactly, open it or propose again with separate_incident_evidence). It reads the same under every config; nothing
+ * else changed.
  */
 
 const fixture = (name: string): string => readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), "utf8");

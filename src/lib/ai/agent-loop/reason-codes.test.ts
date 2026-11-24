@@ -87,6 +87,9 @@ const KNOWN = new Set([
   // Added on purpose (owner, 24 Nov 2026: "the chat should say "waiting for HR approval" instead of a general save
   // error"): edit_form on a form waiting for HR writes nothing and says it is waiting for HR approval.
   "waiting_for_hr_approval",
+  // Added on purpose (port of Ask Bubbles #1123; Pau's review, 23 Nov 2026): a CA or Coaching card for a person and
+  // incident date that already has that form on file is asked about ("open that one, or is this a separate incident?").
+  "same_incident_on_file",
 ]);
 
 /** A line that returns a refusal: `error:` followed by a string, a template or a named message (not `error: Boolean(...)`). */

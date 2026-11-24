@@ -29,9 +29,15 @@ const card = (reply: { formProposal?: unknown }) => (reply.formProposal as ChatF
 /** A finalized Written CA dated 09/10 for Remy Calder, filed under `name`, archived or not. */
 async function writtenOnFile(t: ReplayContext, name: string, archived: boolean): Promise<void> {
   vi.setSystemTime(new Date("2026-09-10T23:28:00Z"));
+  /*
+   * CHANGED ON PURPOSE (port of Ask Bubbles #1123, 24 Nov 2026): a second CA card for Remy on 09/10 is now asked about
+   * ("open that one, or is this a separate incident?") instead of made. A second setup card is proposed for 09/09; the
+   * line below still dates every form 09/10, so what each case checks is unchanged.
+   */
+  const proposeOn = t.forms().some((row) => row.form_date === "2026-09-10") ? "2026-09-09" : "2026-09-10";
   t.loopModel!(loopStandIn((view): LoopDecision => (lastResult(view, "propose_form")
     ? { text: "Here's the card." }
-    : { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: "Remy Calder was wearing sandals at work.", incident_date: "2026-09-10", warning_level: "written", level_evidence: evidenceFrom(view, "written") } })));
+    : { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: "Remy Calder was wearing sandals at work.", incident_date: proposeOn, warning_level: "written", level_evidence: evidenceFrom(view, "written") } })));
   const setup = t.thread();
   await setup.say("written ca for remy calder, she was wearing sandals at work on 9/10");
   const id = await setup.create();

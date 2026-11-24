@@ -180,7 +180,15 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       expect(reply.formProposal ?? null, "an open request made a new card").toBeNull();
       expect(reply.content, "the reply talks about the staff list").not.toMatch(/staff list/i);
       // Changed on purpose (the rebuild plan's PR 1b: OPEN_REQUEST, a word list, is gone): the card the model proposed first is withdrawn when it finds the form to open (find_past_forms open: true).
-      if (offline) expect(toolResults(model.views, "find_past_forms")[0], "the card proposed first was not withdrawn").toMatch(/"card_withdrawn"/);
+      /*
+       * CHANGED ON PURPOSE (port of Ask Bubbles #1123, 24 Nov 2026): the card the model reaches for first is for Remy's
+       * Coaching dated 10/31, which is on file, so propose_form now refuses it at once (same_incident_on_file) and there is
+       * no card left to withdraw. Either guard keeps the open request from making a new card.
+       */
+      if (offline) {
+        const refusedFirst = /"reason_code":"same_incident_on_file"/.test(toolResults(model.views, "propose_form")[0] ?? "");
+        if (!refusedFirst) expect(toolResults(model.views, "find_past_forms")[0], "the card proposed first was neither refused nor withdrawn").toMatch(/"card_withdrawn"/);
+      }
     },
   },
   {
@@ -715,6 +723,12 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       expect(reply.content, "the reply does not name the Woven legal name once").toMatch(/\(Josephine Quill in Woven\)/);
       const id = await preferred.create();
       expect(t.values(id).employee_name, "the form does not carry the name the manager used").toBe("Jo Quill");
+      /*
+       * CHANGED ON PURPOSE (port of Ask Bubbles #1123, 24 Nov 2026): Jo Quill and Josephine Quill are one person, so a second
+       * CA for her on 11/12 is now asked about ("open that one, or is this a separate incident?") instead of made. This case
+       * checks the name on the card, so the first form is moved to 11/11 before the second chat.
+       */
+      Object.assign((t.forms() as Record<string, unknown>[]).find((row) => row.id === id)!, { form_date: "2026-11-11" });
       t.loopModel!(model("josephine quill"));
       const legal = t.thread();
       const typed = await legal.say("ca for josephine quill, she was late on 11/12");
