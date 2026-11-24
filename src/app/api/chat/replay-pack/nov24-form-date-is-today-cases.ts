@@ -37,7 +37,7 @@ export const NOV24_FORM_DATE_IS_TODAY_CASES: ReplayCase[] = [
     id: "nov24-form-date-is-today-late-september-11",
     title: `"create a verbal CA for <P>, she was late to work on September 11, 2026" — the card is dated today, and the CA finalized 09/12 is offered as history`,
     report: REPORT,
-    status: { open: "the card is dated 09/11/2026, the incident, so the Corrective Action finalized on 09/12/2026 is never offered" },
+    status: "fixed", // FORM_DATE_IS_TODAY_ENABLED is on in production (Pau, 24 Nov 2026)
     fixFlags: [FLAG],
     async run(t) {
       if (!t.loopOn?.() || process.env.AGENT_LOOP_LIVE === "1") return;

@@ -1,5 +1,7 @@
 import { expect, vi } from "vitest";
 
+import { formDateIsTodayEnabled } from "@/lib/config/chat-quality-flags";
+
 import { KEARNEY, STAFF, type DirectoryRow, type ReplayCase, type ReplayContext } from "./cases";
 import { evidenceFrom, headingWith, lastResult, loopStandIn, type LoopDecision } from "./loop-stand-in";
 
@@ -74,7 +76,17 @@ export const NOV23_AGENT_LOOP_PRIORS_ON_FILE_BEFORE_INCIDENT_CASES: ReplayCase[]
       const offers = model.views.flatMap((view) => view.results.filter((result) => result.tool === "propose_form"))
         .map((result) => (result.output as { facts?: { prior_on_file?: { ask_exactly?: string } } } | null)?.facts?.prior_on_file?.ask_exactly ?? "")
         .join("\n");
-      expect(offers, "a form on file dated after the incident is offered").not.toMatch(/11\/10\/2026|11\/17\/2026/);
+      if (formDateIsTodayEnabled()) {
+        /*
+         * Changed on purpose (Pau, 24 Nov 2026: "it needs to add all past forms"; FORM_DATE_IS_TODAY_ENABLED is on in
+         * production). The new form is dated the day it is written (11/22 here), not the incident's 11/1, so every form
+         * on file up to today is history and is offered, those of 11/10 and 11/17 included. They are still only offered.
+         */
+        expect(offers, "a form on file before today was not offered").toMatch(/11\/10\/2026/);
+        expect(offers, "a form on file before today was not offered").toMatch(/11\/17\/2026/);
+      } else {
+        expect(offers, "a form on file dated after the incident is offered").not.toMatch(/11\/10\/2026|11\/17\/2026/);
+      }
       expect(offers, "the form on file of 10/2, before the incident, was never offered").toMatch(/10\/02\/2026/);
     },
   },
