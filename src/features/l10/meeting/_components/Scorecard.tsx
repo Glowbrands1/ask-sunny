@@ -31,25 +31,46 @@ function Cell({ row, week, label, onCommit, bloom = false }: { row: ScorecardRow
   const value = row.weeks[week] ?? null;
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
+  const [invalid, setInvalid] = useState(false);
   if (editing) {
     const done = () => {
       const parsed = parseCell(draft);
-      if (parsed.ok && parsed.value !== value) onCommit(parsed.value);
+      // A value that is not a number is never thrown away quietly: the cell stays open and says so (Escape cancels).
+      if (!parsed.ok) {
+        setInvalid(true);
+        return;
+      }
+      if (parsed.value !== value) onCommit(parsed.value);
+      setInvalid(false);
       setEditing(false);
     };
     return (
+      <span className="flex flex-col items-end gap-0.5">
       <input
         autoFocus
         aria-label={`${row.metric} ${label}`}
+        aria-invalid={invalid || undefined}
         value={draft}
-        onChange={(e) => setDraft(e.target.value)}
+        onChange={(e) => {
+          setDraft(e.target.value);
+          setInvalid(false);
+        }}
         onBlur={done}
         onKeyDown={(e) => {
           if (e.key === "Enter") done();
-          if (e.key === "Escape") setEditing(false);
+          if (e.key === "Escape") {
+            setInvalid(false);
+            setEditing(false);
+          }
         }}
-        className="h-9 w-[72px] rounded-md border border-bronze bg-white px-1.5 text-right font-mono text-sm"
+        className={cx("h-9 w-[72px] rounded-md border bg-white px-1.5 text-right font-mono text-sm", invalid ? "border-[#8a1c1c]" : "border-bronze")}
       />
+      {invalid && (
+        <span role="alert" className="text-[11px] font-semibold text-[#8a1c1c]">
+          Not a number. Esc to cancel.
+        </span>
+      )}
+      </span>
     );
   }
   const tone = cellTone(row, value);

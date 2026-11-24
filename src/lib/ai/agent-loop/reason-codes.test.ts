@@ -48,6 +48,10 @@ const KNOWN = new Set([
   "name_answer_keeps_form", "close_spelling_not_confirmed",
   // Added on purpose (QA, 16 Nov 2026; Runner 2's c014 T6): a heading on a non-CA card that the manager never named for it.
   "policy_not_for_this_card",
+  // Added on purpose (Pau's job-title rule via QA, 23 Nov 2026): a job_title with no instruction quoted, or said beside the name.
+  "job_title_not_instructed",
+  // Added on purpose (port of Ask Bubbles #1077): a re-propose of the card on screen with no account goes back once.
+  "card_account_missing",
   // Added on purpose (QA's item 9, 22 Nov 2026; Ask Bubbles' R21): a bare "Yes" that answers no policy question never sets one.
   "yes_sets_no_policy",
   // QA (16 Nov 2026, live group E): an edit asked for a form type with forms on file and another card on screen.
@@ -72,6 +76,9 @@ const KNOWN = new Set([
   // Added on purpose (Pau, 21 Nov 2026; FORM_TOPIC_SEARCH_ENABLED off): find_past_forms asked for forms by topic alone
   // says plainly that searching by topic is not available yet.
   "topic_search_off",
+  // Added on purpose (port of Ask Bubbles #1111, board f099 on the loop): the form the manager asked for by its title is
+  // another library form, or no form in the library; never a silent swap.
+  "form_asked_is_another", "form_not_in_library",
 ]);
 
 /** A line that returns a refusal: `error:` followed by a string, a template or a named message (not `error: Boolean(...)`). */

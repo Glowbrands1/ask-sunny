@@ -109,7 +109,7 @@ export function AppShell({
             THE PHONE'S UNREAD DOT (QA for Pau, 23 Nov 2026). The top bar lost its bell when Notifications moved under
             Overview in the rail ("can we remove this and add a notification bar instead below the overview"); on a
             phone the rail is a drawer, so this red dot on the menu button says there is something unread inside. No
-            number: the count is on the Notifications item. Marking read revalidates the layout, so it clears itself.
+            number: the count is on the Notifications bar. Marking read revalidates the layout, so it clears itself.
           */}
           {menuUnread ? (
             <span
@@ -132,7 +132,7 @@ export function AppShell({
           ) : null}
           {/*
             No bell here (Pau, 23 Nov 2026: "can we remove this and add a notification bar instead below the
-            overview"). Notifications is a rail item under Overview, on desktop and in the phone drawer (sidebar.tsx).
+            overview"). Notifications is a rail bar ("i dont want a bell, i need a bar") under Overview, on desktop and in the phone drawer (sidebar.tsx).
           */}
           <Dialog>
             <DialogTrigger asChild>

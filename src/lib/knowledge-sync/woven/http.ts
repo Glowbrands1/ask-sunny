@@ -2,16 +2,51 @@ import "server-only";
 
 import { WOVEN_TEAM_TRANSPORT } from "./config";
 import {
+  ANTIFORGERY_DEFAULT_HEADER,
   ANTIFORGERY_ERROR_MARKER,
   ANTIFORGERY_HEADER,
+  ANTIFORGERY_HEADER_NAME,
+  ANTIFORGERY_META_NAME,
+  DASHBOARD_PATH,
   DOWNLOAD_HOST_PATTERN,
   LOGIN_FIELDS,
   LOGIN_FORM_MARKER,
   LOGIN_PATH_PREFIXES,
 } from "./contract";
-import { attr, elementsByTag, parseHtmlDocument } from "./html";
+import { attr, elementsByTag, inlineScripts, parseHtmlDocument } from "./html";
 
 type ParsedPage = ReturnType<typeof parseHtmlDocument>;
+
+/**
+ * The anti-forgery token an authenticated page carries: its hidden
+ * `__RequestVerificationToken` input, else a token `<meta>`. Null: none.
+ */
+export function pageAntiforgeryToken(page: ParsedPage): string | null {
+  const input = hiddenInputValue(page, LOGIN_FIELDS.antiForgery);
+  if (input) return input;
+  const meta = elementsByTag(page, "meta").find((el) => ANTIFORGERY_META_NAME.test(attr(el, "name") ?? ""));
+  const content = meta ? attr(meta, "content") : null;
+  return content && content.length > 0 ? content : null;
+}
+
+/**
+ * The header name the page's own scripts send the token in: a key of an ajax
+ * `headers: { … }` object, or a `setRequestHeader("…", …)` call, whose name is
+ * an anti-forgery header's. Null: the page declares none.
+ */
+export function pageAntiforgeryHeaderName(page: ParsedPage): string | null {
+  for (const script of inlineScripts(page)) {
+    for (const block of script.matchAll(/headers\s*:\s*\{([^{}]*)\}/g)) {
+      for (const key of block[1]!.matchAll(/(['"]?)([A-Za-z_][A-Za-z0-9_-]*)\1\s*:/g)) {
+        if (ANTIFORGERY_HEADER_NAME.test(key[2]!)) return key[2]!;
+      }
+    }
+    for (const call of script.matchAll(/setRequestHeader\(\s*(['"])([^'"]+)\1/g)) {
+      if (ANTIFORGERY_HEADER_NAME.test(call[2]!)) return call[2]!;
+    }
+  }
+  return null;
+}
 
 /** The value of the first `<input name=…>` in a page, or null. */
 export function hiddenInputValue(page: ParsedPage, name: string): string | null {
@@ -141,6 +176,12 @@ export interface WovenTeamClientOptions {
   sleep?: (ms: number) => Promise<void>;
   transport?: Partial<{ -readonly [K in keyof typeof WOVEN_TEAM_TRANSPORT]: number }>;
   deadlineAt?: number | null;
+  /**
+   * WOVEN_POST_ANTIFORGERY_HEADER_ENABLED: every content POST carries the
+   * latest authenticated page's anti-forgery token in a header (see
+   * `ANTIFORGERY_DEFAULT_HEADER`). Default off: no header, as before.
+   */
+  antiforgeryHeader?: boolean;
 }
 
 export interface PageResponse {
@@ -177,6 +218,9 @@ export class WovenTeamClient {
   private requests = 0;
   /** The most recent `__RequestVerificationToken` an authenticated page carried. */
   pageToken: string | null = null;
+  /** The header name the latest page's scripts send the token in (null: none declared). */
+  pageTokenHeader: string | null = null;
+  private readonly antiforgeryHeader: boolean;
 
   constructor(options: WovenTeamClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, "");
@@ -186,6 +230,7 @@ export class WovenTeamClient {
     this.sleep = options.sleep ?? realSleep;
     this.transport = { ...WOVEN_TEAM_TRANSPORT, ...options.transport };
     this.deadlineAt = options.deadlineAt ?? null;
+    this.antiforgeryHeader = options.antiforgeryHeader === true;
   }
 
   get requestsMade(): number {
@@ -211,12 +256,24 @@ export class WovenTeamClient {
   /** A JSON read posted as JSON (`Content-Type: application/json; charset=utf-8`). */
   async postJson(path: string, value: unknown | undefined): Promise<unknown> {
     const body: Body = value === undefined ? { kind: "empty-json" } : { kind: "json", value };
-    return this.expectJson(await this.request("POST", path, body), path);
+    return this.expectJson(await this.request("POST", path, body, await this.contentPostHeaders()), path);
   }
 
   /** A JSON read posted as a form (jQuery's default encoding). */
   async postForm(path: string, fields: Record<string, string>): Promise<unknown> {
-    return this.expectJson(await this.request("POST", path, { kind: "form", value: fields }), path);
+    return this.expectJson(await this.request("POST", path, { kind: "form", value: fields }, await this.contentPostHeaders()), path);
+  }
+
+  /**
+   * With WOVEN_POST_ANTIFORGERY_HEADER_ENABLED: the anti-forgery header a
+   * content POST carries. No page read yet in this session: the dashboard is
+   * read first for its token. No token on it either: no header (the POST
+   * then answers as it did before).
+   */
+  private async contentPostHeaders(): Promise<Record<string, string>> {
+    if (!this.antiforgeryHeader) return {};
+    if (!this.pageToken) await this.getHtml(DASHBOARD_PATH);
+    return this.pageToken ? { [this.pageTokenHeader ?? ANTIFORGERY_DEFAULT_HEADER]: this.pageToken } : {};
   }
 
   /* ---------------------------------------------------------- signed -- */
@@ -352,7 +409,7 @@ export class WovenTeamClient {
    * One request with same-origin redirects followed by hand (so every
    * `Set-Cookie` along the way is kept) and transient failures retried.
    */
-  async request(method: "GET" | "POST", path: string, body: Body | null): Promise<PageResponse> {
+  async request(method: "GET" | "POST", path: string, body: Body | null, extraHeaders: Record<string, string> = {}): Promise<PageResponse> {
     let url = new URL(path, this.baseUrl);
     let currentMethod = method;
     let currentBody = body;
@@ -379,6 +436,8 @@ export class WovenTeamClient {
         payload = new URLSearchParams(currentBody.value).toString();
       }
       if (currentMethod === "POST" && ANTIFORGERY_HEADER && this.pageToken) headers[ANTIFORGERY_HEADER] = this.pageToken;
+      /* Only on the POST itself: a redirect turns it into a GET, which carries none. */
+      if (currentMethod === "POST") Object.assign(headers, extraHeaders);
 
       const response = await this.sendWithRetries(url, { method: currentMethod, headers, body: payload, redirect: "manual" }, safePath(url.pathname), this.transport.requestTimeoutMs);
       this.jar.absorb(response.headers);
@@ -445,8 +504,12 @@ export class WovenTeamClient {
   }
 
   private rememberToken(html: string): void {
-    const token = hiddenInputValue(parseHtmlDocument(html), LOGIN_FIELDS.antiForgery);
-    if (token) this.pageToken = token;
+    const page = parseHtmlDocument(html);
+    const token = pageAntiforgeryToken(page);
+    if (token) {
+      this.pageToken = token;
+      this.pageTokenHeader = pageAntiforgeryHeaderName(page) ?? this.pageTokenHeader;
+    }
   }
 
   /* -------------------------------------------------------- transport -- */

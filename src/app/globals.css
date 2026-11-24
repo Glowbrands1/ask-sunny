@@ -1673,6 +1673,27 @@
   }
 }
 
+/*
+ * Form Monitoring's "Pending HR approval (N)" with N > 0 (Pau, via QA, 23 Nov 2026: "make it red button and animated
+ * shaking if theres a pending"): a short shake, then still, repeating every few seconds. None under reduced motion.
+ */
+@keyframes hr-pending-shake {
+  0%, 12%, 100% { transform: translateX(0); }
+  2% { transform: translateX(-3px) rotate(-1deg); }
+  4% { transform: translateX(3px) rotate(1deg); }
+  6% { transform: translateX(-2px); }
+  8% { transform: translateX(2px); }
+  10% { transform: translateX(-1px); }
+}
+.hr-pending-shake {
+  animation: hr-pending-shake 4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hr-pending-shake {
+    animation: none;
+  }
+}
+
 @media print {
   .hub-l10 {
     background: #fff !important;

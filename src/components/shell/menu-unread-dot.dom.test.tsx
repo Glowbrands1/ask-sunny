@@ -7,7 +7,7 @@ import type { BellData } from "@/lib/notifications/types";
 /*
  * QA for Pau, 23 Nov 2026: the top bar lost its bell when Notifications moved under Overview ("can we remove this and
  * add a notification bar instead below the overview"). On a phone the rail is a drawer behind the menu button, so the
- * button shows a red dot when something is unread. No number on it: the count is on the Notifications item.
+ * button shows a red dot when something is unread. No number on it: the count is on the Notifications bar.
  */
 vi.mock("next/navigation", () => ({ usePathname: () => "/", useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("@/lib/session/session-context", () => ({ useSession: () => ({ hydrated: true, signedIn: true, demoMode: false }) }));

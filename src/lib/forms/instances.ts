@@ -48,6 +48,7 @@ import { blankRequiredFields, requiredFieldsMessage } from "./required-fields";
 import { getCurrentVersion, getVersion, type TemplateVersionRow } from "./repository";
 import { HELD_FOR_HR, asHrApprovalState, editableDraft, heldForHr, withoutHeldForHr, type HrApprovalState } from "./hr-approval-rules";
 import { hrHoldLive, releaseStaleHold } from "./hr-approval-approvers";
+import { clearRequestBells } from "./hr-approval-bells";
 
 /** The form's own Date line — the same day as `form_instances.form_date`. */
 const FORM_DATE_KEY = "form_date";
@@ -1673,6 +1674,11 @@ export async function archiveInstance(
 
   const loaded = await loadInstance(id);
   if (!loaded) throw new Error("That form vanished while being archived.");
+  /*
+   * An archived form waiting for HR is out of HR's queue, so its "waiting for your approval" bells are marked read and
+   * the bell stops pointing at it (QA, 23 Nov 2026). Restoring it does not ring them again; it is back in the queue.
+   */
+  if (archived && loaded.instance.hrApprovalState === "pending") await clearRequestBells(id);
   return loaded.instance;
 }
 
