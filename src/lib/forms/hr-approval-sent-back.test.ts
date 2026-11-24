@@ -37,8 +37,8 @@ const extra = store as unknown as Record<string, Record<string, unknown>[]>;
 vi.mock("@/lib/supabase/server", () => ({ getSupabaseAdmin: () => fakeSupabase(store) }));
 
 const { ensureTemplateLibrary } = await import("./repository");
-const { createInstance, loadInstance } = await import("./instances");
-const { sendForHrApproval, decideHrApproval, commentOnHrApproval, hrApprovalViewFor, HrApprovalError, listHrQueue, hrQueueSummary, needsHrDecision } =
+const { createInstance, loadInstance, saveInstanceValues } = await import("./instances");
+const { sendForHrApproval, decideHrApproval, commentOnHrApproval, hrApprovalViewFor, HrApprovalError, listHrQueue, hrQueueSummary, needsHrDecision, recordHrEdit } =
   await import("./hr-approval");
 const { actorMaySeeInstance } = await import("./instance-scope");
 
@@ -163,6 +163,35 @@ describe("HR approves a form it sent back, once the manager has replied (Pau)", 
     await commentOnHrApproval(waiting.id, manager, REPLY_NOTE);
     await expect(decideHrApproval(waiting.id, manager, "approve", undefined)).rejects.toBeInstanceOf(HrApprovalError);
     expect((await loadInstance(waiting.id))!.instance.status).toBe("draft");
+  });
+
+  /*
+   * EDITING ALONE IS THE MANAGER'S REPLY. Asked "Do you want editing alone to count as a reply too? Then HR would get
+   * Approve as soon as the manager changes anything on a sent-back form", the owner answered (24 Nov 2026): "yeh".
+   */
+  it.each([
+    ["on the card", {}],
+    ["in chat", { via: "chat" as const }],
+  ])("the manager edits the sent-back form %s, without a note: \"Manager replied to changes\", HR is told, and HR can approve it", async (_where, options) => {
+    const waiting = await sentBack(false);
+    await saveInstanceValues(waiting.id, { values: { form_date: "2026-11-21" }, checked: {} }, CREATOR, options);
+    expect((await listHrQueue(hr)).map((row) => [row.id, row.managerReplied])).toEqual([[waiting.id, true]]);
+    expect((await hrQueueSummary(hr))!.pending).toBe(1);
+    expect((await hrApprovalViewFor(hr, (await loadInstance(waiting.id))!.instance))?.canApproveSentBack).toBe(true);
+    const updated = bells("hr.fenwick@example.com").filter((row) => row.kind === "form_hr_approval_updated");
+    expect(updated.map((row) => row.title)).toEqual(["A form you sent back was updated"]);
+    expect(String(updated[0]!.body)).toMatch(/changed by Marigold\. You can approve it now, or send it back again\.$/);
+    const approved = await decideHrApproval(waiting.id, hr, "approve", undefined);
+    expect(approved).toMatchObject({ status: "finalized", hrApprovalState: "approved" });
+  });
+
+  it("control: a save that changes nothing, or HR's own edit, is not the manager's reply", async () => {
+    const waiting = await sentBack(false);
+    const stored = (await loadInstance(waiting.id))!.values.find((row) => row.fieldKey === "form_date")?.value ?? "";
+    await saveInstanceValues(waiting.id, { values: { form_date: stored }, checked: {} }, CREATOR);
+    await recordHrEdit(waiting.id, hr);
+    expect((await hrApprovalViewFor(hr, (await loadInstance(waiting.id))!.instance))?.canApproveSentBack).toBe(false);
+    await expect(decideHrApproval(waiting.id, hr, "approve", undefined)).rejects.toThrow(/once the manager replies with a note, edits it, or sends it again/);
   });
 
   it("control: HR's own note after sending it back is not the manager's reply", async () => {

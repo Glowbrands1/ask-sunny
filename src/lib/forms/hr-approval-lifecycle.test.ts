@@ -146,10 +146,13 @@ describe("the round trip", () => {
     // 6. The manager's reply and HR's note: only the two of them read the history.
     await commentOnHrApproval(instance.id, manager, "Added it.");
     const view = await hrApprovalViewFor(manager, (await loadInstance(instance.id))!.instance);
+    // Changed on purpose (24 Nov 2026): the manager's edit of the sent-back form is now in the approval thread, as
+    // their reply (owner: "yeh" to editing alone counting as a reply).
     expect(view?.history.map((entry) => [entry.action, entry.by])).toEqual([
       ["submitted", "You"],
       ["edited", "HR"],
       ["changes_requested", "HR"],
+      ["edited", "You"],
       ["commented", "You"],
     ]);
     expect(view?.history.find((entry) => entry.action === "changes_requested")?.note).toBe("Please add the date she was told.");

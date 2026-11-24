@@ -912,6 +912,17 @@ export async function saveInstanceValues(
    * HR read: the form's general history is served to every reader once it is approved, and naming HR there would tell
    * them it went through HR (owner, 23 Nov 2026).
    */
+  /*
+   * A SENT-BACK FORM THE MANAGER EDITS IS THEIR REPLY (owner, 24 Nov 2026: "yeh" to editing alone counting): recorded
+   * in the approval history, and HR is told, whichever path saved it. Only a real change counts.
+   */
+  if (
+    loaded.instance.hrApprovalState === "changes_requested" &&
+    options.hrHistoryOnly !== true &&
+    (Object.keys(changedValues).length > 0 || Object.keys(changedChecked).length > 0)
+  ) {
+    await (await import("./hr-approval")).recordSentBackEdit(loaded.instance, actor);
+  }
   if (!hrEdit && options.hrHistoryOnly !== true) {
     await recordEvent(instanceId, "edited", actor, {
       fields: Object.keys(changedValues).length,

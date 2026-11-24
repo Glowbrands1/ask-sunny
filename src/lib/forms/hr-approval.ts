@@ -14,7 +14,7 @@ import {
   ringBells,
   withoutUnread,
 } from "./hr-approval-bells";
-import { accountEmail, listHrApprovers } from "./hr-approval-approvers";
+import { accountEmail, listHrApprovers, resolveHrApprover } from "./hr-approval-approvers";
 import {
   HR_STATE_LABEL,
   approvableFromSentBack,
@@ -249,7 +249,7 @@ export async function decideHrApproval(
   if (!heldForHr(before.instance.hrApprovalState) && !fromSentBack) {
     throw new HrApprovalError(
       before.instance.hrApprovalState === "changes_requested" && decision !== "reject"
-        ? "This form was sent back for changes. It can be approved or sent back again once the manager replies with a note, or sends it again."
+        ? "This form was sent back for changes. It can be approved or sent back again once the manager replies with a note, edits it, or sends it again."
         : "This form is not waiting for HR approval.",
     );
   }
@@ -385,15 +385,32 @@ export async function recordHrEdit(instanceId: string, actor: FormsActor, now: D
   const href = formHref(instanceId);
   const approvers = (await listHrApprovers()).filter((approver) => approver.id !== actor.id).map((approver) => approver.email);
   const editor = await displayName(actor.id);
+  // A sent-back form the manager edited is their reply: HR may approve it now (`approvableFromSentBack`).
+  const sentBack = loaded.instance.hrApprovalState === "changes_requested";
   await ringBells(
     (await withoutUnread(HR_UPDATED_KIND, href, approvers)).map((recipientEmail) => ({
       recipientEmail,
       kind: HR_UPDATED_KIND,
-      title: "A form waiting for your approval was updated",
-      body: `${formLine(loaded.instance)}, changed by ${editor}. Open it to see the updated version.`,
+      title: sentBack ? "A form you sent back was updated" : "A form waiting for your approval was updated",
+      body: sentBack
+        ? `${formLine(loaded.instance)}, changed by ${editor}. You can approve it now, or send it back again.`
+        : `${formLine(loaded.instance)}, changed by ${editor}. Open it to see the updated version.`,
       href,
     })),
   );
+}
+
+/**
+ * A save to a form HR sent back, by its creator or a sender, from any path (the card, or chat): recorded in the
+ * approval history as the manager's reply, and HR is told (owner, 24 Nov 2026: editing alone counts as a reply).
+ * Anybody else's save, or a form in any other state, records nothing here.
+ */
+export async function recordSentBackEdit(instance: InstanceRow, actorId: string): Promise<void> {
+  if (instance.status !== "draft" || instance.hrApprovalState !== "changes_requested") return;
+  if (!isCreatorOrSender({ id: actorId }, instance)) return;
+  // HR's own edit of a form they sent back is recorded by the route, and is never the manager's reply.
+  if (await resolveHrApprover(actorId)) return;
+  await recordHrEdit(instance.id, { id: actorId, role: null, verified: true, scope: null, visibility: null, hrApprover: false } as unknown as FormsActor);
 }
 
 /** A waiting form was deleted: HR's bell stops pointing at it. */
