@@ -234,6 +234,11 @@ import { rulesBookText } from "./rules-book";
  * actions, and the reply offers the forms on file (prior_on_file.ask_exactly); the stated read-back adds "as you said" to
  * prior_actions only when stated_this_turn lists it, and asks for prior_actions_evidence quoting the manager's words. They
  * read the same under every config; nothing else changed.
+ *
+ * Re-taken on purpose on 24 Nov 2026 (Pau's choice via QA: Failure 2 item 7 stands over G6): the exit line now says an
+ * exit form keeps its own date (today) unless the manager says what to date it, and the last day worked goes on its own
+ * line ("Last day 11/28/2026, as you said."), which may be after today. It reads the same under every config; nothing
+ * else changed.
  */
 
 const fixture = (name: string): string => readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), "utf8");
