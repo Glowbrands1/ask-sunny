@@ -1,3 +1,4 @@
+import { AI_READABLE_PAGES, type AiReadablePage } from "@/config/ai-readable-pages";
 import { SUNNY_LOOP_ROLE_WORDS, SUNNY_METRICS, SUNNY_POLICY_GUARDS, sunnyLoopContent } from "@/config/company/agent-loop";
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { ACTIVE_BRAND } from "@/lib/brand";
@@ -154,6 +155,11 @@ export interface AppConfig {
    * QA 17 Nov 2026). Read from the roster's job title, never from the manager's words.
    */
   readonly leadershipTitle: RegExp;
+  /**
+   * The app's pages and the tool that reads each for the AI, or why none does (`src/config/ai-readable-pages.ts`, board
+   * f039): the data tools' descriptions and the rules book's Business data line are written from it. Unset: no page line.
+   */
+  readonly readablePages?: readonly AiReadablePage[];
   /** This company's content in the rules book, written with the config's own place and staff words. */
   readonly content: (words: LoopWords) => AgentLoopContent;
   /** The manual headings the policy guards check, by role. */
@@ -194,6 +200,7 @@ export const SUNNY_CONFIG: AppConfig = {
   policyGuards: SUNNY_POLICY_GUARDS,
   formsPageName: "Form Monitoring",
   metrics: SUNNY_METRICS,
+  readablePages: AI_READABLE_PAGES,
 };
 
 let active: AppConfig = SUNNY_CONFIG;

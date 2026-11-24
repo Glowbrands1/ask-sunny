@@ -296,4 +296,61 @@ export const NOV23_HR_APPROVAL_CASES: ReplayCase[] = [
       expect(JSON.stringify(t.values(id)), "the finalized form was written").toBe(before);
     },
   },
+  /*
+   * QA on #1280 (24 Nov 2026): read_hr_approvals checks the HR approval page's own permission only where the page would:
+   * an HR approver reads their queue and a manager who sent a form reads their own forms' state, whatever their role;
+   * someone with neither and without Form Monitoring is refused. The "employee" role has no view_form_monitoring.
+   */
+  {
+    id: "nov24-hr-approval-approver-without-form-monitoring-reads-the-queue",
+    title: 'an HR approver whose role lacks Form Monitoring: "what\'s waiting on me?" still lists the form waiting for them (never refused)',
+    report: "QA on #1280, 24 Nov 2026: the new page-permission check must not refuse an HR approver",
+    status: "fixed",
+    fixFlags: FLAGS,
+    async run(t) {
+      if (!t.loopOn?.() || !hrApprovalEnabled()) return;
+      await sentToHr(t);
+      t.addRows!("form_hr_approvers", [{ app_user_id: HR_ACCOUNT, revoked_at: null }]);
+      const result = asksHr(t, "employee", GLOBAL, HR_ACCOUNT);
+      await t.thread().say("what's waiting on me?");
+      const output = result();
+      expect(output.refused, JSON.stringify(output).slice(0, 300)).toBeUndefined();
+      expect(output.reader).toBe("HR approver");
+      expect(output.waiting_for_you as unknown[], "the waiting form did not reach the model").toHaveLength(1);
+    },
+  },
+  {
+    id: "nov24-hr-approval-sender-without-form-monitoring-reads-their-own-form",
+    title: 'the manager who sent it, with a role that lacks Form Monitoring: "has HR approved Peregrine\'s write up yet?" still gives their own form, waiting for HR (never refused)',
+    report: "QA on #1280, 24 Nov 2026: a sender (the #1303 receipt) is never refused about their own form",
+    status: "fixed",
+    fixFlags: FLAGS,
+    async run(t) {
+      if (!t.loopOn?.() || !hrApprovalEnabled()) return;
+      await sentToHr(t);
+      const result = asksHr(t, "employee", KEARNEY);
+      await t.thread().say("has HR approved Peregrine's write up yet?");
+      const output = result();
+      expect(output.refused, JSON.stringify(output).slice(0, 300)).toBeUndefined();
+      const forms = output.your_forms_with_hr as Record<string, unknown>[];
+      expect(forms, "the sender's own waiting form did not reach the model").toHaveLength(1);
+      expect(forms[0]!.state).toBe("Waiting for HR approval");
+    },
+  },
+  {
+    id: "nov24-hr-approval-no-page-no-forms-is-refused",
+    title: "control: someone whose role lacks Form Monitoring, who is not HR and sent no form, is refused in one line and nothing is read",
+    report: "QA on #1280, 24 Nov 2026: the check refuses only someone with nothing to see",
+    status: "fixed",
+    fixFlags: FLAGS,
+    async run(t) {
+      if (!t.loopOn?.() || !hrApprovalEnabled()) return;
+      await sentToHr(t);
+      const result = asksHr(t, "employee", KEARNEY, "someone-else");
+      await t.thread().say("has HR approved my form?");
+      const output = result();
+      expect(String(output.refused ?? ""), JSON.stringify(output).slice(0, 300)).toMatch(/cannot open, and they have no forms with HR/);
+      expect(output.your_forms_with_hr).toBeUndefined();
+    },
+  },
 ];
