@@ -201,7 +201,7 @@ export const NOV23_HR_APPROVAL_CASES: ReplayCase[] = [
       await sentToHr(t);
       const duplicate = await sentToHr(t);
       // Archiving was removed (Pau, 23 Nov 2026), so the duplicate is taken away the way it still can be: deleted.
-      const rows = t.rows?.("form_instances") ?? [];
+      const rows = t.forms!();
       rows.splice(rows.findIndex((candidate) => candidate.id === duplicate), 1);
       t.addRows!("form_hr_approvers", [{ app_user_id: HR_ACCOUNT, revoked_at: null }]);
       const result = asksHr(t, "district_manager", GLOBAL, HR_ACCOUNT);

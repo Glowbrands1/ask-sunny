@@ -127,13 +127,17 @@ export const NOV23_AGENT_LOOP_PRIOR_ACTION_NEVER_AS_YOU_SAID_CASES: ReplayCase[]
     const result = lastResult(model.views.at(-1)!, "propose_form") as Result;
     expect(result?.facts?.stated_this_turn ?? []).not.toContain("prior_actions");
   }),
-  fixed("nov23-on-file-archived-full-name-not-on-file", "An ARCHIVED finalized Written CA under the full name \"Remy Calder\": not on file, so never offered", async (t) => {
+  // CHANGED ON PURPOSE (Pau, 23 Nov 2026, archiving removed): this case asserted an ARCHIVED Written CA was "not on file".
+  // Archiving no longer exists and the unarchive migration clears the flag, so the flagged row is an ordinary finalized
+  // form (the fixture's `archived_at` is ignored) and, under the full name, it IS on file and is offered.
+  fixed("nov23-on-file-archived-full-name-not-on-file", "A finalized Written CA under the full name \"Remy Calder\" (what production held as archived before the unarchive migration): archiving is gone, so it is on file and offered", async (t) => {
     await writtenOnFile(t, "Remy Calder", true);
     vi.setSystemTime(new Date("2026-11-23T14:11:56Z"));
     const model = liveModel(false);
     t.loopModel!(model);
-    await t.thread().say(SAID);
-    expect(onFileOf(model), JSON.stringify(onFileOf(model))).toBeNull();
+    const reply = await t.thread().say(SAID);
+    expect(onFileOf(model)?.ask_exactly ?? "", reply.content).toMatch(/has a Written CA on file from 09\/10\/2026\. Want me to add it to Prior actions\?/);
+    expect(card(reply)?.priorActions ?? null, reply.content).toBeNull();
   }),
   fixed("nov23-on-file-first-name-shared-at-salon-not-attributed", "Pau (23 Nov 2026): an active finalized Written CA under the first name alone (\"Remy\") while another Remy is at the same salon: attributed to neither, never offered", async (t) => {
     t.directory([...STAFF, { id: "e-9", firstName: "Remy", lastName: "Okafor", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" }]);
