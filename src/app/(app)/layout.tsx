@@ -13,7 +13,7 @@ import { l10TabsForLayout } from "@/features/l10/data.server";
 import { aiTrainingNotifyEmails } from "@/lib/ai-training/notify";
 import { listNotifications } from "@/lib/notifications/repository";
 import type { BellData } from "@/lib/notifications/types";
-import { resolveHrApprover } from "@/lib/forms/hr-approval-approvers";
+import { hrQueueSummary } from "@/lib/forms/hr-approval";
 
 /**
  * COUNTS, NOT HUES — the rail's overdue badge.
@@ -65,10 +65,28 @@ async function bellForLayout(): Promise<BellData | null> {
     const identity = await pageIdentity();
     const email = identity?.email?.trim().toLowerCase();
     if (!email) return null;
-    const data = await listNotifications(email);
-    if (data.items.length || aiTrainingNotifyEmails().includes(email)) return data;
+    const [data, waitingHr] = await Promise.all([listNotifications(email), waitingForHr(identity)]);
+    const bell = waitingHr ? { ...data, waitingHr } : data;
+    if (data.items.length || waitingHr || aiTrainingNotifyEmails().includes(email)) return bell;
     // HR APPROVAL: the approver has a bell before their first request arrives, so it is there to check.
-    return identity?.verified && (await resolveHrApprover(identity.subject)) ? data : null;
+    return waitingHr !== null ? bell : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * HR APPROVAL, STILL WAITING (Pau, 24 Nov 2026: "can u please not remove the notification in the bar on the left side
+ * if there are still pending inside"). The same count as Form Monitoring's "Pending HR approval (n)" tab, read through
+ * the same `hrQueueSummary`, so the bar and the tab cannot disagree. Null: not a verified HR approver (or the read
+ * failed, which only drops the count, never the bell).
+ */
+async function waitingForHr(identity: Awaited<ReturnType<typeof pageIdentity>>): Promise<number | null> {
+  if (!identity?.verified) return null;
+  try {
+    const { actor } = await pageFormsAccess(identity);
+    if (actor.hrApprover !== true) return null;
+    return (await hrQueueSummary(actor))?.pending ?? 0;
   } catch {
     return null;
   }
