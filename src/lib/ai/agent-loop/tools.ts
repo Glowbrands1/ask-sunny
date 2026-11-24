@@ -3131,6 +3131,78 @@ async function finalizedPriorsOnFile(context: ToolContext, person: RosterEmploye
   }));
 }
 
+/**
+ * ============================================================================
+ * THIS MANAGER'S FORMS FOR THIS PERSON THAT ARE WITH HR (owner, 24 Nov 2026)
+ * ============================================================================
+ *
+ * The owner: "should be able to create new form same person not block them, if they created 1 again for the same person,
+ * it should open the one they sent to hr so they can edit it if same problem, if not same problem they can still get
+ * notified they created a ca form prior fro X offense and policy and be able to edit it". A form waiting for HR, or sent
+ * back, is not on file (`finalizedPriorsOnFile` leaves it out), so a second request for the same person said nothing about
+ * it and made a second form. These are the forms this manager created or sent (`isCreatorOrSender`), never anybody
+ * else's, each with its offense and policy read from the form.
+ */
+export interface FormWithHr {
+  instanceId: string;
+  form: string;
+  templateKey: string;
+  date: string | null;
+  state: "pending" | "changes_requested";
+  offense: string | null;
+  policy: string | null;
+}
+
+async function ownFormsWithHr(context: ToolContext, names: readonly string[]): Promise<FormWithHr[]> {
+  const actor = await chatFormsActor(context.actor).catch(() => undefined);
+  if (!actor || names.length === 0) return [];
+  const { isCreatorOrSender } = await import("@/lib/forms/hr-approval-rules");
+  const nameWords = [...new Set(names.flatMap(candidateNameWords))];
+  const listed = visibleInstances(actor, await listInstances("active", 200, { ...instanceListFilterFor(actor), employeeNameWords: nameWords }).catch(() => []));
+  const rows = listed
+    .filter((row) => row.status === "draft" && !row.archivedAt && (row.hrApprovalState === "pending" || row.hrApprovalState === "changes_requested"))
+    .filter((row) => isCreatorOrSender({ id: context.actor.subject }, row) && names.some((full) => samePerson(full, row.employeeName)))
+    .slice(0, 5);
+  const { policyNamesFromViolated } = await import("@/lib/forms/ca-action-plan");
+  return Promise.all(rows.map(async (row) => {
+    const values = await authorizeInstance(context.request, row.id, "view").then(({ loaded }) => loaded.values).catch(() => []);
+    const valueOf = (key: string) => values.find((value) => value.fieldKey === key)?.value?.trim() || null;
+    // The account's first sentence, without the form's own "Observed:" heading, on one line.
+    const account = (valueOf("observation") ?? valueOf("coaching_details") ?? valueOf("additional_details") ?? "")
+      .replace(/^\s*(?:observed|observation(?: of offense)?|details)\s*:\s*/i, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    const firstSentence = account ? (/^.*?[.!?](?=\s|$)/.exec(account)?.[0] ?? account).slice(0, 160) : null;
+    // The policy by its heading, never the manual's title and page.
+    const policies = policyNamesFromViolated(valueOf("policy_violated")).filter((name) => !/policy manual/i.test(name));
+    return {
+      instanceId: row.id,
+      form: row.templateName,
+      templateKey: row.templateKey,
+      date: row.formDate ?? null,
+      state: row.hrApprovalState as "pending" | "changes_requested",
+      offense: firstSentence,
+      policy: policies.length > 0 ? policies.join(", ") : null,
+    };
+  }));
+}
+
+/** "You already sent HR a Corrective Action Form for <P> dated 11/20/2026 (Attendance: <offense>). It's still waiting for HR; you can open it to change it." */
+export function formsWithHrLine(name: string, forms: readonly FormWithHr[]): string {
+  const usDay = (iso: string | null) => {
+    const found = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso ?? "");
+    return found ? `${found[2]}/${found[3]}/${found[1]}` : null;
+  };
+  return forms
+    .map((form) => {
+      const what = [form.policy, form.offense].filter(Boolean).join(": ");
+      const dated = usDay(form.date) ? ` dated ${usDay(form.date)}` : "";
+      const where = form.state === "pending" ? "It's still waiting for HR" : "HR sent it back for changes";
+      return `You already sent HR a ${form.form} for ${name}${dated}${what ? ` (${what})` : ""}. ${where}; you can open it to change it.`;
+    })
+    .join(" ");
+}
+
 /** The prior actions line for forms on file: "Corrective Action Form, Verbal Warning — 10/20/2026; Coaching Form — 09/12/2026". */
 export function priorsOnFileLine(priors: readonly PriorOnFile[]): string {
   const usDay = (iso: string | null) => {
@@ -5658,6 +5730,28 @@ export async function proposeForm(
   /* The policy Create sends is the card's (`cardPolicyFor`), never read back from the model's reply (code-check #40). */
   card.policyLine = policyLine;
   /*
+   * THE SAME FORM IS ALREADY WITH HR (owner, 24 Nov 2026, `ownFormsWithHr`). The same kind of form for the same person on
+   * the same date (an exit: any one, a person leaves once) is the same problem: that form is opened for the manager to
+   * change, never a second one made, unless the manager asked for another (`asksNewForm`). Any other form of theirs with
+   * HR for this person is said in one line (`with_hr`), and the card goes on.
+   */
+  const withHr = await ownFormsWithHr(context, [card.employeeName ?? employee.name, ...(employee.id && read.kind === "read" ? fullNamesOf(read.roster.find((row) => row.id === employee.id) ?? { firstName: "", lastName: "", preferredFirstName: null }).filter((full) => full.trim() !== "") : [])].filter((name): name is string => Boolean(name && name.trim())));
+  const sameWithHr = withHr.find((form) => form.templateKey === template.key && (exitForm || (card.formDate !== null && card.formDate !== undefined && form.date === card.formDate)));
+  if (sameWithHr && !asksNewForm) {
+    // Opened as open_form opens a draft: this manager's own form, so no forms-on-file ask is needed to show it to them.
+    effects.formOpened = { instanceId: sameWithHr.instanceId, templateName: sameWithHr.form, revisesInstanceId: null };
+    return {
+      opened: true,
+      same_form_with_hr: true,
+      form: sameWithHr.form,
+      employee: card.employeeName ?? employee.name,
+      status: "draft",
+      say_exactly: `${formsWithHrLine(card.employeeName ?? employee.name, [sameWithHr]).replace(/; you can open it to change it\.$/, ".")} I've opened it so you can change it; HR sees your changes.`,
+      note: "This is the same form the manager already sent to HR, now open on their screen to edit (edit_form changes it; HR sees the changes). No new card was made: propose one only if the manager asks for another form.",
+    };
+  }
+  const otherWithHr = withHr.filter((form) => form !== sameWithHr);
+  /*
    * EARLIER CARD (PR 2; replaces run.ts's bold-name match and EARLIER_CARD_STAYS line): the latest earlier card in this
    * chat, by the server's record, was another person's. Compared by roster id (by name only when either has none). It
    * stays creatable (`earlierCardKept`), and the model is told so as the earlier_card fact.
@@ -5872,6 +5966,8 @@ export async function proposeForm(
     /* QA item 22: the finalized forms on file for this person; the card's level is never chosen from them. */
     /* The forms on file are offered, never added (QA, 23 Nov 2026; port of Ask Bubbles #1089): ask_exactly ends the reply. */
     ...(priorsOnFile.length > 0 ? { prior_on_file: { forms: priorsOnFile, line: onFileLine, on_card: false, ...(onFileOffer ? { ask_exactly: onFileOffer } : {}) } } : {}),
+    /* The owner (24 Nov 2026): a form of theirs for this person already with HR is said, with its offense and policy. */
+    ...(otherWithHr.length > 0 ? { with_hr: { forms: otherWithHr.map(({ instanceId, form, date, state, offense, policy }) => ({ instance_id: instanceId, form, date, state, offense, policy })), say_exactly: formsWithHrLine(card.employeeName ?? employee.name, otherWithHr) } } : {}),
     ...(corrective && payroll === "yes" && !amount && statedAmount ? { payroll_amount_said: `$${statedAmount}` } : {}),
     ...(cleaning && !careAndCleaning ? { cleaning_duty: cleaning } : {}),
     ...(awaiting ? { policy_named_by_manager: policyNamedByManager } : {}),
