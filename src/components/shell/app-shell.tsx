@@ -17,7 +17,6 @@ import { JumpToRow } from "./jump-to-row";
 import { SidebarNav } from "./sidebar";
 import { UpdateNotice } from "./update-notice";
 import { GlobalSearch } from "./global-search";
-import { NotificationBell } from "@/features/notifications/notification-bell";
 import type { BellData } from "@/lib/notifications/types";
 
 const COLLAPSE_KEY = "ask-sunny:sidebar-collapsed";
@@ -117,7 +116,10 @@ export function AppShell({
               Demo
             </Badge>
           ) : null}
-          {bell ? <NotificationBell data={bell} /> : null}
+          {/*
+            No bell here (Pau, 23 Nov 2026: "can we remove this and add a notification bar instead below the
+            overview"). Notifications is a rail bar ("i dont want a bell, i need a bar") under Overview, on desktop and in the phone drawer (sidebar.tsx).
+          */}
           <Dialog>
             <DialogTrigger asChild>
               <Button
@@ -183,6 +185,7 @@ export function AppShell({
           showAppSwitcher={showAppSwitcher}
           showLeadershipHub={showLeadershipHub}
           meetingTabs={meetingTabs}
+          bell={bell}
         />
         </div>
       </aside>
@@ -214,6 +217,7 @@ export function AppShell({
                 showAppSwitcher={showAppSwitcher}
                 showLeadershipHub={showLeadershipHub}
                 meetingTabs={meetingTabs}
+                bell={bell}
               />
             </div>
           </div>

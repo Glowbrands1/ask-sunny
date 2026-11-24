@@ -2,6 +2,7 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { TooltipProvider } from "@/components/ui/overlays";
 import type { BellData } from "@/lib/notifications/types";
 
 /** THE BELL (Pau, 20 Nov 2026): unread count, the list, opening one marks it read and goes to it. */
@@ -59,6 +60,33 @@ describe("the notification bell", () => {
     render(<NotificationBell data={{ unread: 0, items: [] }} />);
     fireEvent.click(screen.getByRole("button", { name: "Notifications" }));
     expect(screen.getByText(/Nothing yet/)).toBeTruthy();
+  });
+
+  /*
+   * Pau, 23 Nov 2026, with the sibling app's rail as the picture: "i dont want a bell, i need a bar". On desktop the
+   * notifications are a labelled "Notifications" row in the rail, not an icon in the top bar.
+   */
+  it("in the rail it is a labelled Notifications bar, keeps the count, and closes the drawer when it navigates", async () => {
+    const onNavigate = vi.fn();
+    render(<NotificationBell data={data} variant="rail" onNavigate={onNavigate} />);
+    const trigger = screen.getByRole("button", { name: "Notifications, 2 unread" });
+    expect(trigger.textContent).toBe("Notifications2");
+    fireEvent.click(trigger);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Quinn Ash submitted their work/ }));
+    });
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+    expect(push).toHaveBeenCalledWith("/ai-training/manage?tab=submissions");
+  });
+
+  it("in a collapsed rail it is an icon with the count and no label", () => {
+    // The app wraps every page in TooltipProvider (src/app/providers.tsx); the collapsed rail's tooltip needs it.
+    render(
+      <TooltipProvider>
+        <NotificationBell data={data} variant="rail" collapsed />
+      </TooltipProvider>,
+    );
+    expect(screen.getByRole("button", { name: "Notifications, 2 unread" }).textContent).toBe("2");
   });
 
   it("words the time simply", () => {

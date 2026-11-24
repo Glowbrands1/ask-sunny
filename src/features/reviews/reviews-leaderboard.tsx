@@ -15,7 +15,9 @@ import {
 import { StatusChip } from "@/components/ui/marquee";
 import { reviewsHref, type ReviewFilters } from "@/lib/reviews/filters";
 import {
-  LEADERBOARD_PERIODS,
+  formatLongMonth,
+  isSingleMonthPeriod,
+  leaderboardPeriodLabel,
   leaderboardPeriodOf,
   leaderboardPeriodView,
   leaderboardPeriodWeek,
@@ -56,6 +58,12 @@ import {
  * / YTD are the Month by month table's totals against the target times the
  * months covered (`lib/reviews/leaderboard-period.ts`); a closed window has no
  * pace, so its status is Goal met or Below goal.
+ *
+ * ONE MONTH (Pau, 23 Nov 2026: "pls add the per month for both like September
+ * october november and make sure it syncs in the data below"). Period also
+ * lists each full month; picking October ranks by October's figure from the
+ * Month by month table against the monthly target, and every row's figure,
+ * bar, status and link follow it.
  *
  * WHAT IT NO LONGER SHOWS: Unanswered, "Replies waiting", All this week and
  * Last week. The response queue is the Needs Response view's job.
@@ -103,7 +111,7 @@ export function ReviewsLeaderboard({
   locations: LocationRollup[];
   filters: ReviewFilters;
   goal: ReviewGoalContext;
-  /** The month-by-month figures L3, L6 and YTD are read from. */
+  /** The month-by-month figures L3, L6, YTD and single months are read from. */
   monthly?: MonthlyProgress | null;
   canManageAnchors: boolean;
 }) {
@@ -120,7 +128,8 @@ export function ReviewsLeaderboard({
   const goal = view?.goal ?? monthGoal;
   const paced = view?.paced ?? true;
   const periodWeek = leaderboardPeriodWeek(period);
-  const periodLabel = LEADERBOARD_PERIODS.find((entry) => entry.key === period)!.label;
+  const periodLabel = leaderboardPeriodLabel(period);
+  const singleMonth = isSingleMonthPeriod(period);
 
   const districts = useMemo(() => districtsOf(locations), [locations]);
   const ranked = useMemo(() => rankLocations(locations, "month"), [locations]);
@@ -152,20 +161,27 @@ export function ReviewsLeaderboard({
   if (!view) {
     return (
       <p className="rounded-[var(--radius-lg)] border border-border bg-surface p-4 text-[12px] text-muted-foreground shadow-raised">
-        The {periodLabel} figures could not be loaded just now. Choose This month to date in
-        Period, or reload to try again.
+        {singleMonth && monthly
+          ? `No figures are held for ${periodLabel}. Choose another month, or This month to date, in Period.`
+          : `The ${periodLabel} figures could not be loaded just now. Choose This month to date in Period, or reload to try again.`}
       </p>
     );
   }
 
-  const periodSpan =
-    view.monthKeys.length > 0
+  const periodSpan = singleMonth
+    ? formatLongMonth(period)
+    : view.monthKeys.length > 0
       ? `${formatProgressMonth(view.monthKeys[0])} – ${formatProgressMonth(
           view.monthKeys[view.monthKeys.length - 1],
           true,
         )}`
       : "";
-  const columnLabel = period === "month" ? "Month to date" : period.toUpperCase();
+  const columnLabel =
+    period === "month"
+      ? "Month to date"
+      : singleMonth
+        ? formatProgressMonth(period, true)
+        : period.toUpperCase();
 
   /*
    * THE RANK IS DECIDED BEFORE ANY FILTER. Narrowing to one district shows
@@ -233,7 +249,7 @@ export function ReviewsLeaderboard({
         <section className="grid min-w-0 gap-4 rounded-[var(--radius-lg)] border border-border bg-surface p-4 shadow-raised md:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] md:items-center">
           <div className="min-w-0">
             <p className="eyebrow">
-              {periodLabel} · {periodSpan}
+              {singleMonth ? `${periodLabel} · full month` : `${periodLabel} · ${periodSpan}`}
               {period === "ytd" ? ", to date" : ""}
             </p>
             <p className="mt-1.5 flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
@@ -241,9 +257,17 @@ export function ReviewsLeaderboard({
                 {summary.atGoal} of {summary.counting}
               </span>
               <span className="text-[12px] text-muted-foreground">
-                {summary.counting === 1 ? "salon has" : "salons have"} reached {goal.target} ·{" "}
-                {monthGoal.target} a month × {view.months}{" "}
-                {view.months === 1 ? "month" : "months"}
+                {summary.counting === 1 ? "salon" : "salons"} {singleMonth ? "reached" : summary.counting === 1 ? "has reached" : "have reached"}{" "}
+                {goal.target}
+                {singleMonth ? (
+                  " in the month"
+                ) : (
+                  <>
+                    {" "}
+                    · {monthGoal.target} a month × {view.months}{" "}
+                    {view.months === 1 ? "month" : "months"}
+                  </>
+                )}
               </span>
             </p>
           </div>
@@ -320,7 +344,7 @@ export function ReviewsLeaderboard({
           <span className="[grid-area:status]">Status</span>
         </div>
 
-        <ol aria-label={`Salons ranked by qualifying reviews ${period === "month" ? "month to date" : `${columnLabel}, ${periodSpan}`}`}>
+        <ol aria-label={`Salons ranked by qualifying reviews ${period === "month" ? "month to date" : singleMonth ? `in ${periodSpan}` : `${columnLabel}, ${periodSpan}`}`}>
           {shown.map(({ location, rank, tied }) => {
             const state = statusOf(location);
             const counting = rank !== null;
@@ -434,8 +458,15 @@ export function ReviewsLeaderboard({
           review baseline isn&rsquo;t ranked, because nothing is being counted for it yet.{" "}
           {formatNumber(summary.qualifyingMonthToDate)} qualifying{" "}
           {summary.qualifyingMonthToDate === 1 ? "review" : "reviews"}{" "}
-          {period === "month" ? `so far in ${month}` : `in ${columnLabel} (${periodSpan})`} across
-          the salons that are counting.
+          {period === "month"
+            ? `so far in ${month}`
+            : singleMonth
+              ? `in ${periodSpan}`
+              : `in ${columnLabel} (${periodSpan})`}{" "}
+          across the salons that are counting.
+          {view.beforeCounting
+            ? ` For a salon that had not started counting for all of ${periodSpan}, the figure is the 3–5★ reviews Google dates to that month.`
+            : ""}
         </p>
       </section>
     </div>

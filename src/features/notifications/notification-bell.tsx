@@ -5,18 +5,41 @@ import { useState, useTransition } from "react";
 import { Bell } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/overlays";
+import { Popover, PopoverContent, PopoverTrigger, Tooltip } from "@/components/ui/overlays";
 import type { AppNotification, BellData } from "@/lib/notifications/types";
 import { cn } from "@/lib/utils/cn";
 
 import { markNotificationsReadAction } from "./actions";
 
 /**
- * THE BELL in the top bar: the signed-in person's notifications, newest first,
- * with a count of the unread ones. Opening one marks it read and goes to it.
- * First used for AI Training submissions (Pau, 20 Nov 2026).
+ * THE BELL: the signed-in person's notifications, newest first, with a count of
+ * the unread ones. Opening one marks it read and goes to it. First used for AI
+ * Training submissions (Pau, 20 Nov 2026), then the HR form approval.
+ *
+ * WHERE IT SITS (Pau, 23 Nov 2026): first "can we remove this and add a notification bar instead below the overview",
+ * then, with the sibling app's rail as the picture, "i dont want a bell, i need a bar". So it is a labelled
+ * "Notifications" bar in the rail (`rail`), directly under Overview, on desktop and in the phone drawer alike, and the
+ * top bar has no bell. Same people, same panel, same count. (`bar`, the top-bar button, is kept for any other caller.)
  */
-export function NotificationBell({ data }: { data: BellData }) {
+export function NotificationBell({
+  data,
+  variant = "bar",
+  collapsed = false,
+  onNavigate,
+  panelSide = "right",
+  className,
+}: {
+  data: BellData;
+  variant?: "bar" | "rail";
+  /** The rail is collapsed to icons: no label, a tooltip instead. */
+  collapsed?: boolean;
+  /** Called after opening a notification (closes the drawer on a phone). */
+  onNavigate?: () => void;
+  /** Rail only: where the panel opens. The phone drawer is too narrow to open it to the side, so it opens below. */
+  panelSide?: "right" | "bottom";
+  /** Extra classes for the top-bar button (its colour on the band). */
+  className?: string;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   // Read locally at once, so the badge drops before the server answers.
@@ -33,7 +56,10 @@ export function NotificationBell({ data }: { data: BellData }) {
       });
     }
     setOpen(false);
-    if (n.href) router.push(n.href);
+    if (n.href) {
+      onNavigate?.();
+      router.push(n.href);
+    }
   }
 
   function readAll() {
@@ -44,27 +70,62 @@ export function NotificationBell({ data }: { data: BellData }) {
   }
 
   const label = unread ? `Notifications, ${unread} unread` : "Notifications";
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
+  const badge = unread ? (
+    <span
+      aria-hidden
+      className={cn(
+        "flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-accent px-1 text-[10px] leading-none font-extrabold text-accent-foreground",
+        variant === "bar" || collapsed ? "absolute -top-0.5 -right-0.5" : "ml-auto",
+      )}
+    >
+      {unread > 9 ? "9+" : unread}
+    </span>
+  ) : null;
+
+  const trigger =
+    variant === "rail" ? (
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label={label}
+          className={cn(
+            "relative flex w-full items-center gap-2.5 rounded-full border border-rail-border text-[13.5px] font-semibold text-sidebar-foreground transition-colors hover:bg-hover-surface hover:text-foreground",
+            collapsed ? "justify-center px-0 py-2.5" : "px-3.5 py-2.5",
+          )}
+        >
+          <Bell className="size-4 shrink-0" aria-hidden />
+          {!collapsed ? <span className="truncate">Notifications</span> : null}
+          {badge}
+        </button>
+      </PopoverTrigger>
+    ) : (
       <PopoverTrigger asChild>
         <Button
           variant="ghost"
           size="icon"
           aria-label={label}
-          className="relative text-chrome-foreground hover:bg-hover-surface hover:text-hover-surface-foreground"
+          className={cn("relative text-chrome-foreground hover:bg-hover-surface hover:text-hover-surface-foreground", className)}
         >
           <Bell />
-          {unread ? (
-            <span
-              aria-hidden
-              className="absolute -top-0.5 -right-0.5 flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-accent px-1 text-[10px] leading-none font-extrabold text-accent-foreground"
-            >
-              {unread > 9 ? "9+" : unread}
-            </span>
-          ) : null}
+          {badge}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-[min(22rem,calc(100vw-1.5rem))] p-0">
+    );
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      {variant === "rail" && collapsed ? (
+        <Tooltip content="Notifications" side="right">
+          {trigger}
+        </Tooltip>
+      ) : (
+        trigger
+      )}
+      <PopoverContent
+        align={variant === "rail" ? "start" : "end"}
+        side={variant === "rail" ? panelSide : "bottom"}
+        className="w-[min(22rem,calc(100vw-1.5rem))] p-0"
+      >
         <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
           <h2 className="text-sm font-bold text-foreground">Notifications</h2>
           {unread ? (
@@ -96,7 +157,7 @@ export function NotificationBell({ data }: { data: BellData }) {
             ))}
           </ul>
         ) : (
-          <p className="px-4 py-6 text-center text-sm text-muted-foreground">Nothing yet. You will see new submissions here.</p>
+          <p className="px-4 py-6 text-center text-sm text-muted-foreground">Nothing yet. New notifications will show here.</p>
         )}
       </PopoverContent>
     </Popover>

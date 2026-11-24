@@ -218,3 +218,28 @@ describe("STC SD L10 scorecard: a divider around each salon (QA, 19 Nov 2026)", 
     expect(heads).toEqual(["Avery Quill", "Bo Lark"]);
   });
 });
+
+// The Hub's silent-failure audit, 23 Nov 2026: a scorecard entry that is not a number ("n/a", "12x") closed the cell and
+// went back to the old value without a word.
+describe("a scorecard entry that is not a number", () => {
+  it("is not dropped quietly: the cell stays open, says so, and Escape cancels", () => {
+    render(<Harness />);
+    fireEvent.click(screen.getAllByRole("button", { name: /^Sales calls/ })[0]);
+    const input = screen.getByRole("textbox", { name: /^Sales calls/ });
+    fireEvent.change(input, { target: { value: "n/a" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(screen.getByRole("alert").textContent).toMatch(/Not a number/);
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(saved).toHaveLength(0);
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(screen.queryByRole("textbox", { name: /^Sales calls/ })).toBeNull();
+  });
+  it("a valid number still saves", () => {
+    render(<Harness />);
+    fireEvent.click(screen.getAllByRole("button", { name: /^Sales calls/ })[0]);
+    const input = screen.getByRole("textbox", { name: /^Sales calls/ });
+    fireEvent.change(input, { target: { value: "12" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(saved.length).toBeGreaterThan(0);
+  });
+});

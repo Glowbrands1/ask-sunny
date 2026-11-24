@@ -48,6 +48,7 @@ import { blankRequiredFields, requiredFieldsMessage } from "./required-fields";
 import { getCurrentVersion, getVersion, type TemplateVersionRow } from "./repository";
 import { HELD_FOR_HR, asHrApprovalState, editableDraft, heldForHr, withoutHeldForHr, type HrApprovalState } from "./hr-approval-rules";
 import { hrHoldLive, releaseStaleHold } from "./hr-approval-approvers";
+import { clearRequestBells } from "./hr-approval-bells";
 
 /** The form's own Date line — the same day as `form_instances.form_date`. */
 const FORM_DATE_KEY = "form_date";
@@ -831,10 +832,11 @@ export async function saveInstanceValues(
   options: {
     readonly via?: "chat";
     /**
-     * HR editing a form that waits for them (`hr-approval.ts`): written through `form_hr_approval_write_values`, the
-     * one path the database lets past the hold. Only the route that has checked the actor is an approver sets it.
+     * HR, or the form's creator or a sender, editing a form that waits for HR (`mayEditWhileWithHr`): written through
+     * `form_hr_approval_write_values`, the one path the database lets past the hold. Only the route that has checked
+     * the actor may edit it sets it.
      */
-    readonly asHrApprover?: boolean;
+    readonly pastHrHold?: boolean;
   } = {},
 ): Promise<{
   rejected: { key: string; reason: string }[];
@@ -846,7 +848,7 @@ export async function saveInstanceValues(
   if (loaded.instance.status !== "draft") {
     throw new Error("This form is finalized. Create a revision to change it.");
   }
-  const hrEdit = options.asHrApprover === true && heldForHr(loaded.instance.hrApprovalState);
+  const hrEdit = options.pastHrHold === true && heldForHr(loaded.instance.hrApprovalState);
   if (heldForHr(loaded.instance.hrApprovalState) && !hrEdit) {
     // Held only while the hold is live; otherwise (flag off, no approver left) the form goes back to a plain draft.
     if (await hrHoldLive()) throw new HeldForHrError();
@@ -1100,7 +1102,7 @@ export class UnverifiedPolicyError extends Error {
 export class HeldForHrError extends Error {
   readonly code = HELD_FOR_HR;
   constructor() {
-    super("This form is waiting for HR approval. You can change it again if HR sends it back.");
+    super("This form is waiting for HR approval. The person who started it, whoever sent it, or HR can change it on the form itself; HR sees the changes.");
     this.name = "HeldForHrError";
   }
 }
@@ -1133,7 +1135,7 @@ export interface FinalizeOptions {
 
 /**
  * WHAT FINALIZE CHECKS BEFORE IT FREEZES ANYTHING: required fields, and an unverified policy the manager has not
- * acknowledged. Shared with "Finalize and send to HR for approval" (`hr-approval.ts`), so a form sent to HR has passed exactly
+ * acknowledged. Shared with "Finalize and send for approval" (`hr-approval.ts`), so a form sent to HR has passed exactly
  * what Finalize would have asked of it, while the manager can still fix it.
  */
 export function finalizePreflight(
@@ -1673,6 +1675,11 @@ export async function archiveInstance(
 
   const loaded = await loadInstance(id);
   if (!loaded) throw new Error("That form vanished while being archived.");
+  /*
+   * An archived form waiting for HR is out of HR's queue, so its "waiting for your approval" bells are marked read and
+   * the bell stops pointing at it (QA, 23 Nov 2026). Restoring it does not ring them again; it is back in the queue.
+   */
+  if (archived && loaded.instance.hrApprovalState === "pending") await clearRequestBells(id);
   return loaded.instance;
 }
 
