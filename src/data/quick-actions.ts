@@ -24,6 +24,9 @@
 
 import type { Permission } from "@/types";
 
+/** The Daily Stats shortcut's question: one read_stats answers (Daily Stats, and what to focus on). */
+export const DAILY_STATS_QUESTION = "Show me the most recent Daily Stats and what I need to focus on today";
+
 /** Quick actions on the Overview screen. */
 export interface QuickAction {
   id: string;
@@ -55,5 +58,16 @@ export const DASHBOARD_QUICK_ACTIONS: QuickAction[] = [
     href: `/chat?q=${encodeURIComponent("Create a coaching form.")}`,
     iconKey: "file-plus",
   },
-  { id: "qa-stats", label: "Review Daily Stats", href: "/reports", iconKey: "line-chart" },
+  {
+    id: "qa-stats",
+    label: "Review Daily Stats",
+    /*
+     * INTO THE CHAT, as the coaching shortcut (QA, 24 Nov 2026): this went to `/reports`, which redirects to Salon
+     * Performance. There is no Daily Stats page; Daily Stats is read by the assistant (the agent loop's read_stats).
+     * The question is Pau's own, the one the replay pack proves reaches read_stats
+     * (`nov15-agent-loop-daily-stats-own-salons`).
+     */
+    href: `/chat?q=${encodeURIComponent(DAILY_STATS_QUESTION)}`,
+    iconKey: "line-chart",
+  },
 ];
