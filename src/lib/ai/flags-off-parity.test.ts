@@ -1466,8 +1466,10 @@ function chatHalf(half: 0 | 1): string[] {
  * Ninths since 22 Nov 2026: eighth 7 of 8 timed out at 540 s on ask-sunny#1229 (ETIMEDOUT, no assertion failed; its five
  * new cases take under a second, but they reshuffle the parts by id), while the eighths on ask-sunny#1227 already took
  * 6 to 8.4 of their 9 minutes.
+ * Twelfths since 24 Nov 2026: ninth 6 of 9 timed out at 540 s on ask-sunny#1306 (ETIMEDOUT, no assertion failed), and
+ * the other eight ninths on that run took 7 to 9 of their 10 minutes, so every ninth was nearly full.
  */
-const REPLAY_PACK_PARTS = 9;
+const REPLAY_PACK_PARTS = 12;
 const REPLAY_PACK_E2E = `${REPLAY_PACK}/replay-pack-e2e.test.ts`;
 /** The pack's own test files besides the e2e (registry, policy-line, step-b-live-check, …): one child, a few seconds. */
 function replayPackOtherFiles(): string[] {
