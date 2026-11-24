@@ -6863,7 +6863,7 @@ export async function editForm(
     const ownRules = new Set(["employee_name", "warning_type", "payroll_deduct", PAYROLL_AMOUNT_KEY, "form_date", "follow_up_date", "action_plan"]);
     const squash = (text: string) => text.toLowerCase().replace(/\s+/g, " ").trim();
     const thisMessage = squash(withoutMessageIdTags(context.question));
-    const labels = (await import("@/lib/forms/form-write")).formWordsOf(loaded);
+    const labels = (await import("@/lib/forms/form-snapshot")).formLabels(loaded);
     const clearQuotes = input.clear_evidence && typeof input.clear_evidence === "object" ? (input.clear_evidence as Record<string, unknown>) : {};
     const statedText = Object.fromEntries(
       Object.entries(values).filter(([field, value]) => !ownRules.has(field) && value.trim().length >= 8 && thisMessage.includes(squash(value))),
@@ -6873,7 +6873,20 @@ export async function editForm(
       return !ownRules.has(field) && quote.trim() !== "" && thisMessage.includes(squash(quote)) && quoteNamesField(quote, labels[field] ?? field);
     });
     const statedEdits = { ...statedText, ...Object.fromEntries(statedClears.map((field) => [field, ""])) };
-    const stated = await (await import("@/lib/forms/form-write")).statedFieldsWrite(id, statedEdits, context.actor.subject);
+    const stated = formEditSingleWriterEnabled()
+      ? await (await import("@/lib/forms/form-write")).statedFieldsWrite(id, statedEdits, context.actor.subject)
+      : await (async () => {
+          /* Flag off: the same save, the manager's own (saveInstanceValues, via chat), on a draft only. */
+          const keys = Object.keys(statedEdits);
+          if (keys.length === 0) return { saved: [] as string[], rejected: [] as { key: string; reason: string }[] };
+          try {
+            const result = await (await import("@/lib/forms/instances")).saveInstanceValues(id, { values: statedEdits, checked: {} }, context.actor.subject, { via: "chat" });
+            const rejected = result.rejected.filter((row) => keys.includes(row.key));
+            return { saved: keys.filter((key) => !rejected.some((row) => row.key === key)), rejected };
+          } catch {
+            return { saved: [] as string[], rejected: keys.map((key) => ({ key, reason: "not_draft" })) };
+          }
+        })();
     for (const field of stated.saved) delete values[field];
     clearAsked = clearAsked.filter((field) => !stated.saved.includes(field));
     const statedLines = stated.saved.map((field) => ({ field: labels[field] ?? field, ...(statedEdits[field] === "" ? { cleared: true } : { now: untrusted(statedEdits[field]!) }) }));
