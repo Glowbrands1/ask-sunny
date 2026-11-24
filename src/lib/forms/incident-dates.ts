@@ -236,6 +236,15 @@ export function decideFormDate(input: Parameters<typeof decideFormDateFromDates>
  * FORM_DATE_IS_TODAY: the date the manager gave the form itself ("date it 11/20", "make the date 11/20"), or on a
  * Coaching Form the day the coaching was held; null (the day the form is written) otherwise. Never after today.
  */
+/**
+ * FORM_DATE_IS_TODAY_ENABLED and a form dated by its incident (Corrective Action, Coaching, Policy Review): the form is
+ * dated the day it is written, or the date the manager gave it (`formDateGiven`). Steps that keep a card's slots across
+ * turns (`holdFilledSlots`, `enrichFormCard`) ask this before they carry an incident's date onto the card.
+ */
+export function formDatedTodayFor(templateKey: string): boolean {
+  return formDateIsTodayEnabled() && DATED_TEMPLATES.has(templateKey);
+}
+
 export function formDateGiven(text: string, templateKey: string, today: string): string | null {
   const given =
     explicitFormDate(text, today) ??

@@ -73,4 +73,28 @@ export const NOV24_FORM_DATE_IS_TODAY_CASES: ReplayCase[] = [
       expect(offers, "the Corrective Action finalized on 09/12/2026 is not offered as history").toMatch(/09\/12\/2026|2026-09-12/);
     },
   },
+  {
+    id: "nov24-form-date-is-today-late-september-11-chat",
+    title: `"create a corrective action for <P>, she was late to work on September 11, 2026" through the chat (no agent loop) — the card carries no incident date, the form is dated today, and the CA finalized 09/12 is listed`,
+    report: REPORT,
+    status: "fixed", // FORM_DATE_IS_TODAY_ENABLED is on in production (Pau, 24 Nov 2026)
+    fixFlags: [FLAG],
+    async run(t) {
+      vi.setSystemTime(new Date("2026-11-24T18:00:00Z"));
+      t.directory([...STAFF, ODESSA]);
+      t.as("salon_director", KEARNEY);
+      onFile(t);
+      const thread = t.thread();
+      const answer = await thread.say("create a corrective action for Odessa Pellham, she was late to work on September 11, 2026. no payroll deduct");
+      expect(thread.proposal, "no Corrective Action card").toMatchObject({ templateKey: "dpoa", employeeName: "Odessa Pellham" });
+      expect(thread.proposal?.formDate ?? null, "the card is dated by the incident, not the day it is written").toBeNull();
+      expect(answer.content, "the reply still dates the form by the incident").not.toMatch(/\*\*Date:\*\* 9\/11\/2026/);
+      t.draftWrites({ observation: "Odessa Pellham was late to work on 09/11/2026." });
+      const id = await thread.create();
+      const row = (t.forms() as Record<string, unknown>[]).find((form) => form.id === id);
+      expect(row?.form_date, "the form is dated by the incident, not the day it was written").toBe("2026-11-24");
+      const prior = t.values(id).prior_actions ?? "";
+      expect(prior, `the Corrective Action finalized on 09/12/2026 is not on the history:\n${prior}`).toMatch(/09\/12\/2026/);
+    },
+  },
 ];
