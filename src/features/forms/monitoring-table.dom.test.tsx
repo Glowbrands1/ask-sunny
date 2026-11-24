@@ -619,3 +619,112 @@ describe("the row menu \"…\" opens with something in it", () => {
     expect(items.map((item) => item.textContent)).toEqual(["Reopen follow-up"]);
   });
 });
+
+/*
+ * Pau, 24 Nov 2026: "can u just create a multi click button and delete inside
+ * both apps so we can easily delete the ones we dont want"
+ */
+describe("can u just create a multi click button and delete inside both apps so we can easily delete the ones we dont want", () => {
+  const drafts = () => [
+    form({ id: "a", employeeName: "Draft A", status: "draft", finalizedAt: null }),
+    form({ id: "b", employeeName: "Draft B", status: "draft", finalizedAt: null }),
+    form({ id: "c", employeeName: "Draft C", status: "draft", finalizedAt: null }),
+    form({ id: "f", employeeName: "Filed One" }),
+  ];
+  const box = (name: string) =>
+    screen.getByRole("checkbox", { name: `Select the Coaching for ${name}` }) as HTMLInputElement;
+
+  it("selects one draft and shows the action bar", async () => {
+    table(drafts());
+    expect(screen.queryByText(/selected$/)).toBeNull();
+    await userEvent.click(box("Draft A"));
+    expect(box("Draft A").checked).toBe(true);
+    expect(screen.getByText("1 selected")).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: "Clear" }));
+    expect(screen.queryByText("1 selected")).toBeNull();
+  });
+
+  it("the header box selects every draft shown and nothing else", async () => {
+    table(drafts());
+    await userEvent.click(screen.getByRole("checkbox", { name: "Select all drafts shown" }));
+    expect(screen.getByText("3 selected")).toBeTruthy();
+    await userEvent.click(box("Draft B"));
+    expect(screen.getByText("2 selected")).toBeTruthy();
+    expect(
+      (screen.getByRole("checkbox", { name: "Select all drafts shown" }) as HTMLInputElement).indeterminate,
+    ).toBe(true);
+  });
+
+  it("shift-click selects the range", async () => {
+    table(drafts());
+    const user = userEvent.setup();
+    await user.click(box("Draft A"));
+    await user.keyboard("{Shift>}");
+    await user.click(box("Draft C"));
+    await user.keyboard("{/Shift}");
+    expect(screen.getByText("3 selected")).toBeTruthy();
+  });
+
+  it("a finalized form has no checkbox", () => {
+    table(drafts());
+    expect(rowFor("Filed One").ui.queryByRole("checkbox")).toBeNull();
+  });
+
+  it("no checkboxes without manage_form_records", () => {
+    mockSession.value = {
+      role: "location_manager",
+      user: { name: "QA" },
+      can: (permission: Permission) => permission === "create_coaching_form",
+      demoMode: false,
+    };
+    table(drafts());
+    expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
+  });
+
+  it("a new filter clears the selection", async () => {
+    const view = table(drafts());
+    await userEvent.click(box("Draft A"));
+    view.rerender(
+      <MonitoringTable
+        forms={drafts()}
+        notice={null}
+        followUp="drafted"
+        today={TODAY}
+        attention={NO_ATTENTION}
+        demo={{ deletable: 0, protected: 0 }}
+      />,
+    );
+    expect(screen.queryByText("1 selected")).toBeNull();
+  });
+
+  it("deletes once per id through the existing route and reports a partial failure", async () => {
+    vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      calls.list.push({ url, method: init?.method ?? "GET", body: null });
+      const failing = url.endsWith("/b");
+      return Promise.resolve(
+        new Response(JSON.stringify(failing ? { error: "this form is finalized" } : { deleted: {} }), {
+          status: failing ? 409 : 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    });
+    table(drafts());
+    await userEvent.click(screen.getByRole("checkbox", { name: "Select all drafts shown" }));
+    await userEvent.click(screen.getByRole("button", { name: "Delete selected" }));
+    const dialog = within(await screen.findByRole("dialog"));
+    expect(dialog.getByText(/removed for good/i)).toBeTruthy();
+    await userEvent.click(dialog.getByRole("button", { name: /delete 3 drafts/i }));
+    await waitFor(() => expect(screen.getByText(/Deleted 2\. 1 could not be deleted/)).toBeTruthy());
+    const deletes = calls.list.filter((c) => c.method === "DELETE").map((c) => c.url).sort();
+    expect(deletes).toEqual([
+      "/api/forms/instances/a",
+      "/api/forms/instances/b",
+      "/api/forms/instances/c",
+    ]);
+    expect(navigated.refreshes).toBe(1);
+    // The failure stays selected.
+    expect(screen.getByText("1 selected")).toBeTruthy();
+    expect(box("Draft B").checked).toBe(true);
+  });
+});

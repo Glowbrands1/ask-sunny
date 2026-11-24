@@ -188,6 +188,14 @@ export function MonitoringTable({
     { kind: "delete"; form: MonitoredForm } | null
   >(null);
   const [sweeping, setSweeping] = React.useState(false);
+  /** Draft ids ticked for "Delete selected" (Pau, 24 Nov 2026). */
+  const [selected, setSelected] = React.useState<ReadonlySet<string>>(new Set());
+  const [bulkOpen, setBulkOpen] = React.useState(false);
+  const [bulkProgress, setBulkProgress] = React.useState<{ done: number; total: number } | null>(
+    null,
+  );
+  /** The last box ticked, so a shift-click can fill the range between. */
+  const lastTicked = React.useRef<string | null>(null);
   /** The row whose empty date box is being filled in, after Start tracking. */
   const [starting, setStarting] = React.useState<string | null>(null);
   const { role, user, can, demoMode } = useSession();
@@ -346,6 +354,96 @@ export function MonitoringTable({
     router.push(query ? `/forms/monitoring?${query}` : "/forms/monitoring");
   }
 
+  /*
+   * BULK DELETE. Only a draft the viewer may already delete from the row menu
+   * gets a box; finalized and revised forms are kept on file and never do. The
+   * ticks that count are the ones still on screen, so a row that left the list
+   * (filter, refresh) can never be deleted unseen.
+   */
+  const deletable = mayManage ? shown.filter((form) => form.status === "draft") : [];
+  const deletableIds = deletable.map((form) => form.id);
+  const picked = deletable.filter((form) => selected.has(form.id));
+  const allPicked = deletable.length > 0 && picked.length === deletable.length;
+  const somePicked = picked.length > 0 && !allPicked;
+  const bulkBusy = bulkProgress !== null;
+
+  const headerBox = React.useRef<HTMLInputElement | null>(null);
+  React.useEffect(() => {
+    if (headerBox.current) headerBox.current.indeterminate = somePicked;
+  }, [somePicked]);
+
+  // Changing the pill or the form-type filter starts a fresh selection.
+  const filterKey = `${followUp}|${templateName}`;
+  const [selectionFilter, setSelectionFilter] = React.useState(filterKey);
+  if (selectionFilter !== filterKey) {
+    setSelectionFilter(filterKey);
+    setSelected(new Set());
+  }
+
+  function toggleOne(id: string, range: boolean) {
+    const next = new Set(selected);
+    const turnOn = !next.has(id);
+    const anchor = lastTicked.current ? deletableIds.indexOf(lastTicked.current) : -1;
+    const here = deletableIds.indexOf(id);
+    if (range && anchor >= 0 && here >= 0) {
+      const [from, to] = anchor < here ? [anchor, here] : [here, anchor];
+      for (const rangeId of deletableIds.slice(from, to + 1)) {
+        if (turnOn) next.add(rangeId);
+        else next.delete(rangeId);
+      }
+    } else if (turnOn) next.add(id);
+    else next.delete(id);
+    lastTicked.current = id;
+    setSelected(next);
+  }
+
+  function toggleAll() {
+    setSelected(allPicked ? new Set() : new Set(deletableIds));
+    lastTicked.current = null;
+  }
+
+  /**
+   * Deletes through the SAME per-form route as the row menu, a few at a time, so
+   * authorization, salon scoping, HR withdrawal and the deletion record all stay
+   * exactly as they are. Failures stay ticked so they can be retried or read.
+   */
+  async function deleteSelected() {
+    const batch = picked;
+    setBulkProgress({ done: 0, total: batch.length });
+    setProblem(null);
+    setMessage(null);
+    const failures: { form: MonitoredForm; reason: string }[] = [];
+    let finished = 0;
+    let next = 0;
+    async function worker() {
+      while (next < batch.length) {
+        const item = batch[next++];
+        try {
+          await call(`/api/forms/instances/${item.id}`, { method: "DELETE" });
+        } catch (error) {
+          failures.push({ form: item, reason: (error as Error).message });
+        }
+        finished += 1;
+        setBulkProgress({ done: finished, total: batch.length });
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(3, batch.length) }, worker));
+
+    const deleted = batch.length - failures.length;
+    const failedIds = new Set(failures.map((failure) => failure.form.id));
+    setSelected(failedIds);
+    lastTicked.current = null;
+    if (failures.length === 0) {
+      setMessage(`Deleted ${deleted} draft${deleted === 1 ? "" : "s"}.`);
+    } else {
+      const reasons = [...new Set(failures.map((failure) => failure.reason))].join("; ");
+      setProblem(`Deleted ${deleted}. ${failures.length} could not be deleted: ${reasons}`);
+    }
+    setBulkProgress(null);
+    setBulkOpen(false);
+    router.refresh();
+  }
+
   const banner = attentionSentence(attention);
 
   const emptyMessage =
@@ -460,6 +558,30 @@ export function MonitoringTable({
         </CardContent>
       </Card>
 
+      {picked.length > 0 ? (
+        <div
+          role="region"
+          aria-label="Selected forms"
+          className="sticky top-2 z-20 flex flex-wrap items-center gap-3 rounded-[var(--radius-md)] border border-border-strong bg-surface px-4 py-2.5 shadow-md"
+        >
+          <p className="text-[13px] font-medium text-foreground">{picked.length} selected</p>
+          <div className="ml-auto flex items-center gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())} disabled={bulkBusy}>
+              Clear
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => setBulkOpen(true)}
+              disabled={bulkBusy}
+            >
+              <Trash2 />
+              Delete selected
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
       {shown.length === 0 ? (
         <Card>
           <CardContent className="p-8 text-center text-[13px] text-muted-foreground">
@@ -478,6 +600,22 @@ export function MonitoringTable({
               <table className="w-full min-w-[900px] border-collapse text-sm">
                 <thead>
                   <tr className="border-b border-border">
+                    {mayManage ? (
+                      <th className="w-10 px-1 py-1 text-left">
+                        {deletable.length > 0 ? (
+                          <label className="flex min-h-10 min-w-10 cursor-pointer items-center justify-center">
+                            <input
+                              ref={headerBox}
+                              type="checkbox"
+                              aria-label="Select all drafts shown"
+                              checked={allPicked}
+                              onChange={toggleAll}
+                              className="size-5 cursor-pointer accent-[var(--selected)]"
+                            />
+                          </label>
+                        ) : null}
+                      </th>
+                    ) : null}
                     {[
                       "Employee",
                       "Form",
@@ -509,6 +647,22 @@ export function MonitoringTable({
 
                     return (
                       <tr key={form.id} className="border-b border-border last:border-0">
+                        {mayManage ? (
+                          <td className="w-10 px-1 py-1">
+                            {form.status === "draft" ? (
+                              <label className="flex min-h-10 min-w-10 cursor-pointer items-center justify-center">
+                                <input
+                                  type="checkbox"
+                                  aria-label={`Select the ${form.templateShortName} for ${form.employeeName}`}
+                                  checked={selected.has(form.id)}
+                                  onChange={() => {}}
+                                  onClick={(event) => toggleOne(form.id, event.shiftKey)}
+                                  className="size-5 cursor-pointer accent-[var(--selected)]"
+                                />
+                              </label>
+                            ) : null}
+                          </td>
+                        ) : null}
                         <td className="px-2.5 py-2 whitespace-nowrap text-foreground">
                           {form.employeeName}
                         </td>
@@ -747,6 +901,45 @@ export function MonitoringTable({
             </DialogActions>
           </DialogContent>
         ) : null}
+      </Dialog>
+
+      {/* BULK DELETE: names the count and the first few, then runs the per-form delete. */}
+      <Dialog
+        open={bulkOpen}
+        onOpenChange={(open) => {
+          if (!open && !bulkBusy) setBulkOpen(false);
+        }}
+      >
+        <DialogContent
+          title={`Delete ${picked.length} draft${picked.length === 1 ? "" : "s"}?`}
+          description="Drafts are removed for good. A deletion record is kept."
+        >
+          <ul className="list-disc space-y-1 pl-5 text-[13px] text-foreground">
+            {picked.slice(0, 5).map((form) => (
+              <li key={form.id}>
+                {form.templateShortName} for {form.employeeName}
+              </li>
+            ))}
+          </ul>
+          {picked.length > 5 ? (
+            <p className="text-[13px] text-muted-foreground">and {picked.length - 5} more.</p>
+          ) : null}
+          {bulkProgress ? (
+            <p role="status" className="text-[13px] text-muted-foreground">
+              Deleting {Math.min(bulkProgress.done + 1, bulkProgress.total)} of {bulkProgress.total}
+            </p>
+          ) : null}
+
+          <DialogActions>
+            <Button variant="ghost" onClick={() => setBulkOpen(false)} disabled={bulkBusy}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={deleteSelected} disabled={bulkBusy}>
+              {bulkBusy ? <Loader2 className="animate-spin" /> : <Trash2 />}
+              Delete {picked.length} draft{picked.length === 1 ? "" : "s"}
+            </Button>
+          </DialogActions>
+        </DialogContent>
       </Dialog>
 
       {/*
