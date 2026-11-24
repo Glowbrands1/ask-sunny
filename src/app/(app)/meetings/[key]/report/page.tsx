@@ -232,6 +232,13 @@ async function Report({ meetingKey: key, mine }: { meetingKey: string; mine: Awa
         </div>
       </header>
 
+      {/* A failed recaps read leaves the recap sections empty: say so, on screen and on the printout (24 Nov 2026). */}
+      {!recapsResult.ok && (
+        <p role="status" data-testid="load-problems" className="m-0 rounded-lg bg-warn/30 px-4 py-2 text-sm font-semibold">
+          Couldn&rsquo;t load the meeting recaps &mdash; refresh to try again. The recap and solved-issue sections below are incomplete.
+        </p>
+      )}
+
       {/* Cover */}
       <section aria-labelledby="cover-title" className="report-sheet report-cover glass flex flex-col gap-6 p-8">
         <div className="flex flex-wrap items-start justify-between gap-4">
