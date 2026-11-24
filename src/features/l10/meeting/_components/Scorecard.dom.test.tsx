@@ -219,14 +219,15 @@ describe("STC SD L10 scorecard: a divider around each salon (QA, 19 Nov 2026)", 
   });
 });
 
-// The Hub's silent-failure audit, 23 Nov 2026: a scorecard entry that is not a number ("n/a", "12x") closed the cell and
+// The Hub's silent-failure audit, 23 Nov 2026: a scorecard entry that is not a number ("12x") closed the cell and
 // went back to the old value without a word.
 describe("a scorecard entry that is not a number", () => {
+  // Changed on purpose 24 Nov 2026: this typed "n/a", which is now a valid entry (the owner: "should be able to add N/A").
   it("is not dropped quietly: the cell stays open, says so, and Escape cancels", () => {
     render(<Harness />);
     fireEvent.click(screen.getAllByRole("button", { name: /^Sales calls/ })[0]);
     const input = screen.getByRole("textbox", { name: /^Sales calls/ });
-    fireEvent.change(input, { target: { value: "n/a" } });
+    fireEvent.change(input, { target: { value: "12x" } });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(screen.getByRole("alert").textContent).toMatch(/Not a number/);
     expect(input.getAttribute("aria-invalid")).toBe("true");
@@ -241,5 +242,37 @@ describe("a scorecard entry that is not a number", () => {
     fireEvent.change(input, { target: { value: "12" } });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(saved.length).toBeGreaterThan(0);
+  });
+});
+
+// The owner, 24 Nov 2026: "should be able to add N/A". A week the metric does not apply shows N/A, is saved, and never
+// counts as a number (no colour, no miss); a number or an empty cell replaces it.
+describe("N/A in a scorecard cell", () => {
+  const enter = (text: string) => {
+    fireEvent.click(screen.getAllByRole("button", { name: /^Sales calls/ })[0]);
+    const input = screen.getByRole("textbox", { name: /^Sales calls/ });
+    fireEvent.change(input, { target: { value: text } });
+    fireEvent.keyDown(input, { key: "Enter" });
+  };
+  for (const typed of ["N/A", "n/a", "na", "NA"]) {
+    it(`"${typed}" is saved as N/A and shown as N/A`, () => {
+      render(<Harness />);
+      enter(typed);
+      expect(screen.queryByRole("alert")).toBeNull();
+      const cell = screen.getAllByRole("button", { name: /^Sales calls.*: N\/A$/ })[0];
+      expect(cell.textContent).toBe("N/A");
+      expect(cell.getAttribute("data-tone")).toBe("plain");
+      const row = (saved.at(-1)!.scorecard as unknown as { id: string; weeks: (number | null)[]; na?: number[] }[]).find((r) => r.id === "s1")!;
+      expect(row.na?.length).toBe(1);
+      expect(row.weeks[row.na![0]]).toBeNull();
+    });
+  }
+  it("a number typed over N/A replaces it", () => {
+    render(<Harness />);
+    enter("N/A");
+    enter("7");
+    const row = (saved.at(-1)!.scorecard as unknown as { id: string; weeks: (number | null)[]; na?: number[] }[]).find((r) => r.id === "s1")!;
+    expect(row.na).toBeUndefined();
+    expect(row.weeks).toContain(7);
   });
 });
