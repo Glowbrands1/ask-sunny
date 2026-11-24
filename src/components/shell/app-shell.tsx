@@ -50,6 +50,7 @@ export function AppShell({
   // fading out toward the bottom-right, away from page titles.
   const backdrop = pathname?.startsWith("/chat") ? "chat" : "page";
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const menuUnread = bell?.unread ?? 0;
 
   // Read straight from the external store — no effect, no cascading render.
   const collapsed = usePreference("local", COLLAPSE_KEY, "0") === "1";
@@ -99,11 +100,24 @@ export function AppShell({
         <Button
           variant="ghost"
           size="icon"
-          aria-label="Open navigation"
+          aria-label={menuUnread ? `Open navigation, ${menuUnread} unread notification${menuUnread === 1 ? "" : "s"}` : "Open navigation"}
           onClick={() => setDrawerOpen(true)}
-          className="text-topbar-foreground hover:bg-hover-surface hover:text-hover-surface-foreground lg:hidden"
+          className="relative text-topbar-foreground hover:bg-hover-surface hover:text-hover-surface-foreground lg:hidden"
         >
           <Menu />
+          {/*
+            THE PHONE'S UNREAD DOT (QA for Pau, 23 Nov 2026). The top bar lost its bell when Notifications moved under
+            Overview in the rail ("can we remove this and add a notification bar instead below the overview"); on a
+            phone the rail is a drawer, so this red dot on the menu button says there is something unread inside. No
+            number: the count is on the Notifications bar. Marking read revalidates the layout, so it clears itself.
+          */}
+          {menuUnread ? (
+            <span
+              data-testid="menu-unread-dot"
+              aria-hidden
+              className="absolute top-1.5 right-1.5 size-2.5 rounded-full bg-status-failed ring-2 ring-background"
+            />
+          ) : null}
         </Button>
 
         <Link href="/" aria-label="Ask Sunny — Overview" className="shrink-0">
