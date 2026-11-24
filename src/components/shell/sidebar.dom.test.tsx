@@ -304,8 +304,8 @@ describe("the DM L10 tab", () => {
 describe("the Notifications bar on the rail", () => {
   /*
    * Pau, 23 Nov 2026, showing the sibling app's rail: "i dont want a bell, i need a bar". On desktop the notifications
-   * are a labelled "Notifications" row at the top of the rail. The phone drawer does not repeat it: the top bar keeps
-   * the bell there. Who gets it at all is the layout's decision (`bellForLayout`): null means no bar.
+   * are a labelled "Notifications" bar in the rail, under Overview ("a notification bar instead below the overview"), on
+   * desktop and in the phone drawer; the top bar has no bell. Who gets it at all is the layout's decision (`bellForLayout`): null means no bar.
    */
   const bar = () => screen.queryByRole("button", { name: /^Notifications/ });
   const bell = { unread: 1, items: [{ id: "n1", kind: "form_hr_approval_request", title: "A form is waiting for your approval", body: "", href: "/forms/monitoring?view=hr", createdAt: new Date().toISOString(), readAt: null }] };
@@ -316,10 +316,19 @@ describe("the Notifications bar on the rail", () => {
     expect(bar()?.textContent).toBe("Notifications1");
   });
 
-  it("is not repeated in the phone drawer, where the top bar has the bell", () => {
+  /*
+   * Changed on purpose (QA, 24 Nov 2026, option B): #1298 kept the bell in the phone's top bar and left the drawer
+   * without the bar. Pau's other ask, "can we remove this and add a notification bar instead below the overview", moves
+   * it: the top bar has no bell, and the same labelled bar sits under Overview in the phone drawer too.
+   */
+  it("is in the phone drawer too, under Overview, since the top bar has no bell", () => {
     mocked.value = session("owner", false);
     render(<SidebarNav variant="drawer" bell={bell} />);
-    expect(bar()).toBeNull();
+    expect(bar()?.textContent).toBe("Notifications1");
+    const items = [...document.querySelectorAll('nav[aria-label="Main"] li')].map((li) => li.textContent ?? "");
+    const overview = items.findIndex((text) => /Overview/.test(text));
+    expect(overview, "no Overview item").toBeGreaterThanOrEqual(0);
+    expect(items[overview + 1]).toMatch(/^Notifications/);
   });
 
   it("is absent when the layout gives this person no notifications", () => {

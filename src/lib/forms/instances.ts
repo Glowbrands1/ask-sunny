@@ -832,10 +832,11 @@ export async function saveInstanceValues(
   options: {
     readonly via?: "chat";
     /**
-     * HR editing a form that waits for them (`hr-approval.ts`): written through `form_hr_approval_write_values`, the
-     * one path the database lets past the hold. Only the route that has checked the actor is an approver sets it.
+     * HR, or the form's creator or a sender, editing a form that waits for HR (`mayEditWhileWithHr`): written through
+     * `form_hr_approval_write_values`, the one path the database lets past the hold. Only the route that has checked
+     * the actor may edit it sets it.
      */
-    readonly asHrApprover?: boolean;
+    readonly pastHrHold?: boolean;
     /**
      * HR editing a form that is with them in any state (pending, sent back, rejected) that is not their own: the edit
      * is recorded in the approval history only, never the general one (owner, 23 Nov 2026: no leaks). The route sets
@@ -853,7 +854,7 @@ export async function saveInstanceValues(
   if (loaded.instance.status !== "draft") {
     throw new Error("This form is finalized. Create a revision to change it.");
   }
-  const hrEdit = options.asHrApprover === true && heldForHr(loaded.instance.hrApprovalState);
+  const hrEdit = options.pastHrHold === true && heldForHr(loaded.instance.hrApprovalState);
   if (heldForHr(loaded.instance.hrApprovalState) && !hrEdit) {
     // Held only while the hold is live; otherwise (flag off, no approver left) the form goes back to a plain draft.
     if (await hrHoldLive()) throw new HeldForHrError();
@@ -1107,7 +1108,7 @@ export class UnverifiedPolicyError extends Error {
 export class HeldForHrError extends Error {
   readonly code = HELD_FOR_HR;
   constructor() {
-    super("This form is waiting for HR approval. You can change it again if HR sends it back.");
+    super("This form is waiting for HR approval. The person who started it, whoever sent it, or HR can change it on the form itself; HR sees the changes.");
     this.name = "HeldForHrError";
   }
 }
@@ -1140,7 +1141,7 @@ export interface FinalizeOptions {
 
 /**
  * WHAT FINALIZE CHECKS BEFORE IT FREEZES ANYTHING: required fields, and an unverified policy the manager has not
- * acknowledged. Shared with "Finalize and send to HR for approval" (`hr-approval.ts`), so a form sent to HR has passed exactly
+ * acknowledged. Shared with "Finalize and send for approval" (`hr-approval.ts`), so a form sent to HR has passed exactly
  * what Finalize would have asked of it, while the manager can still fix it.
  */
 export function finalizePreflight(

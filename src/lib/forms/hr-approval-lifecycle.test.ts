@@ -7,7 +7,7 @@ import type { FormsActor } from "./access";
 /**
  * HR APPROVAL, THE WHOLE ROUND TRIP (owner request, 23 Nov 2026), against the real `instances.ts` and `hr-approval.ts`:
  *
- *   the manager presses "Finalize and send to HR for approval"   → still a draft, pending; HR's bell rings
+ *   the manager presses "Finalize and send for approval"   → still a draft, pending; HR's bell rings
  *   the manager tries to change it                          → refused while HR has it
  *   HR edits it                                             → saved, in the approval history only
  *   HR sends it back without a note                         → refused: a note is required
@@ -128,7 +128,7 @@ describe("the round trip", () => {
     // 4. HR edits it: saved through the one path past the hold, recorded in the approval history only.
     const eventsBefore = store.form_instance_events!.length;
     // As the PATCH route does it: the save, then the approval history's "edited".
-    await saveInstanceValues(instance.id, { values: { form_date: "2026-11-22" }, checked: {} }, HR, { asHrApprover: true });
+    await saveInstanceValues(instance.id, { values: { form_date: "2026-11-22" }, checked: {} }, HR, { pastHrHold: true });
     await recordHrEdit(instance.id, hr);
     expect((await loadInstance(instance.id))!.instance.formDate).toBe("2026-11-22");
     expect(store.form_instance_events!.length, "HR's edit reached the form's general history").toBe(eventsBefore);
@@ -138,7 +138,9 @@ describe("the round trip", () => {
     await expect(decideHrApproval(instance.id, manager, "approve", null)).rejects.toThrow(/Only HR/);
     const back = await decideHrApproval(instance.id, hr, "send_back", "Please add the date she was told.");
     expect(back.hrApprovalState).toBe("changes_requested");
-    expect(bells("thistle@example.com")[0]).toMatchObject({ kind: "form_hr_approval_decision", title: "HR sent your form back for changes" });
+    // Changed on purpose (24 Nov 2026): the sender's first bell is now their own "You sent a form for HR approval"
+    // receipt (owner request), so the decision is looked up by kind instead of being the first item.
+    expect(bells("thistle@example.com").find((bell) => bell.kind === "form_hr_approval_decision")).toMatchObject({ title: "HR sent your form back for changes" });
     await saveInstanceValues(instance.id, { values: { form_date: "2026-11-21" }, checked: {} }, CREATOR);
 
     // 6. The manager's reply and HR's note: only the two of them read the history.

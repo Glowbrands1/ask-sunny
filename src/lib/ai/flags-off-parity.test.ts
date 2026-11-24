@@ -1301,6 +1301,10 @@ describe("new flags default off and wrappers are inert", () => {
           ":(exclude)src/features/forms/hr-approval-lists.tsx",
           ":(exclude)src/features/forms/hr-approval-screen.tsx",
           ":(exclude)src/app/(app)/forms/hr-approval/**",
+          // "Bubbles approvals ↗" on Form Monitoring (Pau, 23 Nov 2026: an approver in both apps needs Ask Bubbles'
+          // approvals from here): a link tab in hr-approval-lists.tsx, mounted by forms/monitoring/page.tsx, both
+          // excluded above. Only for people who already get the app switcher; a plain link to Ask Bubbles' own Pending
+          // HR approval view, with no count and no data crossing. No chat or form behaviour changes.
           // Import's "belongs to another account" line (QA, 31 Oct 2026, both apps): shown only
           // when the server declines a chat as another account's, i.e. only with
           // CHAT_IMPORT_OWN_ONLY_ENABLED on. Off, the server never declines that way, so it never shows.
@@ -1372,6 +1376,12 @@ describe("new flags default off and wrappers are inert", () => {
           // or with a notification; its mount line is in app-shell.tsx and its read in layout.tsx, both
           // excluded above. No chat or form behaviour changes.
           ":(exclude)src/features/notifications",
+          // The bell as a rail item, directly under Overview (Pau, 23 Nov 2026, as an HR approver: "why no notification
+          // for [the approver]? should be same as bubbles … for the form acceptance", then of the top-bar bell: "can we
+          // remove this and add a notification bar instead below the overview"): the rail variant in
+          // notification-bell.tsx, its place in sidebar.tsx (desktop and phone drawer), and app-shell.tsx dropping the
+          // top-bar bell. All three paths are already excluded here; the same people get the same panel. No chat or
+          // form behaviour changes.
           // Times shown in the business zone (CT) (Pau via QA, 15 Nov 2026: "The whole app and chat should be in CT"):
           // display formatting only, on purpose and not behind a flag; the stored values stay UTC.
           ":(exclude)src/features/admin/analytics/feedback-queue.tsx",

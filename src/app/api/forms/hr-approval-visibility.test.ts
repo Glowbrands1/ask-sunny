@@ -184,7 +184,12 @@ async function load(viewer: Viewer, env: { flag?: boolean } = {}) {
     RevisionReasonRequiredError: class extends Error {},
   }));
   vi.doMock("@/lib/forms/revision-history", () => ({ revisionLabel: () => null }));
+  const rules = await import("@/lib/forms/hr-approval-rules");
   vi.doMock("@/lib/forms/hr-approval", () => ({
+    // #1303's rule, built from the real rules: HR, or a verified creator or sender, while the form is held for HR.
+    mayEditWhileWithHr: (actor: { id: string; verified?: boolean; hrApprover?: boolean }, instance: Parameters<typeof rules.isCreatorOrSender>[1] & { hrApprovalState?: string | null }) =>
+      rules.heldForHr((instance.hrApprovalState ?? null) as Parameters<typeof rules.heldForHr>[0]) &&
+      (actor.hrApprover === true || (actor.verified === true && rules.isCreatorOrSender(actor, instance))),
     hrApprovalViewFor: async () => null,
     finalizeGoesToHr: async () => false,
     sendForHrApproval: async () => null,

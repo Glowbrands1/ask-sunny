@@ -11,7 +11,9 @@ import { formatBusinessTime } from "@/lib/business-date";
  *   HrApprovalTabs  "All forms" and "Pending HR approval (N)", shown to HR only;
  *                   with N > 0 a red button that shakes every few seconds (Pau,
  *                   via QA, 23 Nov 2026: "its so small pending approval, make it
- *                   red button and animated shaking if theres a pending")
+ *                   red button and animated shaking if theres a pending"); and
+ *                   the sibling app's approvals as a tab beside it, listed on
+ *                   this page (owner: "just a tab pls", not a link away)
  *   HrQueueList     HR's tab: "Needs your decision" — waiting forms oldest first
  *                   (overdue marked), then sent-back forms the manager replied to
  *                   ("Manager replied to changes") — exactly the rows N counts;

@@ -152,7 +152,7 @@ interface LoadedInstance {
   cardChangeAmount?: boolean;
   /**
    * HR APPROVAL (FORMS_HR_APPROVAL_ENABLED): the approval panel, sent by the server only to the form's creator and HR.
-   * `finalizeToHr`: this reader's Finalize sends the form to HR instead ("Finalize and send to HR for approval").
+   * `finalizeToHr`: this reader's Finalize sends the form to HR instead ("Finalize and send for approval").
    */
   hrApproval?: HrApprovalPanelView;
   finalizeToHr?: boolean;
@@ -284,7 +284,7 @@ export function InlineForm({
    * twice.
    */
   const [confirmingFinalize, setConfirmingFinalize] = React.useState(false);
-  /** The optional "Note to HR" typed beside "Finalize and send to HR for approval"; sent with it, cleared once sent. */
+  /** The optional "Note to HR" typed beside "Finalize and send for approval"; sent with it, cleared once sent. */
   const [hrNote, setHrNote] = React.useState("");
 
   const call = React.useCallback(
@@ -375,7 +375,8 @@ export function InlineForm({
   ).some((field) => field.semantics === "follow_up_timeframe");
   const prefilling = prefill.kind === "running";
   /*
-   * HR APPROVAL: a form waiting for HR is read-only for its creator; HR may edit it (`canEdit`) before deciding.
+   * HR APPROVAL: while a form waits for HR, HR, its creator and its senders may still edit it (`canEdit`; owner, 24 Nov
+   * 2026), and HR reads the updated version. Anybody else's card is read-only.
    * `toHr`: this Finalize sends the form to HR, so the button and the confirmation say so.
    */
   const hrApproval = loaded.hrApproval ?? null;
@@ -973,7 +974,7 @@ export function InlineForm({
               ) : null}
             </div>
           ) : heldForHr || hrReviewing ? (
-            /* HR APPROVAL: no Finalize while the form waits — HR decides in the approval panel below. */
+            /* HR APPROVAL: no Finalize while the form waits — HR decides in the approval panel below; edits still save. */
             null
           ) : (
             <>
@@ -1010,7 +1011,7 @@ export function InlineForm({
                 {action.kind === "busy" && action.what === "finalize" ? (
                   <Loader2 className="animate-spin" />
                 ) : null}
-                {toHr ? "Finalize and send to HR for approval" : "Finalize"}
+                {toHr ? "Finalize and send for approval" : "Finalize"}
               </Button>
               <span className="text-xs text-subtle-foreground">
                 {toHr
@@ -1117,7 +1118,7 @@ export function InlineForm({
           >
             <p className="text-[13px] leading-relaxed text-muted-foreground">
               {toHr
-                ? "HR reviews it and approves, sends it back for changes, or rejects it. You cannot change it while HR has it. It is finalized when HR approves it."
+                ? "This form will be reviewed and approved by HR before it is final. HR approves it, sends it back for changes, or rejects it, and you get a notification either way. You can still edit it while HR has it; HR sees the updated version."
                 : loaded.instance.revisesInstanceId
                 ? "Its values are frozen and it replaces the finalized original. To change it afterwards, edit it as a new draft. Signatures are signed on paper."
                 : "Its values are frozen. To change it afterwards, edit it as a new draft. Signatures are signed on paper."}
