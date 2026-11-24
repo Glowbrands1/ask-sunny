@@ -97,7 +97,6 @@ function form(overrides: Partial<MonitoredForm> = {}): MonitoredForm {
     finalizedAt: "2026-09-01T12:00:00Z",
     exportedAt: null,
     revisesInstanceId: null,
-    archivedAt: null,
     isDemo: true,
     updatedAt: "2026-09-01T10:00:00Z",
     ...overrides,
@@ -110,7 +109,6 @@ function table(
   forms: MonitoredForm[],
   options: {
     followUp?: "all" | "drafted" | "open" | "overdue" | "followed_up";
-    view?: "active" | "archived" | "all";
     attention?: { overdue: number; dueThisWeek: number; needsAttention: number };
     demo?: { deletable: number; protected: number };
     showCount?: number;
@@ -121,7 +119,6 @@ function table(
     <MonitoringTable
       forms={forms}
       notice={null}
-      view={options.view ?? "active"}
       followUp={options.followUp ?? "all"}
       today={TODAY}
       attention={options.attention ?? NO_ATTENTION}
@@ -186,12 +183,6 @@ describe("the follow-up pills", () => {
     table(mixed);
     await userEvent.click(pill("Overdue"));
     expect(navigated.pushes).toEqual(["/forms/monitoring?followup=overdue"]);
-  });
-
-  it("keeps the archive shelf when the pill changes, and vice versa", async () => {
-    table(mixed, { view: "archived", followUp: "all" });
-    await userEvent.click(pill("Open"));
-    expect(navigated.pushes).toEqual(["/forms/monitoring?view=archived&followup=open"]);
   });
 
   it("says nothing is in an empty state rather than showing 'no forms yet'", () => {
@@ -304,14 +295,6 @@ describe("start tracking", () => {
     expect(navigated.refreshes).toBe(1);
   });
 
-  it("is not offered on an archived form", () => {
-    table([form({ employeeName: "Hidden One", archivedAt: "2026-09-02T00:00:00Z" })], {
-      view: "archived",
-    });
-    expect(
-      rowFor("Hidden One").ui.queryByRole("button", { name: /start tracking/i }),
-    ).toBeNull();
-  });
 });
 
 describe("changing the date", () => {
@@ -426,9 +409,10 @@ describe("the attention banner", () => {
   });
 });
 
-/* ------------------------------------------------ delete / archive regression --- */
+/* ------------------------------------------------ delete regression --- */
 
-describe("delete and archive still work as they did", () => {
+// On purpose (Pau, 23 Nov 2026): the Archive / Restore items and the Archived shelf are gone; a form is only Draft or Finalized.
+describe("delete still works as it did, and there is no archive", () => {
   async function openMenu(name: string) {
     await userEvent.click(rowFor(name).ui.getByRole("button", { name: /more actions/i }));
     return within(await screen.findByRole("menu"));
@@ -441,19 +425,9 @@ describe("delete and archive still work as they did", () => {
     expect(menu.queryByRole("menuitem", { name: /archive/i })).toBeNull();
   });
 
-  it("offers Archive INSTEAD OF Delete on a finalized form", async () => {
+  it("offers nothing to remove on a finalized form: no menu at all", () => {
     table([form({ employeeName: "Filed One" })]);
-    const menu = await openMenu("Filed One");
-    expect(menu.getByRole("menuitem", { name: /^archive$/i })).toBeTruthy();
-    expect(menu.queryByRole("menuitem", { name: /^delete$/i })).toBeNull();
-  });
-
-  it("offers Restore on an archived row", async () => {
-    table([form({ employeeName: "Hidden One", archivedAt: "2026-09-02T00:00:00Z" })], {
-      view: "archived",
-    });
-    const menu = await openMenu("Hidden One");
-    expect(menu.getByRole("menuitem", { name: /restore/i })).toBeTruthy();
+    expect(rowFor("Filed One").ui.queryByRole("button", { name: /more actions/i })).toBeNull();
   });
 
   it("still names the record before deleting it", async () => {
@@ -514,7 +488,8 @@ describe("small row controls are big enough to tap", () => {
   const sized = (element: HTMLElement) => /\b(?:min-h-8|size-8)\b/.test(element.className);
 
   it("Start tracking, PDF and the row menu", () => {
-    table([form({ employeeName: "Filed One" })]);
+    // A draft now: a finalized form has no row menu (no archive, no delete; Pau, 23 Nov 2026).
+    table([form({ employeeName: "Filed One", status: "draft" })]);
     const { ui } = rowFor("Filed One");
     expect(sized(ui.getByRole("button", { name: /start tracking/i }))).toBe(true);
     expect(sized(ui.getByRole("button", { name: /pdf/i }))).toBe(true);
@@ -621,11 +596,10 @@ describe("the row menu \"…\" opens with something in it", () => {
     expect(await screen.findByRole("menuitem", { name: /delete/i })).toBeTruthy();
   });
 
-  it("an admin gets Archive on a finalized form", async () => {
+  it("an admin gets no \"…\" on a finalized form: it is kept on file, not archived or deleted", () => {
     admin();
     table([form({ employeeName: "Filed One" })]);
-    await userEvent.click(rowFor("Filed One").ui.getByRole("button", { name: "More actions for Filed One" }));
-    expect(await screen.findByRole("menuitem", { name: /archive/i })).toBeTruthy();
+    expect(rowFor("Filed One").ui.queryByRole("button", { name: "More actions for Filed One" })).toBeNull();
   });
 
   it("the ... is not showing when clicked: a role that cannot manage gets no empty \"…\" on a draft", () => {
@@ -651,9 +625,118 @@ describe("the row menu \"…\" opens with something in it", () => {
 });
 
 /*
- * Reported 18 Nov 2026: test forms listed as overdue on the Overview could not
- * be found in Form Monitoring ("doesnt show in my form registry"). The page
- * loaded the newest 200 forms and stopped; those forms had ~500 newer ones.
+ * Pau, 24 Nov 2026: "can u just create a multi click button and delete inside
+ * both apps so we can easily delete the ones we dont want"
+ */
+describe("can u just create a multi click button and delete inside both apps so we can easily delete the ones we dont want", () => {
+  const drafts = () => [
+    form({ id: "a", employeeName: "Draft A", status: "draft", finalizedAt: null }),
+    form({ id: "b", employeeName: "Draft B", status: "draft", finalizedAt: null }),
+    form({ id: "c", employeeName: "Draft C", status: "draft", finalizedAt: null }),
+    form({ id: "f", employeeName: "Filed One" }),
+  ];
+  const box = (name: string) =>
+    screen.getByRole("checkbox", { name: `Select the Coaching for ${name}` }) as HTMLInputElement;
+
+  it("selects one draft and shows the action bar", async () => {
+    table(drafts());
+    expect(screen.queryByText(/selected$/)).toBeNull();
+    await userEvent.click(box("Draft A"));
+    expect(box("Draft A").checked).toBe(true);
+    expect(screen.getByText("1 selected")).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: "Clear" }));
+    expect(screen.queryByText("1 selected")).toBeNull();
+  });
+
+  it("the header box selects every draft shown and nothing else", async () => {
+    table(drafts());
+    await userEvent.click(screen.getByRole("checkbox", { name: "Select all drafts shown" }));
+    expect(screen.getByText("3 selected")).toBeTruthy();
+    await userEvent.click(box("Draft B"));
+    expect(screen.getByText("2 selected")).toBeTruthy();
+    expect(
+      (screen.getByRole("checkbox", { name: "Select all drafts shown" }) as HTMLInputElement).indeterminate,
+    ).toBe(true);
+  });
+
+  it("shift-click selects the range", async () => {
+    table(drafts());
+    const user = userEvent.setup();
+    await user.click(box("Draft A"));
+    await user.keyboard("{Shift>}");
+    await user.click(box("Draft C"));
+    await user.keyboard("{/Shift}");
+    expect(screen.getByText("3 selected")).toBeTruthy();
+  });
+
+  it("a finalized form has no checkbox", () => {
+    table(drafts());
+    expect(rowFor("Filed One").ui.queryByRole("checkbox")).toBeNull();
+  });
+
+  it("no checkboxes without manage_form_records", () => {
+    mockSession.value = {
+      role: "location_manager",
+      user: { name: "QA" },
+      can: (permission: Permission) => permission === "create_coaching_form",
+      demoMode: false,
+    };
+    table(drafts());
+    expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
+  });
+
+  it("a new filter clears the selection", async () => {
+    const view = table(drafts());
+    await userEvent.click(box("Draft A"));
+    view.rerender(
+      <MonitoringTable
+        forms={drafts()}
+        notice={null}
+        followUp="drafted"
+        today={TODAY}
+        attention={NO_ATTENTION}
+        demo={{ deletable: 0, protected: 0 }}
+      />,
+    );
+    expect(screen.queryByText("1 selected")).toBeNull();
+  });
+
+  it("deletes once per id through the existing route and reports a partial failure", async () => {
+    vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      calls.list.push({ url, method: init?.method ?? "GET", body: null });
+      const failing = url.endsWith("/b");
+      return Promise.resolve(
+        new Response(JSON.stringify(failing ? { error: "this form is finalized" } : { deleted: {} }), {
+          status: failing ? 409 : 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    });
+    table(drafts());
+    await userEvent.click(screen.getByRole("checkbox", { name: "Select all drafts shown" }));
+    await userEvent.click(screen.getByRole("button", { name: "Delete selected" }));
+    const dialog = within(await screen.findByRole("dialog"));
+    expect(dialog.getByText(/removed for good/i)).toBeTruthy();
+    await userEvent.click(dialog.getByRole("button", { name: /delete 3 drafts/i }));
+    await waitFor(() => expect(screen.getByText(/Deleted 2\. 1 could not be deleted/)).toBeTruthy());
+    const deletes = calls.list.filter((c) => c.method === "DELETE").map((c) => c.url).sort();
+    expect(deletes).toEqual([
+      "/api/forms/instances/a",
+      "/api/forms/instances/b",
+      "/api/forms/instances/c",
+    ]);
+    expect(navigated.refreshes).toBe(1);
+    // The failure stays selected.
+    expect(screen.getByText("1 selected")).toBeTruthy();
+    expect(box("Draft B").checked).toBe(true);
+  });
+});
+
+/*
+ * Reported 18 Nov 2026: "doesnt show in my form registry". The page loaded the newest 200
+ * forms and stopped, so older forms (overdue follow-ups among them) could not
+ * be found here.
  */
 describe("Load more", () => {
   it("is offered when the server holds more forms, and asks for the next page in the URL", async () => {
@@ -662,10 +745,10 @@ describe("Load more", () => {
     expect(navigated.pushes.at(-1)).toBe("/forms/monitoring?show=400");
   });
 
-  it("keeps the filters and adds a page to what is already loaded", async () => {
-    table([form()], { hasMore: true, showCount: 400, followUp: "overdue", view: "all" });
+  it("keeps the follow-up filter and adds a page to what is already loaded", async () => {
+    table([form()], { hasMore: true, showCount: 400, followUp: "overdue" });
     await userEvent.click(screen.getByRole("button", { name: "Load more forms" }));
-    expect(navigated.pushes.at(-1)).toBe("/forms/monitoring?view=all&followup=overdue&show=600");
+    expect(navigated.pushes.at(-1)).toBe("/forms/monitoring?followup=overdue&show=600");
   });
 
   it("is not offered when every form is already loaded", () => {

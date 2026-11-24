@@ -48,7 +48,6 @@ import { blankRequiredFields, requiredFieldsMessage } from "./required-fields";
 import { getCurrentVersion, getVersion, type TemplateVersionRow } from "./repository";
 import { HELD_FOR_HR, asHrApprovalState, editableDraft, heldForHr, withoutHeldForHr, type HrApprovalState } from "./hr-approval-rules";
 import { hrHoldLive, releaseStaleHold } from "./hr-approval-approvers";
-import { clearRequestBells } from "./hr-approval-bells";
 
 /** The form's own Date line — the same day as `form_instances.form_date`. */
 const FORM_DATE_KEY = "form_date";
@@ -94,7 +93,6 @@ export interface InstanceRow {
   followedUpBy: string | null;
   finalizedAt: string | null;
   exportedAt: string | null;
-  archivedAt: string | null;
   revisesInstanceId: string | null;
   createdAt: string;
   updatedAt: string;
@@ -150,7 +148,6 @@ function mapInstance(row: Record<string, unknown>): InstanceRow {
     followedUpBy: (row.followed_up_by as string | null) ?? null,
     finalizedAt: (row.finalized_at as string | null) ?? null,
     exportedAt: (row.exported_at as string | null) ?? null,
-    archivedAt: (row.archived_at as string | null) ?? null,
     revisesInstanceId: (row.revises_instance_id as string | null) ?? null,
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
@@ -192,9 +189,6 @@ async function recordEvent(
 }
 
 /* -------------------------------------------------------------- reading --- */
-
-/** Which shelf of the monitoring list to read. */
-export type InstanceView = "active" | "archived" | "all";
 
 /**
  * ============================================================================
@@ -266,7 +260,6 @@ export interface InstanceListFilter {
 }
 
 export async function listInstances(
-  view: InstanceView = "active",
   limit = 200,
   filter?: InstanceListFilter,
 ): Promise<InstanceRow[]> {
@@ -307,10 +300,7 @@ export async function listInstances(
         `hr_approval_state.is.null,hr_approval_state.eq.approved,created_by.eq."${hideAwaitingHrFor}",hr_approval_senders.cs.{"${hideAwaitingHrFor}"}`,
       );
     }
-    // `archived_at` is presentation, not status — see the migration. The active
-    // list is the default because it is what somebody opening the screen wants.
-    if (view === "active") return query.is("archived_at", null);
-    if (view === "archived") return query.not("archived_at", "is", null);
+    // No archived shelf (Pau, 23 Nov 2026): a form is Draft or Finalized, and every one is listed.
     return query;
   }
 
@@ -1561,7 +1551,7 @@ export function variantsOf(version: TemplateVersionRow) {
   return parseFormVariants(version.variants);
 }
 
-/* ------------------------------------------------- removing and archiving --- */
+/* ------------------------------------------------------------- removing --- */
 
 /**
  * THE MARKER THAT MAKES A RECORD IDENTIFIABLY SYNTHETIC.
@@ -1588,7 +1578,7 @@ export class InstanceProtectedError extends Error {}
  *
  * ONLY A FORM THAT WAS NEVER FINALIZED. A finalized form is a signed HR
  * document; destroying one silently is the thing this function exists to
- * refuse. Callers that want it gone from the list use `archiveInstance`.
+ * refuse. There is no archive (Pau, 23 Nov 2026): a finalized form stays on file.
  *
  * The values and events go by CASCADE rather than by three deletes here — the
  * foreign keys declare it, so there is no ordering to get wrong and no window
@@ -1609,7 +1599,7 @@ export async function deleteInstance(id: string, by?: DeletionActor): Promise<In
   const instance = mapInstance(row);
   if (instance.status !== "draft") {
     throw new InstanceProtectedError(
-      `This form is ${instance.status}, so it cannot be deleted. Archive it instead — that hides it from the active list and keeps the record.`,
+      `This form is ${instance.status}, so it cannot be deleted. Finalized forms are kept on file.`,
     );
   }
 
@@ -1652,41 +1642,6 @@ async function stampDeletion(ids: readonly string[], by: DeletionActor | undefin
     })
     .in("id", [...ids]);
   if (error) console.error("forms: the deletion stamp was not written; the delete is recorded without its user", { reason: error.message, via: by.via });
-}
-
-/**
- * Hides a form from the active list without changing what it says.
- *
- * Works on any status, and deliberately does NOT touch `status`, values, or
- * `finalized_at`. See the migration for why archiving is a separate column
- * rather than a fourth status.
- */
-export async function archiveInstance(
-  id: string,
-  actor: string,
-  archived: boolean,
-): Promise<InstanceRow> {
-  const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
-    .from("form_instances")
-    .update({ archived_at: archived ? new Date().toISOString() : null })
-    .eq("id", id)
-    .select("id")
-    .maybeSingle();
-  if (error) throw new Error(`Could not ${archived ? "archive" : "restore"} that form: ${error.message}`);
-  if (!data) throw new Error("That form no longer exists.");
-
-  // Archiving is a decision somebody made, so it joins the form's own history.
-  await recordEvent(id, archived ? "archived" : "unarchived", actor);
-
-  const loaded = await loadInstance(id);
-  if (!loaded) throw new Error("That form vanished while being archived.");
-  /*
-   * An archived form waiting for HR is out of HR's queue, so its "waiting for your approval" bells are marked read and
-   * the bell stops pointing at it (QA, 23 Nov 2026). Restoring it does not ring them again; it is back in the queue.
-   */
-  if (archived && loaded.instance.hrApprovalState === "pending") await clearRequestBells(id);
-  return loaded.instance;
 }
 
 export interface DemoSweep {
@@ -1801,11 +1756,6 @@ export async function setFollowUpDate(
   }
 
   const before = await readInstance(id);
-  if (before.archivedAt) {
-    throw new FollowUpError(
-      "This form is archived. Restore it before scheduling a follow-up.",
-    );
-  }
   if (before.followedUpAt) {
     throw new FollowUpError(
       "This follow-up is already marked complete. Reopen it before changing the date.",
@@ -1942,7 +1892,6 @@ export async function listOutstandingFollowUps(
       .select("*")
       .not("follow_up_date", "is", null)
       .is("followed_up_at", null)
-      .is("archived_at", null)
       .order("follow_up_date", { ascending: true })
       .limit(limit);
 

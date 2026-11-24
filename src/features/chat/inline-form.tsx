@@ -1409,7 +1409,12 @@ function prefillNoticeFor(
     return { tone: "attention", text: prefill.message };
   }
 
-  if (prefill.kind === "complete") return prefill.notice ? { tone: "attention", text: prefill.notice } : null;
+  /*
+   * Pau, 23 Nov 2026: "rmeove this" — the box under the Salon line that strung
+   * together the policy-requirement, draft-left-out and follow-up notices after a
+   * draft completed. A completed draft shows no notice on the card.
+   */
+  if (prefill.kind === "complete") return null;
 
   /* unknown — reopened from storage. Read the form's own history. */
   if (loaded.instance.source !== "ask_sunny") return null;

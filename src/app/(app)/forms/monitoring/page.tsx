@@ -11,14 +11,12 @@ import {
   isDemoInstance,
   listInstances,
   listOutstandingFollowUps,
-  type InstanceView,
 } from "@/lib/forms/instances";
 import { privateAwareLimit } from "@/lib/forms/private-creators";
 import { parseShowCount } from "@/lib/forms/monitoring-page-size";
 import {
   MonitoringTable,
   type MonitoredForm,
-  type MonitoringView,
 } from "@/features/forms/monitoring-table";
 import { pageCan, requirePagePermission } from "@/lib/auth/page";
 import {
@@ -60,12 +58,10 @@ export default async function FormMonitoringPage({
   // How many forms to load; "Load more" adds a page. See `monitoring-page-size.ts`.
   const showCount = parseShowCount(requestedShow);
   /*
-   * Both filters come from the URL so a view survives a refresh and can be
-   * linked to, and both are narrowed here rather than trusted — an unknown
+   * The follow-up filter comes from the URL so a view survives a refresh and can be
+   * linked to, and it is narrowed here rather than trusted — an unknown
    * value shows the default rather than erroring.
    */
-  const view: MonitoringView =
-    requestedView === "archived" || requestedView === "all" ? requestedView : "active";
   const followUp = parseFollowUpFilter(requestedFollowUp);
 
   /*
@@ -137,7 +133,7 @@ export default async function FormMonitoringPage({
     // One row past the page is read so the page knows whether "Load more" has anything to load.
     const readable = withoutUnreadable(
       // PRIVATE_CREATOR_FORMS: over-read, then trim to the page; off, the page plus one.
-      await listInstances(view satisfies InstanceView, privateAwareLimit(showCount + 1), instanceListFilterFor(access.actor)),
+      await listInstances(privateAwareLimit(showCount + 1), instanceListFilterFor(access.actor)),
       holds,
     ).filter(mayRead);
     hasMore = readable.length > showCount;
@@ -161,7 +157,6 @@ export default async function FormMonitoringPage({
       finalizedAt: instance.finalizedAt,
       exportedAt: instance.exportedAt,
       revisesInstanceId: instance.revisesInstanceId,
-      archivedAt: instance.archivedAt,
       /*
        * PROVENANCE, NOT A NAME MATCH. `isDemoInstance` reads the `demo:` actor
        * prefix the server wrote when the row was created. A real employee
@@ -172,8 +167,8 @@ export default async function FormMonitoringPage({
     }));
 
     /*
-     * The banner counts OUTSTANDING WORK ACROSS THE ACTIVE SET, from the same
-     * query the Overview uses — not from `forms`, which is shelf-filtered. A
+     * The banner counts OUTSTANDING WORK ACROSS EVERY FORM, from the same
+     * query the Overview uses — not from `forms`, which is capped. A
      * manager looking at Followed up still needs to be told what is overdue.
      */
     attention = attentionSummary(
@@ -182,9 +177,9 @@ export default async function FormMonitoringPage({
     );
 
     /*
-     * Counted on the server across EVERY shelf, so the sweep button can state a
+     * Counted on the server, so the sweep button can state a
      * real number. Counting the rows on screen would be wrong — this page is
-     * filtered, and the count would change with the view.
+     * capped, and the count would change.
      */
     const sweep = await findDemoInstances();
     demo = {
@@ -242,7 +237,6 @@ export default async function FormMonitoringPage({
           <MonitoringTable
             forms={forms}
             notice={formsIdentityIsUnverified() ? SYNTHETIC_DATA_NOTICE : null}
-            view={view}
             followUp={followUp}
             today={today}
             attention={attention}

@@ -1,5 +1,6 @@
 import "server-only";
 
+import { editableDraft } from "./hr-approval-rules";
 import { editFormSchema, editFormTool } from "@/lib/ai/form-tool-schema";
 import type { AskResponse, FormEditToolTurn } from "@/lib/ai/types";
 import { formEditNoopGuardEnabled, formEditSingleWriterEnabled } from "@/lib/config/chat-quality-flags";
@@ -167,7 +168,7 @@ export async function prepareFormEditTool(input: {
       return notOffered("not_visible", input.gate.branch);
     }
     const { actor, loaded } = authorized;
-    if (loaded.instance.status !== "draft") return notOffered("not_draft", input.gate.branch);
+    if (!editableDraft(loaded.instance)) return notOffered("not_draft", input.gate.branch);
 
     const document = parseFormDocument(loaded.version.document);
     const variantKey = loaded.instance.variantKey;

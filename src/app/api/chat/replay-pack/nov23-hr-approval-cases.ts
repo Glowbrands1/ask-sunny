@@ -38,6 +38,11 @@ const PEREGRINE: DirectoryRow = {
 
 /** A Corrective Action draft for Peregrine Ashdown, created from a card by a Kearney salon director, then sent to HR. */
 async function sentToHr(t: ReplayContext): Promise<string> {
+  return (await sentToHrIn(t)).id;
+}
+
+/** The same, with the thread the card was opened in (a chat edit of the form happens there). */
+async function sentToHrIn(t: ReplayContext): Promise<{ id: string; thread: ReturnType<ReplayContext["thread"]> }> {
   vi.setSystemTime(new Date("2026-11-23T16:00:00Z"));
   t.directory([PEREGRINE]);
   t.as("salon_director", KEARNEY);
@@ -54,7 +59,7 @@ async function sentToHr(t: ReplayContext): Promise<string> {
   // As `sendForHrApproval` leaves it: still a draft, pending HR.
   row!.hr_approval_state = "pending";
   row!.hr_approval_requested_at = "2026-11-20T15:00:00Z";
-  return id;
+  return { id, thread };
 }
 
 function asksHr(t: ReplayContext, role: string, scope: unknown, subject?: string) {
@@ -191,8 +196,36 @@ export const NOV23_HR_APPROVAL_CASES: ReplayCase[] = [
     },
   },
   {
+    id: "nov24-hr-approval-chat-edit-of-a-waiting-form-says-waiting-for-hr",
+    title:
+      'owner: "the chat should say "waiting for HR approval" instead of a general save error": the manager asks the chat to change the form they sent to HR; edit_form writes nothing and says it is waiting for HR approval, to be changed on the form itself',
+    report: 'Owner, 24 Nov 2026: "In both apps, the chat should say "waiting for HR approval" instead of a general save error."',
+    status: "fixed",
+    fixFlags: FLAGS,
+    async run(t) {
+      if (!t.loopOn?.() || !hrApprovalEnabled()) return;
+      const { id, thread } = await sentToHrIn(t);
+      const before = JSON.stringify(t.values(id));
+      const model = loopStandIn((view: LoopView): LoopDecision => {
+        const edited = lastResult(view, "edit_form") as Record<string, unknown> | undefined;
+        return edited ? { text: String(edited.error ?? JSON.stringify(edited)) } : { tool: "edit_form", input: { instance_id: id, values: { form_date: "2026-11-20" } } };
+      });
+      t.loopModel!(model);
+      const reply = await thread.say("change the date on Peregrine's write up to 11/20");
+      const result = lastResult(model.views.at(-1)!, "edit_form") as Record<string, unknown>;
+      expect(result?.reason_code, `edit_form did not say the form is waiting for HR:\n${JSON.stringify(result)}`).toBe("waiting_for_hr_approval");
+      expect(String(result.error)).toMatch(/waiting for HR approval/);
+      expect(String(result.error)).toMatch(/on the form itself/);
+      expect(reply.content).toMatch(/waiting for HR approval/);
+      expect(reply.content, "a generic save failure reached the manager").not.toMatch(/couldn't save|could not be saved|not_draft/i);
+      expect(JSON.stringify(t.values(id)), "the chat wrote a form waiting for HR").toBe(before);
+      const row = (t.rows?.("form_instances") ?? []).find((candidate) => candidate.id === id);
+      expect(row?.hr_approval_state, "the form left HR").toBe("pending");
+    },
+  },
+  {
     id: "nov23-hr-approval-archived-form-leaves-hrs-queue",
-    title: 'HR: "what\'s waiting on me?" after a duplicate pending draft was archived: read_hr_approvals lists only the form still in use',
+    title: 'HR: "what\'s waiting on me?" after a duplicate pending draft was removed (was: archived; archiving is gone): read_hr_approvals lists only the form still in use',
     report: "QA, 23 Nov 2026: a duplicate exit draft archived while still pending kept showing in HR's \"Needs your decision\"",
     status: "fixed",
     fixFlags: FLAGS,
@@ -200,17 +233,16 @@ export const NOV23_HR_APPROVAL_CASES: ReplayCase[] = [
       if (!t.loopOn?.() || !hrApprovalEnabled()) return;
       await sentToHr(t);
       const duplicate = await sentToHr(t);
-      // As `archiveInstance` leaves it: archived, its HR state untouched.
-      const row = (t.rows?.("form_instances") ?? []).find((candidate) => candidate.id === duplicate);
-      row!.archived_at = "2026-11-23T15:30:00Z";
+      // Archiving was removed (Pau, 23 Nov 2026), so the duplicate is taken away the way it still can be: deleted.
+      const rows = t.forms!();
+      rows.splice(rows.findIndex((candidate) => candidate.id === duplicate), 1);
       t.addRows!("form_hr_approvers", [{ app_user_id: HR_ACCOUNT, revoked_at: null }]);
       const result = asksHr(t, "district_manager", GLOBAL, HR_ACCOUNT);
       await t.thread().say("what's waiting on me?");
       // The two forms read the same; the reader gives the model no ids, so the count is what tells them apart.
       const waiting = result().waiting_for_you as Record<string, unknown>[];
-      expect(waiting, "the archived duplicate reached HR's queue, or the form still in use did not").toHaveLength(1);
+      expect(waiting, "the removed duplicate reached HR's queue, or the form still in use did not").toHaveLength(1);
       expect(JSON.stringify(waiting[0])).toMatch(/Corrective Action Form for Peregrine Ashdown/);
-      expect(row!.hr_approval_state, "archiving changed the stored state").toBe("pending");
     },
   },
   {
@@ -295,6 +327,63 @@ export const NOV23_HR_APPROVAL_CASES: ReplayCase[] = [
       expect(seen).not.toMatch(/No such form/);
       expect(reply.content).not.toMatch(/HR/);
       expect(JSON.stringify(t.values(id)), "the finalized form was written").toBe(before);
+    },
+  },
+  /*
+   * QA on #1280 (24 Nov 2026): read_hr_approvals checks the HR approval page's own permission only where the page would:
+   * an HR approver reads their queue and a manager who sent a form reads their own forms' state, whatever their role;
+   * someone with neither and without Form Monitoring is refused. The "employee" role has no view_form_monitoring.
+   */
+  {
+    id: "nov24-hr-approval-approver-without-form-monitoring-reads-the-queue",
+    title: 'an HR approver whose role lacks Form Monitoring: "what\'s waiting on me?" still lists the form waiting for them (never refused)',
+    report: "QA on #1280, 24 Nov 2026: the new page-permission check must not refuse an HR approver",
+    status: "fixed",
+    fixFlags: FLAGS,
+    async run(t) {
+      if (!t.loopOn?.() || !hrApprovalEnabled()) return;
+      await sentToHr(t);
+      t.addRows!("form_hr_approvers", [{ app_user_id: HR_ACCOUNT, revoked_at: null }]);
+      const result = asksHr(t, "employee", GLOBAL, HR_ACCOUNT);
+      await t.thread().say("what's waiting on me?");
+      const output = result();
+      expect(output.refused, JSON.stringify(output).slice(0, 300)).toBeUndefined();
+      expect(output.reader).toBe("HR approver");
+      expect(output.waiting_for_you as unknown[], "the waiting form did not reach the model").toHaveLength(1);
+    },
+  },
+  {
+    id: "nov24-hr-approval-sender-without-form-monitoring-reads-their-own-form",
+    title: 'the manager who sent it, with a role that lacks Form Monitoring: "has HR approved Peregrine\'s write up yet?" still gives their own form, waiting for HR (never refused)',
+    report: "QA on #1280, 24 Nov 2026: a sender (the #1303 receipt) is never refused about their own form",
+    status: "fixed",
+    fixFlags: FLAGS,
+    async run(t) {
+      if (!t.loopOn?.() || !hrApprovalEnabled()) return;
+      await sentToHr(t);
+      const result = asksHr(t, "employee", KEARNEY);
+      await t.thread().say("has HR approved Peregrine's write up yet?");
+      const output = result();
+      expect(output.refused, JSON.stringify(output).slice(0, 300)).toBeUndefined();
+      const forms = output.your_forms_with_hr as Record<string, unknown>[];
+      expect(forms, "the sender's own waiting form did not reach the model").toHaveLength(1);
+      expect(forms[0]!.state).toBe("Waiting for HR approval");
+    },
+  },
+  {
+    id: "nov24-hr-approval-no-page-no-forms-is-refused",
+    title: "control: someone whose role lacks Form Monitoring, who is not HR and sent no form, is refused in one line and nothing is read",
+    report: "QA on #1280, 24 Nov 2026: the check refuses only someone with nothing to see",
+    status: "fixed",
+    fixFlags: FLAGS,
+    async run(t) {
+      if (!t.loopOn?.() || !hrApprovalEnabled()) return;
+      await sentToHr(t);
+      const result = asksHr(t, "employee", KEARNEY, "someone-else");
+      await t.thread().say("has HR approved my form?");
+      const output = result();
+      expect(String(output.refused ?? ""), JSON.stringify(output).slice(0, 300)).toMatch(/cannot open, and they have no forms with HR/);
+      expect(output.your_forms_with_hr).toBeUndefined();
     },
   },
 ];

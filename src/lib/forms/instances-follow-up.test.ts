@@ -25,7 +25,6 @@ vi.mock("@/lib/supabase/server", () => ({
 
 const {
   FollowUpError,
-  archiveInstance,
   listOutstandingFollowUps,
   markFollowedUp,
   reopenFollowUp,
@@ -132,11 +131,6 @@ describe("starting to track a follow-up", () => {
     }
     expect(row().follow_up_date).toBeNull();
   });
-
-  it("refuses to schedule a follow-up on an archived form", async () => {
-    store.form_instances = [instance({ archived_at: "2026-09-02T00:00:00Z" })];
-    await expect(setFollowUpDate("form-1", "2026-09-10", ACTOR)).rejects.toThrow(/archived/i);
-  });
 });
 
 describe("moving the date", () => {
@@ -237,7 +231,6 @@ describe("the outstanding query the Overview reads", () => {
         followed_up_at: "2026-08-02T10:00:00Z",
         followed_up_by: ACTOR,
       }),
-      instance({ id: "hidden-1", follow_up_date: "2026-08-01", archived_at: "2026-08-05T10:00:00Z" }),
       instance({ id: "untracked-1" }),
     ];
   });
@@ -245,12 +238,6 @@ describe("the outstanding query the Overview reads", () => {
   it("returns only what is outstanding, soonest first", async () => {
     const outstanding = await listOutstandingFollowUps();
     expect(outstanding.map((entry) => entry.id)).toEqual(["overdue-1", "open-1"]);
-  });
-
-  it("drops a form the moment it is archived — §23", async () => {
-    await archiveInstance("open-1", ACTOR, true);
-    const outstanding = await listOutstandingFollowUps();
-    expect(outstanding.map((entry) => entry.id)).toEqual(["overdue-1"]);
   });
 
   it("drops a form the moment it is followed up", async () => {

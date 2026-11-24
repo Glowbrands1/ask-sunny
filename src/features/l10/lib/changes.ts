@@ -35,7 +35,10 @@ function scorecardCells(prev: Item[], next: Item[]): number {
     if (!old) continue;
     const a = Array.isArray(old.weeks) ? old.weeks : [];
     const b = Array.isArray(row.weeks) ? row.weeks : [];
-    for (let i = 0; i < Math.max(a.length, b.length); i++) if (!same(a[i], b[i])) n++;
+    // A week marked N/A (or unmarked) is a changed cell too, though its value stays empty (24 Nov 2026).
+    const naA = new Set(Array.isArray(old.na) ? (old.na as unknown[]) : []);
+    const naB = new Set(Array.isArray(row.na) ? (row.na as unknown[]) : []);
+    for (let i = 0; i < Math.max(a.length, b.length); i++) if (!same(a[i], b[i]) || naA.has(i) !== naB.has(i)) n++;
   }
   return n;
 }

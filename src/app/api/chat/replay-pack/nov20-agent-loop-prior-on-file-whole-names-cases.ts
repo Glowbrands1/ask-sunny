@@ -77,7 +77,9 @@ export const NOV20_AGENT_LOOP_PRIOR_ON_FILE_WHOLE_NAMES_CASES: ReplayCase[] = [
     const forms = result.facts?.prior_on_file?.forms ?? [];
     expect(forms, JSON.stringify(result.facts?.prior_on_file)).toHaveLength(1);
     expect(forms[0]?.date).toBe("2026-11-10");
-    expect(result.card?.prior_actions ?? "", JSON.stringify(result.card)).toMatch(/11\/10\/2026/);
+    /* CHANGED ON PURPOSE (QA, 23 Nov 2026; Pau's ruling, port of Ask Bubbles #1089): forms on file are offered, never added to Prior actions by the AI. Was: the card listed them. Now Prior actions stay empty and prior_on_file.ask_exactly offers them. */
+    expect(result.card?.prior_actions ?? null, JSON.stringify(result.card)).toBeNull();
+    expect((result.facts?.prior_on_file as { ask_exactly?: string } | undefined)?.ask_exactly ?? "", JSON.stringify(result.facts?.prior_on_file)).toMatch(/on file from 11\/10\/2026\. Want me to add it to Prior actions\?/);
     expect(result.card?.warning_level ?? null, "the card's level was set from the form on file").toBeNull();
   }),
 ];

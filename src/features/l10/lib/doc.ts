@@ -67,6 +67,27 @@ export function ratingAttendees(shown: Attendee[], saved: Attendee[], me: string
   return [...shown, was ?? { id: `att-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`, name, role: "", shared: false, rating: null }];
 }
 
+/**
+ * The name the signed-in person rates the meeting under. Their full name from the meeting's people list when it is there.
+ * When it is not (they are not on that list, or the list did not load), their sign-in name: an attendee whose full name, or
+ * whose first name alone (when only one attendee has it), is that name is them; otherwise a row of their own is added under
+ * that name. Never nobody, so whoever is in the meeting can always rate it (23 Nov 2026 audit: an unlisted viewer had no
+ * "(you)" row and so no way to give their own rating).
+ */
+export function raterName(shown: Pick<Attendee, "name">[], listed: string, signIn: string): string {
+  if (listed.trim()) return listed.trim();
+  const name = signIn.trim();
+  if (!name) return "";
+  const low = name.toLowerCase();
+  const full = shown.filter((a) => a.name.trim().toLowerCase() === low);
+  if (full.length === 1) return full[0].name.trim();
+  if (!/\s/.test(name)) {
+    const first = shown.filter((a) => a.name.trim().split(/\s+/)[0]?.toLowerCase() === low);
+    if (first.length === 1) return first[0].name.trim();
+  }
+  return name;
+}
+
 /* ── Scorecard ──────────────────────────────────────────────────────────── */
 
 /** Newest week first, as indexes into `weeks`. */
@@ -129,10 +150,14 @@ export function cellTone(row: ScorecardRow, v: number | null | undefined): CellT
   return shortBy <= band + 1e-9 ? "near" : "bad";
 }
 
-/** What a person typed into a cell: "$1,200", "5.87%", "" (clears). Anything else is not a number. */
-export function parseCell(raw: string): { ok: true; value: number | null } | { ok: false } {
+/**
+ * What a person typed into a cell: "$1,200", "5.87%", "" (clears), or "N/A" (24 Nov 2026, the owner: "should be able to
+ * add N/A") for a week the metric does not apply. Anything else is not a number.
+ */
+export function parseCell(raw: string): { ok: true; value: number | null; na?: boolean } | { ok: false } {
   const cleaned = raw.replace(/[$,%\s]/g, "");
   if (cleaned === "") return { ok: true, value: null };
+  if (/^n\/?a$/i.test(cleaned)) return { ok: true, value: null, na: true };
   const n = Number(cleaned);
   return Number.isFinite(n) ? { ok: true, value: n } : { ok: false };
 }
@@ -162,15 +187,26 @@ export function addWeek(doc: MeetingDoc): MeetingDoc {
   };
 }
 
-export function setCell(doc: MeetingDoc, rowId: string, weekIdx: number, value: number | null): MeetingDoc {
+/**
+ * N/A is kept beside the numbers, not in them: the week's value stays empty (so no average, goal or colour ever counts
+ * it) and the week's index is listed in the row's `na`. A row with no N/A weeks has no `na` at all.
+ */
+export const isNaCell = (row: Pick<ScorecardRow, "weeks"> & { na?: unknown }, weekIdx: number): boolean =>
+  row.weeks[weekIdx] == null && Array.isArray(row.na) && row.na.includes(weekIdx);
+
+export function setCell(doc: MeetingDoc, rowId: string, weekIdx: number, value: number | null, na = false): MeetingDoc {
   return {
     ...doc,
     scorecard: doc.scorecard.map((r) => {
       if (r.id !== rowId) return r;
       const weeks = [...r.weeks];
       while (weeks.length <= weekIdx) weeks.push(null);
-      weeks[weekIdx] = value;
-      return { ...r, weeks };
+      weeks[weekIdx] = na ? null : value;
+      const marks = (Array.isArray(r.na) ? (r.na as unknown[]) : []).filter((i): i is number => typeof i === "number" && i !== weekIdx);
+      if (na) marks.push(weekIdx);
+      const { na: _old, ...rest } = r;
+      void _old;
+      return marks.length ? { ...rest, weeks, na: marks.sort((a, b) => a - b) } : { ...rest, weeks };
     }),
   };
 }

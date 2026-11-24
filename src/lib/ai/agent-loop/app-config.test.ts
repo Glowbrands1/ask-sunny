@@ -187,6 +187,10 @@ import { rulesBookText } from "./rules-book";
  * exit_dates line: an exit card's reads_back is the only exit lines the reply reads back, every one is saved at Create,
  * and a detail added after the card reaches the form only through propose_form. It reads the same under every config;
  * nothing else changed.
+ * Re-taken on purpose on 23 Nov 2026 (board f039, the pages the AI can read): one line was added to Business data, after
+ * the first: the app pages the AI can read and the tool for each, written from the config's page list
+ * (`src/config/ai-readable-pages.ts`). A config with no page list has no such line; nothing else changed.
+ *
  * Re-taken on purpose on 22 Nov 2026 (port from Ask Bubbles #1047, B6 exit reason): the exit_unset line now says to pass
  * exit_reason, in the manager's words with exit_reason_evidence, when the manager says why the person is leaving, and none
  * when no reason was given. It reads the same under every config; nothing else changed.
@@ -223,6 +227,12 @@ import { rulesBookText } from "./rules-book";
  * read_hr_approvals, and "Forms on file and privacy" gained one line: a form waiting for HR is not on file, and HR
  * approval answers come only from read_hr_approvals, which lists only the asker's own forms. It reads the same under
  * every config; nothing else changed.
+ *
+ * Re-taken on purpose on 23 Nov 2026 (QA: a prior action Pau never said was saved "as you said"; port of Ask Bubbles
+ * #1089): the Prior actions line now says only the manager's steps, or a form on file they said yes to, are Prior
+ * actions, and the reply offers the forms on file (prior_on_file.ask_exactly); the stated read-back adds "as you said" to
+ * prior_actions only when stated_this_turn lists it, and asks for prior_actions_evidence quoting the manager's words. They
+ * read the same under every config; nothing else changed.
  */
 
 const fixture = (name: string): string => readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), "utf8");
@@ -236,6 +246,11 @@ const FAKE: AppConfig = {
   locationWordPlural: "kiosks",
   staffSystem: "Rotaplan",
   formKeys: { exit: "qc-leaving", corrective: "qc-warn", coaching: "qc-coach", followUpCoaching: "qc-follow" },
+  /* Its own page list (board f039): another company's pages never carry Sunny's. */
+  readablePages: [
+    { kind: "page", route: "/guest-ratings", title: "Guest Ratings", access: { permission: "view_google_reviews" },
+      reader: { tool: "read_reviews", args: {}, figures: ["ratings per kiosk"], periods: ["this week"], replayCase: "invented" } },
+  ],
 };
 
 afterEach(() => setAppConfigForTests());
@@ -418,6 +433,9 @@ describe("app config: metrics and the forms page (Phase 1 of the loop port)", ()
     const described = JSON.stringify(agentLoopTools().map((tool) => tool.description));
     expect(described).toContain("Forms Ledger");
     expect(described).not.toContain("Form Monitoring");
+    // Its pages, from its own page list (board f039), in the tool that reads them and in the rules book.
+    expect(described).toContain("Pages it reads: Guest Ratings (ratings per kiosk; periods: this week).");
+    expect(rulesBookText()).toContain("The app pages you can read, each only through its tool: Guest Ratings (read_reviews).");
     const strip = (source: string): string => source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
     for (const file of ["tools.ts", "run.ts", "data-tools.ts", "rules-book.ts"]) {
       const code = strip(readFileSync(new URL(`./${file}`, import.meta.url), "utf8"));

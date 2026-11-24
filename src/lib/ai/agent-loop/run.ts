@@ -103,6 +103,7 @@ export const AGENT_LOOP_TOTAL_MS = 100_000;
 /** QA's audit (item 14b): how long a stopped turn waits for a tool still saving (less when the route has less left). */
 export const TOOL_SETTLE_MS = 5_000;
 
+import { pagesToolLine } from "@/config/ai-readable-pages";
 import { LOOP_FAILED_REPLY, STEP_LIMIT_REPLY } from "./replies";
 import { fieldLabel, readableValue } from "./saved-diff";
 
@@ -230,6 +231,46 @@ export interface AgentLoopStep {
   /** PR 3: the names of the fields a tool saved, and the reason codes of what it refused or left off the card. Never values. */
   readonly saved_fields?: readonly string[];
   readonly reason_codes?: readonly string[];
+  /**
+   * find_past_forms only (QA, 23 Nov 2026, the live duplicate exit form: the read that said "no exit form on file" could
+   * not be seen afterwards): what the read returned, value-free. The forms listed per form kind (the form's name and a
+   * number, never a person or text), the counted total, and the path the read took.
+   */
+  readonly forms_read?: FormsReadSummary;
+}
+
+export interface FormsReadSummary {
+  /** "listed" (forms came back), "none" (an empty list), "error:<reason_code>", or the no-forms path's own key. */
+  readonly path: string;
+  readonly by_kind: Readonly<Record<string, number>>;
+  readonly total?: number;
+}
+
+/** No-forms paths a find_past_forms result can take, by the key that marks each (its own result keys; never its values). */
+const FORMS_READ_PATHS = ["names_on_file", "close_names", "card_on_screen", "ask_exactly"] as const;
+
+/**
+ * What a find_past_forms result listed, value-free: the count of listed forms per form kind (`forms[].form`, a form's
+ * name), the total its counts say (`counts.total`), and the path (listed, none, an error with its reason_code, or the
+ * no-forms path's key). Never an employee, a date, a status's row or any text.
+ */
+export function formsReadSummary(result: ToolResult): FormsReadSummary {
+  const record = result as Record<string, unknown>;
+  const forms = Array.isArray(record.forms) ? (record.forms as { form?: unknown }[]) : [];
+  const byKind: Record<string, number> = {};
+  for (const form of forms) {
+    const kind = typeof form.form === "string" && form.form.length <= 60 ? form.form : "unknown";
+    byKind[kind] = (byKind[kind] ?? 0) + 1;
+  }
+  const total = (record.counts as { total?: unknown } | undefined)?.total;
+  const path = typeof record.reason_code === "string"
+    ? `error:${record.reason_code}`
+    : typeof record.error === "string"
+      ? "error:unknown"
+      : forms.length > 0
+        ? "listed"
+        : FORMS_READ_PATHS.find((key) => key in record) ?? "none";
+  return { path, by_kind: byKind, ...(typeof total === "number" ? { total } : {}) };
 }
 
 /*
@@ -240,7 +281,7 @@ export interface AgentLoopStep {
 /** Result keys that are data, not facts (never listed in the trace). */
 const NOT_FACT_KEYS = new Set(["error", "reason_code", "note", "card", "facts", "matches", "staff", "wording", "headings", "source", "salon", "salons", "positions", "templates", "updated", "saved", "refused", "not_on_card", "revision_draft", "forms", "passages", "document", "heading", "page", "fields", "values"]);
 
-function stepReason(result: ToolResult, tool: string): Pick<AgentLoopStep, "error_kind" | "fact_keys" | "missing_kinds" | "saved_fields" | "reason_codes"> {
+function stepReason(result: ToolResult, tool: string): Pick<AgentLoopStep, "error_kind" | "fact_keys" | "missing_kinds" | "saved_fields" | "reason_codes" | "forms_read"> {
   const record = result as Record<string, unknown>;
   const facts = record.facts && typeof record.facts === "object" ? Object.keys(record.facts as object) : [];
   const keys = [...new Set([...facts, ...Object.keys(record).filter((key) => !NOT_FACT_KEYS.has(key))])].sort();
@@ -254,6 +295,7 @@ function stepReason(result: ToolResult, tool: string): Pick<AgentLoopStep, "erro
     ...(codes.length > 0 ? { reason_codes: codes } : {}),
     ...(keys.length > 0 ? { fact_keys: keys } : {}),
     ...(Array.isArray(missing) ? { missing_kinds: [...new Set(missing.map((word) => accountWordKind(String(word))))].sort() } : {}),
+    ...(tool === "find_past_forms" ? { forms_read: formsReadSummary(result) } : {}),
   };
 }
 
@@ -475,7 +517,7 @@ function buildAgentLoopTools(config: AppConfig, planSteps = false) {
   },
   {
     name: "find_past_forms",
-    description: "List the forms on file (" + config.formsPageName + ") for one employee, or, with no employee_name, every form of a kind or period (\"who got a CA this month?\": form and date_from/date_to), or every form about a topic (\"any forms about cash handling this month?\", \"who's been written up for dress code?\": about, with form and dates if given). Only when the manager asks about forms on file or history; never otherwise.",
+    description: "List the forms on file (" + config.formsPageName + ") for one employee, or, with no employee_name, every form of a kind or period (\"who got a CA this month?\": form and date_from/date_to), or every form about a topic (\"any forms about cash handling this month?\", \"who's been written up for dress code?\": about, with form and dates if given). Only when the manager asks about forms on file or history; never otherwise." + pagesToolLine(config.readablePages, "find_past_forms"),
     input_schema: object({
       employee_name: { type: "string", description: "The employee the manager named. Leave it out for a list of every form of a kind or period." },
       form: { type: "string", description: "The form the manager named (\"coaching\", \"CA\"), if any." },
@@ -485,7 +527,6 @@ function buildAgentLoopTools(config: AppConfig, planSteps = false) {
       about: { type: "string", description: "Words the manager used about the form (\"" + examples.formAbout + "\"), if any. With no employee_name, the topic to search every form's saved text for (\"cash handling\", \"dress code\")." },
       forms_on_file_evidence: FORMS_ON_FILE_EVIDENCE,
       open: { type: "boolean", description: "true when the manager asks to open, edit or see one form on file (not a list of what is on file)." },
-      include_archived: { type: "boolean", description: "true only when the manager asks for archived forms. Finalized forms are listed archived or not; this adds archived drafts." },
     }, ["forms_on_file_evidence"]),
   },
   {
@@ -558,6 +599,7 @@ function buildAgentLoopTools(config: AppConfig, planSteps = false) {
         },
         incident_date: { type: "string", description: "YYYY-MM-DD, the " + place + "'s local date." },
         level_evidence: evidence("With warning_level verbal or written: the manager message and the words from it that state this form's level, from the message being answered or the one before it. A request that names the level (\"a verbal CA\", \"create a written\") states it: quote those words. \"She was written up before\" is not this form's level."),
+        prior_actions_evidence: evidence("With prior_actions: the manager message of this request and its words that state those earlier steps, each with its date (\"she had a written on 9/10\"). Never a form on file the manager did not name or say yes to. \"as you said\" for Prior actions only with it."),
         job_title: { type: "string", description: "Only when the manager tells you which job title to put on this form (\"no, use Shift Lead\", \"put her title as Key Holder\"): that title. Never a title they only used to refer to the person (\"my shift lead Remy\"); left out, the card uses " + config.staffSystem + "'s title." },
         job_title_evidence: evidence("With job_title: the manager message from this request and their words from it that tell you the form's title, holding the title."),
         payroll_evidence: evidence("With payroll_deduct: the manager message and the words from it that answer whether payroll deduct applies: the message being answered, or an answer that came right after your reply showing THIS person's card (never another person's answer)."),
@@ -1623,7 +1665,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   /* Port of Ask Bubbles #1098 (its QA's u22 live records): a reply with this turn's card that names no form opens with the card's own opening. */
   if (effects.proposal && text) text = withCardOpening(text, effects.proposal.templateName, replyNames.size === 1 ? [...replyNames][0]! : effects.proposal.employeeName);
   const cardSlot: CardSlot | null = effects.proposal
-    ? { proposalId: effects.proposal.proposalId, employeeKey: effects.proposalEmployeeId ? personKey(effects.proposalEmployeeId) : null, nameKey: effects.proposal.employeeName ? personKey(effects.proposal.employeeName) : null, templateKey: effects.proposal.templateKey, templateName: effects.proposal.templateName ?? null, ...(effects.proposalAsked?.length ? { asked: effects.proposalAsked } : {}), ...(effects.proposalLevel ? { level: effects.proposalLevel } : {}), ...(effects.proposalPayroll ? { payroll: effects.proposalPayroll } : {}), ...(effects.proposalPayroll === "yes" && effects.proposalPayrollAmount ? { payrollAmount: effects.proposalPayrollAmount } : {}), ...(effects.proposal.policyLine ? { policyLine: effects.proposal.policyLine } : {}), ...(effects.proposalAccountKey ? { accountKey: effects.proposalAccountKey } : {}), ...(effects.proposalExitType ? { exitType: effects.proposalExitType } : {}), ...(effects.proposal.formDate ? { incidentDate: effects.proposal.formDate } : {}), ...(effects.proposal.subject === "team" && effects.proposal.status === "needs_location" ? { teamNeedsLocation: true } : {}), ...(effects.proposal.subject === "team" && !effects.proposal.locationId ? { teamNoSalon: true } : {}), ...(effects.proposal.locationId ? { salonId: effects.proposal.locationId } : {}) }
+    ? { proposalId: effects.proposal.proposalId, employeeKey: effects.proposalEmployeeId ? personKey(effects.proposalEmployeeId) : null, nameKey: effects.proposal.employeeName ? personKey(effects.proposal.employeeName) : null, templateKey: effects.proposal.templateKey, templateName: effects.proposal.templateName ?? null, ...(effects.proposalAsked?.length ? { asked: effects.proposalAsked } : {}), ...(effects.proposalLevel ? { level: effects.proposalLevel } : {}), ...(effects.proposalPayroll ? { payroll: effects.proposalPayroll } : {}), ...(effects.proposalPayroll === "yes" && effects.proposalPayrollAmount ? { payrollAmount: effects.proposalPayrollAmount } : {}), ...(effects.proposal.policyLine ? { policyLine: effects.proposal.policyLine } : {}), ...(effects.proposalAccountKey ? { accountKey: effects.proposalAccountKey } : {}), ...(effects.proposalExitType ? { exitType: effects.proposalExitType } : {}), ...(effects.proposal.formDate ? { incidentDate: effects.proposal.formDate } : {}), ...(effects.proposalOnFileOffered?.length ? { onFileOffered: effects.proposalOnFileOffered } : {}), ...(effects.proposal.subject === "team" && effects.proposal.status === "needs_location" ? { teamNeedsLocation: true } : {}), ...(effects.proposal.subject === "team" && !effects.proposal.locationId ? { teamNoSalon: true } : {}), ...(effects.proposal.locationId ? { salonId: effects.proposal.locationId } : {}) }
     : null;
   /* Fix batch items 4 and 3: this turn's "Did you mean", for the next turn's name question record (one-way keys only). */
   const nameQuestionSlot: NameQuestionSlot | null = effects.nameQuestion && stoppedAt === "reply"

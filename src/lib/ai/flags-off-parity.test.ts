@@ -894,46 +894,9 @@ const UI_PATHS = ["src/app/**/*.tsx", "src/components/**", "src/features/**/*.ts
  * The user (Pau) approved, via QA on 25 Oct 2026, the forms list's Edit and
  * History mount for form revisions in both apps: exactly these two added
  * lines in monitoring-table.tsx, rendering nothing with
- * NEXT_PUBLIC_FORM_REVISIONS_ENABLED off. Any other change to the file fails.
+ * NEXT_PUBLIC_FORM_REVISIONS_ENABLED off. (23 Nov 2026: held to the mount and to no archiving, see the check in the test below.)
  */
 const MONITORING_TABLE = "src/features/forms/monitoring-table.tsx";
-const MONITORING_MOUNT = [
-  '+import { RegisterRowActions } from "@/form-revisions/register-row-actions";',
-  "+                            <RegisterRowActions form={form} />",
-  /*
-   * Pau approved, via QA on 29 Oct 2026, both apps, no flag: the row menu
-   * "…" shows only when it has an item. A role that may track but not manage
-   * got an empty menu on a row that is not followed up ("wanted to delete
-   * some form but the ... is not showing when clicked").
-   */
-  "-                            {mayManage || mayTrack ? (",
-  "+                            {mayManage || (form.followedUpAt && mayTrack) ? (",
-  /*
-   * Requested by Paulyne, 18 Nov 2026, both apps, no flag: "Load more forms".
-   * The page read the newest 200 forms and stopped, so older ones (overdue
-   * follow-ups the Overview still listed) could not be found here. The count
-   * rides in the URL (`?show=`), see src/lib/forms/monitoring-page-size.ts.
-   */
-  "+import { MONITORING_PAGE_SIZE, nextShowCount } from \"@/lib/forms/monitoring-page-size\";",
-  "+  showCount = MONITORING_PAGE_SIZE,",
-  "+  hasMore = false,",
-  "+  showCount?: number;",
-  "+  hasMore?: boolean;",
-  "-  function go(next: { view?: MonitoringView; followUp?: FollowUpFilter }) {",
-  "+  function go(next: { view?: MonitoringView; followUp?: FollowUpFilter; show?: number }) {",
-  "+    const nextShow = next.show ?? (next.view && next.view !== view ? MONITORING_PAGE_SIZE : showCount);",
-  "+    if (nextShow > MONITORING_PAGE_SIZE) params.set(\"show\", String(nextShow));",
-  "+              {hasMore ? ` \u00b7 newest ${forms.length} loaded` : \"\"}",
-  "+      {hasMore && nextShowCount(showCount) !== null ? (",
-  "+        <div className=\"flex justify-center\">",
-  "+          <Button variant=\"secondary\" onClick={() => go({ show: nextShowCount(showCount) ?? showCount })}>",
-  "+            Load more forms",
-  "+          </Button>",
-  "+        </div>",
-  "+      ) : null}",
-  "+",
-];
-
 /*
  * NEXT_PUBLIC_INVITED_SIGNIN_ACCEPTS_ENABLED (QA approved 28 Oct 2026, both
  * apps; QA reviews the auth diff line by line): sign-in-form.tsx may add
@@ -1305,6 +1268,9 @@ describe("new flags default off and wrappers are inert", () => {
           ":(exclude)src/app/(app)/layout.tsx",
           ":(exclude)src/app/(app)/forms/monitoring/page.tsx",
           `:(exclude)${MONITORING_TABLE}`,
+          // PERMISSIONS MATRIX SAVED TO THE DATABASE (Pau, 23 Nov 2026, both apps): the admin Permissions screen saves its
+          // overrides through PUT /api/admin/permissions instead of showing a read-only policy. Admin screen only.
+          ":(exclude)src/features/admin/permissions-matrix.tsx",
           // INVITE_LINK_HOLD_ENABLED (QA approved 28 Oct 2026, both apps): the new
           // invitation Continue page and its form. Off, the page never shows Continue.
           ":(exclude)src/app/auth/invite-continue/page.tsx",
@@ -1426,7 +1392,13 @@ describe("new flags default off and wrappers are inert", () => {
           ":(exclude)src/features/reviews/reviews-leaderboard.tsx",
         ]),
       ).toBe("");
-      expect(changedLines(diff(uiBase, [MONITORING_TABLE])).filter((line) => !MONITORING_MOUNT.includes(line))).toEqual([]);
+      // CHANGED ON PURPOSE (Pau, 23 Nov 2026, archiving removed): forms are Draft or Finalized only, so
+      // monitoring-table.tsx loses its Archived shelf and Archive / Restore actions and gains the select-several-drafts
+      // bulk delete. That is hundreds of lines, so the file is no longer held to the mount lines above; the check below
+      // still requires the revision mount to be there and the file to say nothing about archiving.
+      const monitoringTable = readFileSync(MONITORING_TABLE, "utf8");
+      expect(monitoringTable).toContain("<RegisterRowActions form={form} />");
+      expect(monitoringTable).not.toMatch(/ArchiveRestore|archivedAt|kind: "archive"/);
       expect(
         changedLines(diff(uiBase, [SIGN_IN_FORM])).filter((line) => !SIGN_IN_ACCEPT.includes(line) && !isAddedCommentOrBlank(line)),
       ).toEqual([]);

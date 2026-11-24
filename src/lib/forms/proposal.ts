@@ -18,6 +18,7 @@ import {
   readsAsTeamSubject,
   TEAM_SUBJECT_LABEL,
 } from "./team-subject";
+import { withoutAddressLines } from "./address-spans";
 import { proposeLocation } from "./location-scope";
 import { isExitTerms, namesSomebody, notInStreetAddress } from "./answer-not-a-name";
 import { nameBeforeAccountVerb } from "./not-a-name";
@@ -1884,7 +1885,8 @@ export function buildProposal(input: ProposalInput): ChatFormProposal {
    */
   const location = proposeLocation(
     input.scope,
-    input.context.text,
+    /* Port of Ask Bubbles 4f9f706c (its QA, u22 live): an address given as the employee's names no salon. */
+    withoutAddressLines(input.context.text),
     team ? [] : (input.employeeSalonIds ?? []),
     input.answeredSalonIds ?? null,
   );

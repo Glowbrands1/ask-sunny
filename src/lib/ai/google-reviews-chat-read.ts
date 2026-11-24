@@ -1,7 +1,7 @@
 import "server-only";
 
 import { supabaseReadiness } from "@/lib/config/server-env";
-import { hasPermission, DEFAULT_PERMISSION_MATRIX } from "@/lib/permissions";
+import { hasPermission, activePermissionMatrix } from "@/lib/permissions";
 import { reportingScopeOf } from "@/lib/reporting/scope/authorized-salons";
 import { EMPTY_REVIEW_FILTERS } from "@/lib/reviews/filters";
 import { monthlyProgress } from "@/lib/reviews/monthly-progress";
@@ -100,7 +100,7 @@ export async function loadGoogleReviewsChatBlock(input: {
 }): Promise<GoogleReviewsChatBlock | null> {
   if (!isGoogleReviewQuestion(input.question)) return null;
 
-  if (input.role === null || !hasPermission(DEFAULT_PERMISSION_MATRIX, input.role, "view_google_reviews")) {
+  if (input.role === null || !hasPermission(activePermissionMatrix(), input.role, "view_google_reviews")) {
     return { text: reviewsNotPermittedBlock(), figures: false };
   }
 

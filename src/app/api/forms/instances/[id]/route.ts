@@ -12,7 +12,6 @@ import {
   InstanceNotVisibleError,
 } from "@/lib/forms/instance-scope";
 import {
-  archiveInstance,
   deleteInstance,
   finalizeInstance,
   RequiredFieldsBlankError,
@@ -48,10 +47,10 @@ import {
  *   GET    the form, its template version, its values and its history
  *   PATCH  save what a person typed — hand-filled lines and signatures refused
  *   POST   finalize, or open a revision / re-evaluation
- *   PUT    archive or restore — hides a form from the active list, changing
- *          nothing about what it says
  *   DELETE remove a DRAFT outright, values and events with it. Refused on a
- *          finalized form: a signed HR document is archived, never destroyed.
+ *          finalized form: a signed HR document is kept on file, never destroyed.
+ *
+ * There is no archive verb (Pau, 23 Nov 2026): a form is Draft or Finalized.
  *
  * Finalizing freezes the values; the database refuses later edits, and the way
  * to correct a finalized form is a revision that points back at it. That is
@@ -276,30 +275,6 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       );
     }
     return errorResponse(error, "forms/instance/action");
-  }
-}
-
-/**
- * Archive, or put back.
- *
- * Separate from DELETE because it is a different act with a different rule:
- * archiving is reversible, applies to any status, and touches only where the
- * form is SHOWN. It never alters `status`, `finalized_at`, or a single value —
- * so finalized immutability is untouched by it.
- */
-export async function PUT(request: Request, context: { params: Promise<{ id: string }> }) {
-  try {
-    const { id } = await context.params;
-    const { actor } = await authorizeInstance(request, id, "manage");
-    const body = (await request.json().catch(() => null)) as { archived?: boolean } | null;
-
-    const instance = await archiveInstance(id, actor.id, body?.archived !== false);
-    return NextResponse.json({ instance: redactHrApproval(actor, instance) });
-  } catch (error) {
-    if (error instanceof InstanceNotVisibleError) {
-      return NextResponse.json({ error: error.message }, { status: 404 });
-    }
-    return errorResponse(error, "forms/instance/archive");
   }
 }
 

@@ -1229,7 +1229,7 @@ describe("a form's date is one date on every surface", () => {
   /** Every place a form's date is shown, read for one form. */
   async function everywhere(id: string) {
     const f = await form(id);
-    const listed = (await listInstances("all")).find((row) => row.id === id);
+    const listed = (await listInstances()).find((row) => row.id === id);
     const pdf = await pdfRoute.GET(new Request(`https://app.test/api/forms/instances/${id}/pdf`), {
       params: Promise.resolve({ id }),
     });

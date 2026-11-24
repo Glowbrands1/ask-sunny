@@ -281,7 +281,8 @@ describe("rating a conversation leaves the chat exactly where it was", () => {
     expect(navigationCalls()).toBe(before);
     expect(window.location.href).toBe(href);
     expect(window.history.length).toBe(historyLength);
-    expect(fetchSpy).not.toHaveBeenCalled();
+    // The signed-in session reads the saved permissions once on load (23 Nov 2026); rating must send nothing else.
+    expect(fetchSpy.mock.calls.filter(([url]) => url !== "/api/admin/permissions")).toEqual([]);
     expectAlphaThreadIntact();
   });
 
@@ -340,7 +341,8 @@ describe("rating a conversation leaves the chat exactly where it was", () => {
       expect(screen.getByRole("button", { name: "Submit feedback" })).toBeTruthy();
     }
 
-    expect(fetchSpy).not.toHaveBeenCalled();
+    // The signed-in session reads the saved permissions once on load (23 Nov 2026); rating must send nothing else.
+    expect(fetchSpy.mock.calls.filter(([url]) => url !== "/api/admin/permissions")).toEqual([]);
     /* Choosing a star is not a change to the conversation, so nothing is re-stored. */
     expect(savedToAccount.length).toBe(saves);
     expect(await activeTitle(user)).toMatch(/^Alpha thread/);
