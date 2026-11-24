@@ -10,8 +10,7 @@ import { listOutstandingFollowUps } from "@/lib/forms/instances";
 import { privateAwareLimit } from "@/lib/forms/private-creators";
 import { pageFormsAccess } from "@/lib/forms/page-scope";
 import { l10TabsForLayout } from "@/features/l10/data.server";
-import { aiTrainingNotifyEmails } from "@/lib/ai-training/notify";
-import { listNotifications } from "@/lib/notifications/repository";
+import { bellFor } from "@/lib/notifications/bell-for";
 import type { BellData } from "@/lib/notifications/types";
 import { hrQueueSummary } from "@/lib/forms/hr-approval";
 
@@ -52,27 +51,10 @@ async function overdueCount(): Promise<number> {
   }
 }
 
-/**
- * THE BELL — the signed-in person's own notifications (`app_notifications`).
- *
- * Shown to whoever has any, and to the people on `AI_TRAINING_NOTIFY_EMAILS`
- * and HR's form approvers (`form_hr_approvers`) even before their first one, so the bell is there to check. Everybody else
- * gets no bell rather than one that is always empty. Like the overdue badge, a
- * failed read hides it instead of taking down every page.
- */
+/** THE BELL: everyone signed in has one (`bellFor`); an HR approver's also counts the forms still waiting for them. */
 async function bellForLayout(): Promise<BellData | null> {
-  try {
-    const identity = await pageIdentity();
-    const email = identity?.email?.trim().toLowerCase();
-    if (!email) return null;
-    const [data, waitingHr] = await Promise.all([listNotifications(email), waitingForHr(identity)]);
-    const bell = waitingHr ? { ...data, waitingHr } : data;
-    if (data.items.length || waitingHr || aiTrainingNotifyEmails().includes(email)) return bell;
-    // HR APPROVAL: the approver has a bell before their first request arrives, so it is there to check.
-    return waitingHr !== null ? bell : null;
-  } catch {
-    return null;
-  }
+  const identity = await pageIdentity();
+  return bellFor(identity, () => waitingForHr(identity));
 }
 
 /**

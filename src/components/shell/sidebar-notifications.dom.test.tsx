@@ -223,6 +223,13 @@ describe("\"can u please not remove the notification in the bar on the left side
   it("the layout reads the count through the same hrQueueSummary as the Pending HR approval tab", () => {
     const layout = readFileSync(join(__dirname, "../../app/(app)/layout.tsx"), "utf8");
     expect(layout).toMatch(/hrQueueSummary\(actor\)/);
-    expect(layout).toMatch(/waitingHr/);
+    /*
+     * Changed on purpose (#1317, "i need a bell for all users/managers"): the bar's data is built by `bellFor`, which
+     * every signed-in person now gets. The layout hands it this count (`waitingForHr`), and `bellFor` puts it on the
+     * bar as `waitingHr`, so the count is followed through both files instead of looked for in the layout alone.
+     */
+    expect(layout).toMatch(/bellFor\(identity, \(\) => waitingForHr\(identity\)\)/);
+    const bellFor = readFileSync(join(__dirname, "../../lib/notifications/bell-for.ts"), "utf8");
+    expect(bellFor).toMatch(/waitingHr: waiting/);
   });
 });
