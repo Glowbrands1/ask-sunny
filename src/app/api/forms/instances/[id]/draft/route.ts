@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { withoutTopicPrefix } from "@/lib/forms/coaching-topic-prefix";
 import { keptPlanSteps, withPlanSteps } from "@/lib/forms/stated-plan-steps";
-import { statedPlanStepsEnabled } from "@/lib/config/chat-quality-flags";
+import { priorFormsUpToTodayEnabled, statedPlanStepsEnabled } from "@/lib/config/chat-quality-flags";
 import { loopWriteUpSections } from "@/lib/forms/loop-write-up-sections";
 import { withAccountFactsKept } from "@/lib/forms/account-facts-kept";
 import { TERMINATION_OPTION, withTerminationPlan } from "@/lib/forms/termination-stated";
@@ -2108,7 +2108,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
               employeeName: loaded.instance.employeeName ?? "",
               excludeInstanceId: loaded.instance.id,
               locationId: loaded.instance.locationId ?? null,
-              before: loaded.instance.formDate,
+              // PRIOR_FORMS_UP_TO_TODAY_ENABLED (Pau, 24 Nov 2026: "it needs to add all past forms"): every form on file up to today.
+              before: priorFormsUpToTodayEnabled() ? businessToday() : loaded.instance.formDate,
             })
           ).attach,
         })

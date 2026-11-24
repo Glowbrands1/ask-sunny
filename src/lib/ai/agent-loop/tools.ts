@@ -47,6 +47,7 @@ import {
   hybridSearchEnabled,
   manualSectionDedupeEnabled,
   retrievalRecallEnabled,
+  priorFormsUpToTodayEnabled,
 } from "@/lib/config/chat-quality-flags";
 import type { AskResponse } from "@/lib/ai/types";
 import { findManualSection, manualSectionHeadings, withSectionsInForce, type ManualChunk } from "@/lib/forms/official-policy-manual";
@@ -5216,7 +5217,7 @@ export async function proposeForm(
    */
   const rosterPerson = caOnlyFields && employee.id && read.kind === "read" ? read.roster.find((row) => row.id === employee.id) ?? null : null;
   const onFileBefore = date ?? (effects.proposal && effects.proposal.employeeName === employee.name ? effects.proposal.formDate ?? null : null) ?? ownCard?.incidentDate ?? null;
-  const priorsOnFile = rosterPerson ? await finalizedPriorsOnFile(context, rosterPerson, read.kind === "read" ? read.roster : [], today, formDatedToday ? givenFormDate ?? today : onFileBefore) : [];
+  const priorsOnFile = rosterPerson ? await finalizedPriorsOnFile(context, rosterPerson, read.kind === "read" ? read.roster : [], today, priorFormsUpToTodayEnabled() ? null : formDatedToday ? givenFormDate ?? today : onFileBefore) : [];
   const onFileLine = priorsOnFile.length > 0 ? priorsOnFileLine(priorsOnFile) : null;
   /*
    * A PRIOR ACTION IS THE MANAGER'S OWN (QA, 23 Nov 2026, Pau's review of a finalized form; port of Ask Bubbles #1089).

@@ -5057,3 +5057,14 @@ export function cardPersonThisRequestEnabled(): boolean {
 export function formDateIsTodayEnabled(): boolean {
   return envFlag("FORM_DATE_IS_TODAY_ENABLED");
 }
+
+/**
+ * PRIOR_FORMS_UP_TO_TODAY (Pau, 24 Nov 2026; default off; same flag in both apps; port from Ask Bubbles): "it needs to
+ * add all past forms". The forms on file listed for "List previously received coaching and/or corrective action with
+ * date signed" (the draft) and offered by the agent loop are every finalized Coaching and Corrective Action up to today,
+ * not only those dated before this form's date. The form keeps its Date (the incident's day), so the same-incident check
+ * and "which date?" are unchanged. Off, as before.
+ */
+export function priorFormsUpToTodayEnabled(): boolean {
+  return envFlag("PRIOR_FORMS_UP_TO_TODAY_ENABLED");
+}
