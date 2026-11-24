@@ -1,5 +1,6 @@
 import "server-only";
 
+import { editableDraft, heldForHr, WAITING_FOR_HR_CHAT_REPLY } from "./hr-approval-rules";
 import type { AskResponse } from "@/lib/ai/types";
 import {
   editPolicyAskEnabled,
@@ -242,7 +243,7 @@ export function startPatchReading(input: PatchTurnInput): void {
   const entry: { key: string | null; reading: Promise<FormPatchReading> } = { key: null, reading: Promise.resolve({ fallback: "error" }) };
   entry.reading = (async (): Promise<FormPatchReading> => {
     const { loaded } = await authorizeInstance(input.request, input.instanceId, "edit");
-    if (loaded.instance.status !== "draft") return { fallback: "no_fields" };
+    if (!editableDraft(loaded.instance)) return { fallback: "no_fields" };
     const prepared = preparePatch(loaded, input);
     if (!prepared) return { fallback: "no_fields" };
     entry.key = JSON.stringify(prepared.modelInput);
@@ -278,6 +279,10 @@ export async function patchActiveForm(input: PatchTurnInput): Promise<AskRespons
     }
     const { actor, loaded } = authorized;
     if (loaded.instance.status !== "draft") return null;
+    // Waiting for HR (owner, 24 Nov 2026): never written from chat, and said so, not a generic "couldn't save".
+    if (heldForHr(loaded.instance.hrApprovalState ?? null)) {
+      return { content: WAITING_FOR_HR_CHAT_REPLY, citations: [], coverage: "not_applicable", recommendedVideoIds: [] };
+    }
 
     const prepared = preparePatch(loaded, input);
     if (!prepared) return null;
