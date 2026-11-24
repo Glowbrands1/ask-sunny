@@ -21,8 +21,8 @@ import { deleteInstance, InstanceProtectedError, type DeletionActor } from "./in
  * "DELETE THAT DRAFT" uses the same rules as the forms API's DELETE
  * (`api/forms/instances/[id]`): `authorizeInstance(…, "manage")` — the
  * `manage_form_records` permission and the form's salon scope — then
- * `deleteInstance`, which refuses anything but a draft. A finalized form is
- * never deleted. A manager whose role cannot delete is told so, truthfully,
+ * `deleteInstance`, which refuses anything but a draft. The chat never deletes a
+ * finalized form (only an administrator, from Form Monitoring: 24 Nov 2026). A manager whose role cannot delete is told so, truthfully,
  * with what the draft means while it stays and who can delete it.
  *
  * "SAME INCIDENT", answering "is this the same incident as the <form> for
@@ -88,7 +88,7 @@ export async function deleteDraftFromChat(request: Request, instanceId: string):
   if (instance.status !== "draft") {
     return reply(
       instance.status === "finalized"
-        ? `The ${who} is finalized, so it can't be deleted — a finalized form is kept on file, never destroyed. I haven't deleted or changed anything. To change it, ask me to edit it, or press **Edit as new draft** on the form.`
+        ? `The ${who} is finalized, so it can't be deleted here — a finalized form is kept on file, and only an administrator can delete one, from Form Monitoring. I haven't deleted or changed anything. To change it, ask me to edit it, or press **Edit as new draft** on the form.`
         : `The ${who} has been replaced by a newer version and is kept on file, so it can't be deleted. I haven't deleted or changed anything.`,
     );
   }

@@ -41,6 +41,7 @@ import {
   type FollowUpFilter,
   type FollowUpState,
 } from "@/lib/forms/follow-up";
+import { canAccessAdminConsole } from "@/lib/permissions";
 import { useSession } from "@/lib/session/session-context";
 import { cn } from "@/lib/utils/cn";
 import { formatDate } from "@/lib/utils/date";
@@ -218,6 +219,14 @@ export function MonitoringTable({
    */
   const mayManage = demoMode || can("manage_form_records");
   const mayTrack = demoMode || can("create_coaching_form");
+  /*
+   * A FINALIZED FORM'S DELETE is for administrators only (Pau, 24 Nov 2026: "why cant delete? in bubbles" on a finalized
+   * Corrective Action). Everyone else with `manage_form_records` deletes drafts, as before. The server decides again
+   * (`DELETE /api/forms/instances/{id}` answers 409 to anyone else); this only decides whether the menu offers it.
+   */
+  const mayDeleteFinalized = mayManage && canAccessAdminConsole(role);
+  const mayDelete = (form: MonitoredForm) =>
+    mayManage && (form.status === "draft" || (form.status === "finalized" && mayDeleteFinalized));
 
   const call = React.useCallback(
     <T,>(url: string, init: RequestInit = {}) => formsFetch<T>(url, role, user.name, init),
@@ -808,7 +817,7 @@ export function MonitoringTable({
                               {downloading === form.id ? "Preparing…" : "PDF"}
                             </button>
 
-                            {(mayManage && form.status === "draft") || (form.followedUpAt && mayTrack) ? (
+                            {mayDelete(form) || (form.followedUpAt && mayTrack) ? (
                               <DropdownMenu>
                                 <DropdownMenuTrigger
                                   aria-label={`More actions for ${form.employeeName}`}
@@ -823,15 +832,17 @@ export function MonitoringTable({
                                       Reopen follow-up
                                     </DropdownMenuItem>
                                   ) : null}
-                                  {mayManage && form.status === "draft" ? (
+                                  {mayDelete(form) ? (
                                     <>
                                       {form.followedUpAt && mayTrack ? (
                                         <DropdownMenuSeparator />
                                       ) : null}
                                       {/*
-                                        * A DRAFT can be deleted. A finalized form is a signed HR
-                                        * document: it stays on file and the menu offers nothing for
-                                        * it. There is no archive (Pau, 23 Nov 2026).
+                                        * A DRAFT can be deleted by anyone who manages form records.
+                                        * A FINALIZED form is a signed HR document: only an
+                                        * administrator is offered Delete, and the dialog says so.
+                                        * A form replaced by a newer version offers nothing. There is
+                                        * no archive (Pau, 23 Nov 2026).
                                         */}
                                       <DropdownMenuItem
                                         tone="danger"
@@ -873,7 +884,11 @@ export function MonitoringTable({
         {confirming ? (
           <DialogContent
             title="Delete this form?"
-            description="This removes the form instance and its draft data."
+            description={
+              confirming.form.status === "draft"
+                ? "This removes the form instance and its draft data."
+                : "This permanently removes a finalized form: a signed HR document, with everything on it."
+            }
           >
             <dl className="space-y-3 text-[13px]">
               <div>
@@ -892,6 +907,13 @@ export function MonitoringTable({
                 <dd className="mt-0.5 text-foreground capitalize">{confirming.form.status}</dd>
               </div>
             </dl>
+
+            {confirming.form.status === "finalized" ? (
+              <p className="text-[13px] text-muted-foreground" data-testid="delete-finalized-warning">
+                Finalized forms are normally kept on file. As an administrator you can delete this one. It cannot be
+                undone, and the deletion is recorded with your name and the time.
+              </p>
+            ) : null}
 
             <DialogActions>
               <Button variant="ghost" onClick={() => setConfirming(null)}>
