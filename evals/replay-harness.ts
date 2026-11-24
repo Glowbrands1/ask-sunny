@@ -1,4 +1,3 @@
-import { formDateIsTodayEnabled } from "@/lib/config/chat-quality-flags";
 import type { ChatFormProposal } from "@/types";
 
 /**
@@ -185,14 +184,7 @@ export function judgeCase(input: {
     misses.push("employee");
   }
   if (criteria.salon !== null && proposal?.locationId !== criteria.salon) misses.push("salon");
-  /*
-   * Changed on purpose (Pau, 24 Nov 2026, FORM_DATE_IS_TODAY_ENABLED, on in production): a form is dated the day it is
-   * written, not the incident's day, so a card for an incident on `criteria.date` carries no date of its own (Create
-   * dates it today). The incident's date stays in the account. With the flag off, the card is still dated by the incident.
-   */
-  if (criteria.date !== null) {
-    if (formDateIsTodayEnabled() ? (proposal?.formDate ?? null) !== null : proposal?.formDate !== criteria.date) misses.push("date");
-  }
+  if (criteria.date !== null && proposal?.formDate !== criteria.date) misses.push("date");
   if (criteria.policy !== null) {
     const text = [lastReply, proposal?.issue ?? ""].join("\n");
     if (!policyShown(criteria.policy, text)) misses.push("policy");

@@ -7,7 +7,7 @@
       "card": {
         "employee": "Test Testy",
         "salon": "loc-0462",
-        "date": null,
+        "date": "2026-09-20",
         "status": "ready"
       }
     },
@@ -21,7 +21,7 @@
       "card": {
         "employee": null,
         "salon": "loc-0462",
-        "date": null,
+        "date": "2026-09-28",
         "status": "needs_employee"
       }
     },
@@ -32,7 +32,7 @@
       "card": {
         "employee": "Corena Schardt",
         "salon": "loc-0468",
-        "date": null,
+        "date": "2026-09-29",
         "status": "ready"
       }
     },
@@ -46,7 +46,7 @@
       "card": {
         "employee": null,
         "salon": "loc-0468",
-        "date": null,
+        "date": "2026-10-23",
         "status": "needs_employee"
       }
     },
@@ -97,7 +97,7 @@
       "card": {
         "employee": "Dora Lee",
         "salon": null,
-        "date": null,
+        "date": "2026-10-23",
         "status": "ready"
       }
     },
@@ -121,7 +121,7 @@
       "card": {
         "employee": "Sloane Wexford",
         "salon": "loc-0410",
-        "date": null,
+        "date": "2026-10-05",
         "status": "ready"
       }
     },
@@ -176,7 +176,7 @@
       "card": {
         "employee": null,
         "salon": null,
-        "date": null,
+        "date": "2026-10-15",
         "status": "needs_employee"
       }
     },
@@ -187,7 +187,7 @@
       "card": {
         "employee": "Testy Testerson",
         "salon": null,
-        "date": null,
+        "date": "2026-10-16",
         "status": "needs_location"
       }
     },
@@ -198,7 +198,7 @@
       "card": {
         "employee": "Testy Testerson",
         "salon": null,
-        "date": null,
+        "date": "2026-10-20",
         "status": "needs_location"
       }
     },
@@ -209,7 +209,7 @@
       "card": {
         "employee": "Odette Brannock",
         "salon": null,
-        "date": null,
+        "date": "2026-10-22",
         "status": "needs_location"
       }
     },
@@ -230,6 +230,7 @@
       "misses": [
         "employee",
         "salon",
+        "date",
         "policy"
       ],
       "card": {
@@ -246,7 +247,7 @@
       "card": {
         "employee": null,
         "salon": null,
-        "date": null,
+        "date": "2026-10-23",
         "status": "needs_employee"
       }
     },
@@ -348,7 +349,7 @@
       "card": {
         "employee": "Test Testyone",
         "salon": "loc-0306",
-        "date": null,
+        "date": "2026-09-23",
         "status": "ready"
       }
     },
@@ -359,7 +360,7 @@
       "card": {
         "employee": "Test Testy",
         "salon": "loc-0462",
-        "date": null,
+        "date": "2026-09-23",
         "status": "ready"
       }
     },
@@ -370,7 +371,7 @@
       "card": {
         "employee": "Test Testy",
         "salon": "loc-0463",
-        "date": null,
+        "date": "2026-09-28",
         "status": "ready"
       }
     },
@@ -381,7 +382,7 @@
       "card": {
         "employee": "Test Testy",
         "salon": null,
-        "date": null,
+        "date": "2026-09-28",
         "status": "ready"
       }
     },
@@ -403,7 +404,7 @@
       "card": {
         "employee": "Rozlyn Quellmar",
         "salon": "loc-0462",
-        "date": null,
+        "date": "2026-10-01",
         "status": "ready"
       }
     },

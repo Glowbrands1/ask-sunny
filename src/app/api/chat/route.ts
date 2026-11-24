@@ -34,7 +34,6 @@ import {
   letterGreetingNotNameEnabled,
   templateOutlineFieldsEnabled,
   exitFormDateFromTerminationEnabled,
-  formDateIsTodayEnabled,
   offRosterAskBeforeCardEnabled,
   metricGuardEnabled,
   refusalNoRepeatEnabled,
@@ -1025,14 +1024,6 @@ async function postChat(request: Request, progress?: ProgressChannel) {
       // EXIT_FORM_DATE_FROM_TERMINATION_ENABLED: a stated "terminated, effective <date>" dates the exit card (`lib/forms/exit-form-date.ts`).
       if (exitFormDateFromTerminationEnabled()) {
         answer = (await import("@/lib/forms/exit-form-date")).withExitFormDateFromTermination(
-          answer,
-          [...parsed.history.filter((turn) => turn.role === "user").map((turn) => turn.content), asked.question],
-          businessToday(),
-        );
-      }
-      // FORM_DATE_IS_TODAY_ENABLED: a form dated by its incident carries the date the manager gave it, or none (Create dates it today) (`lib/forms/form-date-today.ts`).
-      if (formDateIsTodayEnabled()) {
-        answer = (await import("@/lib/forms/form-date-today")).withFormDatedToday(
           answer,
           [...parsed.history.filter((turn) => turn.role === "user").map((turn) => turn.content), asked.question],
           businessToday(),
