@@ -32,7 +32,13 @@ async function onFile(t: ReplayContext): Promise<string[]> {
   const made: string[] = [];
   for (const [at, finalized] of [["2026-11-12T15:00:00Z", true], ["2026-11-13T15:00:00Z", false], ["2026-11-13T15:20:00Z", false]] as const) {
     vi.setSystemTime(new Date(at));
-    t.loopModel!(loopStandIn((view): LoopDecision => (lastResult(view, "propose_form") ? { text: "Here's the card." } : { tool: "propose_form", input: { template_key: "dpoa", employee_id: TESTY.id, what_happened: TESTY_ACCOUNT, incident_date: "2026-11-10" } })));
+    /*
+     * CHANGED ON PURPOSE (port of Ask Bubbles #1123, 24 Nov 2026): a second CA card for Testy on 11/10 is now asked about
+     * ("open that one, or is this a separate incident?") instead of made. Each setup card is proposed on its own day
+     * (11/10, 11/09, 11/08); the line below still dates every form 11/10, so what this case checks is unchanged.
+     */
+    const proposeOn = ["2026-11-10", "2026-11-09", "2026-11-08"][made.length]!;
+    t.loopModel!(loopStandIn((view): LoopDecision => (lastResult(view, "propose_form") ? { text: "Here's the card." } : { tool: "propose_form", input: { template_key: "dpoa", employee_id: TESTY.id, what_happened: TESTY_ACCOUNT, incident_date: proposeOn } })));
     const setup = t.thread();
     await setup.say("ca for test testy, she was late to open the salon on 11/10");
     const id = await setup.create();
