@@ -125,10 +125,9 @@ export async function findOwnCopySource(input: {
 }): Promise<LoadedInstance | null> {
   const { data, error } = await getSupabaseAdmin()
     .from("form_instance_overview")
-    .select("id, employee_name, created_by, template_key, created_at, archived_at")
+    .select("id, employee_name, created_by, template_key, created_at")
     .eq("created_by", input.actor.id)
     .eq("template_key", input.templateKey)
-    .is("archived_at", null)
     .order("created_at", { ascending: false })
     .limit(20);
   if (error || !data) return null;
@@ -478,7 +477,7 @@ export interface PendingCopySource {
 
 /**
  * The manager's own form by id: created by this account, of this template
- * (when given), not archived, not the target, for somebody other than the
+ * (when given), not the target, for somebody other than the
  * target's employee, still visible to this account, with content to copy.
  * Read with the creator in the query, as `findOwnCopySource` reads, so no other
  * account's form is ever loaded.
@@ -504,10 +503,9 @@ async function ownFormById(input: {
   if (input.targetInstanceId && input.instanceId === input.targetInstanceId) return null;
   let query = getSupabaseAdmin()
     .from("form_instance_overview")
-    .select("id, employee_name, created_by, template_key, created_at, archived_at")
+    .select("id, employee_name, created_by, template_key, created_at")
     .eq("id", input.instanceId)
-    .eq("created_by", input.actor.id)
-    .is("archived_at", null);
+    .eq("created_by", input.actor.id);
   if (input.templateKey) query = query.eq("template_key", input.templateKey);
   const { data, error } = await query.limit(1);
   if (error || !data) return null;
@@ -670,9 +668,8 @@ async function namedOwnForm(
   }
   const { data, error } = await getSupabaseAdmin()
     .from("form_instance_overview")
-    .select("id, employee_name, created_by, created_at, archived_at")
+    .select("id, employee_name, created_by, created_at")
     .eq("created_by", actor.id)
-    .is("archived_at", null)
     .order("created_at", { ascending: false })
     .limit(20);
   if (error || !data) return null;

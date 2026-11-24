@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { L10Frame, hubMeetingUrl } from "@/features/l10/L10Frame";
 import { endMeetingAction, loadMeetingAction, saveMeetingAction } from "@/features/l10/actions";
 import { L10_TAB_LABELS, listRecaps, openMeeting } from "@/features/l10/data.server";
-import { leadershipOwnerNames } from "@/features/l10/owners.server";
+import { loadLeadershipOwnerNames } from "@/features/l10/owners.server";
 import { bloomStyle, hasReference, isMeetingKey, isStcSd } from "@/features/l10/lib/config";
 import { businessDate } from "@/features/l10/lib/dueStatus";
 import { MeetingView } from "@/features/l10/meeting/MeetingView";
@@ -53,8 +53,10 @@ export default async function MeetingPage({ params, searchParams }: { params: Pr
     );
   }
   const m = opened.meeting;
-  // A Bloom-style meeting shows "Last meeting's summary"; a recap list that fails to load just leaves it empty.
-  const [recaps, ownerPeople] = await Promise.all([bloomStyle(key) ? listRecaps(key) : Promise.resolve(null), leadershipOwnerNames()]);
+  // A Bloom-style meeting shows "Last meeting's summary". A side load that fails leaves its part empty, and the page says
+  // so ("Couldn't load ... refresh to try again") instead of looking like there is nothing (24 Nov 2026).
+  const [recaps, owners] = await Promise.all([bloomStyle(key) ? listRecaps(key) : Promise.resolve(null), loadLeadershipOwnerNames()]);
+  const loadProblems = [...(recaps && !recaps.ok ? ["the last meeting"] : []), ...(owners.ok ? [] : ["the owner names"])];
   return (
     <L10Frame meetingKey={key}>
       <MeetingView
@@ -72,7 +74,8 @@ export default async function MeetingPage({ params, searchParams }: { params: Pr
         serverTime={new Date().getTime()}
         today={businessDate()}
         recaps={recaps?.ok ? recaps.recaps : []}
-        ownerPeople={ownerPeople}
+        ownerPeople={owners.names}
+        loadProblems={loadProblems}
       />
     </L10Frame>
   );

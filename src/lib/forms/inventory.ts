@@ -1,6 +1,6 @@
 import "server-only";
 
-import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
+import { activePermissionMatrix, hasPermission } from "@/lib/permissions";
 import type { AccessScope, Permission, Role } from "@/types";
 
 import { FORM_CATEGORIES, formCategoryLabel } from "./catalog";
@@ -127,7 +127,7 @@ export function buildFormInventory(
           published &&
           actor.role !== null &&
           hasPermission(
-            DEFAULT_PERMISSION_MATRIX,
+            activePermissionMatrix(),
             actor.role,
             summary.requiredPermission as Permission,
           ),
@@ -250,7 +250,7 @@ export function formsLocationFor(role: Role | null): string {
     return `${inChat}.`;
   }
   const may = (permission: Permission) =>
-    hasPermission(DEFAULT_PERMISSION_MATRIX, role, permission);
+    hasPermission(activePermissionMatrix(), role, permission);
 
   const places: string[] = [];
   if (may("view_forms_workspace")) {

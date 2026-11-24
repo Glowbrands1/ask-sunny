@@ -24,12 +24,9 @@ import { PRODUCTION_SALONS } from "@/data/salons";
  * THREE MECHANISMS, IN ORDER OF PREFERENCE
  * ============================================================================
  *
- * 1. ARCHIVE, which already exists and is already honoured. Every follow-up
- *    read filters `archived_at is null`, and `manage_form_records` lets an
- *    administrator archive a filed form from Form Monitoring. Archiving is
- *    reversible, destroys nothing and keeps the record. FOR THE FOUR NAMED
- *    RECORDS THIS IS THE RIGHT ANSWER, and it is an administrator's action
- *    rather than a deployment's — see `docs/stakeholder-review-2026-09-14.md`.
+ * 1. (RETIRED, Pau 23 Nov 2026: forms are no longer archived; a form is Draft or
+ *    Finalized. A draft that should not be there is deleted from Form
+ *    Monitoring by an administrator; see `docs/stakeholder-review-2026-09-14.md`.)
  *
  * 2. THE ROSTER GUARD BELOW, which is structural and needs nobody to remember
  *    anything. A form filed against a salon that is not on the roster cannot be
@@ -47,7 +44,7 @@ import { PRODUCTION_SALONS } from "@/data/salons";
  *
  * NOTHING HERE DELETES, EDITS OR HIDES A RECORD FROM ITS OWN SCREEN. Form
  * Monitoring shows everything, which is what an administrator needs in order to
- * decide what to archive. This filters the OVERVIEW's queue, which is a
+ * decide what to delete. This filters the OVERVIEW's queue, which is a
  * summary for a manager's morning and is the surface the review was reading.
  */
 
@@ -165,5 +162,5 @@ export function excludedRecordsNote(count: number): string {
     count === 1 ? "record is" : "records are"
   } filed against a salon that is not on the roster, or named in this deployment's exclusion list, so ${
     count === 1 ? "it is" : "they are"
-  } not counted here. They are still in Form Monitoring, where they can be reviewed and archived.`;
+  } not counted here. They are still in Form Monitoring, where they can be reviewed.`;
 }

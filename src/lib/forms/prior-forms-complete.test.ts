@@ -22,7 +22,7 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 vi.mock("./instances", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./instances")>()),
-  listInstances: async (_view: string, limit: number) => rows.list.slice(0, limit),
+  listInstances: async (limit: number) => rows.list.slice(0, limit),
 }));
 
 function form(index: number) {

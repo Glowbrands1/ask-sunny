@@ -3,7 +3,7 @@ import "server-only";
 import { foldName } from "./fold-name";
 import { formRecordsNoJudgementEnabled, formsOnFileCountsEnabled, formsOnFileOrderMatchPossibleEnabled } from "@/lib/config/chat-quality-flags";
 import { countFormsOnFile, type FormCounts } from "./forms-on-file-counts";
-import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
+import { activePermissionMatrix, hasPermission } from "@/lib/permissions";
 import { businessToday } from "@/lib/business-date";
 import type { AccessScope, Role } from "@/types";
 
@@ -413,7 +413,6 @@ function describeRow(row: InstanceRow, today: string, viewerId?: string | null):
   ];
   if (row.followUpDate) parts.push(`follow-up date: ${row.followUpDate}`);
   if (state !== "drafted" && state !== "untracked") parts.push(`follow-up: ${FOLLOW_UP_LABEL[state]}`);
-  if (row.archivedAt) parts.push("archived");
   /*
    * HR APPROVAL. A form HR has not approved reaches this list only for its creator, its sender and HR
    * (`hiddenWhileAwaitingHr`), so its state is said here. "Approved by HR" is said only to its creator and sender: everybody else reads an
@@ -572,7 +571,7 @@ function countsSection(counted: { counts: FormCounts; listed: number; of: number
     `- ${person.employee}: ${person.total} — ${person.by_form.map((form) => `${form.form} ${form.total} (${form.by_date.map((day) => `${day.date ?? "no date"}: ${day.count}, ${statuses(day.statuses)}`).join("; ")})`).join("; ")}`,
   );
   return [
-    `COUNTS (code counted every form the read found: ${counted.counts.total}${counted.complete ? "" : ", the first rows of a read that stopped at its limit"}). Copy these numbers exactly. Never count or add up the rows yourself, and never put one person's forms under another person's name. Mark an archived form "(archived)". Archived drafts are left out unless the question asked for archived forms.`,
+    `COUNTS (code counted every form the read found: ${counted.counts.total}${counted.complete ? "" : ", the first rows of a read that stopped at its limit"}). Copy these numbers exactly. Never count or add up the rows yourself, and never put one person's forms under another person's name. A form is draft or finalized (a replaced one is revised): name no other status.`,
     ...lines,
     ...(counted.of > counted.listed ? [`${counted.listed} of these ${counted.of} forms are listed above; say how many are not shown.`] : []),
   ].join("\n");
@@ -618,7 +617,7 @@ export const FORM_RECORDS_PERMISSION = "view_form_monitoring" as const;
  */
 export async function chatFormsActor(actor: FormRecordsActor): Promise<FormsActor | null> {
   if (!actor.verified || !actor.subject || !actor.role || !actor.scope) return null;
-  if (!hasPermission(DEFAULT_PERMISSION_MATRIX, actor.role, FORM_RECORDS_PERMISSION)) return null;
+  if (!hasPermission(activePermissionMatrix(), actor.role, FORM_RECORDS_PERMISSION)) return null;
   const visibility = await resolveFormsVisibility({
     subject: actor.subject,
     role: actor.role,
@@ -672,7 +671,7 @@ export async function loadFormRecords(input: {
   // Fails closed: no verified identity, no read. Chat is live-only, so this is
   // the ordinary state of a signed-in manager.
   if (!actor.verified || !actor.subject || !actor.role || !actor.scope) return null;
-  if (!hasPermission(DEFAULT_PERMISSION_MATRIX, actor.role, FORM_RECORDS_PERMISSION)) return null;
+  if (!hasPermission(activePermissionMatrix(), actor.role, FORM_RECORDS_PERMISSION)) return null;
 
   const today = input.today ?? businessToday();
   const viewerId = input.markCreator ? actor.subject : null;
@@ -686,8 +685,6 @@ export async function loadFormRecords(input: {
     const kind = input.kind ?? (input.narrowFromQuestion ? formKindFromText(input.question) : null);
     const counting = formsOnFileCountsEnabled();
     const narrowed = range || kind ? { range, kind, limit: counting ? COUNTED_READ_LIMIT : NARROWED_LIMIT } : null;
-    /* FORMS_ON_FILE_COUNTS_ENABLED (QA's f081): an archived draft is left out unless the question asks for archived forms. */
-    const keep = (row: InstanceRow) => !counting || /\barchiv/i.test(input.question) || !(row.archivedAt && row.status === "draft");
     const narrowFilter = {
       ...(range ? { formDateFrom: range.from, formDateTo: range.to } : {}),
       ...(kind ? { templateNameWords: kind.templateNameWords } : {}),
@@ -707,8 +704,8 @@ export async function loadFormRecords(input: {
       // Item 28: a Coaching kind never keeps a Follow-Up Coaching Form (`ofKind`).
       const found = ofKind(visibleInstances(
         formsActor,
-        await listInstances("all", privateAwareLimit(counting ? COUNTED_READ_LIMIT : MATCH_LIMIT), { ...filter, ...narrowFilter, employeeNameWords: words }),
-      ), kind).filter(keep);
+        await listInstances(privateAwareLimit(counting ? COUNTED_READ_LIMIT : MATCH_LIMIT), { ...filter, ...narrowFilter, employeeNameWords: words }),
+      ), kind);
       const rows = found.slice(0, MATCH_LIMIT);
       const matches = matchRowsToQuestion(rows, words, nameSource);
       if (matches.named.length > 0 || matches.possible.length > 0) {
@@ -722,10 +719,9 @@ export async function loadFormRecords(input: {
     }
 
     if (narrowed && !(words.length > 0 && looksLikeItNamesSomebody(nameSource))) {
-      // Archived forms count: "who got a CA this month" asks what was filed, not what is on the active shelf.
-      // FORMS_ON_FILE_COUNTS_ENABLED (QA's f081): archived FINALIZED forms still count; archived drafts are left out.
-      const read = await listInstances("all", privateAwareLimit(narrowed.limit), { ...filter, ...narrowFilter });
-      const found = ofKind(visibleInstances(formsActor, read), kind).filter(keep);
+      // Every form on file counts, as Form Monitoring shows them (no archive: Pau, 23 Nov 2026).
+      const read = await listInstances(privateAwareLimit(narrowed.limit), { ...filter, ...narrowFilter });
+      const found = ofKind(visibleInstances(formsActor, read), kind);
       const rows = counting
         ? [...found].sort((a, b) => (b.formDate ?? "").localeCompare(a.formDate ?? "") || a.employeeName.localeCompare(b.employeeName)).slice(0, NARROWED_LIMIT)
         : found.slice(0, NARROWED_LIMIT);
@@ -733,7 +729,7 @@ export async function loadFormRecords(input: {
       return { block: renderFormRecordsBlock({ viewerId, visibility, words, matches: null, recent: rows, today, narrowed: counting ? { ...narrowed, limit: counted!.complete ? Number.POSITIVE_INFINITY : NARROWED_LIMIT } : narrowed, counted }) };
     }
 
-    const recent = visibleInstances(formsActor, await listInstances("active", privateAwareLimit(RECENT_LIMIT), filter)).slice(0, RECENT_LIMIT);
+    const recent = visibleInstances(formsActor, await listInstances(privateAwareLimit(RECENT_LIMIT), filter)).slice(0, RECENT_LIMIT);
     /*
      * A question that names somebody nobody on file matches is reported as
      * "no form names them" — with the recent list left out, so the model

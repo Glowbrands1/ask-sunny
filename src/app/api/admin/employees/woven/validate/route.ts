@@ -22,7 +22,7 @@ import {
   MIN_ACCESS_CODE_LENGTH,
   WOVEN_VALIDATION_ACCESS_CODE_ENV,
 } from "@/lib/employees/woven/validation-access";
-import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
+import { activePermissionMatrix, hasPermission } from "@/lib/permissions";
 
 /**
  * POST /api/admin/employees/woven/validate — the READ-ONLY live check of the
@@ -167,7 +167,7 @@ export async function POST(request: Request) {
     const report = await runWovenLiveValidation({
       config,
       salons: await salonsToCompare(),
-      includeLocationReview: hasPermission(DEFAULT_PERMISSION_MATRIX, context.identity.role, "manage_users"),
+      includeLocationReview: hasPermission(activePermissionMatrix(), context.identity.role, "manage_users"),
     });
     return NextResponse.json({ status: "ok", report }, { headers: NO_STORE });
   } catch (error) {

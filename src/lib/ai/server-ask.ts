@@ -53,7 +53,7 @@ import { CLAUDE_MAX_TOKENS, RETRIEVAL } from "@/lib/config/models";
 import { approvedManualConfirmed, manualDisplayTitle } from "@/lib/forms/official-policy-manual";
 import { MissingConfigurationError, liveReadiness } from "@/lib/config/server-env";
 import { ACTIVE_BRAND } from "@/lib/brand";
-import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
+import { activePermissionMatrix, hasPermission } from "@/lib/permissions";
 import { markStage } from "./chat-stage-timings";
 import { held, startedFor } from "./held-promise";
 import { proposeFormForTurn, suggestFormsForTurn, type ChatActor } from "./form-proposal";
@@ -1945,13 +1945,13 @@ async function answerQuestionUntraced(
      */
     canViewReports:
       actor.role !== null &&
-      hasPermission(DEFAULT_PERMISSION_MATRIX, actor.role, "view_reports"),
+      hasPermission(activePermissionMatrix(), actor.role, "view_reports"),
     /* DEAD_END_SAYS_WHERE_ENABLED (QA item 25): where to send this person, by their real permissions. */
     ...(deadEndSaysWhereEnabled()
       ? {
           whereToGo: {
-            canViewDailyStats: actor.role !== null && hasPermission(DEFAULT_PERMISSION_MATRIX, actor.role, "view_daily_stats"),
-            canViewL10: actor.role !== null && hasPermission(DEFAULT_PERMISSION_MATRIX, actor.role, "view_l10_meetings"),
+            canViewDailyStats: actor.role !== null && hasPermission(activePermissionMatrix(), actor.role, "view_daily_stats"),
+            canViewL10: actor.role !== null && hasPermission(activePermissionMatrix(), actor.role, "view_l10_meetings"),
           },
         }
       : {}),

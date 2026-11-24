@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 
 import { TooltipProvider } from "@/components/ui/overlays";
+import type { PermissionOverrides } from "@/lib/permissions";
 import type { AuthenticatedSession } from "@/lib/session/authenticated-user";
 import { SessionProvider } from "@/lib/session/session-context";
 import { AppStoreProvider } from "@/lib/store/app-store";
@@ -23,14 +24,20 @@ export function Providers({
   children,
   session = null,
   productionAuth = false,
+  initialPermissionOverrides,
 }: {
   children: ReactNode;
+  initialPermissionOverrides?: PermissionOverrides;
   session?: AuthenticatedSession | null;
   productionAuth?: boolean;
 }) {
   return (
     <AppStoreProvider>
-      <SessionProvider session={session} productionAuth={productionAuth}>
+      <SessionProvider
+        session={session}
+        productionAuth={productionAuth}
+        initialPermissionOverrides={initialPermissionOverrides}
+      >
         <TooltipProvider delayDuration={220} skipDelayDuration={400}>
           {children}
         </TooltipProvider>

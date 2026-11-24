@@ -10,7 +10,7 @@ import {
 import { LIMITS, parseJsonBody, requireString } from "@/lib/api/validation";
 import { isVideoCategory, VIDEO_CATEGORY_IDS } from "@/lib/videos/categories";
 import { authorizeRequest } from "@/lib/auth/server";
-import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
+import { activePermissionMatrix, hasPermission } from "@/lib/permissions";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import {
   checkVideoFile,
@@ -91,7 +91,7 @@ export async function GET(request: Request) {
     const context = await authorizeRequest(request, "view_videos");
 
     const canManage = hasPermission(
-      DEFAULT_PERMISSION_MATRIX,
+      activePermissionMatrix(),
       context.identity.role,
       "manage_videos",
     );

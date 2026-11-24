@@ -3,7 +3,7 @@ import "server-only";
 import { isDemoMode } from "@/lib/config/runtime";
 import { AuthError } from "@/lib/auth/types";
 import { authorizeRequest } from "@/lib/auth/server";
-import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
+import { activePermissionMatrix, hasPermission } from "@/lib/permissions";
 import { resolveFormsVisibility } from "./forms-visibility";
 import { resolveHrApprover } from "./hr-approval-approvers";
 import type { AccessScope, Permission, Role } from "@/types";
@@ -84,7 +84,7 @@ const DEMO_NAME_HEADER = "x-ask-sunny-demo-name";
 function readDemoRole(request: Request): Role | null {
   const raw = request.headers.get(DEMO_ROLE_HEADER);
   if (!raw) return null;
-  const roles = Object.keys(DEFAULT_PERMISSION_MATRIX) as Role[];
+  const roles = Object.keys(activePermissionMatrix()) as Role[];
   return roles.includes(raw as Role) ? (raw as Role) : null;
 }
 
@@ -164,7 +164,7 @@ export async function authorizeForms(
    * RLS, against an identity a provider vouched for — never here, against one
    * the browser asserted about itself.
    */
-  const carries = hasPermission(DEFAULT_PERMISSION_MATRIX, actor.role, permission);
+  const carries = hasPermission(activePermissionMatrix(), actor.role, permission);
   return carries ? actor : { ...actor, wouldRequire: permission };
 }
 

@@ -1,9 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Eye, Info, Lock, RotateCcw, Save } from "lucide-react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { CheckCircle2, Info, Lock, RotateCcw, Save, Undo2 } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/controls";
 import { Notice } from "@/components/ui/feedback";
@@ -17,56 +16,125 @@ import {
   PERMISSION_LABEL,
   PERMISSIONS,
   ROLE_LABEL,
-  ROLE_SHORT_LABEL,
   ROLES,
+  effectiveMatrix,
+  isPermissionEditableFor,
   isPermissionLockedFor,
+  overridesFromMatrix,
+  sanitizeOverrides,
   togglePermission,
 } from "@/lib/permissions";
 import { useAppStore } from "@/lib/store/app-store";
 import { useSession } from "@/lib/session/session-context";
-import { nowIso } from "@/lib/utils/date";
 import { cn } from "@/lib/utils/cn";
-import type { PermissionMatrix } from "@/types";
+import type { Permission, PermissionMatrix, Role } from "@/types";
 
 /**
  * ============================================================================
- * Roles x features matrix. READ-ONLY once authentication is real.
+ * Roles x features matrix. SAVED TO THE DATABASE AND ENFORCED ON THE SERVER.
  * ============================================================================
  *
- * With real authentication configured this screen SHOWS the policy and cannot
- * change it, and that is a deliberate scope decision rather than a missing
- * feature. Editing it for real means persisting a matrix, versioning it,
- * auditing every change, and — the part that makes it a project rather than a
- * checkbox — deciding what happens to somebody signed in under the old policy.
- * A half-built version of that is worse than none: an administrator would tick
- * a box, see it saved, and get no change in behaviour anywhere.
+ * (Pau, 23 Nov 2026.) This screen used to show the policy and refuse to change
+ * it once authentication was real, because a saved matrix nobody enforced would
+ * have been worse than none. It is enforced now: Save writes
+ * `permission_overrides` through PUT /api/admin/permissions, and the server's
+ * `authorizeRequest` / `requirePagePermission` and the browser's `can()` all read
+ * the same merged matrix, so what this screen shows after a refresh is exactly
+ * what is enforced. The grid is always loaded from the server — never from
+ * this browser's copy — and is re-read after every save.
  *
- * So the editable version stays exactly where it belongs — demo mode, where
- * the matrix lives in this browser's IndexedDB and changing it is how a
- * presenter shows what a role can do. In real mode `can()` reads
- * DEFAULT_PERMISSION_MATRIX on both the client and the server, so an edited
- * local copy would grant nothing anyway; rendering Save would be offering a
- * control that does nothing.
+ * ONE TICK = ONE CHANGE IN A DRAFT. Nothing is sent until "Save changes";
+ * "Discard" returns to what is saved; "Reset to defaults" puts the built-in
+ * defaults in the draft (still needs Save). In demo mode the same screen edits
+ * the browser's own store copy, as before.
  *
- * Cells for the administrative roles are locked ON — that access is fixed and
- * is not a policy choice. `manage_users` and `manage_integrations` are locked
- * OFF for every other role, for the same reason.
+ * Cells that cannot change stay locked with the reason on hover: the
+ * administrator roles (always full access), `manage_users`,
+ * `manage_integrations`, L10, and the administrator-only reports for any role
+ * that does not hold them by default. The server refuses them as well.
  */
+
+type LoadState = "loading" | "ready" | "error";
+
+/** The matrix the server enforces right now, or null if it could not be read. */
+async function fetchEnforcedMatrix(): Promise<PermissionMatrix | null> {
+  try {
+    const response = await fetch("/api/admin/permissions", { cache: "no-store" });
+    if (!response.ok) return null;
+    const body = (await response.json()) as { overrides?: unknown };
+    return effectiveMatrix(sanitizeOverrides(body.overrides ?? {}));
+  } catch {
+    return null;
+  }
+}
+
+function sameCell(a: PermissionMatrix, b: PermissionMatrix, role: Role, permission: Permission) {
+  return (a[role]?.includes(permission) ?? false) === (b[role]?.includes(permission) ?? false);
+}
+
+function lockedReason(role: Role, permission: Permission): string {
+  if (canAccessAdminConsole(role)) return "Administrators always hold every permission.";
+  if (isPermissionLockedFor(role, permission)) {
+    return `Administrative permissions are restricted to ${ADMIN_CONSOLE_ROLES.map((entry) => ROLE_LABEL[entry]).join(", ")}.`;
+  }
+  return "This is an administrator-only report. It can be taken away from a role that has it, but not given to one that does not.";
+}
+
 export function PermissionsMatrix() {
   const { permissionMatrix, setPermissionMatrix } = useAppStore();
-  const { authenticated } = useSession();
-  /*
-   * In real mode the DISPLAYED matrix is the server's, not the store's. Showing
-   * a locally-edited copy here would describe an access policy that no longer
-   * matches what anybody actually gets.
-   */
-  const source = authenticated ? DEFAULT_PERMISSION_MATRIX : permissionMatrix;
-  const [draft, setDraft] = useState<PermissionMatrix>(source);
-  const [savedAt, setSavedAt] = useState<string | null>(null);
+  const { authenticated, refreshPermissions } = useSession();
 
-  const dirty = useMemo(
-    () => JSON.stringify(draft) !== JSON.stringify(source),
-    [draft, source],
+  /*
+   * `saved` is what is IN FORCE: the server's matrix in real mode, the store's
+   * copy in demo. `draft` is what the screen shows and edits.
+   */
+  const [saved, setSaved] = useState<PermissionMatrix>(authenticated ? DEFAULT_PERMISSION_MATRIX : permissionMatrix);
+  const [defaults, setDefaults] = useState<PermissionMatrix>(DEFAULT_PERMISSION_MATRIX);
+  const [draft, setDraft] = useState<PermissionMatrix>(saved);
+  const [state, setState] = useState<LoadState>(authenticated ? "loading" : "ready");
+  const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
+
+  const applyLoaded = useCallback((matrix: PermissionMatrix | null) => {
+    if (!matrix) {
+      setState("error");
+      return;
+    }
+    setSaved(matrix);
+    setDraft(matrix);
+    setDefaults(DEFAULT_PERMISSION_MATRIX);
+    setState("ready");
+  }, []);
+
+  // The retry button. The first load is the effect below, which does not set state until the answer is in.
+  const retry = useCallback(() => {
+    setState("loading");
+    void fetchEnforcedMatrix().then(applyLoaded);
+  }, [applyLoaded]);
+
+  useEffect(() => {
+    if (!authenticated) return;
+    let cancelled = false;
+    void fetchEnforcedMatrix().then((matrix) => {
+      if (!cancelled) applyLoaded(matrix);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [authenticated, applyLoaded]);
+
+  const changed = useMemo(() => {
+    const cells = new Set<string>();
+    for (const role of ROLES) {
+      for (const permission of PERMISSIONS) {
+        if (!sameCell(draft, saved, role, permission)) cells.add(`${role}:${permission}`);
+      }
+    }
+    return cells;
+  }, [draft, saved]);
+  const atDefaults = useMemo(
+    () => ROLES.every((role) => PERMISSIONS.every((permission) => sameCell(draft, defaults, role, permission))),
+    [draft, defaults],
   );
 
   const groups = useMemo(() => {
@@ -80,43 +148,75 @@ export function PermissionsMatrix() {
     return Array.from(map.entries());
   }, []);
 
+  const editing = state === "ready" && !saving;
+
+  async function save() {
+    setSaving(true);
+    setNotice(null);
+    try {
+      if (!authenticated) {
+        setPermissionMatrix(draft);
+        setSaved(draft);
+        setNotice({ tone: "ok", text: "Saved in this browser's demo." });
+        return;
+      }
+      const response = await fetch("/api/admin/permissions", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ overrides: overridesFromMatrix(draft) }),
+      });
+      const body = (await response.json().catch(() => ({}))) as { error?: string; overrides?: unknown };
+      if (!response.ok) {
+        setNotice({ tone: "error", text: body.error ?? "The permissions could not be saved. Nothing was changed." });
+        return;
+      }
+      // Show what the server now enforces, not what was ticked.
+      const matrix = effectiveMatrix(sanitizeOverrides(body.overrides ?? {}));
+      setSaved(matrix);
+      setDraft(matrix);
+      await refreshPermissions?.();
+      setNotice({
+        tone: "ok",
+        text: "Saved. These permissions are now in force. People who are signed in get them on their next page or action.",
+      });
+    } catch {
+      setNotice({ tone: "error", text: "The permissions could not be saved. Check your connection and try again." });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const count = changed.size;
+
   return (
     <div>
       <SectionHeader
         title="Permissions"
-        description="What each access level can see and do. Changes apply immediately across navigation and every screen."
-        actions={
-          authenticated ? null : (
-            <>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setDraft(DEFAULT_PERMISSION_MATRIX)}
-              >
-                <RotateCcw />
-                Reset to defaults
-              </Button>
-              <Button
-                size="sm"
-                disabled={!dirty}
-                onClick={() => {
-                  setPermissionMatrix(draft);
-                  setSavedAt(nowIso());
-                }}
-              >
-                <Save />
-                Save changes
-              </Button>
-            </>
-          )
-        }
+        description="What each access level can see and do. Tick a box to give a role something, untick it to take it away, then press Save changes."
       />
 
-      {authenticated ? (
-        <Notice tone="neutral" icon={<Eye />} className="mb-4" title="This is the current policy, shown for reference">
-          Roles are assigned per person in the Team tab. The policy itself —
-          which role can do what — is fixed in this release and is enforced on
-          the server for every request, so it cannot be changed from a browser.
+      {authenticated && state === "error" ? (
+        <Notice
+          tone="attention"
+          className="mb-4"
+          title="The saved permissions could not be loaded"
+          action={
+            <Button size="sm" variant="ghost" onClick={retry}>
+              Try again
+            </Button>
+          }
+        >
+          Editing is switched off so nothing is saved over a policy this screen has not seen.
+        </Notice>
+      ) : null}
+
+      {notice ? (
+        <Notice
+          tone={notice.tone === "ok" ? "primary" : "attention"}
+          icon={notice.tone === "ok" ? <CheckCircle2 /> : <Info />}
+          className="mb-4"
+        >
+          <span role={notice.tone === "ok" ? "status" : "alert"}>{notice.text}</span>
         </Notice>
       ) : null}
 
@@ -127,12 +227,12 @@ export function PermissionsMatrix() {
       </Notice>
 
       <ScrollTable>
-        <table className="w-full min-w-[54rem] border-collapse text-left">
+        <table className="w-full min-w-[60rem] border-collapse text-left">
           <thead>
             <tr className="border-b border-border">
               <th
                 scope="col"
-                className="sticky left-0 bg-surface px-4 py-3 text-[11px] font-semibold tracking-[0.1em] text-muted-foreground uppercase"
+                className="sticky left-0 z-10 bg-surface px-4 py-3 text-[11px] font-semibold tracking-[0.1em] text-muted-foreground uppercase"
               >
                 Feature
               </th>
@@ -140,19 +240,17 @@ export function PermissionsMatrix() {
                 <th
                   key={role}
                   scope="col"
-                  className="px-3 py-3 text-center text-[11px] font-semibold tracking-[0.06em] text-muted-foreground uppercase"
+                  className="w-24 px-2 py-3 text-center align-bottom text-[12px] leading-tight font-semibold text-foreground"
                 >
-                  <Tooltip content={ROLE_LABEL[role]}>
-                    <span className="cursor-help">{ROLE_SHORT_LABEL[role]}</span>
-                  </Tooltip>
+                  {ROLE_LABEL[role]}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
             {groups.map(([group, permissions]) => (
-              <>
-                <tr key={`group-${group}`} className="border-b border-border">
+              <Fragment key={group}>
+                <tr className="border-b border-border">
                   <th
                     scope="colgroup"
                     colSpan={ROLES.length + 1}
@@ -164,110 +262,119 @@ export function PermissionsMatrix() {
                 {permissions.map((permission) => (
                   <tr
                     key={permission}
-                    className="border-b border-border last:border-0"
+                    className="group/row border-b border-border transition-colors last:border-0 hover:bg-surface-muted/50"
                   >
                     <th
                       scope="row"
-                      className="sticky left-0 bg-surface px-4 py-2.5 text-left text-[13px] font-normal text-foreground"
+                      className="sticky left-0 bg-surface px-4 py-2.5 text-left text-[13px] font-normal text-foreground group-hover/row:bg-surface-muted"
                     >
                       {PERMISSION_LABEL[permission]}
                     </th>
                     {ROLES.map((role) => {
                       const administrative = canAccessAdminConsole(role);
-                      const locked = isPermissionLockedFor(role, permission);
-                      /*
-                       * THE SECOND HALF OF THE SAME BUG. Both this and
-                       * `isPermissionLockedFor` tested `owner || developer`, and
-                       * both were left behind when `admin` was added — so
-                       * fixing only one made it worse, not better: the client
-                       * administrator became "locked" and every cell in their
-                       * column then rendered UNCHECKED. Asking
-                       * `canAccessAdminConsole` in both places is what keeps
-                       * the two halves from ever disagreeing again.
-                       */
-                      const checked = administrative
-                        ? true
-                        : locked
-                          ? false
-                          : (draft[role]?.includes(permission) ?? false);
+                      const editable = isPermissionEditableFor(role, permission);
+                      const checked = administrative ? true : (draft[role]?.includes(permission) ?? false);
+                      const edited = changed.has(`${role}:${permission}`);
                       const cellId = `perm-${role}-${permission}`;
+                      const disabled = !editable || !editing;
 
                       const control = (
-                        <span className="flex justify-center">
+                        /*
+                         * THE WHOLE CELL IS THE TARGET: the label fills it, so a
+                         * click anywhere in the cell toggles the box, and it is
+                         * tall enough (44px) to hit on a tablet.
+                         */
+                        <label
+                          htmlFor={cellId}
+                          className={cn(
+                            "flex min-h-11 items-center justify-center",
+                            editable && editing ? "cursor-pointer" : "cursor-default",
+                          )}
+                        >
                           <Checkbox
                             id={cellId}
                             checked={checked}
-                            disabled={locked || authenticated}
+                            disabled={disabled}
                             aria-label={`${PERMISSION_LABEL[permission]} for ${ROLE_LABEL[role]}`}
+                            className="size-6"
                             onCheckedChange={() =>
-                              setDraft((current) =>
-                                togglePermission(current, role, permission),
-                              )
+                              setDraft((current) => togglePermission(current, role, permission))
                             }
                           />
-                        </span>
+                        </label>
                       );
 
                       return (
                         <td
                           key={cellId}
+                          data-changed={edited ? "true" : undefined}
                           className={cn(
-                            "px-3 py-2.5",
-                            locked && "bg-surface-muted/60",
+                            "p-0 transition-colors",
+                            !editable && "bg-surface-muted/60",
+                            editable && editing && "hover:bg-primary-soft",
+                            edited && "bg-status-attention-bg",
                           )}
                         >
-                          {locked ? (
-                            <Tooltip
-                              content={
-                                administrative
-                                  ? "Administrators always hold every permission."
-                                  : `Administrative permissions are restricted to ${ADMIN_CONSOLE_ROLES.map(
-                                      (entry) => ROLE_LABEL[entry],
-                                    ).join(", ")}.`
-                              }
-                            >
-                              {control}
-                            </Tooltip>
-                          ) : (
+                          {editable ? (
                             control
+                          ) : (
+                            <Tooltip content={lockedReason(role, permission)}>{control}</Tooltip>
                           )}
                         </td>
                       );
                     })}
                   </tr>
                 ))}
-              </>
+              </Fragment>
             ))}
           </tbody>
         </table>
       </ScrollTable>
 
-      <div className="mt-4 flex flex-wrap items-center gap-3">
-        {dirty ? (
-          <Badge tone="attention">Unsaved changes</Badge>
-        ) : savedAt ? (
-          <Badge tone="ready">Saved</Badge>
-        ) : null}
-        {authenticated ? null : (
-          <p className="text-xs text-muted-foreground">
-            Switch the demo role in the profile menu to see these permissions
-            take effect in navigation.
-          </p>
-        )}
+      {/* Always in view while there is something to save, so Save is never scrolled away. */}
+      <div
+        className="sticky bottom-4 z-20 mt-4 flex flex-wrap items-center gap-3 rounded-[var(--radius-lg)] border border-border bg-surface px-4 py-3 shadow-float"
+        data-testid="permissions-save-bar"
+      >
+        <p className="mr-auto text-[13px] text-foreground" aria-live="polite">
+          {count > 0
+            ? `${count} unsaved ${count === 1 ? "change" : "changes"}`
+            : "No unsaved changes"}
+        </p>
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={!editing || atDefaults}
+          onClick={() => {
+            setDraft(defaults);
+            setNotice(null);
+          }}
+        >
+          <RotateCcw />
+          Reset to defaults
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={!editing || count === 0}
+          onClick={() => {
+            setDraft(saved);
+            setNotice(null);
+          }}
+        >
+          <Undo2 />
+          Discard
+        </Button>
+        <Button size="sm" disabled={!editing || count === 0} onClick={() => void save()}>
+          <Save />
+          {saving ? "Saving…" : "Save changes"}
+        </Button>
       </div>
 
-      {/*
-        BOTH SENTENCES WERE TRUE WHEN WRITTEN AND ONE OF THEM IS NOW WRONG.
-        Permissions no longer gate only the client: every page calls
-        `requirePagePermission()` on the server before it renders, and every API
-        route calls `authorizeRequest()`. Saying otherwise on the permissions
-        screen would understate the protection that actually exists — and the
-        demo wording still has to be right for demo mode, where it is accurate.
-      */}
       <Notice tone="neutral" icon={<Info />} className="mt-4">
         {authenticated
-          ? "These permissions are enforced on the server: every page checks before it renders and every API route checks before it acts. Navigation hides what a role cannot open, but hiding is not what stops it."
-          : "In demo mode permissions gate navigation and page content on the client, which is right for a demo but is not security. With authentication configured, the same permission keys gate the route on the server."}
+          ? "Saved permissions are enforced on the server: every page checks before it renders and every API route checks before it acts. Navigation hides what a role cannot open, but hiding is not what stops it. Changes reach every server within about ten seconds."
+          : "In demo mode permissions gate navigation and page content on the client, which is right for a demo but is not security. With authentication configured, the same permission keys gate the route on the server. Switch the demo role in the profile menu to see these take effect."}
       </Notice>
     </div>
   );

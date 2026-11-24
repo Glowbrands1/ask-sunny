@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  */
 const tables: Record<string, Record<string, unknown>[]> = {};
 const calls: { table: string; or?: string; inIds?: unknown[] }[] = [];
+/** Tables whose read fails (the database answers with an error), for the "couldn't load" case. */
+const failing = new Set<string>();
 
 vi.mock("@/lib/supabase/server", () => ({
   getSupabaseAdmin: () => ({
@@ -17,6 +19,7 @@ vi.mock("@/lib/supabase/server", () => ({
         or: (f: string) => ((call.or = f), q),
         in: (_c: string, ids: unknown[]) => ((call.inIds = ids), q),
         limit: async () => {
+          if (failing.has(table)) return { data: null, error: { message: "unavailable" } };
           const rows = tables[table] ?? [];
           return { data: call.inIds ? rows.filter((r) => call.inIds!.includes(r.id)) : rows, error: null };
         },
@@ -26,7 +29,7 @@ vi.mock("@/lib/supabase/server", () => ({
   }),
 }));
 
-import { leadershipOwnerNames, qualifiesForOwnerMenu } from "./owners.server";
+import { leadershipOwnerNames, loadLeadershipOwnerNames, qualifiesForOwnerMenu } from "./owners.server";
 import { ownerMenu } from "./lib/ownerMenu";
 
 const row = (id: string, effective: string | null, app: string | null, appStatus = "active", status = "active") => ({ employee_id: id, email_address: `${id}@example.test`, employment_status: status, effective_role: effective, app_user_role: app, app_user_status: appStatus });
@@ -80,6 +83,20 @@ describe("DM-or-higher people from Woven for the L10 owner menus", () => {
   it("a failed read gives an empty list (the menus keep the meeting's own people)", async () => {
     tables.employee_access_preview = undefined as unknown as Record<string, unknown>[];
     expect(await leadershipOwnerNames()).toEqual([]);
+  });
+
+  it("a read the database refuses says it failed, so the meeting page can say \"Couldn't load the owner names\" (24 Nov 2026)", async () => {
+    failing.add("employee_access_preview");
+    try {
+      expect(await loadLeadershipOwnerNames()).toEqual({ ok: false, names: [] });
+      expect(await leadershipOwnerNames()).toEqual([]);
+    } finally {
+      failing.clear();
+    }
+  });
+
+  it("a read that works says so, with the names", async () => {
+    expect(await loadLeadershipOwnerNames()).toEqual({ ok: true, names: ["Avery Quill", "Bobby Lark", "Cy Marlow"] });
   });
 
   it("the menu: the meeting's people first, then the others, nobody twice", () => {

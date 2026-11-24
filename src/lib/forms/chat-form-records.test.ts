@@ -14,7 +14,7 @@ import type { InstanceListFilter, InstanceRow } from "./instances";
 const state = vi.hoisted(() => ({
   visibility: null as AccessScope | null,
   visibilityCalls: 0,
-  listCalls: [] as { view: string; limit: number; filter: InstanceListFilter | undefined }[],
+  listCalls: [] as { limit: number; filter: InstanceListFilter | undefined }[],
   rows: [] as InstanceRow[],
   fail: false,
 }));
@@ -27,8 +27,8 @@ vi.mock("./forms-visibility", () => ({
 }));
 
 vi.mock("./instances", () => ({
-  listInstances: async (view: string, limit: number, filter?: InstanceListFilter) => {
-    state.listCalls.push({ view, limit, filter });
+  listInstances: async (limit: number, filter?: InstanceListFilter) => {
+    state.listCalls.push({ limit, filter });
     if (state.fail) throw new Error("db down");
     const words = filter?.employeeNameWords;
     return words
@@ -72,7 +72,6 @@ function row(overrides: Partial<InstanceRow>): InstanceRow {
     followedUpBy: null,
     finalizedAt: null,
     exportedAt: null,
-    archivedAt: null,
     revisesInstanceId: null,
     createdAt: "2026-09-12T15:00:00Z",
     updatedAt: "2026-09-12T15:00:00Z",

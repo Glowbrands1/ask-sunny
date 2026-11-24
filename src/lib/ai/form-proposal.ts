@@ -145,7 +145,7 @@ import {
 import { type TemplateSummary } from "@/lib/forms/repository";
 import type { PriorFormOnFile, PriorFormsReading } from "@/lib/forms/prior-forms-lines";
 import { signedDate } from "@/lib/forms/prior-actions";
-import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
+import { activePermissionMatrix, hasPermission } from "@/lib/permissions";
 import type {
   AccessScope,
   ChatFormChoice,
@@ -412,7 +412,7 @@ function isCreatable(summary: TemplateSummary): boolean {
 function permits(actor: ChatActor, summary: TemplateSummary): boolean {
   if (!actor.role) return false;
   return hasPermission(
-    DEFAULT_PERMISSION_MATRIX,
+    activePermissionMatrix(),
     actor.role,
     summary.requiredPermission as Permission,
   );
