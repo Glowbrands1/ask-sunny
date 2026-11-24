@@ -418,7 +418,9 @@ describe("the server pages (Form Monitoring, Overview, rail badge) apply the sam
     ]) {
       const source = readFileSync(file, "utf8");
       expect(source, file).toMatch(/pageFormsAccess\(/);
-      expect(source, file).toMatch(/actorMaySeeInstance\(|mayRead/);
+      // Changed on purpose (QA, 24 Nov 2026): the rail and the Overview count the follow-up queue, which re-checks
+      // every row with actorMaySeeInstance itself (`follow-up-queue.ts`), given the page's own access.
+      expect(source, file).toMatch(/actorMaySeeInstance\(|mayRead|readFollowUpQueue\(access/);
       expect(source, file).not.toMatch(/listOutstandingFollowUps\(\)/);
       expect(source, file).not.toMatch(/listInstances\(\)/);
     }

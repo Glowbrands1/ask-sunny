@@ -1346,6 +1346,11 @@ describe("new flags default off and wrappers are inert", () => {
           ":(exclude)src/features/reports/salon-performance/salon-kpi-cards.tsx",
           ":(exclude)src/features/reports/detail-section.tsx",
           ":(exclude)src/features/dashboard/performance-overview.tsx",
+          // Spa Engagement's headline row names each card's period (QA, 24 Nov 2026: "3,504 sessions through Sep 17"
+          // beside August conversion figures): the cards' optional period line and the page's notice. Report page only,
+          // unflagged like the report fixes above: no chat or form behaviour.
+          ":(exclude)src/app/(app)/reports/spa-engagement/page.tsx",
+          ":(exclude)src/features/reports/bed-spa/kpi-cards.tsx",
           // Confetti on a 5-star rating (requested by Paulyne, 9 Nov 2026): the
           // one mount line after a rating saves; `lib/ui/confetti.ts` does the rest.
           ":(exclude)src/features/chat/conversation-rating.tsx",

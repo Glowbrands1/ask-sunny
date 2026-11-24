@@ -6,7 +6,8 @@ import { DAILY_STATS_INTERPRETATION_FRAMEWORK } from "@/lib/knowledge/document-r
 import type { RoleGroundingResult } from "@/lib/knowledge/role-grounding";
 import { pagesToolLine, type PageReaderTool } from "@/config/ai-readable-pages";
 import { FORM_RECORDS_PERMISSION } from "@/lib/forms/chat-form-records";
-import { activePermissionMatrix, hasPermission } from "@/lib/permissions";
+import { activePermissionMatrix, asdNoFormMonitoringEnabled, hasPermission } from "@/lib/permissions";
+import { relativeBusinessDay } from "@/lib/forms/follow-up";
 import type { Permission } from "@/types";
 import type { ReportBriefing, LoadReportBriefingInput } from "@/lib/reporting/read/report-briefing";
 import { REPORT_FAMILIES_BY_ID, type ReportFamilyId } from "@/lib/reporting/read/report-families";
@@ -157,6 +158,11 @@ export interface DataToolDeps {
   readonly loadFormDeletions: (input: { employeeName: string | null; limit: number }) => Promise<FormDeletionRow[]>;
   /** AI Training -> Assignments: the tracker's people and marks (`ai_assignment_people`, `ai_assignment_marks`). */
   readonly loadAssignmentTracker: () => Promise<AssignmentTracker>;
+  /**
+   * The follow-up queue (`readFollowUpQueue`): the forms and counts the Overview, the sidebar badge and Form
+   * Monitoring's banner and pills show this reader. Null when the asker is not a verified account.
+   */
+  readonly loadFollowUpQueue: (input: { subject: string; verified: boolean; role: Role; scope: AccessScope | null; today: string }) => Promise<FollowUpQueueRead | null>;
   /** HR approval (`readHrApprovalsFor`): HR's queue, or the asker's own forms with HR. */
   readonly loadHrApprovals: (input: { subject: string; verified: boolean; now: Date }) => Promise<HrApprovalsRead>;
 }
@@ -199,6 +205,15 @@ export type HrApprovalsRead =
       readonly forms: readonly { line: string; label: string; state: string; requestedAt: string | null; latestNote: string | null }[];
     };
 
+/** What read_follow_ups reads: the follow-up queue's counts and forms (`follow-up-queue.ts`). */
+export interface FollowUpQueueRead {
+  readonly overdue: number;
+  readonly dueThisWeek: number;
+  readonly open: number;
+  readonly excluded: number;
+  readonly forms: readonly { employeeName: string; templateName: string; locationName: string | null; followUpDate: string | null; overdue: boolean }[];
+}
+
 /** One row of `form_instance_deletions`, as read_form_deletions reads it (never the snapshot). */
 export interface FormDeletionRow {
   readonly templateName: string | null;
@@ -236,6 +251,31 @@ export const DEFAULT_DATA_TOOL_DEPS: DataToolDeps = {
   },
   fetchDailyStatsGuide: async (scopeId) =>
     new (await import("@/lib/knowledge/providers/supabase")).SupabaseKnowledgeProvider().fetchRoleGrounding(DAILY_STATS_INTERPRETATION_FRAMEWORK, scopeId),
+  loadFollowUpQueue: async ({ subject, verified, role, scope, today }) => {
+    if (!verified || !subject || !scope) return null;
+    const [{ pageFormsAccess }, { readFollowUpQueue }, { followUpState }] = await Promise.all([
+      import("@/lib/forms/page-scope"),
+      import("@/lib/forms/follow-up-queue"),
+      import("@/lib/forms/follow-up"),
+    ]);
+    // The page's own access and the page's own read: the Overview's queue, as this account would see it there.
+    const access = await pageFormsAccess({ subject, email: "", displayName: "", role, scope, verified: true });
+    const readsExit = hasPermission(activePermissionMatrix(), role, "create_exit_form");
+    const queue = await readFollowUpQueue(access, { readsExit, today });
+    return {
+      overdue: queue.attention.overdue,
+      dueThisWeek: queue.attention.dueThisWeek,
+      open: queue.open,
+      excluded: queue.excluded,
+      forms: queue.forms.map((form) => ({
+        employeeName: form.employeeName,
+        templateName: form.templateName,
+        locationName: form.locationName,
+        followUpDate: form.followUpDate,
+        overdue: followUpState(form, today) === "overdue",
+      })),
+    };
+  },
   loadHrApprovals: async ({ subject, verified, now }) =>
     (await import("@/lib/forms/hr-approval")).readHrApprovalsFor(subject, verified, now),
   loadFormDeletions: async ({ employeeName, limit }) => {
@@ -571,7 +611,65 @@ export const READER_PERMISSION = {
   read_stats: "view_reports",
   find_past_forms: FORM_RECORDS_PERMISSION,
   read_hr_approvals: "view_form_monitoring",
+  read_follow_ups: "view_overview",
 } as const satisfies Record<PageReaderTool, Permission>;
+
+/* ---------------------------------------------------------------- read_follow_ups --- */
+
+/** The source label: the screens that show these counts. */
+function followUpsSource(): string {
+  return `Follow-ups (the Overview and ${appConfig().formsPageName})`;
+}
+const FOLLOW_UPS_LISTED = 25;
+
+/**
+ * read_follow_ups() (QA, 24 Nov 2026; CLAUDE.md §5): the follow-up queue, the SAME forms and counts the Overview, the
+ * sidebar badge and Form Monitoring's banner and Open / Overdue pills show this manager (`readFollowUpQueue`): overdue,
+ * due this week, open, and the follow-ups themselves, soonest first. Scoped as the Overview is: its permission, and
+ * Form Monitoring's too while ASD_NO_FORM_MONITORING is on; the reader's own salons, as the page reads them.
+ */
+export async function readFollowUps(context: DataToolContext, deps: DataToolDeps = DEFAULT_DATA_TOOL_DEPS): Promise<ToolResult> {
+  const matrix = activePermissionMatrix();
+  const role = context.actor.role;
+  if (!hasPermission(matrix, role, READER_PERMISSION.read_follow_ups) || (asdNoFormMonitoringEnabled() && !hasPermission(matrix, role, "view_form_monitoring"))) {
+    return { source: followUpsSource(), refused: "This account's role does not show follow-ups. Nothing was read; say so plainly, in one line, and give no count." };
+  }
+  let read: FollowUpQueueRead | null;
+  try {
+    read = await deps.loadFollowUpQueue({ subject: context.actor.subject ?? "", verified: context.actor.verified === true, role, scope: context.actor.scope, today: context.today });
+  } catch {
+    return { source: followUpsSource(), reason_code: "read_failed", error: "The follow-ups could not be read just now. Say so; give no count and never say none is overdue." };
+  }
+  if (!read) return { source: followUpsSource(), reason_code: "scope", error: "This account is not signed in with a verified identity, so its follow-ups cannot be read. Say so; give no count." };
+  const listed = read.forms.slice(0, FOLLOW_UPS_LISTED);
+  const place = appConfig().locationWord;
+  return {
+    source: followUpsSource(),
+    counts: {
+      overdue: read.overdue,
+      due_this_week: read.dueThisWeek,
+      needs_attention: read.overdue + read.dueThisWeek,
+      open: read.open,
+      outstanding: read.forms.length,
+    },
+    follow_ups: listed.map((form) => ({
+      employee: form.employeeName,
+      form: form.templateName,
+      [place]: form.locationName,
+      follow_up_date: form.followUpDate,
+      state: form.overdue ? "overdue" : "open",
+      ...(form.followUpDate ? { when: relativeBusinessDay(form.followUpDate, context.today) } : {}),
+    })),
+    ...(read.forms.length > listed.length ? { listed: listed.length, of: read.forms.length } : {}),
+    ...(read.excluded > 0 ? { test_records_not_counted: read.excluded } : {}),
+    note:
+      `These are the counts the Overview, the sidebar badge and ${appConfig().formsPageName} (its banner and its Open and Overdue filters) show this manager: copy them, never count rows yourself. ` +
+      "overdue = the follow-up date has passed and nobody marked it followed up; open = scheduled for today or later; due_this_week = open and due by the end of this business week. " +
+      (read.forms.length > listed.length ? `${listed.length} of ${read.forms.length} are listed, soonest first; say how many are not shown. ` : "") +
+      (read.excluded > 0 ? `${read.excluded} test record${read.excluded === 1 ? " is" : "s are"} not counted, as on the Overview. ` : "") +
+      "This is follow-ups on forms, not HR approval (read_hr_approvals).",
+  };
+}
 
 /* ---------------------------------------------------------------- read_ai_assignments --- */
 
@@ -744,6 +842,12 @@ export function dataToolSpecs(config: AppConfig) {
     input_schema: { type: "object", properties: {}, required: [] },
   },
   {
+    name: "read_follow_ups",
+    description:
+      "Follow-ups on forms: how many are overdue, due this week and open, and which (employee, form, " + place + ", follow-up date), for the manager's own " + places + ", the same counts the Overview, the sidebar badge and " + config.formsPageName + " show. Use it for \"how many follow-ups are overdue?\", \"what follow-ups do I have this week?\". Not HR approval (read_hr_approvals)." + pagesToolLine(config.readablePages, "read_follow_ups"),
+    input_schema: { type: "object", properties: {}, required: [] },
+  },
+  {
     name: "read_form_deletions",
     description:
       "Administrators only: who deleted a form, when and how (" + appConfig().formsPageName + ", chat, or outside the app), from the permanent deletion record, newest first. Pass employee_name for one employee's forms (\"who deleted <name>'s form?\"). A manager is refused.",
@@ -782,5 +886,6 @@ export function dataToolHandlers(
     read_form_deletions: (args) => readFormDeletions(context, args, deps),
     read_ai_assignments: () => readAiAssignments(context, deps),
     read_hr_approvals: () => readHrApprovals(context, deps),
+    read_follow_ups: () => readFollowUps(context, deps),
   };
 }

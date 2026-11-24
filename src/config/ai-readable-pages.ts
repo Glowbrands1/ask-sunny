@@ -27,7 +27,7 @@ import type { Permission } from "@/types";
  */
 
 /** The loop tools that read a page's figures. */
-export type PageReaderTool = "read_reviews" | "read_stats" | "find_past_forms" | "read_hr_approvals";
+export type PageReaderTool = "read_reviews" | "read_stats" | "find_past_forms" | "read_hr_approvals" | "read_follow_ups";
 
 export interface PageReader {
   readonly tool: PageReaderTool;
@@ -75,8 +75,14 @@ const UNNAMED_REPORT =
   "read_stats's report list and its description name only Daily Stats, Sales Totals and Comp. A question may still be routed to this report's family by its words, but no description tells the model it can ask, and no replay case proves the figures reach it.";
 
 export const AI_READABLE_PAGES: readonly AiReadablePage[] = [
+  /*
+   * QA, 24 Nov 2026: the follow-up queue is one set of forms the Overview, the sidebar badge and Form Monitoring's
+   * banner and Open / Overdue pills all count (`readFollowUpQueue`); read_follow_ups reads that set. The Notifications
+   * bar (its × and Clear all) is each viewer's own notices; no tool reads it, and an HR decision in it is read by
+   * read_hr_approvals.
+   */
   { kind: "page", route: "/", title: "Overview", access: { permission: "view_overview" },
-    notReadable: "The follow-up queue (overdue, due this week, needs attention): find_past_forms lists forms on file, not this queue's due dates. The Notifications bar (its × and Clear all) is each viewer's own notices; no tool reads it, and an HR decision in it is read by read_hr_approvals." },
+    reader: { tool: "read_follow_ups", args: {}, figures: ["follow-ups overdue, due this week and open", "each follow-up's employee, form, salon and date"], periods: ["today", "this business week"], replayCase: "nov24-follow-ups-overdue-same-count-as-the-overview" } },
   { kind: "page", route: "/chat", title: "Chat", access: { permission: "ask_questions" }, notReadable: "The chat itself: nothing on it to read." },
 
   { kind: "page", route: "/reviews", title: "Google Reviews", access: { permission: "view_google_reviews" }, reader: REVIEWS_READER },

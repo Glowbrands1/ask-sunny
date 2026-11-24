@@ -32,6 +32,8 @@ export interface KpiCard {
   /** A signed change line, where a comparison exists. */
   readonly changeLabel?: string;
   readonly trend?: "up" | "down" | "flat";
+  /** The period the figure is for, when a row holds more than one (Spa Engagement's headline row). */
+  readonly period?: string;
   /** The headline card, given the larger figure. At most one. */
   readonly emphasis?: boolean;
 }
@@ -61,6 +63,10 @@ export function KpiCardRow({
             <p className={cn("eyebrow", behind && "text-measure-flagged-foreground")}>
               {card.label}
             </p>
+
+            {card.period ? (
+              <p className="mt-0.5 text-[11px] font-medium text-muted-foreground">{card.period}</p>
+            ) : null}
 
             <p
               className={cn(

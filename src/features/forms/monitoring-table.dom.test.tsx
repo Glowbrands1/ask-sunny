@@ -111,6 +111,9 @@ function table(
     followUp?: "all" | "drafted" | "open" | "overdue" | "followed_up";
     attention?: { overdue: number; dueThisWeek: number; needsAttention: number };
     demo?: { deletable: number; protected: number };
+    outstanding?: MonitoredForm[];
+    outstandingExcluded?: number;
+    listLimit?: number | null;
   } = {},
 ) {
   return render(
@@ -121,6 +124,9 @@ function table(
       today={TODAY}
       attention={options.attention ?? NO_ATTENTION}
       demo={options.demo ?? { deletable: 0, protected: 0 }}
+      outstanding={options.outstanding}
+      outstandingExcluded={options.outstandingExcluded}
+      listLimit={options.listLimit}
     />,
   );
 }
@@ -184,6 +190,57 @@ describe("the follow-up pills", () => {
   it("says nothing is in an empty state rather than showing 'no forms yet'", () => {
     table([form({ employeeName: "Only Draft", status: "draft" })], { followUp: "overdue" });
     expect(screen.getByText("Nothing is overdue.")).toBeTruthy();
+  });
+});
+
+/*
+ * QA, 24 Nov 2026 (Ask Sunny, live): "The overdue counts disagree. The Overview, the sidebar and the Form Monitoring
+ * banner say 19 overdue. Form Monitoring's Overdue filter says 8 and Open says 6." The pills counted the 200 loaded
+ * rows; the banner counted the follow-up queue. Now Open and Overdue count, and list, the queue the banner counts.
+ */
+describe("QA 24 Nov: the Overdue and Open pills count the same queue as the banner", () => {
+  const QA = "The Overview, the sidebar and the Form Monitoring banner say 19 overdue. Form Monitoring's Overdue filter says 8 and Open says 6.";
+  const late = (i: number) => form({ id: `late-${i}`, employeeName: `Late Person ${i}`, followUpDate: "2026-08-2" + (i % 9) });
+  const upcoming = (i: number) => form({ id: `open-${i}`, employeeName: `Open Person ${i}`, followUpDate: "2026-09-1" + (i % 9) });
+  /* The queue: 19 overdue and 9 open. The newest 200 rows hold only 8 of the overdue and 6 of the open. */
+  const queue = [...Array.from({ length: 19 }, (_, i) => late(i)), ...Array.from({ length: 9 }, (_, i) => upcoming(i))];
+  const loaded = [...queue.slice(0, 8), ...queue.slice(19, 25), form({ id: "d1", employeeName: "Drafted One", status: "draft" })];
+  const banner = { overdue: 19, dueThisWeek: 0, needsAttention: 19 };
+
+  function pill(label: string) {
+    return screen.getByRole("button", { name: new RegExp(`^${label}\\s*\\d+$`) });
+  }
+
+  it(`${QA} — the Overdue pill says 19, as the banner does, and Open counts every open follow-up`, () => {
+    table(loaded, { attention: banner, outstanding: queue, listLimit: 200 });
+    expect(screen.getAllByText(/19 overdue/).length).toBeGreaterThan(0);
+    expect(pill("Overdue").textContent).toBe("Overdue19");
+    expect(pill("Open").textContent).toBe("Open9");
+  });
+
+  it("the Overdue list shows all 19, not the 8 that were loaded", () => {
+    table(loaded, { followUp: "overdue", attention: banner, outstanding: queue, listLimit: 200 });
+    expect(screen.getAllByRole("row")).toHaveLength(1 + 19);
+    expect(screen.getByText("Late Person 18")).toBeTruthy();
+  });
+
+  it("says when the other pills count only the loaded page of rows", () => {
+    table(loaded, { attention: banner, outstanding: queue, listLimit: 200 });
+    expect(screen.getByTestId("monitoring-count-scope").textContent).toBe(
+      "Showing the newest 200 forms. Open and Overdue count every form; All, Drafted and Followed up count these 200.",
+    );
+  });
+
+  it("says nothing about a page when every form was loaded", () => {
+    table(loaded, { attention: banner, outstanding: queue, listLimit: null });
+    expect(screen.queryByTestId("monitoring-count-scope")).toBeNull();
+  });
+
+  it("names the test records the Overview also leaves out, on the Overdue list", () => {
+    table(loaded, { followUp: "overdue", attention: banner, outstanding: queue, outstandingExcluded: 2, listLimit: null });
+    expect(screen.getByTestId("monitoring-count-scope").textContent).toBe(
+      "2 test records are not counted here, as on the Overview; they are listed under All.",
+    );
   });
 });
 

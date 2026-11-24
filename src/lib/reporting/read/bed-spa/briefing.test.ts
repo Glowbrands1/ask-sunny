@@ -920,3 +920,24 @@ describe("the six spa figures, each named with its own formula", () => {
     expect(reach).not.toBe(frequency);
   });
 });
+
+/*
+ * QA, 24 Nov 2026 (Ask Sunny, live): Spa Engagement's page showed "3,504 sessions through Sep 17" beside August
+ * conversion figures, in a row that read as one period. The page's cards now name their periods
+ * (`headline-periods.ts`); the AI's reader of the same report keeps each figure under its own period too.
+ */
+describe("buildBedSpaBriefing — QA 24 Nov: engagement through Sep 17 beside August conversion", () => {
+  it("names Spa Engagement's period and Spa Conversion Rate's period separately", () => {
+    const SEPT: BedSpaPeriod = { grain: "mtd", periodStart: "2026-09-01", periodEnd: "2026-09-17", labelRaw: "9/1 - 9/17" };
+    const text = briefing({
+      company: "Meridian Leisure Group",
+      bedUsage: bedUsageInput(),
+      spaWellness: spaWellnessInput(),
+      spaEngagement: engagementInput(SEPT),
+      combined: combinedInput(),
+    });
+    expect(text).toContain("SPA ENGAGEMENT — MTD, 2026-09-01 to 2026-09-17");
+    expect(text).toContain("SPA CONVERSION RATE — MTD, 2026-08-01 to 2026-08-31");
+    expect(BED_SPA_BRIEFING_RULES).toContain("Always name the period a figure belongs to. Each section states its own, and they differ.");
+  });
+});

@@ -11,7 +11,7 @@ import type { AccessScope, Role } from "@/types";
 
 import { PRODUCTION_SALONS } from "@/data/salons";
 
-import { FIGURES_MAX, OTHERS_NOT_VISIBLE, OUTSIDE_ACCESS, dataToolHandlers, figuresWithin, readAiAssignments, readFormDeletions, readReviews, readStats, salonsForTurn, type DataToolDeps, type FormDeletionRow } from "./data-tools";
+import { FIGURES_MAX, OTHERS_NOT_VISIBLE, OUTSIDE_ACCESS, dataToolHandlers, figuresWithin, readAiAssignments, readFollowUps, readFormDeletions, readReviews, readStats, salonsForTurn, type DataToolDeps, type FollowUpQueueRead, type FormDeletionRow } from "./data-tools";
 
 /*
  * The agent loop's app data tools (QA, 15 Nov 2026): read_reviews and read_stats, with Pau's scope rules enforced in
@@ -90,6 +90,7 @@ function deps(overrides: Partial<DataToolDeps> = {}) {
   const base: DataToolDeps = {
     supabaseReady: async () => true,
     loadHrApprovals: async () => ({ kind: "off" }),
+    loadFollowUpQueue: async () => null,
     loadReviewsSnapshot: async () => SNAPSHOT,
     loadReviewFeed: async (storeCode) =>
       ({ reviews: storeCode === null ? Object.values(FEED_BY_STORE).flat() : (FEED_BY_STORE[storeCode] ?? []), total: 0 }) as unknown as ReviewFeed,
@@ -298,7 +299,8 @@ describe("the scope rules", () => {
     // f066 (20 Nov 2026) added read_form_deletions, the admin-only deletion record: a third handler on purpose.
     // HR approval (23 Nov 2026) added read_hr_approvals, so the AI can read the new approval step (CLAUDE.md rule 5).
     // 23 Nov 2026 (Pau) added read_ai_assignments, the AI assignment tracker for its named people. Both on purpose.
-    expect(Object.keys(dataToolHandlers(ctx(MANAGER, "")))).toEqual(["read_reviews", "read_stats", "read_form_deletions", "read_ai_assignments", "read_hr_approvals"]);
+    // QA, 24 Nov 2026 added read_follow_ups, the follow-up queue the Overview and Form Monitoring count. On purpose.
+    expect(Object.keys(dataToolHandlers(ctx(MANAGER, "")))).toEqual(["read_reviews", "read_stats", "read_form_deletions", "read_ai_assignments", "read_hr_approvals", "read_follow_ups"]);
   });
 });
 
@@ -418,5 +420,51 @@ describe("read_ai_assignments", () => {
     }
     vi.unstubAllEnvs();
     expect(load).not.toHaveBeenCalled();
+  });
+});
+
+/*
+ * QA, 24 Nov 2026: "The Overview, the sidebar and the Form Monitoring banner say 19 overdue. Form Monitoring's Overdue
+ * filter says 8 and Open says 6." read_follow_ups reads the one queue those screens count, so the AI says 19 too.
+ */
+describe("read_follow_ups", () => {
+  const QUEUE: FollowUpQueueRead = {
+    overdue: 19,
+    dueThisWeek: 2,
+    open: 9,
+    excluded: 1,
+    forms: [
+      ...Array.from({ length: 19 }, (_, i) => ({ employeeName: `Late Person ${i}`, templateName: "Coaching Form", locationName: "NE Kearney", followUpDate: "2026-11-01", overdue: true })),
+      ...Array.from({ length: 9 }, (_, i) => ({ employeeName: `Open Person ${i}`, templateName: "Coaching Form", locationName: "NE Kearney", followUpDate: "2026-11-20", overdue: false })),
+    ],
+  };
+  const verified = (role: Role = "salon_director") => ({ ...ctx(MANAGER, "how many follow-ups are overdue?", role), actor: { role, scope: MANAGER, subject: "user-1", verified: true } });
+
+  it("gives the Overview's own counts: 19 overdue, never a count of loaded rows", async () => {
+    const load = vi.fn(async () => QUEUE);
+    const { deps: d } = deps({ loadFollowUpQueue: load });
+    const result = (await readFollowUps(verified(), d)) as Record<string, unknown>;
+    expect(load).toHaveBeenCalledWith({ subject: "user-1", verified: true, role: "salon_director", scope: MANAGER, today: "2026-11-14" });
+    expect(result.counts).toEqual({ overdue: 19, due_this_week: 2, needs_attention: 21, open: 9, outstanding: 28 });
+    expect(result).toMatchObject({ listed: 25, of: 28, test_records_not_counted: 1 });
+    expect(String(result.note)).toContain("never count rows yourself");
+  });
+
+  it("a failed read says so, and never that none is overdue", async () => {
+    const { deps: d } = deps({ loadFollowUpQueue: async () => { throw new Error("down"); } });
+    const result = (await readFollowUps(verified(), d)) as Record<string, unknown>;
+    expect(result.reason_code).toBe("read_failed");
+    expect(String(result.error)).toContain("never say none is overdue");
+  });
+
+  it("an unverified account reads nothing", async () => {
+    const { deps: d } = deps({ loadFollowUpQueue: async () => null });
+    const result = (await readFollowUps({ ...ctx(MANAGER, "how many follow-ups are overdue?") }, d)) as Record<string, unknown>;
+    expect(result.reason_code).toBe("scope");
+  });
+
+  it("is registered with the loop's other data tools", () => {
+    const { deps: d } = deps();
+    expect(Object.keys(dataToolHandlers(verified(), undefined, d))).toContain("read_follow_ups");
   });
 });

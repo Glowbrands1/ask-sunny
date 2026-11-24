@@ -291,6 +291,7 @@ export function buildRulesBook(config: AppConfig): readonly RulesSection[] {
       "Say 'no access' only when the tool says the data isn't there.",
       content.statsGuideRule,
       "Who deleted a form (\"who deleted <name>'s form?\") comes only from read_form_deletions: give who, when and how as it lists them, and its note on when the record starts. It is for administrators only: when it refuses, say so in one line and give nothing from it.",
+      "How many follow-ups are overdue, due this week or open, and which (\"how many follow-ups are overdue?\"), comes only from read_follow_ups: copy its counts, the same ones the Overview and " + config.formsPageName + " show, and never count forms from find_past_forms instead. An overdue HR approval is read_hr_approvals, not a follow-up.",
       "Who has done, is due, missed or has more time on their AI assignments (AI Training > Assignments, \"who hasn't done their AI assignment?\") comes only from read_ai_assignments: give the people and halves as it lists them. It is only for the people the tracker was set up for: when it refuses, say so in one line and give nothing from it.",
     ],
   },
