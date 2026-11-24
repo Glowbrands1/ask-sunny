@@ -11,7 +11,7 @@ import { listInstances } from "@/lib/forms/instances";
  * ============================================================================
  *
  * This person's forms of one kind dated one day, as find_past_forms reads forms on file (the forms this manager may open:
- * `visibleInstances`), drafts and finalized, never archived or revised, minus the ones given. The agent loop's
+ * `visibleInstances`), drafts and finalized (no archived shelf since #1307), never revised, minus the ones given. The agent loop's
  * propose_form asks before a card is made (`same_incident_on_file`); Create, the last gate, holds a card the loop made
  * when its date was never checked (QA's live check of #1123: the copy's card had no date, so propose had nothing to
  * compare). The person is matched by the caller (the loop by roster id, Create by the card's name). Form data; no words.
@@ -34,9 +34,9 @@ export async function formsOnFileSameDay(
   input: { readonly nameWords: readonly string[]; readonly isPerson: (employeeName: string) => boolean; readonly templateKey: string; readonly formDate: string; readonly except?: readonly (string | null | undefined)[] },
 ): Promise<SameDayOnFile[]> {
   if (input.nameWords.length === 0 || !/^\d{4}-\d{2}-\d{2}$/.test(input.formDate)) return [];
-  const rows = await listInstances("all", 200, { ...instanceListFilterFor(actor), employeeNameWords: [...input.nameWords], formDateFrom: input.formDate, formDateTo: input.formDate }).catch(() => []);
+  const rows = await listInstances(200, { ...instanceListFilterFor(actor), employeeNameWords: [...input.nameWords], formDateFrom: input.formDate, formDateTo: input.formDate }).catch(() => []);
   return visibleInstances(actor, rows)
-    .filter((row) => row.templateKey === input.templateKey && row.formDate === input.formDate && !row.archivedAt && (row.status === "draft" || row.status === "finalized") && !(input.except ?? []).includes(row.id))
+    .filter((row) => row.templateKey === input.templateKey && row.formDate === input.formDate && (row.status === "draft" || row.status === "finalized") && !(input.except ?? []).includes(row.id))
     .filter((row) => input.isPerson(row.employeeName ?? ""))
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
     .map((row) => ({ id: row.id, form: row.templateName, status: row.status as "draft" | "finalized", formDate: row.formDate!, finalizedAt: row.finalizedAt ?? null, ...(row.status === "draft" && row.hrApprovalState === "pending" ? { withHr: true } : {}) }));
