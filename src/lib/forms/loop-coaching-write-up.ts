@@ -1,3 +1,4 @@
+import { CARD_LINE } from "./draft-notes";
 import { employeeFirstName } from "./employee-reference";
 
 /**
@@ -72,6 +73,15 @@ export function loopCoachingWriteUp<T extends LoopCoachingInput>(
   if (options.detailsKey && details.trim() !== "") {
     const parts = sections(details);
     const account = /^What happened:\s*(.+)$/im.exec(options.notes)?.[1]?.trim() ?? "";
+    /*
+     * Port of Ask Bubbles #1113 (cbfd1847; its QA's round 2, U25): the saved Details read "Observed:\nWhat happened: <A>
+     * had under performance." The card's own line label (`draftNotesFromCard`'s "What happened: …", the notes the draft is
+     * written from) is never part of the write-up: a section line that starts with one keeps its text and loses the label.
+     */
+    for (const part of parts) {
+      const body = part.body.split("\n").map((line) => line.replace(/^([ \t]*)(.*)$/, (whole, indent: string, rest: string) => (CARD_LINE.test(rest) ? indent + rest.replace(CARD_LINE, "") : whole))).join("\n");
+      if (body !== part.body) part.body = body;
+    }
     const observed = parts.find((part) => part.label === "Observed");
     if (observed && THE_COACHING_ITSELF.test(observed.body) && account.length >= 10) observed.body = account;
     const first = employeeFirstName(options.employeeName ?? null);

@@ -224,6 +224,10 @@ import { rulesBookText } from "./rules-book";
  * approval answers come only from read_hr_approvals, which lists only the asker's own forms. It reads the same under
  * every config; nothing else changed.
  *
+ * Re-taken on purpose on 23 Nov 2026 (port of Ask Bubbles #1113, cbfd1847, its round 2 U25): the Card replies line for
+ * name_corrected now says, with name_corrected.also_changed, the name change and then each item of also_changed, never
+ * "nothing else changed". It reads the same under every config; nothing else changed.
+ *
  * Re-taken on purpose on 23 Nov 2026 (QA: a prior action Pau never said was saved "as you said"; port of Ask Bubbles
  * #1089): the Prior actions line now says only the manager's steps, or a form on file they said yes to, are Prior
  * actions, and the reply offers the forms on file (prior_on_file.ask_exactly); the stated read-back adds "as you said" to
