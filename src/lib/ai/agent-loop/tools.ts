@@ -5757,9 +5757,8 @@ export async function proposeForm(
       effects.replyMustAsk = ask;
       effects.sameIncidentAsked = { templateKey: template.key, employeeKey: personKey(employee.id!), date: sameDayDate };
       return {
-        reason_code: "same_incident_on_file",
         same_incident_on_file: onFile.map((form) => ({ instance_id: form.id, form: form.form, status: form.status, form_date: form.formDate, finalized_at: form.finalizedAt })),
-        error: `${employee.name} already has ${onFile.length === 1 ? "this form" : "these forms"} on file for ${sameDayDate}. The card was not made and Create is held. Say so and end your reply with ask_exactly, exactly. If the manager then wants that form, open it (open_form with its instance_id); if they say this is a separate incident, propose the card again with separate_incident_evidence (their words).`,
+        reason_code: "same_incident_on_file", error: `${employee.name} already has ${onFile.length === 1 ? "this form" : "these forms"} on file for ${sameDayDate}. The card was not made and Create is held. Say so and end your reply with ask_exactly, exactly. If the manager then wants that form, open it (open_form with its instance_id); if they say this is a separate incident, propose the card again with separate_incident_evidence (their words).`,
         ask_exactly: ask,
       };
     }
