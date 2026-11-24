@@ -56,6 +56,8 @@ const KNOWN = new Set([
   "yes_sets_no_policy",
   // QA (16 Nov 2026, live group E): an edit asked for a form type with forms on file and another card on screen.
   "edit_asked_forms_on_file",
+  // Added on purpose (QA, 23 Nov 2026, the live duplicate exit form): an exit card for a person who already has an exit form on file.
+  "exit_on_file",
   // QA item 7 (20 Nov 2026): another form proposed for the open card's person with no words asking for it.
   "form_locked",
   // QA item 8 (20 Nov 2026): a roster person nobody named, picked or confirmed in this chat.

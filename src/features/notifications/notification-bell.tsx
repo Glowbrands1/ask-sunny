@@ -9,7 +9,8 @@ import { Popover, PopoverContent, PopoverTrigger, Tooltip } from "@/components/u
 import type { AppNotification, BellData } from "@/lib/notifications/types";
 import { cn } from "@/lib/utils/cn";
 
-import { markNotificationsReadAction } from "./actions";
+import { dismissNotificationsAction, markNotificationsReadAction } from "./actions";
+import { NotificationsPanel } from "./notifications-panel";
 
 /**
  * THE BELL: the signed-in person's notifications, newest first, with a count of
@@ -44,9 +45,17 @@ export function NotificationBell({
   const [open, setOpen] = useState(false);
   // Read locally at once, so the badge drops before the server answers.
   const [readHere, setReadHere] = useState<Set<string> | "all">(new Set());
+  // Removed locally at once (× or Clear all), so the list and the badge change before the server answers.
+  const [goneHere, setGoneHere] = useState<Set<string> | "all">(new Set());
   const [, start] = useTransition();
   const isRead = (n: AppNotification) => !!n.readAt || readHere === "all" || readHere.has(n.id);
-  const unread = readHere === "all" ? 0 : Math.max(0, data.unread - data.items.filter((n) => !n.readAt && readHere.has(n.id)).length);
+  const isGone = (n: AppNotification) => goneHere === "all" || goneHere.has(n.id);
+  const items = data.items.filter((n) => !isGone(n));
+  // Unread that this panel read or removed come off the server's count straight away.
+  const unread =
+    readHere === "all" || goneHere === "all"
+      ? 0
+      : Math.max(0, data.unread - data.items.filter((n) => !n.readAt && (readHere.has(n.id) || goneHere.has(n.id))).length);
 
   function openOne(n: AppNotification) {
     if (!isRead(n)) {
@@ -66,6 +75,22 @@ export function NotificationBell({
     setReadHere("all");
     start(async () => {
       await markNotificationsReadAction(null);
+    });
+  }
+
+  /** The × on a row: removes that one from this person's list; never opens it. */
+  function dismissOne(id: string) {
+    setGoneHere((prev) => (prev === "all" ? prev : new Set(prev).add(id)));
+    start(async () => {
+      await dismissNotificationsAction([id]);
+    });
+  }
+
+  /** Clear all: removes every one of this person's notifications. */
+  function clearAll() {
+    setGoneHere("all");
+    start(async () => {
+      await dismissNotificationsAction(null);
     });
   }
 
@@ -126,40 +151,17 @@ export function NotificationBell({
         side={variant === "rail" ? panelSide : "bottom"}
         className="w-[min(22rem,calc(100vw-1.5rem))] p-0"
       >
-        <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
-          <h2 className="text-sm font-bold text-foreground">Notifications</h2>
-          {unread ? (
-            <button type="button" onClick={readAll} className="text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
-              Mark all as read
-            </button>
-          ) : null}
-        </div>
-        {data.items.length ? (
-          <ul className="max-h-[min(26rem,70vh)] overflow-y-auto py-1" aria-label="Notifications">
-            {data.items.map((n) => (
-              <li key={n.id}>
-                <button
-                  type="button"
-                  onClick={() => openOne(n)}
-                  className="flex w-full items-start gap-3 px-4 py-2.5 text-left transition-colors hover:bg-hover-surface"
-                >
-                  <span aria-hidden className={cn("mt-1.5 size-2 shrink-0 rounded-full", isRead(n) ? "bg-transparent" : "bg-accent")} />
-                  <span className="min-w-0 flex-1">
-                    <span className={cn("block text-sm text-foreground", isRead(n) ? "font-medium" : "font-bold")}>
-                      {n.title}
-                      {isRead(n) ? null : <span className="sr-only"> (unread)</span>}
-                    </span>
-                    {/* Three lines, not one: a note in the body has to be readable here (owner, 23 Nov 2026). */}
-                    {n.body ? <span className="mt-0.5 line-clamp-3 text-xs break-words text-muted-foreground">{n.body}</span> : null}
-                    <span className="mt-0.5 block text-[11px] text-subtle-foreground">{timeAgo(n.createdAt)}</span>
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="px-4 py-6 text-center text-sm text-muted-foreground">Nothing yet. New notifications will show here.</p>
-        )}
+        <NotificationsPanel
+          rows={items.map((n) => ({ id: n.id, title: n.title, body: n.body, meta: timeAgo(n.createdAt), read: isRead(n) }))}
+          unread={unread}
+          onOpen={(id) => {
+            const n = items.find((item) => item.id === id);
+            if (n) openOne(n);
+          }}
+          onDismiss={dismissOne}
+          onClearAll={clearAll}
+          onMarkAllRead={readAll}
+        />
       </PopoverContent>
     </Popover>
   );

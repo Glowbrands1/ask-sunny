@@ -45,6 +45,13 @@ apps, and Ask Bubbles checks its own login on arrival.
 **Sibling app:** not ported. The request was for Ask Sunny's page. A matching "Sunny approvals ↗" tab on Bubbles' Forms
 Register would be a separate ask.
 
+## Follow-up: an unread dot on the phone menu button
+
+With the top-bar bell gone, a phone showed nothing unread until the drawer was opened. QA, for Pau, asked for a red dot
+on the menu button when there are unread notifications. `components/shell/app-shell.tsx` now draws one
+(`bg-status-failed`, no number), and the button's label says how many are unread. Marking read revalidates the layout,
+so the dot clears itself. **Sibling app:** not needed; Ask Bubbles keeps its phone top-bar bell.
+
 **Superseded (24 Nov 2026):** the "Bubbles approvals ↗" link was removed in #1277. The owner said "i dont want the
 sunny approval in a different page and link, just a tab pls". The sibling app's approvals are now an in-page tab next to
 Pending HR approval, read from Ask Bubbles' signed `/api/partner/hr-queue` (the same in both apps).

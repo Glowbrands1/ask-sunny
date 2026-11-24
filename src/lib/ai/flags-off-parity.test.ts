@@ -1382,6 +1382,8 @@ describe("new flags default off and wrappers are inert", () => {
           // notification-bell.tsx, its place in sidebar.tsx (desktop and phone drawer), and app-shell.tsx dropping the
           // top-bar bell. All three paths are already excluded here; the same people get the same panel. No chat or
           // form behaviour changes.
+          // The phone menu button's red unread dot (QA for Pau, 23 Nov 2026, once the top-bar bell went): app-shell.tsx,
+          // excluded above. Shown only to someone with unread notifications. No chat or form behaviour changes.
           // Times shown in the business zone (CT) (Pau via QA, 15 Nov 2026: "The whole app and chat should be in CT"):
           // display formatting only, on purpose and not behind a flag; the stored values stay UTC.
           ":(exclude)src/features/admin/analytics/feedback-queue.tsx",

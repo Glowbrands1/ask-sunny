@@ -172,15 +172,15 @@ export function NotificationBell({
             role="dialog"
             aria-label="Notifications"
             style={{ left: box?.left ?? 8, top: box?.top ?? 60, width: box?.width ?? 360 }}
-            className="fixed z-50 max-h-[min(70vh,560px)] overflow-y-auto rounded-2xl border border-line bg-cream p-3 text-ink shadow-2xl"
+            className="fixed z-50 max-h-[min(70vh,560px)] overflow-y-auto rounded-[var(--radius-md)] border border-border bg-surface text-foreground shadow-float"
           >
-            <h2 className="m-0 mb-2 px-1 text-base font-bold">Notifications</h2>
+            {/* Ask Sunny's own panel look (Pau, 23 Nov 2026); the panel has its own "Notifications" header. */}
             {loaded === "loading" ? (
-              <p role="status" className="m-0 px-1 py-3 text-sm text-muted">
+              <p role="status" className="m-0 px-4 py-3 text-sm text-muted-foreground">
                 Loading…
               </p>
             ) : loaded === "error" ? (
-              <p role="alert" className="m-0 px-1 py-3 text-sm font-semibold text-[#9b1c1c]">
+              <p role="alert" className="m-0 px-4 py-3 text-sm font-semibold text-status-failed">
                 Notifications could not be loaded just now. Please try again in a minute.
               </p>
             ) : (
