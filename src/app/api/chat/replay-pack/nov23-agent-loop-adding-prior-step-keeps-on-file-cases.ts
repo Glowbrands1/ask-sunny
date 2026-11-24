@@ -77,19 +77,26 @@ const loopCase = (id: string, title: string, run: (t: ReplayContext) => Promise<
 });
 
 export const NOV23_AGENT_LOOP_ADDING_PRIOR_STEP_KEEPS_ON_FILE_CASES: ReplayCase[] = [
-  loopCase("nov23-a13-adding-prior-step-keeps-on-file-line", "A13 (port of Ask Bubbles #1069): T4 \"in the previously recieved coaching include that <P> signed the jba policy manual on 10-15-26\", the model listing only the new step: the card's Prior actions keep the CA on file (10/20/2026) beside the signing (10/15/2026), and Create saves both", async (t) => {
+  loopCase("nov23-a13-adding-prior-step-keeps-on-file-line", "A13, under Pau's ruling (23 Nov 2026; Ask Bubbles #1089): the CA on file (10/20/2026) is offered, never added unasked; T4 \"in the previously recieved coaching include that <P> signed the jba policy manual on 10-15-26\" adds the signing (10/15/2026), and Create saves it", async (t) => {
     const stand = model(LIVE_T4_PRIOR);
     t.loopModel!(stand);
     const thread = t.thread();
     for (const said of T.slice(0, 3)) await thread.say(said);
-    expect(priorOf(stand), "T3's card does not list the CA on file (the case proves nothing)").toMatch(/10\/20\/2026/);
+    /*
+     * CHANGED ON PURPOSE (QA, 23 Nov 2026; Pau's ruling, as Ask Bubbles changed this case in #1089): the AI never puts a
+     * form on file on Prior actions by itself, so T3's card offers the CA on file (10/20/2026) instead, and the manager here
+     * never says yes. What this case still guards: the step the manager adds lands, and nothing unaccepted is added.
+     */
+    expect(priorOf(stand), "T3's card lists the CA on file the manager never accepted").not.toMatch(/10\/20\/2026/);
+    const offered = stand.views.flatMap((view) => view.results.filter((result) => result.tool === "propose_form")).map((result) => JSON.stringify(result.output)).join("\n");
+    expect(offered, "the CA on file was never offered").toMatch(/on file from 10\/20\/2026\. Want me to add it to Prior actions\?/);
     const reply = await thread.say(T[3]!);
-    expect(priorOf(stand), `the CA on file left the card's Prior actions:\n${reply.content}`).toMatch(/10\/20\/2026/);
     expect(priorOf(stand), `the signing was not added:\n${reply.content}`).toMatch(/10\/15\/2026/);
+    expect(priorOf(stand), `the CA on file was added unasked:\n${reply.content}`).not.toMatch(/10\/20\/2026/);
     const id = await thread.create();
     const saved = JSON.stringify(t.values(id));
-    expect(saved, `the saved form lost the CA on file:\n${saved}`).toMatch(/10\/20\/2026/);
     expect(saved, `the saved form lost the signing:\n${saved}`).toMatch(/10\/15\/2026/);
+    expect(saved, `the saved form holds the CA on file unasked:\n${saved}`).not.toMatch(/10\/20\/2026/);
   }),
   loopCase("nov23-a13-control-on-file-step-restated-listed-once", "Control: a step the manager restates with the on-file form's own date (10/20/2026) is that form, listed once", async (t) => {
     const stand = model("Verbal CA — 10/20/2026");
