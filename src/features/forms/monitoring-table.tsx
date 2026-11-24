@@ -153,6 +153,9 @@ export function MonitoringTable({
   followUp,
   today,
   attention,
+  outstanding,
+  outstandingExcluded = 0,
+  listLimit = null,
   demo,
 }: {
   forms: MonitoredForm[];
@@ -175,6 +178,17 @@ export function MonitoringTable({
    * needs attention" the moment somebody looked at Followed up.
    */
   attention: AttentionSummary;
+  /**
+   * THE FOLLOW-UP QUEUE, every outstanding follow-up this reader may open, uncapped and with test records left out:
+   * the same forms the banner, the Overview and the rail badge count (`readFollowUpQueue`). The Open and Overdue
+   * pills count it, and their lists show it, so a pill can never say fewer than the banner above it (QA, 24 Nov
+   * 2026: "19 overdue" in the banner, "Overdue 8" on the pill).
+   */
+  outstanding?: MonitoredForm[];  // Absent (a caller with no queue): the loaded rows, as before.
+  /** Outstanding follow-ups on test records, left out of those counts (they stay in the All list). */
+  outstandingExcluded?: number;
+  /** Set when the list stopped at its page of rows: All, Drafted and Followed up count only the newest this many. */
+  listLimit?: number | null;
   /**
    * What a demo sweep would do, counted on the SERVER — not
    * from the rows on screen, which are filtered and could give a wrong number.
@@ -339,7 +353,9 @@ export function MonitoringTable({
     }
   }
 
-  const templateNames = [...new Set(forms.map((form) => form.templateName))].sort();
+  const templateNames = [
+    ...new Set([...forms, ...(outstanding ?? [])].map((form) => form.templateName)),
+  ].sort();
 
   /*
    * The pills count the SHELF, before the pill filter is applied — otherwise
@@ -349,8 +365,21 @@ export function MonitoringTable({
   const inScope = forms.filter(
     (form) => templateName === "all" || form.templateName === templateName,
   );
-  const counts = followUpCounts(inScope, today);
-  const shown = inScope.filter((form) => matchesFollowUpFilter(form, followUp, today));
+  /*
+   * OPEN AND OVERDUE COUNT THE WHOLE QUEUE, not the loaded rows (QA, 24 Nov 2026): the rows are the newest page of
+   * forms, and an old overdue follow-up is exactly the one that falls off it. Their lists show the queue too, so the
+   * pill and the rows under it agree. The other pills count the loaded rows, and say so when the list stopped.
+   */
+  const queueInScope = (outstanding ?? forms).filter(
+    (form) => templateName === "all" || form.templateName === templateName,
+  );
+  const loadedCounts = followUpCounts(inScope, today);
+  const queueCounts = followUpCounts(queueInScope, today);
+  const counts = { ...loadedCounts, open: queueCounts.open, overdue: queueCounts.overdue };
+  const fromQueue = followUp === "open" || followUp === "overdue";
+  const shown = (fromQueue ? queueInScope : inScope).filter((form) =>
+    matchesFollowUpFilter(form, followUp, today),
+  );
 
   /**
    * Both filters live in the URL, so a view survives a refresh and can be
@@ -536,6 +565,22 @@ export function MonitoringTable({
               );
             })}
           </div>
+
+          {/*
+            WHAT THE PILLS COUNT, SAID WHEN IT MATTERS (QA, 24 Nov 2026). Open and Overdue are every follow-up; the
+            others are the loaded rows, which is only the newest page when the list stopped.
+          */}
+          {listLimit !== null || (fromQueue && outstandingExcluded > 0) ? (
+            <p className="text-[12px] text-muted-foreground" data-testid="monitoring-count-scope">
+              {listLimit !== null
+                ? `Showing the newest ${listLimit} forms. Open and Overdue count every form; All, Drafted and Followed up count these ${listLimit}.`
+                : null}
+              {listLimit !== null && fromQueue && outstandingExcluded > 0 ? " " : null}
+              {fromQueue && outstandingExcluded > 0
+                ? `${outstandingExcluded} test record${outstandingExcluded === 1 ? " is" : "s are"} not counted here, as on the Overview; ${outstandingExcluded === 1 ? "it is" : "they are"} listed under All.`
+                : null}
+            </p>
+          ) : null}
 
           <div className="flex flex-wrap items-center gap-3">
             <Select

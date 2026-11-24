@@ -5,12 +5,13 @@ import { Notice } from "@/components/ui/feedback";
 import { PageHeader, PageShell } from "@/components/ui/layout";
 import { SYNTHETIC_DATA_NOTICE, formsIdentityIsUnverified } from "@/lib/forms/access";
 import { businessToday } from "@/lib/business-date";
-import { attentionSummary, parseFollowUpFilter } from "@/lib/forms/follow-up";
+import { parseFollowUpFilter } from "@/lib/forms/follow-up";
+import { readFollowUpQueue } from "@/lib/forms/follow-up-queue";
 import {
   findDemoInstances,
   isDemoInstance,
   listInstances,
-  listOutstandingFollowUps,
+  type InstanceRow,
 } from "@/lib/forms/instances";
 import { privateAwareLimit, privateCreatorsActive } from "@/lib/forms/private-creators";
 import {
@@ -33,6 +34,9 @@ import { ACTIVE_BRAND } from "@/lib/brand";
 
 export const metadata: Metadata = { title: "Form Monitoring" };
 export const dynamic = "force-dynamic";
+
+/** The list's page of rows: the newest this many forms. */
+const LIST_LIMIT = 200;
 
 /**
  * FORM MONITORING, read from the database rather than from this browser.
@@ -72,6 +76,11 @@ export default async function FormMonitoringPage({
   const today = businessToday();
 
   let forms: MonitoredForm[] = [];
+  /* The follow-up queue every screen counts (`readFollowUpQueue`): the banner, and the Open and Overdue pills and lists. */
+  let outstanding: MonitoredForm[] = [];
+  let outstandingExcluded = 0;
+  /** Whether the list read stopped at its page of rows, so the other pills count only those. */
+  let listCapped = false;
   let attention = { overdue: 0, dueThisWeek: 0, needsAttention: 0 };
   let demo = { deletable: 0, protected: 0 };
   let failure: string | null = null;
@@ -132,12 +141,14 @@ export default async function FormMonitoringPage({
      */
     const readsExit = await pageCan("create_exit_form");
     const holds = (permission: Permission) => (permission === "create_exit_form" ? readsExit : false);
-    const instances = withoutUnreadable(
-      // PRIVATE_CREATOR_FORMS: over-read, then trim to the default page of 200; off, as before.
-      await listInstances(privateCreatorsActive() ? privateAwareLimit(200) : undefined, instanceListFilterFor(access.actor)),
-      holds,
-    ).filter(mayRead).slice(0, 200);
-    forms = instances.map((instance) => ({
+    // PRIVATE_CREATOR_FORMS: over-read, then trim to the page of 200; one row more than the page either way, so the
+    // page can say when it stopped (QA, 24 Nov 2026: a count of loaded rows must say that is what it is).
+    const requested = privateCreatorsActive() ? privateAwareLimit(LIST_LIMIT + 1) : LIST_LIMIT + 1;
+    const read = await listInstances(requested, instanceListFilterFor(access.actor));
+    const instances = withoutUnreadable(read, holds).filter(mayRead);
+    listCapped = read.length >= requested || instances.length > LIST_LIMIT;
+    instances.splice(LIST_LIMIT);
+    const toMonitored = (instance: InstanceRow): MonitoredForm => ({
       id: instance.id,
       templateName: instance.templateName,
       templateShortName: instance.templateShortName,
@@ -168,17 +179,20 @@ export default async function FormMonitoringPage({
        */
       hrApproved: instance.hrApprovalState === "approved" && mayReadHrDecision(access.actor, instance),
       updatedAt: instance.updatedAt,
-    }));
+    });
+    forms = instances.map(toMonitored);
 
     /*
-     * The banner counts OUTSTANDING WORK ACROSS EVERY FORM, from the same
-     * query the Overview uses — not from `forms`, which is capped. A
-     * manager looking at Followed up still needs to be told what is overdue.
+     * THE BANNER AND THE OPEN AND OVERDUE PILLS COUNT ONE QUEUE (QA, 24 Nov 2026: the banner said 19 overdue, the
+     * Overdue pill 8 and Open 6, because the pills counted the 200 newest rows and the banner the first 50
+     * follow-ups). `readFollowUpQueue` is every outstanding follow-up this reader may open, uncapped, test records
+     * left out, the same forms the Overview and the rail badge count. A manager looking at Followed up still needs to
+     * be told what is overdue.
      */
-    attention = attentionSummary(
-      withoutUnreadable(await listOutstandingFollowUps(privateAwareLimit(50), access.locationIds, access.ownCreatedBy), holds).filter(mayRead).slice(0, 50),
-      today,
-    );
+    const queue = await readFollowUpQueue(access, { readsExit, today });
+    attention = queue.attention;
+    outstanding = queue.forms.map(toMonitored);
+    outstandingExcluded = queue.excluded;
 
     /*
      * Counted on the server, so the sweep button can state a
@@ -250,6 +264,9 @@ export default async function FormMonitoringPage({
             followUp={followUp}
             today={today}
             attention={attention}
+            outstanding={outstanding}
+            outstandingExcluded={outstandingExcluded}
+            listLimit={listCapped ? LIST_LIMIT : null}
             demo={demo}
           />
         )}

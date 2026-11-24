@@ -395,8 +395,9 @@ describe("the module's source", () => {
 
   it("reads the live query on the server, not in the browser", () => {
     const page = readFileSync("src/app/(app)/page.tsx", "utf8");
-    expect(page).toMatch(/listOutstandingFollowUps/);
-    expect(page).toMatch(/attentionSummary/);
+    // Changed on purpose (QA, 24 Nov 2026): the Overview counts the one follow-up queue every screen counts.
+    expect(page).toMatch(/readFollowUpQueue/);
+    expect(page).toMatch(/queue\.attention/);
     // `force-dynamic` is what makes a navigation re-read Supabase.
     expect(page).toMatch(/export const dynamic = "force-dynamic"/);
   });
