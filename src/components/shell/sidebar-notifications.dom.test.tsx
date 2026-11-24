@@ -82,6 +82,8 @@ const one = (title: string, kind: string, href: string): BellData => ({
   items: [{ id: "n1", kind, title, body: "Corrective Action Form for Wren T.", href, createdAt: new Date().toISOString(), readAt: null }],
 });
 
+/* Changed on purpose (24 Nov 2026, port of Ask Bubbles 733e6738): each row now has an × named "Remove notification:
+ * <title>", so a row is found by a name that starts with its title. The form notifications are still all there. */
 describe("Notifications under Overview (Pau, 23 Nov 2026: \"add a notification bar instead below the overview\")", () => {
   it("sits directly under Overview, in the Home group, above Assistant", () => {
     renderRail({ bell });
@@ -100,7 +102,7 @@ describe("Notifications under Overview (Pau, 23 Nov 2026: \"add a notification b
     expect(order.indexOf("Notifications")).toBe(order.indexOf("Overview") + 1);
     fireEvent.click(screen.getByRole("button", { name: "Notifications, 2 unread" }));
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /A form is waiting for your approval/ }));
+      fireEvent.click(screen.getByRole("button", { name: /^A form is waiting for your approval/ }));
     });
     expect(push).toHaveBeenCalledWith("/forms/hr-approval/inst-2");
     expect(onNavigate).toHaveBeenCalled();
@@ -121,14 +123,14 @@ describe("the form notifications are still there (Pau, 23 Nov 2026: \"make sure 
     const item = screen.getByRole("button", { name: "Notifications, 1 unread" });
     expect(item.textContent).toContain("1");
     fireEvent.click(item);
-    expect(screen.getByRole("button", { name: /A form is waiting for your approval/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^A form is waiting for your approval/ })).toBeTruthy();
   });
 
   for (const title of ["HR approved your form", "HR sent your form back for changes"]) {
     it(`a form creator's "${title}" is in the sidebar panel, badge 1`, () => {
       renderRail({ bell: one(title, HR_DECISION_KIND, "/forms/hr-approval/inst-9") });
       fireEvent.click(screen.getByRole("button", { name: "Notifications, 1 unread" }));
-      expect(screen.getByRole("button", { name: new RegExp(title) })).toBeTruthy();
+      expect(screen.getByRole("button", { name: new RegExp(`^${title}`) })).toBeTruthy();
     });
   }
 
@@ -153,7 +155,7 @@ describe("Notifications in the rail (Pau, 23 Nov 2026)", () => {
     renderRail({ bell });
     fireEvent.click(screen.getByRole("button", { name: /Notifications/ }));
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /A form is waiting for your approval/ }));
+      fireEvent.click(screen.getByRole("button", { name: /^A form is waiting for your approval/ }));
     });
     expect(markRead).toHaveBeenCalledWith(["h2"]);
     expect(push).toHaveBeenCalledWith("/forms/hr-approval/inst-2");

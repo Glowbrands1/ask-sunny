@@ -1149,6 +1149,8 @@ export interface ToolEffects {
   proposalPayrollAmount?: string | null;
   /** QA (c163): the one-way key of this card's account as the model gave it (`accountKey`), for the card record. */
   proposalAccountKey?: string | null;
+  /** Port of Ask Bubbles #1089 (Pau's ruling, 23 Nov 2026): the forms on file this card's reply offers (their ISO dates), for `CardRecord.onFileOffered`. */
+  proposalOnFileOffered?: string[];
   /** The exit card's resignation type (an option key), for the card record (`CardRecord.exitType`). */
   proposalExitType?: string | null;
   /**
@@ -3123,9 +3125,27 @@ async function finalizedPriorsOnFile(context: ToolContext, person: RosterEmploye
   const kinds = new Set([keys.corrective, keys.coaching, keys.followUpCoaching]);
   const names = fullNamesOf(person);
   const nameWords = [...new Set(names.flatMap(candidateNameWords))];
-  const rows = visibleInstances(actor, await listInstances("all", 200, { ...instanceListFilterFor(actor), employeeNameWords: nameWords }).catch(() => []))
-    .filter((row) => row.status === "finalized" && kinds.has(row.templateKey) && (row.formDate ?? "") <= today && (!before || (row.formDate ?? "") < before))
-    .filter((row) => names.some((full) => samePerson(full, row.employeeName)) || sameRosterPerson(row.employeeName, displayName(person), roster))
+  /*
+   * WHICH FORMS ARE THIS PERSON'S ON FILE (QA, 23 Nov 2026; the live chat behind Pau's review): two ARCHIVED Written CAs
+   * were read as this person's forms on file. An archived form is not on file (the "active" read leaves it out).
+   * A form filed under the first name alone IS this person's (Pau: "its right"), except when someone else with that first
+   * name is at the form's salon (Pau: "there might be other Paulynes in store, or Kim or Mary"): another roster person
+   * there, or a former employee with a form there under a fuller name. Then it is not attributed to either. A form with no
+   * salon recorded is checked against everyone. Read from the roster and the forms, never from what the name means.
+   */
+  const listed = visibleInstances(actor, await listInstances("active", 200, { ...instanceListFilterFor(actor), employeeNameWords: nameWords }).catch(() => []));
+  const firstNameShared = (row: (typeof listed)[number]) => {
+    const word = row.employeeName.trim();
+    if (word.split(/\s+/).length !== 1) return false;
+    const at = row.locationId ?? null;
+    const here = (ids: readonly string[]) => at === null || ids.includes(at);
+    const otherOnRoster = roster.some((other) => other.id !== person.id && here(other.salonIds) && fullNamesOf(other).some((full) => samePerson(full, word)));
+    const formerThere = listed.some((other) => other !== row && (at === null || other.locationId === at) && other.employeeName.trim().split(/\s+/).length > 1 && samePerson(other.employeeName, word) && !names.some((full) => samePerson(full, other.employeeName)));
+    return otherOnRoster || formerThere;
+  };
+  const rows = listed
+    .filter((row) => row.status === "finalized" && !row.archivedAt && kinds.has(row.templateKey) && (row.formDate ?? "") <= today && (!before || (row.formDate ?? "") < before))
+    .filter((row) => !firstNameShared(row) && (names.some((full) => samePerson(full, row.employeeName)) || sameRosterPerson(row.employeeName, displayName(person), roster)))
     .sort((a, b) => (a.formDate ?? "").localeCompare(b.formDate ?? "") || a.createdAt.localeCompare(b.createdAt))
     .slice(-10);
   const levelName: Record<string, string> = { verbal: "Verbal Warning", written: "Written Warning", termination: "Termination" };
@@ -3146,6 +3166,25 @@ export function priorsOnFileLine(priors: readonly PriorOnFile[]): string {
     return found ? `${found[2]}/${found[3]}/${found[1]}` : "date not recorded";
   };
   return priors.map((prior) => `${prior.form}${prior.level ? `, ${prior.level}` : ""} — ${usDay(prior.date)}`).join("; ");
+}
+
+/**
+ * Port of Ask Bubbles #1089 (Pau's ruling, 23 Nov 2026): the one-line offer of forms on file. "<P> has a Written CA on file
+ * from 09/10/2026. Want me to add it to Prior actions?" (several: "… and a Coaching Form on file from 09/12/2026. Want me to
+ * add them …"). A Corrective Action is named by its level ("Written CA"); any other form by its name.
+ */
+export function priorsOnFileOffer(name: string, priors: readonly PriorOnFile[]): string {
+  const usDay = (iso: string | null) => {
+    const found = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso ?? "");
+    return found ? `${found[2]}/${found[3]}/${found[1]}` : null;
+  };
+  const named = priors.map((prior) => {
+    const label = /corrective action/i.test(prior.form) ? `${prior.level ? `${prior.level.split(",")[0]!.trim().split(/\s+/)[0]} ` : ""}CA` : prior.form;
+    const day = usDay(prior.date);
+    return `${/^[AEIOU]/i.test(label) ? "an" : "a"} ${label} on file${day ? ` from ${day}` : ""}`;
+  });
+  const list = named.length <= 2 ? named.join(" and ") : `${named.slice(0, -1).join(", ")} and ${named.at(-1)}`;
+  return `${name} has ${list}. Want me to add ${priors.length === 1 ? "it" : "them"} to Prior actions?`;
 }
 
 /**
@@ -3837,6 +3876,7 @@ export async function proposeForm(
   effects: ToolEffects,
   input: {
     level_evidence?: unknown;
+    prior_actions_evidence?: unknown;
     payroll_evidence?: unknown;
     job_title?: unknown;
     job_title_evidence?: unknown;
@@ -5132,18 +5172,34 @@ export async function proposeForm(
    * own steps win. A date from a form on file counts as stated (the model may copy the line), never this incident's date.
    */
   const rosterPerson = caOnlyFields && employee.id && read.kind === "read" ? read.roster.find((row) => row.id === employee.id) ?? null : null;
-  const priorsOnFile = rosterPerson ? await finalizedPriorsOnFile(context, rosterPerson, read.kind === "read" ? read.roster : [], today, date ?? (effects.proposal && effects.proposal.employeeName === employee.name ? effects.proposal.formDate ?? null : null) ?? ownCard?.incidentDate ?? null) : [];
+  const onFileBefore = date ?? (effects.proposal && effects.proposal.employeeName === employee.name ? effects.proposal.formDate ?? null : null) ?? ownCard?.incidentDate ?? null;
+  const priorsOnFile = rosterPerson ? await finalizedPriorsOnFile(context, rosterPerson, read.kind === "read" ? read.roster : [], today, onFileBefore) : [];
   const onFileLine = priorsOnFile.length > 0 ? priorsOnFileLine(priorsOnFile) : null;
+  /*
+   * A PRIOR ACTION IS THE MANAGER'S OWN (QA, 23 Nov 2026, Pau's review of a finalized form; port of Ask Bubbles #1089).
+   * Live: "create a ca for <P> she was wearing sandals at work 9/11" (one turn, no earlier step named) was saved with
+   * "Prior actions: Corrective Action Form, Written Warning — 09/10/2026, as you said": two archived Written CAs on file
+   * under the first name alone filled the card (the old auto-fill, QA item 22 / f029), and `stated` carried that line, so
+   * the reply said "as you said". Now the forms on file are never added on their own: the reply offers them in one line
+   * (`onFileOffered` on the card), and a form on file is a step only in answer to that offer (this person's card offered
+   * its date) or when the manager's own words hold its date, as any step they state.
+   */
+  const offeredCard = [context.cardOnScreen, context.earlierCard].find((record) => Boolean(record?.onFileOffered?.length) && (employee.id ? record!.employeeKey === personKey(employee.id) : !record!.employeeKey && record!.nameKey === personKey(employee.name))) ?? null;
+  const offeredDates = new Set(offeredCard?.onFileOffered ?? []);
+  const onFileDateOf = (prior: PriorOnFile) => (prior.date && /^\d{4}-\d{2}-\d{2}/.test(prior.date) ? prior.date.slice(0, 10) : null);
+  const onFileAnswered = priorsOnFile.filter((prior) => { const iso = onFileDateOf(prior); return iso !== null && offeredDates.has(iso); });
+  const onFileAcceptedLine = onFileAnswered.length > 0 ? priorsOnFileLine(onFileAnswered) : null;
   /*
    * QA's round 2 (22 Nov 2026, U09; port of Ask Bubbles #1015): "JBA Policy Manual 1-1-2026, Verbal CA 11-1-2026. On
    * 11-1-26 <P> violated …" dropped BOTH steps because one carries the incident's date. Each step is checked on its own
    * (`priorActionsSplit`): the good ones are kept, and only a step with a problem is left off, with its reason.
    */
-  const priorSplit = askedPriorActions ? priorActionsSplit(askedPriorActions, onFileLine ? `${requestWords}\n${onFileLine}` : requestWords, date) : null;
+  const priorSplit = askedPriorActions ? priorActionsSplit(askedPriorActions, onFileAcceptedLine ? `${requestWords}\n${onFileAcceptedLine}` : requestWords, date) : null;
   const priorActionsRefused = priorSplit ? (priorSplit.kept === null ? priorSplit.problem : null) : null;
   const priorStepsLeftOff = priorSplit && priorSplit.kept !== null && priorSplit.dropped.length > 0 ? priorSplit.dropped : [];
   const keptPriorActions = priorSplit?.kept ?? null;
-  const priorActionsRead = priorActionsRefused ? null : (keptPriorActions ?? (statedSteps.length === 0 ? onFileLine : null));
+  /* No forms-on-file fill (QA, 23 Nov 2026; Pau's ruling): only the manager's steps, or a form on file they said yes to. */
+  const priorActionsRead = priorActionsRefused ? null : keptPriorActions;
   /* U09 (port of Ask Bubbles #1054, its QA's live triage): a step the manager listed with one the card keeps is on the card too (`listedWithKeptSteps`). */
   const listedSteps = keptPriorActions && priorActionsRead ? listedWithKeptSteps(requestWords, priorActionsRead, date, today, whatHappened ?? "") : [];
   const priorActionsListed = priorActionsRead ? [priorActionsRead, ...listedSteps].join(priorActionsRead.includes("\n") ? "\n" : "; ").slice(0, 600) : null;
@@ -5155,20 +5211,42 @@ export async function proposeForm(
    * adds; a form on file whose date a kept step already has is that step, never listed twice. Read from the forms' own
    * dates, never a word list.
    */
-  const thisCardOnScreen = samePersonOnScreen && context.cardOnScreen?.templateKey === template.key;
-  const keptDates = priorActionsListed ? readDates(priorActionsListed) : [];
-  const onFileBeside = thisCardOnScreen && keptPriorActions && priorActionsListed
-    ? priorsOnFile.filter((prior) => !readDates(priorsOnFileLine([prior])).some((onFile) => keptDates.some((kept) => sameDate(kept, onFile))))
-    : [];
-  const priorActions = priorActionsListed && onFileBeside.length > 0
-    ? [priorsOnFileLine(onFileBeside), priorActionsListed].join(priorActionsListed.includes("\n") ? "\n" : "; ").slice(0, 600)
-    : priorActionsListed;
+  /*
+   * No forms-on-file fill (QA, 23 Nov 2026; Pau's ruling, port of Ask Bubbles #1089): Prior actions are the manager's
+   * listed steps, or a form on file they said yes to (it comes back in prior_actions, kept by `priorActionsSplit` against
+   * the accepted line). The old `onFileBeside` (#1256: forms on file kept beside added steps) put forms on the card the
+   * manager never accepted, so it is gone; the offer below replaces it.
+   */
+  const priorActions = priorActionsListed;
   /*
    * U09 / U21 (port of Ask Bubbles #1054): a prior step on this card's Prior actions is never this incident's account
    * (`accountWithoutPriorSteps`). Only the steps the card keeps: a sentence leaves the Observation only when Prior actions
    * holds it, so nothing is lost.
    */
   if (whatHappened && priorActions) whatHappened = accountWithoutPriorSteps(whatHappened, priorActions, date);
+  /*
+   * "AS YOU SAID" ONLY WITH THE MANAGER'S OWN WORDS (QA, 23 Nov 2026): prior_actions_evidence quotes the manager's message
+   * of this request that states the steps, checked by code like level_evidence (`answerEvidence`: a real message of this
+   * request, its words verbatim). It counts only when the quote holds every date the card's Prior actions hold, and "as
+   * you said" only when that message is the one being answered (stated_this_turn). Never read from what the words mean.
+   */
+  const priorEvidenceQuote = input.prior_actions_evidence && typeof input.prior_actions_evidence === "object" ? String((input.prior_actions_evidence as { quote?: unknown }).quote ?? "") : "";
+  const priorEvidenceCheck = priorActions && priorEvidenceQuote ? answerEvidence(context, input.prior_actions_evidence, "request", evidencePerson, { requestTurnIds }) : null;
+  const priorDatesQuoted = Boolean(priorActions) && readDates(priorActions!).every((held) => readDates(priorEvidenceQuote).some((quoted) => sameDate(quoted, held)));
+  if (priorActions && priorDatesQuoted && answersThisMessage(priorEvidenceCheck)) statedThisTurn.push("prior_actions");
+  /*
+   * The offer: this person's forms on file before the incident that the card does not hold and its earlier reply did not
+   * offer already (one offer, never asked twice), once the card has an incident (a date or an account).
+   */
+  const heldDates = priorActions ? readDates(priorActions) : [];
+  const incidentKnown = onFileBefore !== null || modelAccount !== "" || Boolean(ownCard?.accountKey);
+  const toOffer = !incidentKnown ? [] : priorsOnFile.filter((prior) => {
+    const iso = onFileDateOf(prior);
+    if (iso === null || offeredDates.has(iso)) return false;
+    return !heldDates.some((held) => sameDate(held, { month: Number(iso.slice(5, 7)), day: Number(iso.slice(8, 10)), year: Number(iso.slice(0, 4)) }));
+  });
+  const onFileOffer = toOffer.length > 0 ? priorsOnFileOffer(employee.name, toOffer) : null;
+  effects.proposalOnFileOffered = [...new Set([...offeredDates, ...toOffer.map(onFileDateOf).filter((iso): iso is string => iso !== null)])];
   /*
    * QA's production audit (20 Nov 2026): "I need a verbal CA wrote up for <A>. I need the JBA policy for dress code
    * enclosed. can you also site the coaching that was done on 11/3" put 11/3, the prior coaching's date, on the card as
@@ -5901,7 +5979,8 @@ export async function proposeForm(
     ...(whatHappened && ACCOUNT_FORMS.has(template.key) && accountSubjectChanged(managerWords, whatHappened, employee.name) ? { account_subject_changed: { employee: employee.name, account_says_it_was: accountSubjectChanged(managerWords, whatHappened, employee.name) } } : {}),
     ...(statedSteps.length > 0 ? { prior_steps_said: statedSteps } : {}),
     /* QA item 22: the finalized forms on file for this person; the card's level is never chosen from them. */
-    ...(priorsOnFile.length > 0 ? { prior_on_file: { forms: priorsOnFile, line: onFileLine, used_on_card: priorActions === onFileLine } } : {}),
+    /* The forms on file are offered, never added (QA, 23 Nov 2026; port of Ask Bubbles #1089): ask_exactly ends the reply. */
+    ...(priorsOnFile.length > 0 ? { prior_on_file: { forms: priorsOnFile, line: onFileLine, on_card: false, ...(onFileOffer ? { ask_exactly: onFileOffer } : {}) } } : {}),
     ...(corrective && payroll === "yes" && !amount && statedAmount ? { payroll_amount_said: `$${statedAmount}` } : {}),
     ...(cleaning && !careAndCleaning ? { cleaning_duty: cleaning } : {}),
     ...(awaiting ? { policy_named_by_manager: policyNamedByManager } : {}),

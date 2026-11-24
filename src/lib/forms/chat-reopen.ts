@@ -1,5 +1,7 @@
 import "server-only";
 
+import { FormNotEditableNowError } from "./hr-approval-rules";
+
 import type { AskResponse } from "@/lib/ai/types";
 import type { ChatMessage } from "@/types";
 
@@ -232,6 +234,10 @@ export async function reopenRequestedForm(input: {
     draft = await openEditableDraft(input.request, target.id, { revise: reading.mode === "edit" || reading.opensToEdit === true });
   } catch (error) {
     if (error instanceof RevisionReasonRequiredError) return reasonRequiredReply(input.request, target.id);
+    // Someone else's revision of it is open and not this reader's to see: one plain sentence, no reason, no name.
+    if (error instanceof FormNotEditableNowError) {
+      return reply(`I can't open the **${target.templateName}** for **${target.employeeName}** to edit right now.`);
+    }
     return reply(
       `I found the **${target.templateName}** for **${target.employeeName}**, but couldn't open it to edit: ${(error as Error).message}`,
     );

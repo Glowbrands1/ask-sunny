@@ -16,20 +16,25 @@ import type { ChatConversation } from "@/types";
  * Each local chat is stamped with an opaque key for the account that wrote it
  * (`ownerKey`, from the history state the server returns to that account; a
  * hash, never the account id). Until the key is known nothing already stored
- * is shown. Then (Pau, 31 Oct 2026: "Keep them visible"):
+ * is shown. Then:
  *
  *   stamped with this account's key          shown
  *   stamped with another account's key       held back: kept in the browser
  *                                            as it was, never shown, offered
  *                                            for Import or synced
  *   unstamped, and this account stores it    shown, and stamped as this one's
- *   unstamped, and this account does not     shown as before, NOT stamped —
- *                                            whose it is cannot be told
+ *   unstamped, and this account does not     HELD BACK, like another account's
  *
- * Every chat started from now on is stamped by the account that starts it,
- * so the protection grows from the deploy on. Nothing is deleted. Open until
- * its writer signs in once after the deploy (which stamps it): a legacy
- * unstamped chat stays visible to another account on a shared browser.
+ * THE LAST ROW CHANGED (owner, 23 Nov 2026: "that chats from other account
+ * leak to other poeples log in, i dont want that"). It used to be "shown as
+ * before, not stamped" (Pau, 31 Oct 2026: "Keep them visible"), which left a
+ * legacy unstamped chat visible to whoever signed in next on a shared
+ * browser. A chat is now shown only when it is provably this account's: its
+ * key, or the account's own server copy. An unstamped chat nobody can be
+ * shown to own stays in the browser untouched, never shown, imported or
+ * synced. Its writer still sees it if the server holds it for them (it is
+ * then "stored"); one that never reached the server stays only in that
+ * browser's storage. Nothing is deleted.
  */
 
 export function chatLocalOwnerEnabled(): boolean {
@@ -41,9 +46,11 @@ export function chatLocalOwnerEnabled(): boolean {
 export type OwnedConversation = ChatConversation & { ownerKey?: string };
 
 /**
- * Splits this browser's chats: the account's own (`mine`, to stamp), legacy
- * chats nobody can be shown to own (`unclaimed`, shown, never stamped), and
- * another account's (`others`, held back). No key known: everything is held.
+ * Splits this browser's chats: the account's own (`mine`, to stamp), and
+ * everything else (`others`, held back): another account's, and legacy chats
+ * nobody can be shown to own (owner, 23 Nov 2026). `unclaimed` is always
+ * empty now; it stays in the shape so callers need no change. No key known:
+ * everything is held.
  */
 export function partitionByOwner(
   local: readonly OwnedConversation[],
@@ -57,7 +64,7 @@ export function partitionByOwner(
   for (const conversation of local) {
     const key = conversation.ownerKey;
     if (key === ownerKey || (!key && storedIds.has(conversation.id))) mine.push(conversation);
-    else if (!key) unclaimed.push(conversation);
+    // An unstamped chat this account does not hold is held back too: whose it is cannot be told.
     else others.push(conversation);
   }
   return { mine, unclaimed, others };

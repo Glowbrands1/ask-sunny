@@ -228,6 +228,12 @@ import { rulesBookText } from "./rules-book";
  * added: same_incident_on_file (this person already has this form on file for this incident date, no card made) says so,
  * ends with its ask_exactly, opens that form or, on "a separate incident", proposes again with separate_incident_evidence.
  * It reads the same under every config; nothing else changed.
+ *
+ * Re-taken on purpose on 23 Nov 2026 (QA: a prior action Pau never said was saved "as you said"; port of Ask Bubbles
+ * #1089): the Prior actions line now says only the manager's steps, or a form on file they said yes to, are Prior
+ * actions, and the reply offers the forms on file (prior_on_file.ask_exactly); the stated read-back adds "as you said" to
+ * prior_actions only when stated_this_turn lists it, and asks for prior_actions_evidence quoting the manager's words. They
+ * read the same under every config; nothing else changed.
  */
 
 const fixture = (name: string): string => readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), "utf8");

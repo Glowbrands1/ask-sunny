@@ -1,9 +1,10 @@
 "use client";
-// Copied from the Leadership Hub (src/app/notifications/NotificationsView.tsx); keep in step with it. See src/features/l10/README.md.
+// The DM L10 bell's list: the Leadership Hub's notes (its read/mark logic copied from the Hub's NotificationsView), shown in Ask Sunny's own NotificationsPanel.
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { Button, Card, cx } from "@/features/l10/ui/ui";
+import { NotificationsPanel, type PanelRow } from "@/features/notifications/notifications-panel";
 import { headline, NOTIFICATIONS_CHANGED, noteHref, timeAgo } from "@/features/l10/notifications/logic";
 import type { AppNotification } from "@/features/l10/notifications/types";
 import { markAllReadAction, markReadAction } from "./actions";
@@ -32,9 +33,10 @@ export function NotificationsView({
   compact?: boolean;
   onNavigate?: () => void;
 }) {
+  const router = useRouter();
   const [notes, setNotes] = useState(initial);
   const [error, setError] = useState("");
-  const [pending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
   const unread = notes.filter((n) => !n.read_at).length;
   const stamp = () => new Date().toISOString();
   const changed = () => window.dispatchEvent(new Event(NOTIFICATIONS_CHANGED));
@@ -70,57 +72,52 @@ export function NotificationsView({
     });
   };
 
+  /*
+   * Pau (23 Nov 2026): "for dm meeting make this UI same with bubble". In Ask Sunny the DM L10 bell shows Ask Sunny's own panel
+   * (`NotificationsPanel`), with Mark all read and See all. No × or Clear all here: these notes live in the Leadership
+   * Hub's database, which has no way to remove one yet (it needs a dismiss function there). The Hub's notification
+   * Settings link is gone (it opened another app); the meta line has normal contrast.
+   */
+  const rows: PanelRow[] = notes.map((n) => ({
+    id: n.id,
+    title: headline(n),
+    body: n.excerpt || null,
+    meta: `${n.meeting_name} · ${timeAgo(n.updated_at, now)}`,
+    read: Boolean(n.read_at),
+  }));
+  const open = (id: string) => {
+    const n = notes.find((note) => note.id === id);
+    if (!n) return;
+    read([n.id]);
+    onNavigate?.();
+    router.push(noteHref(n));
+  };
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-3">
-        <p className="m-0 text-sm text-muted" aria-live="polite">
-          {unread === 0 ? "You are all caught up." : `${unread} unread`}
-        </p>
-        <Button type="button" onClick={readAll} disabled={unread === 0 || pending} className="ml-auto">
-          Mark all read
-        </Button>
-        {compact && (
-          <Link href={hubUrl ? `${hubUrl}/notifications` : "/notifications"} target={hubUrl ? "_blank" : undefined} rel={hubUrl ? "noopener noreferrer" : undefined} onClick={onNavigate} className="inline-flex min-h-11 items-center text-[13px] font-semibold text-bronze-deep hover:underline">
-            See all
-          </Link>
-        )}
-        <Link href={hubUrl ? `${hubUrl}/notifications/settings` : "/notifications/settings"} target={hubUrl ? "_blank" : undefined} rel={hubUrl ? "noopener noreferrer" : undefined} onClick={onNavigate} className="inline-flex min-h-11 items-center text-[13px] font-semibold text-bronze-deep hover:underline">
-          Settings
-        </Link>
-      </div>
+    <div className="flex flex-col">
+      <NotificationsPanel
+        rows={rows}
+        unread={unread}
+        onOpen={open}
+        onMarkAllRead={readAll}
+        emptyText="No notifications yet. You will see a note here when someone mentions you, gives you a to-do, or something of yours changes in a meeting."
+        footer={
+          compact ? (
+            <Link
+              href={hubUrl ? `${hubUrl}/notifications` : "/notifications"}
+              target={hubUrl ? "_blank" : undefined}
+              rel={hubUrl ? "noopener noreferrer" : undefined}
+              onClick={onNavigate}
+              className="text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+            >
+              See all
+            </Link>
+          ) : undefined
+        }
+      />
       {error && (
-        <p role="alert" className="m-0 text-sm font-semibold text-[#9b1c1c]">
+        <p role="alert" className="m-0 px-4 pb-3 text-sm font-semibold text-status-failed">
           {error}
         </p>
-      )}
-      {notes.length === 0 ? (
-        <Card>
-          <p className="m-0 text-sm">No notifications yet. You will see a note here when someone mentions you, gives you a to-do, or something of yours changes in a meeting.</p>
-        </Card>
-      ) : (
-        <ul className="m-0 flex list-none flex-col gap-2 p-0">
-          {notes.map((n) => (
-            <li key={n.id}>
-              <Link
-                href={noteHref(n)}
-                onClick={() => (read([n.id]), onNavigate?.())}
-                className={cx(
-                  "flex min-h-11 flex-col gap-0.5 rounded-[10px] border px-4 py-3 text-ink no-underline transition-colors hover:border-gold-hover",
-                  n.read_at ? "border-line bg-white" : "border-gold bg-[#fff9e8]",
-                )}
-              >
-                <span className="flex flex-wrap items-center gap-x-2 text-sm">
-                  {!n.read_at && <span className="rounded-full bg-gold px-2 text-[11px] font-bold text-[#111111]">New</span>}
-                  <span className={n.read_at ? "font-medium" : "font-bold"}>{headline(n)}</span>
-                  <span className="text-xs text-muted">
-                    · {n.meeting_name} · {timeAgo(n.updated_at, now)}
-                  </span>
-                </span>
-                {n.excerpt && <span className="text-sm text-[#444]">{n.excerpt}</span>}
-              </Link>
-            </li>
-          ))}
-        </ul>
       )}
     </div>
   );

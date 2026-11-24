@@ -50,6 +50,24 @@ const ALL_MIGRATIONS = readdirSync(MIGRATIONS_DIR)
 const LAST_FEEDBACK_MIGRATION = "20260917001000_feedback_optional_words";
 const APPLIED = ALL_MIGRATIONS.slice(0, ALL_MIGRATIONS.indexOf(LAST_FEEDBACK_MIGRATION) + 1);
 
+/**
+ * LATER MIGRATIONS THAT RESTATE AN ANALYTICS OBJECT, applied after `APPLIED` so this suite reads the definition
+ * production holds. Everything between is not applied: later migrations need extensions PGlite does not have, so
+ * `LAST_FEEDBACK_MIGRATION` cannot simply move forward. Each entry lists what it reads that only those skipped
+ * migrations add, stood in here with the shape it has there.
+ *
+ *   20261123002000  `activity_unified` leaves out a form still with HR (owner, 23 Nov 2026: "make sure ... people
+ *                   dont see what a certain person created"). Reads `form_instances.hr_approval_state`, added by
+ *                   20261123001000_forms_hr_approval (text, checked against the four states there).
+ */
+const LATER_ANALYTICS_MIGRATIONS: readonly { name: string; standIn: string }[] = [
+  {
+    name: "20261123002000_activity_unified_hr_hidden",
+    standIn: `alter table public.form_instances add column hr_approval_state text
+      check (hr_approval_state in ('pending', 'changes_requested', 'rejected', 'approved'));`,
+  },
+];
+
 /** Supabase platform objects the earlier migrations reach for. */
 const PLATFORM = `
   create function auth.uid() returns uuid language sql stable as $$ select null::uuid $$;
@@ -141,6 +159,10 @@ const turns: Record<keyof typeof PEOPLE, string> = {} as never;
 
 beforeAll(async () => {
   harness = await createMigratedTestDatabase(APPLIED, { platform: PLATFORM });
+  for (const later of LATER_ANALYTICS_MIGRATIONS) {
+    await harness.db.exec(later.standIn);
+    await harness.db.exec(readFileSync(join(MIGRATIONS_DIR, `${later.name}.sql`), "utf8"));
+  }
 
   await harness.db.exec(`
     insert into public.salons (salon_number, store_name) values
@@ -404,9 +426,48 @@ describe("Admin → Analytics → Conversation Feedback sees every submitted rat
 
 /* ============================================================ staleness === */
 
+describe("Admin → Analytics counts a form only once HR has approved it", () => {
+  it("a form still with HR is not in activity_unified; once approved, or never sent to HR, it counts", async () => {
+    const forms = async () =>
+      (
+        await harness.db.query<{ n: number }>(`select count(*)::int as n from public.activity_unified where feature = 'forms'`)
+      ).rows[0]!.n;
+    const before = await forms();
+    // Only the view's filter is under test: one Corrective Action template, and no template version behind the forms.
+    await harness.db.exec(`set session_replication_role = replica`);
+    await harness.db.query(
+      `insert into public.form_templates (id, key, name, short_name, layout_family, required_permission)
+       values ('7b1d0c4e-1f2a-4b3c-8d4e-5f6a7b8c9d00', 'dpoa', 'Corrective Action', 'CA',
+               (enum_range(null::public.form_layout_family))[1], 'forms.corrective_action')
+       on conflict (key) do nothing`,
+    );
+    const template = (await harness.db.query<{ id: string }>(`select id from public.form_templates where key = 'dpoa'`)).rows[0]!.id;
+    await harness.db.query(
+      `insert into public.form_instances (id, template_id, template_version_id, employee_name, created_by, location_id, hr_approval_state)
+       values ('7b1d0c4e-1f2a-4b3c-8d4e-5f6a7b8c9d01', $1, gen_random_uuid(), 'Juniper Calloway', $2, 'loc-101', 'pending'),
+              ('7b1d0c4e-1f2a-4b3c-8d4e-5f6a7b8c9d02', $1, gen_random_uuid(), 'Marlowe Fenwick', $2, 'loc-101', null)`,
+      [template, PEOPLE.dm.id],
+    );
+    await harness.db.exec(`set session_replication_role = origin`);
+    // The form never sent to HR counts; the one waiting for HR does not.
+    expect(await forms()).toBe(before + 1);
+    for (const state of ["changes_requested", "rejected"]) {
+      await harness.db.query(`update public.form_instances set hr_approval_state = $1 where id = '7b1d0c4e-1f2a-4b3c-8d4e-5f6a7b8c9d01'`, [state]);
+      expect(await forms()).toBe(before + 1);
+    }
+    await harness.db.query(`update public.form_instances set hr_approval_state = 'approved' where id = '7b1d0c4e-1f2a-4b3c-8d4e-5f6a7b8c9d01'`);
+    expect(await forms()).toBe(before + 2);
+  });
+});
+
 describe("this suite applies every migration that shapes feedback analytics", () => {
+  it("applies each later restatement it lists, and each one exists", () => {
+    for (const later of LATER_ANALYTICS_MIGRATIONS) expect(ALL_MIGRATIONS).toContain(later.name);
+  });
+
   it("has no later migration redefining a feedback or analytics object", () => {
-    const later = ALL_MIGRATIONS.slice(ALL_MIGRATIONS.indexOf(LAST_FEEDBACK_MIGRATION) + 1);
+    const restated = new Set(LATER_ANALYTICS_MIGRATIONS.map((later) => later.name));
+    const later = ALL_MIGRATIONS.slice(ALL_MIGRATIONS.indexOf(LAST_FEEDBACK_MIGRATION) + 1).filter((name) => !restated.has(name));
     const redefines =
       /\b(create\s+or\s+replace\s+(function|view)\s+public\.(analytics_\w+|feedback_\w+|leader_directory|salon_directory|activity_attributed|activity_unified)|alter\s+table\s+(if\s+exists\s+)?public\.(ask_sunny_feedback|activity_events)|alter\s+type\s+public\.(activity_\w+|feedback_\w+))\b/i;
 
@@ -419,7 +480,7 @@ describe("this suite applies every migration that shapes feedback analytics", ()
       return redefines.test(sql);
     });
 
-    /* Move LAST_FEEDBACK_MIGRATION forward to include any name listed here. */
+    /* Move LAST_FEEDBACK_MIGRATION forward, or add to LATER_ANALYTICS_MIGRATIONS, to include any name listed here. */
     expect(offenders).toEqual([]);
   });
 });

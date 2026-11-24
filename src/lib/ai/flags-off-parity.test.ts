@@ -1294,7 +1294,9 @@ describe("new flags default off and wrappers are inert", () => {
           // above); and "its so small pending approval, make it red button and animated shaking if theres a pending" —
           // HR's tab in hr-approval-lists.tsx and its .hr-pending-shake in globals.css (below), off under reduced motion.
           // The Approve button and the tab are behind the same flag: off, no approval data, so neither renders. Print
-          // shows on any finalized form and opens the same server PDF as Download PDF.
+          // shows on any finalized form and opens the same server PDF as Download PDF. And the sibling app's approvals
+          // as a tab next to Pending HR approval (owner, 23 Nov 2026: "i dont want the sunny approval in a different page
+          // and link, just a tab pls"): shown only to an HR approver with SIBLING_HR_SECRET set, so off, never.
           ":(exclude)src/features/forms/hr-approval-panel.tsx",
           ":(exclude)src/features/forms/hr-approval-lists.tsx",
           ":(exclude)src/features/forms/hr-approval-screen.tsx",
@@ -1380,6 +1382,8 @@ describe("new flags default off and wrappers are inert", () => {
           // notification-bell.tsx, its place in sidebar.tsx (desktop and phone drawer), and app-shell.tsx dropping the
           // top-bar bell. All three paths are already excluded here; the same people get the same panel. No chat or
           // form behaviour changes.
+          // The phone menu button's red unread dot (QA for Pau, 23 Nov 2026, once the top-bar bell went): app-shell.tsx,
+          // excluded above. Shown only to someone with unread notifications. No chat or form behaviour changes.
           // Times shown in the business zone (CT) (Pau via QA, 15 Nov 2026: "The whole app and chat should be in CT"):
           // display formatting only, on purpose and not behind a flag; the stored values stay UTC.
           ":(exclude)src/features/admin/analytics/feedback-queue.tsx",
