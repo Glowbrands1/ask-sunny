@@ -13,19 +13,25 @@ import type { BellData } from "./types";
  * sent a form for HR approval" / "HR added a note" / "HR sent your form back" / "HR approved your form" items landed in
  * a bell nobody could open. An empty bell says "Nothing yet".
  *
- * `waitingHr` is the HR approver's count of forms still waiting (null for everyone else), kept on the bar's badge.
+ * `waitingHr` is the HR approver's count of forms still waiting (null for everyone else), kept on the bar's badge;
+ * `waitingSiblingHr` the same in the sibling app (its approvals tab), added to it.
  * Still scoped to the caller's own email; no email (a preview with no account) means no bell. A failed read (the table
  * not yet migrated, say) hides it instead of taking down every page.
  */
 export async function bellFor(
   identity: { email?: string | null } | null,
   waitingHr: () => Promise<number | null> = async () => null,
+  waitingSiblingHr: () => Promise<{ app: string; count: number } | null> = async () => null,
 ): Promise<BellData | null> {
   try {
     const email = identity?.email?.trim().toLowerCase();
     if (!email) return null;
-    const [data, waiting] = await Promise.all([listNotifications(email), waitingHr()]);
-    return waiting ? { ...data, waitingHr: waiting } : data;
+    const [data, waiting, sibling] = await Promise.all([listNotifications(email), waitingHr(), waitingSiblingHr().catch(() => null)]);
+    return {
+      ...data,
+      ...(waiting ? { waitingHr: waiting } : {}),
+      ...(sibling && sibling.count > 0 ? { waitingSiblingHr: sibling } : {}),
+    };
   } catch {
     return null;
   }

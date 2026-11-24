@@ -93,3 +93,25 @@ describe("\"i need a bell for all users/managers for when HR send back their for
     }
   });
 });
+
+/*
+ * Pau, 24 Nov 2026, told the bar counted only this app's forms and not the other app's approvals tab: "fix". The
+ * sibling's waiting count rides on the bell, and a sibling that fails never takes the bell down.
+ */
+describe("the sibling app's waiting forms (Pau, 24 Nov 2026: \"fix\")", () => {
+  it("carries the sibling's count when it has forms waiting", async () => {
+    const bell = await bellFor(manager, async () => 2, async () => ({ app: "Other App", count: 3 }));
+    expect(bell?.waitingHr).toBe(2);
+    expect(bell?.waitingSiblingHr).toEqual({ app: "Other App", count: 3 });
+  });
+
+  it("leaves it off at zero, and keeps the bell when the sibling read throws", async () => {
+    expect((await bellFor(manager, async () => null, async () => ({ app: "Other App", count: 0 })))?.waitingSiblingHr).toBeUndefined();
+    const bell = await bellFor(manager, async () => 1, async () => {
+      throw new Error("sibling down");
+    });
+    expect(bell).not.toBeNull();
+    expect(bell?.waitingHr).toBe(1);
+    expect(bell?.waitingSiblingHr).toBeUndefined();
+  });
+});

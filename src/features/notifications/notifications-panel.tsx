@@ -64,7 +64,7 @@ export function NotificationsPanel({
           ) : null}
         </span>
       </div>
-      {footer ? <div className="flex items-center gap-4 border-b border-border px-4 py-2">{footer}</div> : null}
+      {footer ? <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-border px-4 py-2">{footer}</div> : null}
       {rows.length ? (
         <ul className="max-h-[min(26rem,70vh)] overflow-y-auto py-1" aria-label="Notifications">
           {rows.map((n) => (

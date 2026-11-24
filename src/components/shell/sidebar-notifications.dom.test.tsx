@@ -228,8 +228,35 @@ describe("\"can u please not remove the notification in the bar on the left side
      * every signed-in person now gets. The layout hands it this count (`waitingForHr`), and `bellFor` puts it on the
      * bar as `waitingHr`, so the count is followed through both files instead of looked for in the layout alone.
      */
-    expect(layout).toMatch(/bellFor\(identity, \(\) => waitingForHr\(identity\)\)/);
+    // Changed on purpose (24 Nov 2026, Pau: "fix"): bellFor now also takes the sibling app's count, so the call spans lines.
+    expect(layout).toMatch(/bellFor\(\s*identity,\s*\(\) => waitingForHr\(identity\),\s*\(\) => waitingForHrInSibling\(identity\),?\s*\)/);
     const bellFor = readFileSync(join(__dirname, "../../lib/notifications/bell-for.ts"), "utf8");
     expect(bellFor).toMatch(/waitingHr: waiting/);
+  });
+});
+
+/*
+ * Pau, 24 Nov 2026, told the bar counted only this app's forms and not the other app's approvals tab: "fix". The
+ * badge adds the forms waiting in the other app, and the panel links to that tab.
+ */
+describe("the other app's waiting forms on the bar (Pau, 24 Nov 2026: \"fix\")", () => {
+  const read: BellData = { unread: 0, items: [{ ...bell.items[0]!, readAt: new Date().toISOString() }] };
+
+  it("keeps the badge when only the other app has forms waiting, and links to its tab", () => {
+    renderRail({ bell: { ...read, waitingSiblingHr: { app: "Other App", count: 2 } } });
+    const bar = screen.getByRole("button", { name: "Notifications, 2 forms waiting for your approval" });
+    expect(bar.textContent).toContain("2");
+    fireEvent.click(bar);
+    expect(screen.getByRole("link", { name: /2 in Other App need your decision/ }).getAttribute("href")).toBe("/forms/monitoring?view=hr&app=sibling");
+    expect(screen.queryByRole("link", { name: /forms? still needs? your decision/ })).toBeNull();
+  });
+
+  it("adds both apps' forms, with a link to each tab", () => {
+    renderRail({ bell: { ...read, waitingHr: 2, waitingSiblingHr: { app: "Other App", count: 1 } } });
+    const bar = screen.getByRole("button", { name: "Notifications, 3 forms waiting for your approval" });
+    expect(bar.textContent).toContain("3");
+    fireEvent.click(bar);
+    expect(screen.getByRole("link", { name: /2 forms still need your decision/ }).getAttribute("href")).toBe("/forms/monitoring?view=hr");
+    expect(screen.getByRole("link", { name: /1 in Other App needs your decision/ }).getAttribute("href")).toBe("/forms/monitoring?view=hr&app=sibling");
   });
 });

@@ -125,7 +125,13 @@ export function NotificationBell({
    * pending inside"). Opening, reading or removing a notification does not decide the form, so the badge shows the
    * larger of the unread count and the forms still needing this approver; only deciding them takes it away.
    */
-  const waitingHr = Math.max(0, data.waitingHr ?? 0);
+  const waitingHere = Math.max(0, data.waitingHr ?? 0);
+  /*
+   * THE SIBLING APP'S TOO (Pau, 24 Nov 2026: "fix", of the bar counting only this app's forms): the forms still needing
+   * this approver on the sibling's approvals tab are added, so the badge stays while either app has one waiting.
+   */
+  const sibling = data.waitingSiblingHr && data.waitingSiblingHr.count > 0 ? data.waitingSiblingHr : null;
+  const waitingHr = waitingHere + (sibling?.count ?? 0);
   const count = Math.max(unread, waitingHr);
   const waitingWords = `${waitingHr} ${waitingHr === 1 ? "form" : "forms"} waiting for your approval`;
   const label = unread
@@ -202,16 +208,32 @@ export function NotificationBell({
           onMarkUnread={unreadOne}
           footer={
             waitingHr ? (
-              <Link
-                href="/forms/monitoring?view=hr"
-                onClick={() => {
-                  setOpen(false);
-                  onNavigate?.();
-                }}
-                className="text-xs font-semibold text-foreground underline-offset-4 hover:underline"
-              >
-                {waitingHr === 1 ? "1 form still needs your decision" : `${waitingHr} forms still need your decision`} →
-              </Link>
+              <>
+                {waitingHere ? (
+                  <Link
+                    href="/forms/monitoring?view=hr"
+                    onClick={() => {
+                      setOpen(false);
+                      onNavigate?.();
+                    }}
+                    className="text-xs font-semibold text-foreground underline-offset-4 hover:underline"
+                  >
+                    {waitingHere === 1 ? "1 form still needs your decision" : `${waitingHere} forms still need your decision`} →
+                  </Link>
+                ) : null}
+                {sibling ? (
+                  <Link
+                    href="/forms/monitoring?view=hr&app=sibling"
+                    onClick={() => {
+                      setOpen(false);
+                      onNavigate?.();
+                    }}
+                    className="text-xs font-semibold text-foreground underline-offset-4 hover:underline"
+                  >
+                    {sibling.count === 1 ? `1 in ${sibling.app} needs your decision` : `${sibling.count} in ${sibling.app} need your decision`} →
+                  </Link>
+                ) : null}
+              </>
             ) : undefined
           }
         />
