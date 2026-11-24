@@ -95,6 +95,34 @@ function asksHr(t: ReplayContext) {
 
 export const NOV23_HR_APPROVE_SENT_BACK_CASES: ReplayCase[] = [
   {
+    id: "nov24-hr-approval-what-have-i-approved",
+    title: 'HR: "what have I approved?": read_hr_approvals gives the approved form (the Approved tab); the salon director asking the same gets no HR list',
+    report: 'Owner, 24 Nov 2026: "a separate tab (not a link) for HR to see which forms she approved already for both sunnyt and bubble"',
+    status: "fixed",
+    fixFlags: FLAGS,
+    async run(t) {
+      if (!t.loopOn?.() || !hrApprovalEnabled()) return;
+      const id = await approvedFromSentBack(t);
+      const row = (t.rows?.("form_instances") ?? []).find((candidate) => candidate.id === id)!;
+      row.hr_approval_decided_by = HR_ACCOUNT;
+      t.addRows!("form_hr_approvers", [{ app_user_id: HR_ACCOUNT, revoked_at: null }]);
+      t.addRows!("app_users", [{ id: HR_ACCOUNT, email: "hr.quill@example.com", display_name: "Quill", status: "active" }]);
+
+      t.as("district_manager", GLOBAL, HR_ACCOUNT);
+      const result = asksHr(t);
+      await t.thread().say("what have I approved?");
+      const approved = result().approved_recently as Record<string, unknown>[] | undefined;
+      expect(approved, `HR's approved forms did not reach the model:\n${JSON.stringify(result())}`).toHaveLength(1);
+      expect(JSON.stringify(approved![0])).toMatch(/Corrective Action Form for Rosalind Penhallow/);
+      expect(approved![0]!.approved_by).toBe("You");
+
+      t.as("salon_director", KEARNEY);
+      const manager = asksHr(t);
+      await t.thread().say("what have I approved?");
+      expect(manager().approved_recently, "a salon director got HR's Approved list").toBeUndefined();
+    },
+  },
+  {
     id: "nov24-hr-approval-manager-edit-is-the-reply",
     title:
       'HR sent the form back; the salon director changes it on the card without a note; HR: "what\'s waiting on me?": the form is waiting for HR, "manager replied to changes", and HR was told',

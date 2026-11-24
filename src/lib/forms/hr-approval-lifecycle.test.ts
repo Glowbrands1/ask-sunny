@@ -35,7 +35,7 @@ vi.mock("@/lib/supabase/server", () => ({ getSupabaseAdmin: () => fakeSupabase(s
 
 const { ensureTemplateLibrary } = await import("./repository");
 const { createInstance, loadInstance, saveInstanceValues, finalizeInstance, HeldForHrError } = await import("./instances");
-const { sendForHrApproval, decideHrApproval, commentOnHrApproval, hrApprovalViewFor, finalizeGoesToHr, listHrQueue, listMyFormsWithHr, readHrApprovalsFor, recordHrEdit, HrApprovalError } =
+const { sendForHrApproval, decideHrApproval, commentOnHrApproval, hrApprovalViewFor, finalizeGoesToHr, listHrQueue, listMyFormsWithHr, readHrApprovalsFor, recordHrEdit, HrApprovalError, listHrApproved } =
   await import("./hr-approval");
 
 const CREATOR = "sd-thistle";
@@ -88,6 +88,35 @@ const bells = (to: string) => extra.app_notifications!.filter((row) => row.recip
  * the form?": "sure"). The agent loop's edit_form checks the person may edit it, then writes inside `withHrEditScope`
  * for that one form. The scope lets that form's writes past the hold; nothing outside it, and no other form.
  */
+/*
+ * HR'S APPROVED TAB (owner, 24 Nov 2026: "a separate tab (not a link) for HR to see which forms she approved already").
+ */
+describe("the forms HR approved", () => {
+  it("HR's Approved list: newest first, who approved it (\"You\" for this approver), HR only, archived left out", async () => {
+    const ACK = { acknowledgeUnverifiedPolicy: true } as const;
+    const first = await policyReview();
+    await sendForHrApproval(first.id, manager, null, ACK);
+    await decideHrApproval(first.id, hr, "approve", null);
+    const second = await policyReview();
+    await sendForHrApproval(second.id, manager, null, ACK);
+    await decideHrApproval(second.id, hr, "approve", null);
+    const waiting = await policyReview();
+    await sendForHrApproval(waiting.id, manager, null, ACK);
+
+    const rows = await listHrApproved(hr);
+    expect(rows.map((row) => row.id).sort()).toEqual([first.id, second.id].sort());
+    expect(rows[0]).toMatchObject({ createdByName: "Thistle", approvedByName: "You" });
+    expect(rows[0]!.line).toMatch(/at KC Wornall$/);
+    expect(await listHrApproved(manager), "a manager read HR's Approved list").toEqual([]);
+
+    const row = store.form_instances!.find((candidate) => (candidate as { id: string }).id === first.id) as Record<string, unknown>;
+    row.archived_at = "2026-11-24T00:00:00Z";
+    expect((await listHrApproved(hr)).map((approved) => approved.id)).toEqual([second.id]);
+    const read = await readHrApprovalsFor(HR, true);
+    expect(read.kind === "hr" && read.approved.map((approved) => approved.id)).toEqual([second.id]);
+  });
+});
+
 describe("the chat's edit of a form waiting for HR", () => {
   it("inside the scope for that form the save goes past the hold; outside it, or for another form, it is refused", async () => {
     const { withHrEditScope } = await import("./hr-edit-scope");

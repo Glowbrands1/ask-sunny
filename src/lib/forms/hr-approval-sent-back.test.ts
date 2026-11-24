@@ -122,9 +122,14 @@ async function sentBack(replied: boolean) {
 const bells = (to: string) => extra.app_notifications!.filter((row) => row.recipient_email === to);
 
 describe("HR approves a form it sent back, once the manager has replied (Pau)", () => {
-  it("Approve sits beside Add note for HR only, and only after the manager's reply", async () => {
+  /*
+   * CHANGED ON PURPOSE (owner, 24 Nov 2026): "check if HR approver has tha button to actually approve the form after goin
+   * gback and forth with manager ... can u keep the button "approve" there always". Approve no longer waits for the
+   * manager's reply; it is there for HR on every sent-back form, and never for the manager.
+   */
+  it("Approve sits beside Add note for HR only, before and after the manager's reply", async () => {
     const waiting = await sentBack(false);
-    expect((await hrApprovalViewFor(hr, waiting))?.canApproveSentBack, "no reply yet").toBe(false);
+    expect((await hrApprovalViewFor(hr, waiting))?.canApproveSentBack, "no reply yet: Approve is still there").toBe(true);
 
     await commentOnHrApproval(waiting.id, manager, REPLY_NOTE);
     const replied = (await loadInstance(waiting.id))!.instance;
@@ -157,12 +162,14 @@ describe("HR approves a form it sent back, once the manager has replied (Pau)", 
     expect(rung[0]).toMatchObject({ title: "HR approved your form", href: `/forms/hr-approval/${replied.id}` });
   });
 
-  it("refused before the manager replies, and for anyone but HR", async () => {
+  // Changed on purpose (owner, 24 Nov 2026: "keep the button "approve" there always"): no longer refused before the
+  // reply; still refused for anyone but HR.
+  it("refused for anyone but HR; HR may approve before the manager replies", async () => {
     const waiting = await sentBack(false);
-    await expect(decideHrApproval(waiting.id, hr, "approve", undefined)).rejects.toThrow(/once the manager replies/);
-    await commentOnHrApproval(waiting.id, manager, REPLY_NOTE);
     await expect(decideHrApproval(waiting.id, manager, "approve", undefined)).rejects.toBeInstanceOf(HrApprovalError);
     expect((await loadInstance(waiting.id))!.instance.status).toBe("draft");
+    const approved = await decideHrApproval(waiting.id, hr, "approve", undefined);
+    expect(approved).toMatchObject({ status: "finalized", hrApprovalState: "approved" });
   });
 
   /*
@@ -190,15 +197,19 @@ describe("HR approves a form it sent back, once the manager has replied (Pau)", 
     const stored = (await loadInstance(waiting.id))!.values.find((row) => row.fieldKey === "form_date")?.value ?? "";
     await saveInstanceValues(waiting.id, { values: { form_date: stored }, checked: {} }, CREATOR);
     await recordHrEdit(waiting.id, hr);
-    expect((await hrApprovalViewFor(hr, (await loadInstance(waiting.id))!.instance))?.canApproveSentBack).toBe(false);
-    await expect(decideHrApproval(waiting.id, hr, "approve", undefined)).rejects.toThrow(/once the manager replies with a note, edits it, or sends it again/);
+    // Not the reply: still "waiting on the manager", not counted (HR's Approve is there regardless since 24 Nov 2026).
+    const [row] = await listHrQueue(hr);
+    expect(row).toMatchObject({ id: waiting.id, managerReplied: false });
+    expect((await hrQueueSummary(hr))?.pending).toBe(0);
   });
 
   it("control: HR's own note after sending it back is not the manager's reply", async () => {
     const waiting = await sentBack(false);
     await commentOnHrApproval(waiting.id, hr, "Any update?");
-    expect((await hrApprovalViewFor(hr, (await loadInstance(waiting.id))!.instance))?.canApproveSentBack).toBe(false);
-    await expect(decideHrApproval(waiting.id, hr, "approve", undefined)).rejects.toThrow(/once the manager replies/);
+    // Not the reply: still "waiting on the manager", not counted (HR's Approve is there regardless since 24 Nov 2026).
+    const [row] = await listHrQueue(hr);
+    expect(row).toMatchObject({ id: waiting.id, managerReplied: false });
+    expect((await hrQueueSummary(hr))?.pending).toBe(0);
   });
 
   /*
@@ -219,12 +230,11 @@ describe("HR approves a form it sent back, once the manager has replied (Pau)", 
     expect(rung[0]).toMatchObject({ title: "HR sent your form back for changes" });
     expect(String(rung[0]!.body)).toContain("Also add the second date.");
 
-    // Back to "Waiting on the manager": not counted, no Approve until the manager replies again.
+    // Back to "Waiting on the manager": not counted; HR's Approve stays (changed on purpose, owner, 24 Nov 2026).
     const [row] = await listHrQueue(hr);
     expect(row).toMatchObject({ id: replied.id, state: "changes_requested", managerReplied: false });
     expect((await hrQueueSummary(hr))?.pending).toBe(0);
-    expect((await hrApprovalViewFor(hr, again))?.canApproveSentBack).toBe(false);
-    await expect(decideHrApproval(replied.id, hr, "approve", undefined)).rejects.toThrow(/once the manager replies/);
+    expect((await hrApprovalViewFor(hr, again))?.canApproveSentBack).toBe(true);
   });
 
   it("control: reject still needs the form to be waiting for HR", async () => {
@@ -232,9 +242,12 @@ describe("HR approves a form it sent back, once the manager has replied (Pau)", 
     await expect(decideHrApproval(replied.id, hr, "reject", "No")).rejects.toThrow(/not waiting for HR approval/);
   });
 
-  it("control: a sent-back form with no reply cannot be sent back again", async () => {
+  // Changed on purpose (owner, 24 Nov 2026: HR's buttons are always there on a sent-back form): it may be sent back
+  // again with a note before any reply; a note is still required.
+  it("a sent-back form with no reply may be sent back again, with a note", async () => {
     const waiting = await sentBack(false);
-    await expect(decideHrApproval(waiting.id, hr, "send_back", "Again")).rejects.toThrow(/once the manager replies/);
+    await expect(decideHrApproval(waiting.id, hr, "send_back", " ")).rejects.toThrow(/Add a note/);
+    expect((await decideHrApproval(waiting.id, hr, "send_back", "Again")).hrApprovalState).toBe("changes_requested");
   });
 });
 

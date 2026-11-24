@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { SIBLING_HR_APP, siblingAppUrl } from "@/lib/config/app-switcher";
 import { ACTIVE_BRAND } from "@/lib/brand";
 import type { FormsActor } from "@/lib/forms/access";
-import { listHrQueue } from "@/lib/forms/hr-approval";
+import { listHrApproved, listHrQueue } from "@/lib/forms/hr-approval";
 import { listHrApprovers } from "@/lib/forms/hr-approval-approvers";
 import { hrApprovalEnabled, type HrApprovalState } from "@/lib/forms/hr-approval-rules";
 
@@ -35,6 +35,7 @@ import { SIBLING_HR_HEADERS, signSiblingHrRequest } from "./sibling-hr-signature
 
 const SIBLING_HR_SECRET_ENV = "SIBLING_HR_SECRET";
 const FORM_LIMIT = 200;
+const APPROVED_LIMIT = 50;
 const TIMEOUT_MS = 4_000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const EMAIL = /^[^\s@]{1,100}@[^\s@]{1,150}$/;
@@ -52,11 +53,23 @@ export interface PartnerHrForm {
   path: string;
 }
 
+/** A form HR approved in the answering app (owner, 24 Nov 2026: the Approved tab, for both apps). */
+export interface PartnerApprovedForm {
+  line: string;
+  from: string;
+  approvedAt: string | null;
+  /** "You" when this approver approved it; otherwise the approver's name, or "HR". */
+  approvedBy: string;
+  path: string;
+}
+
 export interface PartnerHrAnswer {
   /** The answering app's own name, so the asking app never has to spell the sibling's name. */
   app: string;
   approver: boolean;
   forms: PartnerHrForm[];
+  /** The forms HR approved there, newest first (`listHrApproved`); an older sibling answers without it. */
+  approved: PartnerApprovedForm[];
 }
 
 /* ------------------------------------------------------------------ answering --- */
@@ -64,7 +77,7 @@ export interface PartnerHrAnswer {
 /** What this app answers the sibling for one approver's email. Empty, `approver: false`, for anybody else. */
 export async function hrQueueForPartner(emailInput: unknown, now: Date = new Date()): Promise<PartnerHrAnswer> {
   const app = ACTIVE_BRAND.productName;
-  const none: PartnerHrAnswer = { app, approver: false, forms: [] };
+  const none: PartnerHrAnswer = { app, approver: false, forms: [], approved: [] };
   if (!hrApprovalEnabled() || typeof emailInput !== "string") return none;
   const email = emailInput.trim().toLowerCase();
   if (!EMAIL.test(email)) return none;
@@ -74,10 +87,17 @@ export async function hrQueueForPartner(emailInput: unknown, now: Date = new Dat
 
   // `listHrQueue` reads only `hrApprover`: this account was just shown to be an active approver here.
   const actor = { id, role: null, verified: true, scope: null, visibility: null, hrApprover: true } as unknown as FormsActor;
-  const rows = await listHrQueue(actor, now);
+  const [rows, approved] = await Promise.all([listHrQueue(actor, now), listHrApproved(actor, APPROVED_LIMIT)]);
   return {
     app,
     approver: true,
+    approved: approved.map((row) => ({
+      line: row.line,
+      from: row.createdByName,
+      approvedAt: row.approvedAt,
+      approvedBy: row.approvedByName,
+      path: `/forms/hr-approval/${row.id}`,
+    })),
     forms: rows.slice(0, FORM_LIMIT).map((row) => ({
       line: row.line,
       from: row.createdByName,
@@ -98,12 +118,17 @@ export interface SiblingHrForm extends Omit<PartnerHrForm, "path"> {
   href: string;
 }
 
+export interface SiblingApprovedForm extends Omit<PartnerApprovedForm, "path"> {
+  /** The absolute address of the form's review page in the sibling app. */
+  href: string;
+}
+
 export type SiblingHrQueue =
   /** No SIBLING_HR_SECRET here: the sibling tab is not offered at all. */
   | { status: "off" }
   /** The sibling did not answer, or answered something this app does not accept. */
   | { status: "error" }
-  | { status: "ok"; app: string; approver: boolean; forms: SiblingHrForm[] };
+  | { status: "ok"; app: string; approver: boolean; forms: SiblingHrForm[]; approved: SiblingApprovedForm[] };
 
 const STATES: readonly HrApprovalState[] = ["pending", "changes_requested", "rejected", "approved"];
 
@@ -138,7 +163,24 @@ export function parseSiblingHrAnswer(raw: unknown, baseUrl: string): SiblingHrQu
       href: `${baseUrl}/forms/hr-approval/${id}`,
     });
   }
-  return { status: "ok", app, approver: body.approver, forms };
+  const approved: SiblingApprovedForm[] = [];
+  const approvedRaw = Array.isArray((raw as { approved?: unknown }).approved) ? ((raw as { approved: unknown[] }).approved) : [];
+  for (const item of approvedRaw.slice(0, APPROVED_LIMIT)) {
+    if (!item || typeof item !== "object") continue;
+    const form = item as Record<string, unknown>;
+    const line = str(form.line, 300);
+    const path = str(form.path, 80);
+    const id = path?.startsWith("/forms/hr-approval/") ? path.slice("/forms/hr-approval/".length) : null;
+    if (!line || !id || !UUID.test(id)) continue;
+    approved.push({
+      line,
+      from: str(form.from, 120) ?? "A manager",
+      approvedAt: str(form.approvedAt, 40),
+      approvedBy: str(form.approvedBy, 120) ?? "HR",
+      href: `${baseUrl}/forms/hr-approval/${id}`,
+    });
+  }
+  return { status: "ok", app, approver: body.approver, forms, approved };
 }
 
 /**
