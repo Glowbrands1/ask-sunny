@@ -1,6 +1,6 @@
 "use client";
 
-import { X } from "lucide-react";
+import { Mail, X } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { cn } from "@/lib/utils/cn";
@@ -29,6 +29,7 @@ export function NotificationsPanel({
   onDismiss,
   onClearAll,
   onMarkAllRead,
+  onMarkUnread,
   footer,
   emptyText = "Nothing yet. New notifications will show here.",
 }: {
@@ -40,6 +41,8 @@ export function NotificationsPanel({
   /** Clear all; absent with `onDismiss`. */
   onClearAll?: () => void;
   onMarkAllRead: () => void;
+  /** The envelope on a read row (Pau, 24 Nov 2026): puts it back to unread so it stays. Absent where the store cannot. */
+  onMarkUnread?: (id: string) => void;
   /** Links under the header ("See all"), when the bell has them. */
   footer?: ReactNode;
   emptyText?: string;
@@ -66,7 +69,7 @@ export function NotificationsPanel({
         <ul className="max-h-[min(26rem,70vh)] overflow-y-auto py-1" aria-label="Notifications">
           {rows.map((n) => (
             <li key={n.id} className="group flex items-start transition-colors hover:bg-hover-surface">
-              <button type="button" onClick={() => onOpen(n.id)} className={cn("flex min-w-0 flex-1 items-start gap-3 py-2.5 pl-4 text-left", onDismiss && !n.pinned ? null : "pr-4")}>
+              <button type="button" onClick={() => onOpen(n.id)} className={cn("flex min-w-0 flex-1 items-start gap-3 py-2.5 pl-4 text-left", (onDismiss || (onMarkUnread && n.read)) && !n.pinned ? null : "pr-4")}>
                 <span aria-hidden className={cn("mt-1.5 size-2 shrink-0 rounded-full", n.read ? "bg-transparent" : "bg-accent")} />
                 <span className="min-w-0 flex-1">
                   <span className={cn("block text-sm text-foreground", n.read ? "font-medium" : "font-bold")}>
@@ -82,6 +85,17 @@ export function NotificationsPanel({
                   ) : null}
                 </span>
               </button>
+              {onMarkUnread && n.read && !n.pinned ? (
+                <button
+                  type="button"
+                  aria-label={`Mark as unread: ${n.title}`}
+                  title="Mark as unread"
+                  onClick={() => onMarkUnread(n.id)}
+                  className="my-1.5 ml-1 flex size-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] text-muted-foreground hover:bg-hover-surface hover:text-foreground"
+                >
+                  <Mail className="size-4" aria-hidden />
+                </button>
+              ) : null}
               {onDismiss && !n.pinned ? (
               <button
                 type="button"
