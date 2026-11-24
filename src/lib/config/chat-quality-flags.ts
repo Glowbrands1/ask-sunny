@@ -5068,3 +5068,16 @@ export function formDateIsTodayEnabled(): boolean {
 export function priorFormsUpToTodayEnabled(): boolean {
   return envFlag("PRIOR_FORMS_UP_TO_TODAY_ENABLED");
 }
+
+/**
+ * LOOP_CARD_CITES_CONDUCT_LINE (QA's live test, 24 Nov 2026; default off; same flag in both apps): "Draft a corrective
+ * action form for a till shortage for Test Employee" carded "Standards of Conduct …, JBA Policy Manual p.12", the
+ * heading's page, while the saved draft cites the Register / Bank shortages line on its own page. On: a loop card citing
+ * the Standards of Conduct for an incident the manual lists on its own line (a shortage, theft, insubordination,
+ * disrespect, absence from the work area) reads "Standards of Conduct — <the line>, JBA Policy Manual p.<the line's
+ * page>" (`forms/specific-policy-topics.ts` conductLineCitation). Off, as before.
+ */
+export function loopCardCitesConductLineEnabled(): boolean {
+  return envFlag("LOOP_CARD_CITES_CONDUCT_LINE_ENABLED");
+}
+
