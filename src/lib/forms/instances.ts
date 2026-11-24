@@ -1589,16 +1589,31 @@ export class InstanceProtectedError extends Error {}
 /**
  * Deletes a form outright, values and events with it.
  *
- * ONLY A FORM THAT WAS NEVER FINALIZED. A finalized form is a signed HR
- * document; destroying one silently is the thing this function exists to
- * refuse. There is no archive (Pau, 23 Nov 2026): a finalized form stays on file.
+ * A DRAFT, for anybody the caller's route has authorized. A FINALIZED form only
+ * when the caller passes `allowFinalized`, and only the live finalized form: the
+ * route passes it for an administrator (Pau, 24 Nov 2026: "why can't delete? in
+ * bubbles" on a finalized Corrective Action; answer: administrators can). Nothing
+ * else passes it: not the chat, not the agent loop, not the bulk delete, not the
+ * demo sweep, so they still refuse a finalized form.
  *
- * The values and events go by CASCADE rather than by three deletes here — the
- * foreign keys declare it, so there is no ordering to get wrong and no window
- * in which values outlive their form. A revision pointing at this row has its
- * `revises_instance_id` set to null by the same declaration.
+ * A form that was REPLACED by a newer version (`revised`) is never deleted, even
+ * by an administrator: it is the older half of a chain that still points at the
+ * form that replaced it. Deleting the newer version is allowed, and puts the
+ * older one back to `finalized` (`restorePredecessor`) so the chain is not left
+ * pointing at nothing.
+ *
+ * A deleted finalized form is not silent: the BEFORE DELETE trigger writes the
+ * deletion record (who, role, how, when, and a snapshot of the form and its
+ * values) into `form_instance_deletions`, which nobody can change. The values go
+ * by CASCADE; the guard that freezes a finalized form's values does not stop it,
+ * because the form is already gone when the cascade runs (checked on Postgres 16).
+ * A revision pointing at this row has its `revises_instance_id` set to null.
  */
-export async function deleteInstance(id: string, by?: DeletionActor): Promise<InstanceRow> {
+export async function deleteInstance(
+  id: string,
+  by?: DeletionActor,
+  options: { allowFinalized?: boolean } = {},
+): Promise<InstanceRow> {
   const supabase = getSupabaseAdmin();
 
   const { data: row, error: readError } = await supabase
@@ -1610,16 +1625,55 @@ export async function deleteInstance(id: string, by?: DeletionActor): Promise<In
   if (!row) throw new Error("That form no longer exists.");
 
   const instance = mapInstance(row);
-  if (instance.status !== "draft") {
+  if (instance.status === "revised") {
     throw new InstanceProtectedError(
-      `This form is ${instance.status}, so it cannot be deleted. Finalized forms are kept on file.`,
+      "This form was replaced by a newer version, so it cannot be deleted. Finalized forms are kept on file. Delete the newer version instead, if that is what you mean.",
+    );
+  }
+  if (instance.status !== "draft" && !options.allowFinalized) {
+    throw new InstanceProtectedError(
+      `This form is ${instance.status}, so it cannot be deleted. Finalized forms are kept on file; only an administrator can delete one.`,
     );
   }
 
   await stampDeletion([id], by);
   const { error } = await supabase.from("form_instances").delete().eq("id", id);
   if (error) throw new Error(`Could not delete that form: ${error.message}`);
+  if (instance.status === "finalized") await restorePredecessor(instance);
   return instance;
+}
+
+/**
+ * A finalized revision was deleted: the form it replaced is the live one again.
+ *
+ * Only an original that is `revised` AND whose latest `revised` / `reevaluated`
+ * event names the deleted revision is moved back, and only to `finalized` (the
+ * values were never writable in between). A failure here is logged, not thrown:
+ * the delete the administrator confirmed has happened, and the older form is
+ * still on file, still readable and still frozen.
+ */
+async function restorePredecessor(deleted: InstanceRow): Promise<void> {
+  const originalId = deleted.revisesInstanceId;
+  if (!originalId) return;
+  try {
+    const original = await loadInstance(originalId);
+    if (!original || original.instance.status !== "revised") return;
+    const replacedBy = [...original.events]
+      .reverse()
+      .find((event) => event.kind === "revised" || event.kind === "reevaluated")?.detail?.revisionId;
+    if (replacedBy !== deleted.id) return;
+    const { error } = await getSupabaseAdmin()
+      .from("form_instances")
+      .update({ status: "finalized" })
+      .eq("id", originalId)
+      .eq("status", "revised");
+    if (error) throw new Error(error.message);
+  } catch (error) {
+    console.error("forms: the earlier version could not be put back to finalized after its revision was deleted", {
+      originalId,
+      reason: error instanceof Error ? error.message : "unknown",
+    });
+  }
 }
 
 /**

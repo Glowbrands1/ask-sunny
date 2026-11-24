@@ -47,6 +47,26 @@ function asks(t: ReplayContext, role: string, scope: unknown) {
   return () => (model.views.flatMap((view) => view.results.filter((result) => result.tool === "read_form_deletions")).at(-1)?.output ?? {}) as Record<string, unknown>;
 }
 
+/*
+ * AN ADMINISTRATOR'S DELETE OF A FINALIZED FORM (port from the sibling app; Pau, 24 Nov 2026: "why cant delete? in bubbles",
+ * a finalized Corrective Action in the Form Monitoring; administrators may delete one now). It is the same record, so the
+ * same question must be answerable: the model is told the form was finalized when it went, and who deleted it. Garnet
+ * Fairbrook and the deleting administrator's account are invented.
+ */
+const FINALIZED_REPORT = "Pau, 24 Nov 2026 (sibling app): administrators may delete a finalized Corrective Action, and the record says so";
+const FINALIZED_ASKED = "who deleted Garnet Fairbrook's form";
+
+async function deletedFinalized(t: ReplayContext): Promise<void> {
+  vi.setSystemTime(new Date("2026-11-24T18:00:00Z"));
+  t.directory([TESTY]);
+  t.forms().push({
+    id: "d24-final", template_id: "tpl-dpoa", template_key: "dpoa", template_name: "Corrective Action Form", employee_name: "Garnet Fairbrook",
+    status: "finalized", form_date: "2026-09-11", finalized_at: "2026-09-11T16:00:00Z", location_id: "loc-0309", location_name: "Kearney",
+    created_by: "manager-a", created_at: "2026-09-11T15:00:00Z", updated_at: "2026-09-11T16:00:00Z",
+  });
+  await deleteInstance("d24-final", { id: "admin-vesper-lane", role: "admin", via: "route" }, { allowFinalized: true });
+}
+
 export const NOV20_AGENT_LOOP_FORM_DELETION_RECORD_CASES: ReplayCase[] = [
   {
     id: "nov20-agent-loop-admin-asks-who-deleted-the-form",
@@ -83,6 +103,30 @@ export const NOV20_AGENT_LOOP_FORM_DELETION_RECORD_CASES: ReplayCase[] = [
       const output = result();
       expect(output.refused).toMatch(/administrators only/);
       expect(JSON.stringify(output), "the record reached a manager").not.toMatch(/dm-quill-harrow|Form Monitoring/);
+    },
+  },
+  {
+    id: "nov24-agent-loop-admin-asks-who-deleted-the-finalized-form",
+    title: `an admin: "${FINALIZED_ASKED}": read_form_deletions gives a finalized form an administrator deleted: finalized, by whom, and that it was Form Monitoring`,
+    report: FINALIZED_REPORT,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      await deletedFinalized(t);
+      expect(t.rows?.("form_instance_deletions") ?? [], "the delete left no record").toHaveLength(1);
+      t.as("admin", GLOBAL);
+      const model = loopStandIn((view: LoopView): LoopDecision =>
+        lastResult(view, "read_form_deletions") ? { text: "Here is what the deletion record shows." } : { tool: "read_form_deletions", input: { employee_name: "Garnet Fairbrook" } },
+      );
+      t.loopModel!(model);
+      await t.thread().say(FINALIZED_ASKED);
+      const output = (model.views.flatMap((view) => view.results.filter((result) => result.tool === "read_form_deletions")).at(-1)?.output ?? {}) as Record<string, unknown>;
+      expect(output.refused, "an admin was refused").toBeUndefined();
+      expect(output.deletions, "the record did not reach the model").toEqual([
+        expect.objectContaining({ form: "Corrective Action Form", employee: "Garnet Fairbrook", status_when_deleted: "finalized", deleted_by_role: "admin", how: "Form Monitoring" }),
+      ]);
+      expect(String((output.deletions as Record<string, unknown>[])[0]!.deleted_by)).toMatch(/admin-vesper-lane/);
     },
   },
 ];
