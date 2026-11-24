@@ -92,7 +92,8 @@ jobs:
       matrix:
         # QA 15 Nov: quarter 2 passed 9 min after batch G's cases (the replay pack is now in fifths: children 5-9)
         # 22 Nov 2026: the replay pack is in ninths (children 5-13): eighth 7 of 8 timed out at 540 s on ask-sunny#1229
-        # 24 Nov 2026: the replay pack is in twelfths (children 5-16): ninth 6 of 9 timed out at 540 s on ask-sunny#1306
+        # 24 Nov 2026: in tenths (children 5-14): ninth 5 of 9 timed out at 540 s on ask-sunny#1313, twice
+        # 24 Nov 2026: in twelfths (children 5-16): ninth 6 of 9 timed out at 540 s on ask-sunny#1306
         parity-child: [guards, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
     steps:
       - uses: actions/checkout@v4
