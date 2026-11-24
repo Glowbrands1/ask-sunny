@@ -31,7 +31,11 @@ import { SidebarNav } from "./sidebar";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/forms/monitoring",
+  // The rail's Notifications bar opens a notification with the router.
+  useRouter: () => ({ push: vi.fn() }),
 }));
+// The bar's mark-as-read is a server action; the rail tests only check where the bar is.
+vi.mock("@/features/notifications/actions", () => ({ markNotificationsReadAction: async () => ({ ok: true }) }));
 
 // The rail also renders the profile menu, which reaches into the app store.
 // That is not what is under test here, and mounting the whole store to check
@@ -294,5 +298,33 @@ describe("the DM L10 tab", () => {
     render(<SidebarNav />);
     expect(screen.queryByRole("link", { name: "DM L10" })).toBeNull();
     expect(screen.queryByText("Meetings")).toBeNull();
+  });
+});
+
+describe("the Notifications bar on the rail", () => {
+  /*
+   * Pau, 23 Nov 2026, showing the sibling app's rail: "i dont want a bell, i need a bar". On desktop the notifications
+   * are a labelled "Notifications" row at the top of the rail. The phone drawer does not repeat it: the top bar keeps
+   * the bell there. Who gets it at all is the layout's decision (`bellForLayout`): null means no bar.
+   */
+  const bar = () => screen.queryByRole("button", { name: /^Notifications/ });
+  const bell = { unread: 1, items: [{ id: "n1", kind: "form_hr_approval_request", title: "A form is waiting for your approval", body: "", href: "/forms/monitoring?view=hr", createdAt: new Date().toISOString(), readAt: null }] };
+
+  it("is a labelled Notifications bar with the unread count on the desktop rail", () => {
+    mocked.value = session("owner", false);
+    render(<SidebarNav variant="desktop" bell={bell} />);
+    expect(bar()?.textContent).toBe("Notifications1");
+  });
+
+  it("is not repeated in the phone drawer, where the top bar has the bell", () => {
+    mocked.value = session("owner", false);
+    render(<SidebarNav variant="drawer" bell={bell} />);
+    expect(bar()).toBeNull();
+  });
+
+  it("is absent when the layout gives this person no notifications", () => {
+    mocked.value = session("owner", false);
+    render(<SidebarNav variant="desktop" bell={null} />);
+    expect(bar()).toBeNull();
   });
 });

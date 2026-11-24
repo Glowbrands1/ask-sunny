@@ -69,12 +69,31 @@ export function withoutCardLines(reply: string): string {
 
 /** The text without the app's own notes ("[app note: …]"): never the manager's to see. */
 export function withoutAppNotes(text: string): string {
-  return text.replace(/[ \t]*\[app note:[^\]\n]*\]/gi, "").replace(/\n{3,}/g, "\n\n").trim();
+  /* Port of Ask Bubbles #1058 (U21 round 3): the history's "[card shown under this reply: …]" line is the app's too, never shown if copied. */
+  return text.replace(/[ \t]*\[(?:app note:|card shown under this reply:)[^\]\n]*\]/gi, "").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/**
+ * Port of Ask Bubbles #1058 (its QA's live round 3, 22 Nov 2026, U21 T10–T12): with a card reply's lines reduced to
+ * "[card shown: <form>]", the model no longer knew what the card on screen held. It called propose_form with only the field
+ * it was changing ("previous coaching: …" → prior_actions alone), so the card lost its account, policy and prior actions.
+ * The stand-in line says what the card held, as data (label = "value", never a bold card line), from the app's own card
+ * lines in that reply; ", as you said" is the reply's wording, not the card's.
+ */
+function heldOnCard(reply: string): string {
+  return cardLines(reply)
+    .map(({ label, line }) => {
+      const value = line.replace(/\*\*[^*]+?\*\*:?/, "").replace(/,?\s*as you said\.?\s*$/i, "").replace(/\*\*/g, "").trim();
+      return value ? `${label} = "${value.replace(/"/g, "'").replace(/[[\]]/g, "")}"` : "";
+    })
+    .filter(Boolean)
+    .join("; ");
 }
 
 /** An earlier reply as the model's history shows it: no app notes, and a card reply's card lines as one stand-in line. */
 export function historyReply(content: string, cardForm: string | null): string {
   const bare = withoutAppNotes(content);
   if (!cardForm) return withoutCardLines(bare);
-  return `${withoutCardLines(bare)}\n\n[card shown under this reply: ${cardForm}, made by propose_form; the card itself is on the manager's screen]`;
+  const held = heldOnCard(bare);
+  return `${withoutCardLines(bare)}\n\n[card shown under this reply: ${cardForm}, made by propose_form; the card itself is on the manager's screen${held ? `; it held: ${held}` : ""}]`;
 }

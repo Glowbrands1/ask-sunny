@@ -43,6 +43,20 @@ import { rulesBookText } from "./rules-book";
  * follow_up_on_create (say the follow-up date Create sets; never deny a follow-up the form will have). It reads the same
  * under every config; nothing else changed.
  *
+ * Re-taken on purpose on 22 Nov 2026 (the 266-chat run's 036, QA's step 3): the Card replies line for
+ * payroll_question_only now says the card's own payroll answer (its first sentence), never "ticked" for a No, and the
+ * amount line only when there is an amount or reason. It reads the same under every config; nothing else changed.
+ *
+ * Re-taken on purpose on 23 Nov 2026 (Pau's job-title rule via QA): a Card replies line for the job title (Woven's by
+ * default; an explicit instruction with job_title_evidence overrides it; job_title_as_you_said), title_differs offers
+ * another title, and card.job_title is read back for job_title_as_you_said. It reads the same under every config;
+ * nothing else changed.
+ *
+ * Re-taken on purpose on 23 Nov 2026 (the 266-chat run's 115, QA's item 14 (a)): one Forms on file line says the date
+ * an employee signed the JBA Policy Manual is kept only on each Corrective Action's own box, how to read it (find_past_forms,
+ * read_form the latest, say which form) and what to say when none has it. It reads the same under every config; nothing
+ * else changed.
+ *
  * Re-taken on purpose on 22 Nov 2026 (the 266-chat run's 039/241, QA's step 3): the Card replies line for the account
  * now reads its label from card.account_label, the form's own (Details of Coaching on a coaching form), never
  * "Observation of Offense" on every incident card. It reads the same under every config; nothing else changed.
@@ -173,6 +187,32 @@ import { rulesBookText } from "./rules-book";
  * exit_dates line: an exit card's reads_back is the only exit lines the reply reads back, every one is saved at Create,
  * and a detail added after the card reaches the form only through propose_form. It reads the same under every config;
  * nothing else changed.
+ * Re-taken on purpose on 22 Nov 2026 (port from Ask Bubbles #1047, B6 exit reason): the exit_unset line now says to pass
+ * exit_reason, in the manager's words with exit_reason_evidence, when the manager says why the person is leaving, and none
+ * when no reason was given. It reads the same under every config; nothing else changed.
+ * Re-taken on purpose on 22 Nov 2026 (port from Ask Bubbles #1052, l6): the same exit_unset line now names a
+ * termination's "terminated for <x>" as a reason too, says exit_reason is passed on a resignation or a termination, and
+ * never to offer to add a reason the model can pass. It reads the same under every config; nothing else changed.
+ *
+ * Re-taken on purpose on 22 Nov 2026 (port from Ask Bubbles #1053, U23 T7): the reword_paused line and the "New facts
+ * with a reword ask" line now give "I can't reword the whole account, but I can change any line you give me — tell me
+ * what to change." instead of "Rewording isn't available yet …", and never "not available yet". Rewording stays paused.
+ * It reads the same under every config; nothing else changed.
+ *
+ * Re-taken on purpose on 22 Nov 2026 (port from Ask Bubbles #1048, A7): one line was added before the salon_from_woven
+ * line: salon_said is the manager's own words for the card's salon, so the reply never calls them unrecognised or says
+ * the staff system placed the card. It reads the same under every config; nothing else changed.
+ *
+ * Re-taken on purpose on 23 Nov 2026 (port from Ask Bubbles #1058, U21 round 3): one line was added after the "changes
+ * THAT card" line: a propose_form call is the whole card; the card on screen is what the history's latest "[card shown
+ * under this reply: … it held: …]" says it held, and proposing it again passes every value it held with only the
+ * manager's change. It reads the same under every config; nothing else changed.
+ *
+ * Re-taken on purpose on 23 Nov 2026 (port of Ask Bubbles #1081, its tester's A9): one line was added after the "If
+ * find_staff returns several people with the name" line: the which-one question is asked once (find_staff's ask_exactly,
+ * the short one when asked_before), nothing is said to be kept on a card that does not exist, no pronoun is used for an
+ * unsettled person, and a surname, full name or salon picks the person and the card is proposed at once with the account.
+ * It reads the same under every config; nothing else changed.
  *
  * Re-taken on purpose on 21 Nov 2026 (Pau: a search of past forms by topic, FORM_TOPIC_SEARCH_ENABLED): one Replies line
  * was added: forms on file about a topic ("any forms about cash handling at my <place>s this month?", "who's been written
