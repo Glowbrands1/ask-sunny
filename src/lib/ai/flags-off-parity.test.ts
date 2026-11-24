@@ -1294,7 +1294,9 @@ describe("new flags default off and wrappers are inert", () => {
           // above); and "its so small pending approval, make it red button and animated shaking if theres a pending" —
           // HR's tab in hr-approval-lists.tsx and its .hr-pending-shake in globals.css (below), off under reduced motion.
           // The Approve button and the tab are behind the same flag: off, no approval data, so neither renders. Print
-          // shows on any finalized form and opens the same server PDF as Download PDF.
+          // shows on any finalized form and opens the same server PDF as Download PDF. And the sibling app's approvals
+          // as a tab next to Pending HR approval (owner, 23 Nov 2026: "i dont want the sunny approval in a different page
+          // and link, just a tab pls"): shown only to an HR approver with SIBLING_HR_SECRET set, so off, never.
           ":(exclude)src/features/forms/hr-approval-panel.tsx",
           ":(exclude)src/features/forms/hr-approval-lists.tsx",
           ":(exclude)src/features/forms/hr-approval-screen.tsx",

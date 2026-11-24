@@ -30,15 +30,6 @@ export function leadershipHubUrl(): string {
   return urlOr(process.env.NEXT_PUBLIC_LEADERSHIP_HUB_URL, DEFAULT_LEADERSHIP_HUB_URL).replace(/\/+$/, "");
 }
 
-/**
- * Ask Bubbles' Forms Register on its "Pending HR approval" view: the "Bubbles approvals ↗" tab on Form Monitoring
- * (Pau, 23 Nov 2026). The switcher's own Bubbles address plus Bubbles' route; a plain link, nothing handed across.
- */
-export function bubblesHrApprovalsUrl(): string {
-  const bubbles = switchableApps().find((app) => app.id === "ask-bubbles")!;
-  return `${bubbles.url.replace(/\/+$/, "")}/forms/monitoring?view=hr`;
-}
-
 export type SwitchableApp = {
   id: "ask-sunny" | "ask-bubbles" | "leadership-hub";
   emoji: string;
@@ -85,4 +76,20 @@ export function switchableApps(
     });
   }
   return apps;
+}
+
+/**
+ * HR'S QUEUE IN THE SIBLING APP (owner, 23 Nov 2026; `src/lib/partner/sibling-hr-queue.ts`). This app's id, which it
+ * signs its requests with, and the sibling's id, the one caller `/api/partner/hr-queue` answers. Ids only: the
+ * sibling's display name comes from its own answer.
+ */
+export const SIBLING_HR_APP = {
+  thisAppId: "ask-sunny",
+  siblingAppId: "ask-bubbles",
+} as const;
+
+/** The sibling app's address without a trailing slash, read at call time (server only). */
+export function siblingAppUrl(): string {
+  const configured = process.env.NEXT_PUBLIC_ASK_BUBBLES_URL?.trim();
+  return (configured ? configured : DEFAULT_ASK_BUBBLES_URL).replace(/\/+$/, "");
 }

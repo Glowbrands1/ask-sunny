@@ -41,6 +41,10 @@ interface Row {
 }
 
 let rows: Row[] = [];
+/** What the mocked writers were asked, for the leak tests below. */
+const calls: { exported: string[]; saveOptions: unknown[] } = { exported: [], saveOptions: [] };
+/** The revision "Edit as new draft" finds already open (someone else's, waiting for HR), when set. */
+let openRevision: Row | null = null;
 
 function instanceRow(row: Row) {
   return {
@@ -160,8 +164,13 @@ async function load(viewer: Viewer, env: { flag?: boolean } = {}) {
       return rows.map(instanceRow);
     },
     findDemoInstances: async () => ({ deletable: [], protected: [] }),
-    markExported: async () => undefined,
-    saveInstanceValues: async () => ({ rejected: [] }),
+    markExported: async (id: string) => {
+      calls.exported.push(id);
+    },
+    saveInstanceValues: async (_id: string, _values: unknown, _actor: string, options: unknown) => {
+      calls.saveOptions.push(options);
+      return { rejected: [] };
+    },
     InstanceProtectedError: class extends Error {},
     UnverifiedPolicyError: class extends Error {},
     RequiredFieldsBlankError: class extends Error {},
@@ -171,11 +180,16 @@ async function load(viewer: Viewer, env: { flag?: boolean } = {}) {
   vi.doMock("@/lib/forms/revision-chain", () => ({
     loadRevisionHistory: async () => ({ entries: [] }),
     marksFor: () => ({}),
-    reviseFinalizedForm: async () => null,
+    reviseFinalizedForm: async () => (openRevision ? instanceRow(openRevision) : null),
     RevisionReasonRequiredError: class extends Error {},
   }));
   vi.doMock("@/lib/forms/revision-history", () => ({ revisionLabel: () => null }));
+  const rules = await import("@/lib/forms/hr-approval-rules");
   vi.doMock("@/lib/forms/hr-approval", () => ({
+    // #1303's rule, built from the real rules: HR, or a verified creator or sender, while the form is held for HR.
+    mayEditWhileWithHr: (actor: { id: string; verified?: boolean; hrApprover?: boolean }, instance: Parameters<typeof rules.isCreatorOrSender>[1] & { hrApprovalState?: string | null }) =>
+      rules.heldForHr((instance.hrApprovalState ?? null) as Parameters<typeof rules.heldForHr>[0]) &&
+      (actor.hrApprover === true || (actor.verified === true && rules.isCreatorOrSender(actor, instance))),
     hrApprovalViewFor: async () => null,
     finalizeGoesToHr: async () => false,
     sendForHrApproval: async () => null,
@@ -205,6 +219,9 @@ beforeEach(() => {
     { id: ORDINARY, createdBy: "sd-wornall-2", status: "finalized", hrApprovalState: null },
     { id: SENT_FOR_ASSISTANT, createdBy: "asd-wornall", status: "draft", hrApprovalState: "pending", requestedBy: CREATOR },
   ];
+  calls.exported = [];
+  calls.saveOptions = [];
+  openRevision = null;
   vi.resetModules();
 });
 afterEach(() => {
@@ -284,5 +301,81 @@ describe("the hide rule sits before the global early return", () => {
     const body = source.slice(source.indexOf("export function actorMaySeeInstance"));
     expect(body.indexOf("hiddenWhileAwaitingHr(actor, instance)")).toBeGreaterThan(-1);
     expect(body.indexOf("hiddenWhileAwaitingHr(actor, instance)")).toBeLessThan(body.indexOf("visibility.level"));
+  });
+});
+
+/*
+ * ============================================================================
+ * THE LEAK AUDIT (owner, 23 Nov 2026): "are u sure this doesnt leak information, that other people cant see what a
+ * certain manager created? make sure history also in chat people dont see what a certain person created pls."
+ * ============================================================================
+ */
+const REVISION = "77777777-7777-4777-8777-777777777777";
+const json = (body: unknown) =>
+  new Request("https://app.test/api/forms/instances/x", { method: "POST", body: JSON.stringify(body), headers: { "content-type": "application/json" } });
+
+describe("Edit as new draft never hands back someone else's revision waiting for HR", () => {
+  beforeEach(() => {
+    // The salon director opened a revision of the finalized form and sent it to HR.
+    openRevision = { id: REVISION, createdBy: CREATOR, status: "draft", hrApprovalState: "pending" };
+  });
+
+  it("Wornall's district manager gets one plain refusal: no form, no name, nothing about HR", async () => {
+    const { detail } = await load("Wornall's district manager", ON);
+    const response = await detail.POST(json({ action: "revise" }), params(ORDINARY));
+    expect(response.status).toBe(409);
+    const body = await response.text();
+    expect(JSON.parse(body)).toEqual({ error: "This form can't be edited right now.", code: "FORM_NOT_EDITABLE_NOW" });
+    expect(body).not.toContain(REVISION);
+    expect(body).not.toContain(CREATOR);
+  });
+
+  it("its creator gets their own revision, as before", async () => {
+    const { detail } = await load("the creator (Wornall salon director)", ON);
+    const response = await detail.POST(json({ action: "revise" }), params(ORDINARY));
+    expect(response.status).toBe(200);
+    expect(((await response.json()) as { instance: { id: string } }).instance.id).toBe(REVISION);
+  });
+});
+
+describe("an approved form's HR columns reach only its creator, its senders and HR", () => {
+  it.each(READS_WORNALL)("%s", async (viewer) => {
+    const knows = KNOWS.includes(viewer);
+    const { detail, list } = await load(viewer, ON);
+    const one = ((await (await detail.GET(req("GET"), params(APPROVED))).json()) as { instance: Record<string, unknown> }).instance;
+    const listed = ((await (await list.GET(new Request("https://app.test/api/forms/instances"))).json()) as {
+      instances: Record<string, unknown>[];
+    }).instances.find((entry) => entry.id === APPROVED)!;
+    for (const row of [one, listed]) {
+      if (knows) {
+        expect(row.hrApprovalState).toBe("approved");
+      } else {
+        expect(row.hrApprovalState, "an approved form says it went through HR").toBeNull();
+        expect(row.hrApprovalRequestedBy).toBeNull();
+        expect(row.hrApprovalRequestedAt).toBeNull();
+        expect(row.hrApprovalSenders).toEqual([]);
+      }
+    }
+  });
+});
+
+describe("HR's downloads and edits stay out of the form's general history", () => {
+  it("a PDF of a form waiting for HR is not recorded as an export; an approved one is", async () => {
+    const { pdf } = await load("HR (a district manager on the approver list)", ON);
+    expect((await pdf.GET(req("GET"), params(WAITING))).status).toBe(200);
+    expect(calls.exported).toEqual([]);
+    expect((await pdf.GET(req("GET"), params(APPROVED))).status).toBe(200);
+    expect(calls.exported).toEqual([APPROVED]);
+  });
+
+  it("HR's edit of a form they sent back goes to the approval history only; the creator's does not", async () => {
+    const patch = (body: unknown) =>
+      new Request("https://app.test/api/forms/instances/x", { method: "PATCH", body: JSON.stringify(body), headers: { "content-type": "application/json" } });
+    const hr = await load("HR (a district manager on the approver list)", ON);
+    await hr.detail.PATCH(patch({ values: { observation: "x" } }), params(SENT_BACK));
+    expect(calls.saveOptions.at(-1)).toMatchObject({ hrHistoryOnly: true });
+    const creator = await load("the creator (Wornall salon director)", ON);
+    await creator.detail.PATCH(patch({ values: { observation: "y" } }), params(SENT_BACK));
+    expect(calls.saveOptions.at(-1)).toMatchObject({ hrHistoryOnly: false });
   });
 });

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { bubblesHrApprovalsUrl, switchableApps } from "./app-switcher";
+import { switchableApps } from "./app-switcher";
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -32,11 +32,5 @@ describe("app switcher config", () => {
     expect(
       switchableApps({ showLeadershipHub: false }).map((a) => a.id),
     ).toEqual(["ask-sunny", "ask-bubbles"]);
-  });
-
-  it("\"Bubbles approvals ↗\" opens Ask Bubbles' own Pending HR approval view (Pau, 23 Nov 2026)", () => {
-    expect(bubblesHrApprovalsUrl()).toBe("https://askbubbles.vercel.app/forms/monitoring?view=hr");
-    vi.stubEnv("NEXT_PUBLIC_ASK_BUBBLES_URL", "https://bubbles.example.test/");
-    expect(bubblesHrApprovalsUrl()).toBe("https://bubbles.example.test/forms/monitoring?view=hr");
   });
 });

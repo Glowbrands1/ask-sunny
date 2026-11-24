@@ -837,6 +837,12 @@ export async function saveInstanceValues(
      * the actor may edit it sets it.
      */
     readonly pastHrHold?: boolean;
+    /**
+     * HR editing a form that is with them in any state (pending, sent back, rejected) that is not their own: the edit
+     * is recorded in the approval history only, never the general one (owner, 23 Nov 2026: no leaks). The route sets
+     * it after checking the actor is an approver and neither the creator nor a sender.
+     */
+    readonly hrHistoryOnly?: boolean;
   } = {},
 ): Promise<{
   rejected: { key: string; reason: string }[];
@@ -906,7 +912,7 @@ export async function saveInstanceValues(
    * HR read: the form's general history is served to every reader once it is approved, and naming HR there would tell
    * them it went through HR (owner, 23 Nov 2026).
    */
-  if (!hrEdit) {
+  if (!hrEdit && options.hrHistoryOnly !== true) {
     await recordEvent(instanceId, "edited", actor, {
       fields: Object.keys(changedValues).length,
       groups: Object.keys(changedChecked).length,
