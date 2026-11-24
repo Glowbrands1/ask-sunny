@@ -18,6 +18,8 @@ export interface PanelRow {
   /** The meta line ("5 min ago", "· <meeting> · 6 d ago"). */
   readonly meta: string;
   readonly read: boolean;
+  /** Stays until its matter is settled (HR's "waiting for your approval"): no ×, and a line saying why. */
+  readonly pinned?: boolean;
 }
 
 export function NotificationsPanel({
@@ -64,7 +66,7 @@ export function NotificationsPanel({
         <ul className="max-h-[min(26rem,70vh)] overflow-y-auto py-1" aria-label="Notifications">
           {rows.map((n) => (
             <li key={n.id} className="group flex items-start transition-colors hover:bg-hover-surface">
-              <button type="button" onClick={() => onOpen(n.id)} className={cn("flex min-w-0 flex-1 items-start gap-3 py-2.5 pl-4 text-left", onDismiss ? null : "pr-4")}>
+              <button type="button" onClick={() => onOpen(n.id)} className={cn("flex min-w-0 flex-1 items-start gap-3 py-2.5 pl-4 text-left", onDismiss && !n.pinned ? null : "pr-4")}>
                 <span aria-hidden className={cn("mt-1.5 size-2 shrink-0 rounded-full", n.read ? "bg-transparent" : "bg-accent")} />
                 <span className="min-w-0 flex-1">
                   <span className={cn("block text-sm text-foreground", n.read ? "font-medium" : "font-bold")}>
@@ -75,9 +77,12 @@ export function NotificationsPanel({
                   {n.body ? <span className="mt-0.5 line-clamp-3 text-xs break-words text-muted-foreground">{n.body}</span> : null}
                   {/* Normal contrast (Pau: the faint meta line was nearly unreadable). */}
                   <span className="mt-0.5 block text-xs text-muted-foreground">{n.meta}</span>
+                  {n.pinned ? (
+                    <span className="mt-0.5 block text-xs text-muted-foreground">Stays here until HR approves, rejects or sends it back.</span>
+                  ) : null}
                 </span>
               </button>
-              {onDismiss ? (
+              {onDismiss && !n.pinned ? (
               <button
                 type="button"
                 aria-label={`Remove notification: ${n.title}`}

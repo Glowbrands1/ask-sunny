@@ -4,7 +4,7 @@
 import { useState } from "react";
 import { Button, cx, inputClass } from "@/features/l10/ui/ui";
 import { inWeek, initials, ownerColor, weekBounds, weekRange } from "@/features/l10/lib/bloom";
-import { addWeek, cellTone, formatValue, newestFirst, newItemId, parseCell, setCell, shortDate, type CellTone } from "@/features/l10/lib/doc";
+import { addWeek, cellTone, formatValue, isNaCell, newestFirst, newItemId, parseCell, setCell, shortDate, type CellTone } from "@/features/l10/lib/doc";
 import type { MeetingDoc, MetricFormat, ScorecardRow } from "@/features/l10/lib/types";
 import { SD_SALON_METRICS } from "@/features/l10/lib/config";
 
@@ -27,8 +27,9 @@ const BLOOM_TONE: Record<CellTone, string> = {
   plain: "bg-white text-ink",
 };
 
-function Cell({ row, week, label, onCommit, bloom = false }: { row: ScorecardRow; week: number; label: string; onCommit: (v: number | null) => void; bloom?: boolean }) {
+function Cell({ row, week, label, onCommit, bloom = false }: { row: ScorecardRow; week: number; label: string; onCommit: (v: number | null, na: boolean) => void; bloom?: boolean }) {
   const value = row.weeks[week] ?? null;
+  const na = isNaCell(row, week);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [invalid, setInvalid] = useState(false);
@@ -40,7 +41,7 @@ function Cell({ row, week, label, onCommit, bloom = false }: { row: ScorecardRow
         setInvalid(true);
         return;
       }
-      if (parsed.value !== value) onCommit(parsed.value);
+      if (parsed.value !== value || !!parsed.na !== na) onCommit(parsed.value, !!parsed.na);
       setInvalid(false);
       setEditing(false);
     };
@@ -67,25 +68,26 @@ function Cell({ row, week, label, onCommit, bloom = false }: { row: ScorecardRow
       />
       {invalid && (
         <span role="alert" className="text-[11px] font-semibold text-[#8a1c1c]">
-          Not a number. Esc to cancel.
+          Not a number. Type a number, N/A, or leave it empty. Esc to cancel.
         </span>
       )}
       </span>
     );
   }
-  const tone = cellTone(row, value);
+  const tone = na ? "plain" : cellTone(row, value);
   return (
     <button
       type="button"
       onClick={() => {
-        setDraft(value == null ? "" : String(value));
+        setDraft(na ? "N/A" : value == null ? "" : String(value));
         setEditing(true);
       }}
-      aria-label={`${row.metric} ${label}: ${formatValue(value, row.format)}`}
+      aria-label={`${row.metric} ${label}: ${na ? "N/A" : formatValue(value, row.format)}`}
       data-tone={tone}
-      className={cx("min-h-9 w-full min-w-[64px] rounded-md px-1.5 py-1 text-right font-mono text-sm whitespace-nowrap hover:ring-2 hover:ring-gold/60", bloom ? BLOOM_TONE[tone] : TONE[tone])}
+      data-na={na || undefined}
+      className={cx("min-h-9 w-full min-w-[64px] rounded-md px-1.5 py-1 text-right font-mono text-sm whitespace-nowrap hover:ring-2 hover:ring-gold/60", bloom ? BLOOM_TONE[tone] : TONE[tone], na && "text-muted")}
     >
-      {bloom && value == null ? "" : formatValue(value, row.format)}
+      {na ? "N/A" : bloom && value == null ? "" : formatValue(value, row.format)}
     </button>
   );
 }
@@ -257,7 +259,7 @@ export function Scorecard({
                   <td className="px-3 py-2 font-mono whitespace-nowrap text-muted">{r.goal}</td>
                   {order.map((i) => (
                     <td key={i} className="px-1 py-1">
-                      <Cell row={r} week={i} label={shortDate(doc.weekEndings[i]) || `week ${i + 1}`} onCommit={(v) => edit((d) => setCell(d, r.id, i, v))} />
+                      <Cell row={r} week={i} label={shortDate(doc.weekEndings[i]) || `week ${i + 1}`} onCommit={(v, na) => edit((d) => setCell(d, r.id, i, v, na))} />
                     </td>
                   ))}
                 </tr>
@@ -379,7 +381,7 @@ function BloomTable({ doc, edit, order, today, salons = [] }: { doc: MeetingDoc;
                 <td className="px-3 py-2 font-mono whitespace-nowrap text-muted">{r.goal}</td>
                 {order.map((i) => (
                   <td key={i} data-current-week={current(i) ? "" : undefined} className="px-1 py-1">
-                    <Cell bloom row={r} week={i} label={weekRange(doc.weekEndings[i]) || `week ${i + 1}`} onCommit={(v) => edit((d) => setCell(d, r.id, i, v))} />
+                    <Cell bloom row={r} week={i} label={weekRange(doc.weekEndings[i]) || `week ${i + 1}`} onCommit={(v, na) => edit((d) => setCell(d, r.id, i, v, na))} />
                   </td>
                 ))}
               </tr>

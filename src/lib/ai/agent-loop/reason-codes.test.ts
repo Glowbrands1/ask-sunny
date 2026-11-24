@@ -84,6 +84,9 @@ const KNOWN = new Set([
   // Added on purpose (owner, 24 Nov 2026, chat edits of a form waiting for HR): anybody but its creator, its senders and
   // HR is refused with the reason (edit_form).
   "held_for_hr",
+  // Added on purpose (owner, 24 Nov 2026: "the chat should say "waiting for HR approval" instead of a general save
+  // error"): edit_form on a form waiting for HR writes nothing and says it is waiting for HR approval.
+  "waiting_for_hr_approval",
 ]);
 
 /** A line that returns a refusal: `error:` followed by a string, a template or a named message (not `error: Boolean(...)`). */

@@ -68,6 +68,13 @@ export function awaitingHr(state: HrApprovalState | null | undefined): boolean {
   return state === "pending" || state === "changes_requested" || state === "rejected";
 }
 
+/**
+ * What the chat says when it is asked to change a form that is waiting for HR (owner, 24 Nov 2026: "the chat should say
+ * "waiting for HR approval" instead of a general save error"). The chat never writes a held form; the form itself does.
+ */
+export const WAITING_FOR_HR_CHAT_REPLY =
+  "This form is waiting for HR approval, so I didn't change it from chat. You can still edit it on the form itself, and HR will see the updated version.";
+
 /** Only `pending` freezes the form for its creator; sent back or rejected, they may change it and send it again. */
 export function heldForHr(state: HrApprovalState | null | undefined): boolean {
   return state === "pending";

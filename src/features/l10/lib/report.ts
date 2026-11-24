@@ -1,5 +1,5 @@
 // Copied from the Leadership Hub (src/lib/meetings/report.ts); keep in step with it. See src/features/l10/README.md.
-import { cellTone, displayName, formatDuration, formatHeld, formatValue, rockSections, shortDate, type CellTone } from "./doc";
+import { cellTone, displayName, isNaCell, formatDuration, formatHeld, formatValue, rockSections, shortDate, type CellTone } from "./doc";
 import { childrenOf, readSeats, type Seat } from "./seats";
 import type { Issue, MeetingDoc, RecapRow, Rock, ScorecardRow, Vto } from "./types";
 import { hasReference, hasRocks, type Roster } from "./config";
@@ -189,6 +189,7 @@ export function metricsSection(doc: Pick<MeetingDoc, "scorecard" | "weekEndings"
     const owner = text(r.owner) || "Not assigned";
     const cells = idx.map((i) => {
       const v = r.weeks?.[i] ?? null;
+      if (Array.isArray(r.weeks) && isNaCell(r, i)) return { text: "N/A", tone: "plain" as CellTone };
       return { text: formatValue(v, r.format), tone: cellTone(r, v) };
     });
     byOwner.set(owner, [...(byOwner.get(owner) ?? []), { metric: r.metric, goal: r.goal, cells }]);

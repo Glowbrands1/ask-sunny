@@ -2,6 +2,8 @@ import { editDistance as closeEditDistance } from "@/lib/forms/close-spelling";
 import { whichFormChoice, whichFormEntry, type WhichFormEntry, type WhichFormRecord } from "./which-form";
 import "server-only";
 import type { FormsActor } from "@/lib/forms/access";
+import { heldForHr, WAITING_FOR_HR_CHAT_REPLY } from "@/lib/forms/hr-approval-rules";
+import { inHrEditScope } from "@/lib/forms/hr-edit-scope";
 
 import { keptPlanSteps } from "@/lib/forms/stated-plan-steps";
 import { withReadersLineBox } from "@/lib/forms/readers-line-headings";
@@ -6627,6 +6629,17 @@ export async function editForm(
     if (nameQuote !== null) {
       const refusedName = nameCorrectionRefusal(loaded.instance.employeeName, values.employee_name!, nameQuote, roster, { keepAsTyped });
       if (refusedName) return refusedName;
+    }
+    /*
+     * HARD GUARD, WAITING FOR HR (owner, 24 Nov 2026: "the chat should say "waiting for HR approval" instead of a general
+     * save error"): a form sent for HR approval is frozen to the chat's writer (`editableDraft`), so the edit is refused
+     * here, before anything is written, with the words the card uses: it is waiting for HR approval, and it is changed on
+     * the form itself, where HR sees the update. Never a generic save failure.
+     */
+    // The creator's, a sender's or HR's checked chat edit (`withHrEditScope`, owner, 24 Nov 2026: the chat edits it) goes on.
+    if (loaded.instance.status === "draft" && heldForHr(loaded.instance.hrApprovalState ?? null) && !inHrEditScope(loaded.instance.id)) {
+      const note = "Tell the manager exactly this: the form is waiting for HR approval, so it was not changed from chat; they can change it on the form itself and HR sees the updated version. Never call it a save error.";
+      return { reason_code: "waiting_for_hr_approval", error: WAITING_FOR_HR_CHAT_REPLY, nothing_written: true, note };
     }
     /*
      * HARD GUARD: a finalized form is never written. A change to one opens a NEW draft revising it, by the same code
