@@ -54,6 +54,7 @@ The Hub's page code runs unchanged except:
 | Assistant @-mentions: everyone the person shares a meeting with | this meeting's people | one meeting here |
 | Assistant: web search / fetch tool version 20260318 | 20260209 | the newest in `@ai-sdk/anthropic` for AI SDK 6; see PARITY.md |
 | IDS ranking ("Everyone's top three", Rank buttons, Priority badges) | off (`RANKING = false` in `Ids.tsx`) | the team works IDS as in Bloom Growth, without ranking (14 Nov 2026) |
+| To-do due date: a date box when adding in the list layout only; never changed after | a date box when adding and a way to change it after, in both layouts (`Todos.tsx`, `lib/todo-due.ts`); the list shows "Due Fri, Nov 27", the Bloom layout keeps MM-DD-YYYY; none keeps "Next wk" | a user could not give their To-Dos a due date in the DM L10 (Pau, 20 Nov 2026); the same `dueDate` field the Hub already saves |
 
 When the Hub's meeting page changes, re-copy the file and re-apply the row above that concerns it. The full audit, file by file, is in [PARITY.md](./PARITY.md).
 

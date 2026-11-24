@@ -10,15 +10,19 @@ import {
   goalSummary,
   rankLocations,
   type GoalStatus,
-  type RankMetric,
   type ReviewGoalContext,
 } from "@/lib/reviews/goal";
+import { StatusChip } from "@/components/ui/marquee";
+import { reviewsHref, type ReviewFilters } from "@/lib/reviews/filters";
 import {
-  reviewsHref,
-  WEEK_CURRENT,
-  WEEK_MONTH,
-  type ReviewFilters,
-} from "@/lib/reviews/filters";
+  formatLongMonth,
+  isSingleMonthPeriod,
+  leaderboardPeriodLabel,
+  leaderboardPeriodOf,
+  leaderboardPeriodView,
+  leaderboardPeriodWeek,
+} from "@/lib/reviews/leaderboard-period";
+import { formatProgressMonth, type MonthlyProgress } from "@/lib/reviews/monthly-progress";
 import type { LocationRollup } from "@/lib/reviews/types";
 import { cn } from "@/lib/utils/cn";
 import { formatNumber } from "@/lib/utils/format";
@@ -40,8 +44,26 @@ import {
  * Asked for by Gwen Harlan (October 2026): "I want the team to be able
  * to hop on the leaderboard and see how many each store has gotten to their
  * required 10 reviews/month." So the leaderboard is now a RANKING by qualifying
- * reviews month to date, each salon drawn against the monthly target, with the
- * week's figure beside it and a toggle to rank by the week instead.
+ * reviews month to date, each salon drawn against the monthly target.
+ *
+ * MONTHLY ONLY (November 2026). Pau: "for google reviews can you make it
+ * monthly not weekly … i mean salon leaderboard". The "This week" column and
+ * the "Rank by this week" toggle are gone; the goal is monthly, so the board
+ * is too. Salons tied on the month still share a rank.
+ *
+ * THIS MONTH, L3, L6 OR YTD (Pau, 23 Nov 2026: "they dont want week, they want
+ * per month, per 3 months per 6 months and YTD pls and then let it show in the
+ * data below"). The toolbar's Period control picks the window; the ranking,
+ * the figure, the bar, the status and the summary above all follow it. L3 / L6
+ * / YTD are the Month by month table's totals against the target times the
+ * months covered (`lib/reviews/leaderboard-period.ts`); a closed window has no
+ * pace, so its status is Goal met or Below goal.
+ *
+ * ONE MONTH (Pau, 23 Nov 2026: "pls add the per month for both like September
+ * october november and make sure it syncs in the data below"). Period also
+ * lists each full month; picking October ranks by October's figure from the
+ * Month by month table against the monthly target, and every row's figure,
+ * bar, status and link follow it.
  *
  * WHAT IT NO LONGER SHOWS: Unanswered, "Replies waiting", All this week and
  * Last week. The response queue is the Needs Response view's job.
@@ -71,37 +93,95 @@ const STATUS_FILTERS: { key: "all" | GoalStatus; label: string }[] = [
  */
 const ROW_GRID =
   "grid gap-x-3 gap-y-2 px-4 grid-cols-[2.75rem_minmax(0,1fr)_minmax(0,1fr)] " +
-  "[grid-template-areas:'rank_salon_salon'_'rank_status_status'_'rank_week_month'_'rank_bar_bar'] " +
-  "lg:grid-cols-[3.5rem_minmax(0,1.5fr)_5.5rem_7rem_minmax(11rem,1.5fr)_7.5rem] " +
-  "lg:[grid-template-areas:'rank_salon_week_month_bar_status'] lg:items-center";
+  "[grid-template-areas:'rank_salon_salon'_'rank_status_status'_'rank_month_month'_'rank_bar_bar'] " +
+  "lg:grid-cols-[3.5rem_minmax(0,1.5fr)_7rem_minmax(11rem,1.5fr)_7.5rem] " +
+  "lg:[grid-template-areas:'rank_salon_month_bar_status'] lg:items-center";
+
+type BoardStatus = GoalStatus | "below";
+
+const BELOW_GOAL_LABEL = "Below goal";
 
 export function ReviewsLeaderboard({
-  locations,
+  locations: monthLocations,
   filters,
-  goal,
+  goal: monthGoal,
+  monthly = null,
   canManageAnchors,
 }: {
   locations: LocationRollup[];
   filters: ReviewFilters;
   goal: ReviewGoalContext;
+  /** The month-by-month figures L3, L6, YTD and single months are read from. */
+  monthly?: MonthlyProgress | null;
   canManageAnchors: boolean;
 }) {
-  const [metric, setMetric] = useState<RankMetric>("month");
-  const [status, setStatus] = useState<"all" | GoalStatus>("all");
+  const [status, setStatus] = useState<"all" | BoardStatus>("all");
   const [district, setDistrict] = useState("all");
   const [search, setSearch] = useState("");
 
+  const period = leaderboardPeriodOf(filters.week);
+  const view = useMemo(
+    () => leaderboardPeriodView(period, monthLocations, monthGoal, monthly),
+    [period, monthLocations, monthGoal, monthly],
+  );
+  const locations = view?.locations ?? monthLocations;
+  const goal = view?.goal ?? monthGoal;
+  const paced = view?.paced ?? true;
+  const periodWeek = leaderboardPeriodWeek(period);
+  const periodLabel = leaderboardPeriodLabel(period);
+  const singleMonth = isSingleMonthPeriod(period);
+
   const districts = useMemo(() => districtsOf(locations), [locations]);
-  const ranked = useMemo(() => rankLocations(locations, metric), [locations, metric]);
+  const ranked = useMemo(() => rankLocations(locations, "month"), [locations]);
   const summary = useMemo(() => goalSummary(locations, goal), [locations, goal]);
 
-  const counts: Record<"all" | GoalStatus, number> = {
+  /* A closed window has no pace: below the target is "Below goal", never "On pace". */
+  const statusOf = (location: LocationRollup): BoardStatus => {
+    const state = goalStatus(location, goal);
+    return paced || state === "met" || state === "not_counting" ? state : "below";
+  };
+
+  const counts: Record<"all" | BoardStatus, number> = {
     all: locations.length,
     met: summary.atGoal,
-    on_pace: summary.onPace,
-    behind_pace: summary.behindPace,
+    on_pace: paced ? summary.onPace : 0,
+    behind_pace: paced ? summary.behindPace : 0,
+    below: paced ? 0 : summary.onPace + summary.behindPace,
     not_counting: summary.notCounting,
   };
+  const statusFilters: { key: "all" | BoardStatus; label: string }[] = paced
+    ? STATUS_FILTERS
+    : [
+        { key: "all", label: "All" },
+        { key: "met", label: GOAL_STATUS_LABEL.met },
+        { key: "below", label: BELOW_GOAL_LABEL },
+        { key: "not_counting", label: GOAL_STATUS_LABEL.not_counting },
+      ];
+
+  if (!view) {
+    return (
+      <p className="rounded-[var(--radius-lg)] border border-border bg-surface p-4 text-[12px] text-muted-foreground shadow-raised">
+        {singleMonth && monthly
+          ? `No figures are held for ${periodLabel}. Choose another month, or This month to date, in Period.`
+          : `The ${periodLabel} figures could not be loaded just now. Choose This month to date in Period, or reload to try again.`}
+      </p>
+    );
+  }
+
+  const periodSpan = singleMonth
+    ? formatLongMonth(period)
+    : view.monthKeys.length > 0
+      ? `${formatProgressMonth(view.monthKeys[0])} – ${formatProgressMonth(
+          view.monthKeys[view.monthKeys.length - 1],
+          true,
+        )}`
+      : "";
+  const columnLabel =
+    period === "month"
+      ? "Month to date"
+      : singleMonth
+        ? formatProgressMonth(period, true)
+        : period.toUpperCase();
 
   /*
    * THE RANK IS DECIDED BEFORE ANY FILTER. Narrowing to one district shows
@@ -110,7 +190,7 @@ export function ReviewsLeaderboard({
    */
   const shown = ranked.filter(
     ({ location }) =>
-      (status === "all" || goalStatus(location, goal) === status) &&
+      (status === "all" || statusOf(location) === status) &&
       (district === "all" || location.district === district) &&
       matchesSalon(location, search),
   );
@@ -120,7 +200,8 @@ export function ReviewsLeaderboard({
 
   return (
     <div className="flex min-w-0 flex-col gap-4">
-      {/* -------------------------------------------- where the month is -- */}
+      {/* ------------------------------------------- where the period is -- */}
+      {paced ? (
       <section className="grid min-w-0 gap-4 rounded-[var(--radius-lg)] border border-border bg-surface p-4 shadow-raised md:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] md:items-center">
         <div className="min-w-0">
           <p className="eyebrow">
@@ -164,38 +245,49 @@ export function ReviewsLeaderboard({
           </li>
         </ul>
       </section>
+      ) : (
+        <section className="grid min-w-0 gap-4 rounded-[var(--radius-lg)] border border-border bg-surface p-4 shadow-raised md:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] md:items-center">
+          <div className="min-w-0">
+            <p className="eyebrow">
+              {singleMonth ? `${periodLabel} · full month` : `${periodLabel} · ${periodSpan}`}
+              {period === "ytd" ? ", to date" : ""}
+            </p>
+            <p className="mt-1.5 flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+              <span className="display-figure text-[30px] text-foreground">
+                {summary.atGoal} of {summary.counting}
+              </span>
+              <span className="text-[12px] text-muted-foreground">
+                {summary.counting === 1 ? "salon" : "salons"} {singleMonth ? "reached" : summary.counting === 1 ? "has reached" : "have reached"}{" "}
+                {goal.target}
+                {singleMonth ? (
+                  " in the month"
+                ) : (
+                  <>
+                    {" "}
+                    · {monthGoal.target} a month × {view.months}{" "}
+                    {view.months === 1 ? "month" : "months"}
+                  </>
+                )}
+              </span>
+            </p>
+          </div>
+          <ul className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11.5px] text-muted-foreground">
+            <li className="flex items-center gap-1.5">
+              <span aria-hidden className="h-2 w-3.5 rounded-[2px] bg-measure-data" />
+              {columnLabel} vs {goal.target}
+            </li>
+            <li className="flex items-center gap-1.5">
+              <span aria-hidden className="h-2 w-3.5 rounded-[2px] bg-status-outperforming" />
+              Goal met
+            </li>
+          </ul>
+        </section>
+      )}
 
       {/* -------------------------------------------------- the ranking -- */}
       <section className="min-w-0 overflow-hidden rounded-[var(--radius-lg)] border border-border bg-surface shadow-raised">
         <div className="flex flex-col gap-2.5 border-b border-border-hairline px-4 py-3.5">
           <div className="flex flex-wrap items-center gap-2">
-            <div
-              role="group"
-              aria-label="Rank by"
-              className="inline-flex rounded-[22px] border border-border-strong bg-surface p-0.5 shadow-soft"
-            >
-              {(
-                [
-                  ["month", "Rank by month to date"],
-                  ["week", "Rank by this week"],
-                ] as const
-              ).map(([key, label]) => (
-                <button
-                  key={key}
-                  type="button"
-                  aria-pressed={metric === key}
-                  onClick={() => setMetric(key)}
-                  className={cn(
-                    "rounded-[20px] px-3 py-[5px] text-[11.5px] font-bold whitespace-nowrap transition-colors",
-                    metric === key
-                      ? "bg-selected text-selected-foreground"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
             {districts.length > 1 ? (
               <TableSelect
                 label="District"
@@ -215,7 +307,7 @@ export function ReviewsLeaderboard({
 
           {locations.length > 1 ? (
             <div role="group" aria-label="Filter by status" className="flex flex-wrap gap-1.5">
-              {STATUS_FILTERS.filter((entry) => entry.key === "all" || counts[entry.key] > 0).map(
+              {statusFilters.filter((entry) => entry.key === "all" || counts[entry.key] > 0).map(
                 (entry) => (
                   <button
                     key={entry.key}
@@ -247,15 +339,14 @@ export function ReviewsLeaderboard({
         >
           <span className="[grid-area:rank]">Rank</span>
           <span className="[grid-area:salon]">Salon</span>
-          <span className="text-right [grid-area:week]">This week</span>
-          <span className="text-right [grid-area:month]">Month to date</span>
+          <span className="text-right [grid-area:month]">{columnLabel}</span>
           <span className="[grid-area:bar]">Progress to {goal.target}</span>
           <span className="[grid-area:status]">Status</span>
         </div>
 
-        <ol aria-label={`Salons ranked by qualifying reviews ${metric === "month" ? "month to date" : "this week"}`}>
+        <ol aria-label={`Salons ranked by qualifying reviews ${period === "month" ? "month to date" : singleMonth ? `in ${periodSpan}` : `${columnLabel}, ${periodSpan}`}`}>
           {shown.map(({ location, rank, tied }) => {
-            const state = goalStatus(location, goal);
+            const state = statusOf(location);
             const counting = rank !== null;
             return (
               <li
@@ -291,7 +382,7 @@ export function ReviewsLeaderboard({
                       ...filters,
                       tab: "reviews",
                       storeCode: location.storeCode,
-                      week: WEEK_CURRENT,
+                      week: periodWeek,
                     })}
                     className="flex min-h-6 items-center text-[12.5px] font-black text-foreground hover:underline"
                   >
@@ -312,34 +403,9 @@ export function ReviewsLeaderboard({
                   </span>
                 </div>
 
-                <div className="[grid-area:week] lg:text-right">
-                  <span className="block text-[8px] font-black tracking-[0.1em] text-muted-foreground uppercase lg:hidden">
-                    This week
-                  </span>
-                  {counting ? (
-                    <Link
-                      href={reviewsHref({
-                        ...filters,
-                        tab: "reviews",
-                        storeCode: location.storeCode,
-                        week: WEEK_CURRENT,
-                        qualifying: "yes",
-                      })}
-                      className={cn(
-                        "inline-flex min-h-6 min-w-6 items-center text-[15px] font-black tabular-nums hover:underline lg:justify-end",
-                        location.qualifyingThisWeek > 0 ? "text-foreground" : "text-muted-foreground",
-                      )}
-                    >
-                      {location.qualifyingThisWeek > 0 ? `+${location.qualifyingThisWeek}` : "0"}
-                    </Link>
-                  ) : (
-                    <span className="text-[15px] font-black text-muted-foreground">—</span>
-                  )}
-                </div>
-
                 <div className="[grid-area:month] lg:text-right">
                   <span className="block text-[8px] font-black tracking-[0.1em] text-muted-foreground uppercase lg:hidden">
-                    Month to date
+                    {columnLabel}
                   </span>
                   {counting ? (
                     <Link
@@ -347,7 +413,7 @@ export function ReviewsLeaderboard({
                         ...filters,
                         tab: "reviews",
                         storeCode: location.storeCode,
-                        week: WEEK_MONTH,
+                        week: periodWeek,
                         qualifying: "yes",
                       })}
                       className="display-figure text-[30px] text-foreground hover:underline"
@@ -367,7 +433,11 @@ export function ReviewsLeaderboard({
                 </div>
 
                 <div className="[grid-area:status]">
-                  <GoalStatusChip location={location} goal={goal} />
+                  {state === "below" ? (
+                    <StatusChip tone="belowMarket">{BELOW_GOAL_LABEL}</StatusChip>
+                  ) : (
+                    <GoalStatusChip location={location} goal={goal} />
+                  )}
                 </div>
               </li>
             );
@@ -387,8 +457,16 @@ export function ReviewsLeaderboard({
           full width and the overage shows as &ldquo;+N over&rdquo;. A salon without a
           review baseline isn&rsquo;t ranked, because nothing is being counted for it yet.{" "}
           {formatNumber(summary.qualifyingMonthToDate)} qualifying{" "}
-          {summary.qualifyingMonthToDate === 1 ? "review" : "reviews"} so far in {month}{" "}
+          {summary.qualifyingMonthToDate === 1 ? "review" : "reviews"}{" "}
+          {period === "month"
+            ? `so far in ${month}`
+            : singleMonth
+              ? `in ${periodSpan}`
+              : `in ${columnLabel} (${periodSpan})`}{" "}
           across the salons that are counting.
+          {view.beforeCounting
+            ? ` For a salon that had not started counting for all of ${periodSpan}, the figure is the 3–5★ reviews Google dates to that month.`
+            : ""}
         </p>
       </section>
     </div>

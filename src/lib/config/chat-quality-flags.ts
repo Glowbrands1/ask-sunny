@@ -313,6 +313,15 @@ export function payrollAmountFieldEnabled(): boolean {
 }
 
 /**
+ * REQUIRED_FIELDS_AT_FINALIZE_ENABLED (HR via Pau, 19 Nov 2026; default off). A field a published version marks
+ * `required` (revision 9 of the Corrective Action Form: the policy manual's signed date and the past 90 days' history)
+ * must hold a value before Finalize; a draft may stay blank. Off, a blank required field files as before.
+ */
+export function requiredFieldsAtFinalizeEnabled(): boolean {
+  return envFlag("REQUIRED_FIELDS_AT_FINALIZE_ENABLED");
+}
+
+/**
  * PAYROLL_AMOUNT_SAME_MESSAGE_ENABLED (the sibling app's live chat, 5 Nov 2026; same flag in both apps; default
  * off). "…the register was off $20. which will be payroll deducted from <name>'s check. … payroll deduct applies"
  * still asked "**Payroll deduction amount**?". On: an amount followed by "which / that / this / it … (payroll)
@@ -3795,6 +3804,37 @@ export function unknownNameAskEnabled(): boolean {
 }
 
 /**
+ * DEAD_END_SAYS_WHERE_ENABLED (QA item 25, the production audit, 20 Nov 2026; default off). An Assistant Salon Director
+ * (view_daily_stats, no view_reports) asking for the latest Daily Stats was told "I don't have access to view reports";
+ * a Regional Manager asking to add to the DM L10 was told it is not one of the forms Sunny prepares. On: the prompt says
+ * where in the app to go, by this person's real permissions (`WhereToGo` in `ai/prompts.ts`): Daily Stats on the Home
+ * page's Performance section, the L10 page under Resources, or who to ask. Prompt only. Off, as before.
+ */
+export function deadEndSaysWhereEnabled(): boolean {
+  return envFlag("DEAD_END_SAYS_WHERE_ENABLED");
+}
+
+/**
+ * STARTER_FOLLOW_UP_EXAMPLE_ENABLED (QA item 24, the production audit, 20 Nov 2026; default off). The home starters
+ * "Create a coaching form." and "Show me training related to this issue.", sent as a chat's first message, got "who?"
+ * or "which issue?" and three managers left. On: that follow-up carries one short example answer
+ * (`ai/starter-follow-up.ts`). Off, as before.
+ */
+export function starterFollowUpExampleEnabled(): boolean {
+  return envFlag("STARTER_FOLLOW_UP_EXAMPLE_ENABLED");
+}
+
+/**
+ * FORM_TOPIC_SEARCH_ENABLED (Pau, 21 Nov 2026; default off; QA flips it). The agent loop's find_past_forms with a topic
+ * and no employee ("any forms about cash handling at my salons this month?", "who's been written up for dress code?")
+ * searches the saved text of every form this manager may see in Form Monitoring (`forms/form-topic-search.ts`). Off, a
+ * topic-only call is refused with a plain "not available yet".
+ */
+export function formTopicSearchEnabled(): boolean {
+  return envFlag("FORM_TOPIC_SEARCH_ENABLED");
+}
+
+/**
  * CORRECTED_DATE_KEPT_ENABLED (QA's round-5 trace of corrective-action-conversation-qa Q6, 8 Nov 2026; coding 5;
  * default off). "the meeting was actually on 10-19-26" after a request dated 10-20-26: PRIOR_SENTENCE_FIX's date step
  * saw two incident dates and dated the card null, so Create saved today's date. On: the incident date the manager
@@ -4969,4 +5009,42 @@ export function nearMissNeverSeatedEnabled(): boolean {
  */
 export function formsOnFileDateRangeEnabled(): boolean {
   return envFlag("FORMS_ON_FILE_DATE_RANGE_ENABLED");
+}
+
+/**
+ * STATED_PLAN_STEPS_ENABLED (Pau via QA, 20 Nov 2026, f062; default off; QA flips it after a live test). A Corrective
+ * Action's Action Plan keeps old Sunny's standard plan exactly and adds each step the manager stated ("the opening
+ * procedures reviewed with <P> this week"), in their words, before the closing. The steps come from a record: the loop
+ * card's plan_steps (with evidence) or the intent reader's planSteps slot, each kept only when its words are the
+ * manager's. Off, the tool schemas, the card and the plan are exactly as before. See `forms/stated-plan-steps.ts`.
+ */
+export function statedPlanStepsEnabled(): boolean {
+  return envFlag("STATED_PLAN_STEPS_ENABLED");
+}
+
+/**
+ * FORMS_ON_FILE_COUNTS_ENABLED (QA's f081 follow-up, 20 Nov 2026; default off). The chat's FORMS ON FILE block
+ * (`forms/chat-form-records.ts`) lists rows and the model counted them: "11/18 — <A> (×2)" where there were 3, a
+ * different person's form folded into <A>'s, totals that did not add up. With the flag, the block carries counts built
+ * by code (per person as filed, per form, per date with statuses, and a total; `forms/forms-on-file-counts.ts`) for the
+ * model to copy; a period is read up to 1000 rows and counted over all of them, with up to 100 listed; and an archived
+ * DRAFT is left out unless the question asks for archived forms (finalized forms count archived or not, marked
+ * archived: QA's ruling on production's data). The agent loop's find_past_forms does the same without this flag. Off,
+ * as before.
+ */
+export function formsOnFileCountsEnabled(): boolean {
+  return envFlag("FORMS_ON_FILE_COUNTS_ENABLED");
+}
+
+/**
+ * CARD_PERSON_THIS_REQUEST_ENABLED (the outside audit's wrong-person risk, approved by Pau, 21 Nov 2026; default off). The
+ * agent loop seated a card's or form's person when ANY manager turn in the chat held their name, or any earlier card was
+ * theirs: a name from an unrelated turn four turns back could put a form on the wrong person (Ask Bubbles, 18 Nov 2026).
+ * On: the person must be named by the manager in this request: the turn that asks for the form, or a manager turn after
+ * the chat's last card, after the last turn that named a different roster person, or after a "who is this for?" (never a
+ * name only in Sunny's reply or a tool note); an earlier card for them counts only while no different person was named
+ * since. Otherwise Sunny asks who the form is for (`ai/agent-loop/person-in-request.ts`). Off, as before.
+ */
+export function cardPersonThisRequestEnabled(): boolean {
+  return envFlag("CARD_PERSON_THIS_REQUEST_ENABLED");
 }

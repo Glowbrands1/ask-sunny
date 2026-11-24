@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { redactHrApproval } from "@/lib/forms/hr-approval-rules";
 
+import { cardPayrollAmount } from "@/lib/forms/card-payroll-amount";
 import { teamTopicReadConversation } from "@/lib/forms/team-card-not-product";
 import { sameRequestReadConversation } from "@/lib/forms/same-request-other-person";
 import { switchReadConversation } from "@/lib/ai/form-type-switch";
@@ -48,7 +50,7 @@ import {
   listInstances,
   type InstanceView,
 } from "@/lib/forms/instances";
-import { instanceListFilterFor, visibleInstances } from "@/lib/forms/instance-scope";
+import { actorMaySeeInstance, instanceListFilterFor, visibleInstances } from "@/lib/forms/instance-scope";
 import { privateAwareLimit, privateCreatorsActive } from "@/lib/forms/private-creators";
 import { historySaysDifferentIncident } from "@/lib/forms/draft-actions";
 import { findOpenIncidentDraft, findResentDraft } from "@/lib/forms/draft-reopen";
@@ -56,6 +58,25 @@ import type { SameChat } from "@/lib/forms/draft-same-chat";
 import { authorizeLocation } from "@/lib/forms/location-scope";
 import { TERMINATION_OPTION, statesTermination } from "@/lib/forms/termination-stated";
 import { saysTerminationWord } from "@/lib/forms/termination-word";
+import { EXIT_DETAIL_FIELDS, EXIT_NOTICE_GROUP, EXIT_OPTION, EXIT_TEMPLATE_KEY, EXIT_TYPE_GROUP } from "@/lib/forms/exit-library";
+import { exitReasonOnly } from "@/lib/forms/exit-reason-only";
+
+/** The resignation types a loop exit card may carry (never the involuntary box). */
+const LOOP_EXIT_HOW = new Set<string>([EXIT_OPTION.submittedFulfilledNotice, EXIT_OPTION.immediateVoluntary, EXIT_OPTION.noticeNotFulfilled, EXIT_OPTION.noCallNoShow]);
+
+/** The checkbox group that holds this option on the draft's own template version, or null when it is not on it. */
+async function exitOptionGroup(instanceId: string, option: string): Promise<string | null> {
+  const loaded = await loadInstance(instanceId).catch(() => null);
+  if (!loaded) return null;
+  const { checkboxGroupsForVariant, parseFormDocument } = await import("@/lib/forms/document");
+  return checkboxGroupsForVariant(parseFormDocument(loaded.version.document), loaded.instance.variantKey).find((group) => group.options.some((candidate) => candidate.key === option))?.key ?? null;
+}
+/** The exit form's Additional Details line (`exit-library.ts`). */
+const EXIT_ADDITIONAL_DETAILS_KEY = "details";
+/** QA item 17: the exit form's own payroll question (`exit-library.ts`, EXIT_YES_NO_QUESTIONS). */
+const EXIT_PAYROLL_KEY = "payroll_deduction_applicable";
+/** The exit form's rehire question (`exit-library.ts`, EXIT_YES_NO_QUESTIONS). */
+const EXIT_REHIRE_KEY = "eligible_for_rehire";
 import { terminationStatedTicksEnabled } from "@/lib/config/chat-quality-flags";
 import { checkProposalIsCurrent } from "@/lib/forms/proposal-currency";
 import { preferredNamesOf } from "@/lib/forms/preferred-name-current";
@@ -64,6 +85,7 @@ import { rosterNamesFor } from "@/lib/forms/roster-names";
 import { allowsTeamSubject, isTeamSubject } from "@/lib/forms/team-subject";
 import { isDemoMode } from "@/lib/config/runtime";
 import { getTemplateByKey } from "@/lib/forms/repository";
+import { applyLoopFollowUpDefault } from "@/lib/forms/follow-up-default-write";
 import {
   PAYROLL_AMOUNT_KEY,
   PAYROLL_AMOUNT_STATED_KEYS,
@@ -144,7 +166,8 @@ export async function GET(request: Request) {
     // offer a "Delete 5" that removed nothing, and would leak how many exist.
     const sweep = await findDemoInstances();
     return NextResponse.json({
-      instances,
+      // The approval columns only for those who may read HR's decision (owner, 23 Nov 2026: no leaks).
+      instances: instances.map((instance) => redactHrApproval(actor, instance)),
       view,
       demo: {
         deletable: visibleInstances(actor, sweep.deletable).length,
@@ -172,6 +195,17 @@ export async function POST(request: Request) {
       warningLevel?: unknown;
       /** The agent loop's card: its termination is the model's, locked; today's reader never decides it. */
       fromAgentLoop?: unknown;
+      /** QA item 17: the loop termination's account (the exit form's reason line). */
+      loopAccount?: unknown;
+      /** The loop's exit card: how the person left (a resignation_type option) and the manager's words for it. */
+      exitHow?: unknown;
+      exitHowQuote?: unknown;
+      /** The loop's exit card: How Employee Resigned and the manager's words for it (port from Ask Bubbles #1021, U26). */
+      exitMethod?: unknown;
+      exitMethodQuote?: unknown;
+      /** The loop's exit card: Reason for Resignation in the manager's words, and their quote (port of Ask Bubbles #1047, B6). */
+      exitReason?: unknown;
+      exitReasonQuote?: unknown;
       /** The chat the proposal came from, for `checkProposalIsCurrent`. Ask Sunny only. */
       conversation?: unknown;
       /** Optional stable id for this chat. The first message id is used when this is absent. */
@@ -329,10 +363,16 @@ export async function POST(request: Request) {
        * not the source. A policy quotation is not a figure. No figure means the
        * line stays blank, and the form is still created.
        */
-      if (payrollAmountFieldEnabled() && card.payrollDeduct === "yes" && Array.isArray(card.conversation)) {
-        // TYPO_READING_ROUTES_ENABLED: the reader sees "amont" as amount; the stored conversation stays as typed.
-        const turns = await readingTurns(parseHistory(card.conversation));
-        const amount = payrollAmountFromConversation(turns, { payrollAnswer: "yes" });
+      if (payrollAmountFieldEnabled() && card.payrollDeduct === "yes" && (card.fromAgentLoop === true || Array.isArray(card.conversation))) {
+        /*
+         * QA's code audit (20 Nov 2026, item 20): a loop card's amount is the card's own (`card-payroll-amount.ts`),
+         * never the chat's latest figure. Every other card reads the conversation, as before.
+         */
+        const amount =
+          card.fromAgentLoop === true
+            ? cardPayrollAmount(card.payrollDeductAmount)
+            : // TYPO_READING_ROUTES_ENABLED: the reader sees "amont" as amount; the stored conversation stays as typed.
+              payrollAmountFromConversation(await readingTurns(parseHistory(card.conversation as unknown[])), { payrollAnswer: "yes" });
         if (amount) {
           await applyStatedFacts(
             instanceId,
@@ -390,6 +430,92 @@ export async function POST(request: Request) {
           actor.id,
           WARNING_LEVEL_STATED_KEYS,
         );
+      }
+
+      /*
+       * QA item 17 (20 Nov 2026; the production audit's exit form, which arrived nearly empty): the agent loop's EXIT card
+       * puts what the manager stated in the exit form's own fields, as their statements (the draft never replaces them):
+       * its payroll answer in "Is Payroll Deduction applicable?", and a termination the model decided (locked on the
+       * termination word, checked again here) as "Immediate involuntary separation" with the account as the reason.
+       * `applyStatedFacts` validates every key against the pinned version, so a form without these lines gets nothing.
+       */
+      if (fromAgentLoop && card.templateKey !== "dpoa") {
+        const exitStated: { values: Record<string, string>; checked: Record<string, string[]> } = { values: {}, checked: {} };
+        if (isPayrollDeductAnswer(card.payrollDeduct)) exitStated.checked[EXIT_PAYROLL_KEY] = [card.payrollDeduct];
+        const account = typeof card.loopAccount === "string" ? card.loopAccount.trim().slice(0, 2_000) : "";
+        if (card.warningLevel === "termination" && saysTerminationWord(userTurns)) {
+          exitStated.checked[EXIT_TYPE_GROUP] = [EXIT_OPTION.immediateInvoluntary];
+          if (account) {
+            /* f077 and QA2's R3 (21 Nov 2026): only the reason; a rehire answer in the account is the rehire question's. */
+            const { reason, rehire } = exitReasonOnly(account, new Date().toISOString().slice(0, 10));
+            exitStated.values[EXIT_DETAIL_FIELDS.resignationReason] = reason;
+            if (rehire) exitStated.checked[EXIT_REHIRE_KEY] = [rehire];
+            /*
+             * QA's live L6 (22 Nov 2026; Pau: saved = card, nothing invented): with nothing stated for Additional Details, the
+             * drafting model wrote "The departure was recorded effective 2026-11-21.", words no one said. A termination's
+             * Additional Details are the card's account, the manager's own words, as a resignation's already are.
+             */
+            exitStated.values[EXIT_ADDITIONAL_DETAILS_KEY] = account;
+          }
+        } else if (account && card.templateKey === EXIT_TEMPLATE_KEY) {
+          /*
+           * QA (20 Nov 2026, #1138's live test: "final paycheck should deduct the uniform cost"): the exit form has no line
+           * for a payroll amount or its reason, so the card's account (the manager's words, the uniform cost and any amount
+           * in it) is the form's Additional Details, as their statement (the draft never replaces it).
+           */
+          exitStated.values[EXIT_ADDITIONAL_DETAILS_KEY] = account;
+        }
+        /*
+         * A real manager's exit form (20 Nov 2026): "immideate volunatary termination" ticked no type. The loop card's
+         * exit_how (never the involuntary box) is ticked as the manager's statement only when its quoted words are in this
+         * chat's own manager turns, checked here, server-side.
+         */
+        /*
+         * QA's re-run (22 Nov 2026, B6; port of Ask Bubbles #1011): the exit form's own reader ticking a box in EITHER
+         * Resignation Details group (one set of boxes, split for the page's layout) is the one decision of how the person
+         * left; the card's exit_how is then never added beside it ("Submitted & Fulfilled Notice" with "Did not fulfill …
+         * notice").
+         */
+        const readerTicks = card.templateKey === EXIT_TEMPLATE_KEY
+          ? (await (async () => {
+              const { readExitFacts, exitFactValues } = await import("@/lib/forms/exit-facts");
+              const checked = exitFactValues(readExitFacts(userTurns, new Date().toISOString().slice(0, 10))).checked;
+              return [EXIT_TYPE_GROUP, EXIT_NOTICE_GROUP].some((group) => (checked[group] ?? []).length > 0);
+            })())
+          : false;
+        if (card.templateKey === EXIT_TEMPLATE_KEY && card.warningLevel !== "termination" && exitStated.checked[EXIT_TYPE_GROUP] === undefined && exitStated.checked[EXIT_NOTICE_GROUP] === undefined && !readerTicks) {
+          const how = typeof card.exitHow === "string" && LOOP_EXIT_HOW.has(card.exitHow) ? card.exitHow : null;
+          const flat = (text: string) => text.toLowerCase().replace(/[*_"“”]/g, "").replace(/\s+/g, " ").trim();
+          const quote = typeof card.exitHowQuote === "string" ? flat(card.exitHowQuote) : "";
+          /* QA (22 Nov 2026, B6 on Sunny): the option goes to its own group on this draft's template version (Submitted & Fulfilled Notice: resignation_notice). */
+          const group = how ? await exitOptionGroup(instanceId, how) : null;
+          if (how && group && quote !== "" && flat(userTurns).includes(quote)) exitStated.checked[group] = [how];
+        }
+        /*
+         * U26 (QA's Bubbles round 2, 22 Nov 2026): the loop card's How Employee Resigned, written as the manager's statement
+         * only on a resignation, when its quote is in this chat's manager turns and names that method (`quoteNamesMethod`).
+         */
+        if (card.templateKey === EXIT_TEMPLATE_KEY && card.warningLevel !== "termination" && typeof card.exitMethod === "string" && typeof card.exitMethodQuote === "string") {
+          const { quoteNamesMethod } = await import("@/lib/forms/exit-details");
+          const flat = (text: string) => text.toLowerCase().replace(/[*_"“”]/g, "").replace(/\s+/g, " ").trim();
+          if (flat(card.exitMethodQuote) !== "" && flat(userTurns).includes(flat(card.exitMethodQuote)) && quoteNamesMethod(card.exitMethodQuote, card.exitMethod)) {
+            exitStated.values[EXIT_DETAIL_FIELDS.resignationMethod] = card.exitMethod;
+          }
+        }
+        /*
+         * Port of Ask Bubbles #1047 (B6, its QA's live round 3, 22 Nov 2026): the loop card's Reason for Resignation, written as
+         * the manager's statement only on a resignation, when its quote is in this chat's manager turns and holds every word of
+         * the reason (`exit-reason-said.ts`).
+         */
+        if (card.templateKey === EXIT_TEMPLATE_KEY && card.warningLevel !== "termination" && typeof card.exitReason === "string" && typeof card.exitReasonQuote === "string") {
+          const { reasonFromQuote } = await import("@/lib/forms/exit-reason-said");
+          const flat = (text: string) => text.toLowerCase().replace(/[*_"“”]/g, "").replace(/\s+/g, " ").trim();
+          const reason = flat(card.exitReasonQuote) !== "" && flat(userTurns).includes(flat(card.exitReasonQuote)) ? reasonFromQuote(card.exitReason, card.exitReasonQuote) : null;
+          if (reason) exitStated.values[EXIT_DETAIL_FIELDS.resignationReason] = reason;
+        }
+        if (Object.keys(exitStated.checked).length > 0 || Object.keys(exitStated.values).length > 0) {
+          await applyStatedFacts(instanceId, exitStated, actor.id, new Set([EXIT_PAYROLL_KEY, EXIT_TYPE_GROUP, EXIT_NOTICE_GROUP, EXIT_DETAIL_FIELDS.resignationReason, EXIT_DETAIL_FIELDS.resignationMethod, EXIT_ADDITIONAL_DETAILS_KEY, EXIT_REHIRE_KEY]));
+        }
       }
     }
 
@@ -494,7 +620,9 @@ export async function POST(request: Request) {
         incident: incidentText || null,
         ...(sameChat ? { sameChat } : {}),
       }).catch(() => null);
-      if (open && mine(open)) return reused(open);
+      // Re-checked against the reader, as the sibling app's cross-chat lookup is (leak audit, 23 Nov 2026): a draft they
+      // may not see, such as someone else's waiting for HR with the approval flag since turned off, is never handed over.
+      if (open && mine(open) && actorMaySeeInstance(actor, open)) return reused(open);
     }
 
     /*
@@ -596,7 +724,25 @@ export async function POST(request: Request) {
 
     await applyCardFacts(String(instance.id));
 
-    return NextResponse.json({ instance });
+    /*
+     * Pau (20 Nov 2026): a Corrective Action the agent loop creates gets its follow-up date, the one the manager
+     * stated or one week after the form date, so the follow-up its Action Plan promises is on the calendar. The
+     * card says it ("Follow-up: Fri, Nov 27 (change it anytime)."). See `follow-up-default.ts`.
+     */
+    const followUp = body.fromAgentLoop === true
+      ? await applyLoopFollowUpDefault({
+          instance: { ...instance, id: String(instance.id) },
+          managerWords: Array.isArray(body.conversation)
+            ? parseHistory(body.conversation).filter((turn) => turn.role === "user").map((turn) => String(turn.content)).join("\n")
+            : "",
+          actorId: actor.id,
+        }).catch(() => null)
+      : null;
+
+    return NextResponse.json({
+      instance: followUp ? { ...instance, followUpDate: followUp.date } : instance,
+      ...(followUp ? { followUpNotice: followUp.notice } : {}),
+    });
   } catch (error) {
     return errorResponse(error, "forms/instances/create");
   }
@@ -617,7 +763,7 @@ export async function POST(request: Request) {
  */
 export async function DELETE(request: Request) {
   try {
-    await authorizeForms(request, "manage_form_records");
+    const actor = await authorizeForms(request, "manage_form_records");
     const { searchParams } = new URL(request.url);
 
     // Explicit and narrow: there is no "delete everything" shape of this call.
@@ -636,7 +782,7 @@ export async function DELETE(request: Request) {
       );
     }
 
-    const result = await deleteDemoInstances(expected);
+    const result = await deleteDemoInstances(expected, { id: actor.id, role: actor.role, via: "demo_sweep" });
     return NextResponse.json(result);
   } catch (error) {
     if (error instanceof InstanceProtectedError) {

@@ -22,16 +22,22 @@ import {
 import { ratingDistribution } from "./rating-distribution";
 import {
   currentWeekStart,
+  lastFullMonthsWindow,
   monthStart,
   recentWeekStarts,
+  yearStart,
   weekEndOf,
 } from "./reporting-week";
+import { monthlyProgressStart, type PostedReviewRow } from "./monthly-progress";
 import { googleReviewsDayStartUtc, googleReviewsToday } from "./timezone";
 import {
   ratingBounds,
   WEEK_ALL,
   WEEK_CURRENT,
   WEEK_MONTH,
+  WEEK_YEAR_TO_DATE,
+  lastFullMonthsOf,
+  isMonthWeek,
   type ReviewFilters,
 } from "./filters";
 import {
@@ -93,6 +99,8 @@ export const TREND_WEEKS = 12;
  * window rather than quietly drawing a partial past as if it were complete.
  */
 export const TIMELINE_LIMIT = 5000;
+/** Rows per request for the over-time chart: the database never returns more than 1,000 at once. */
+export const TIMELINE_PAGE = 1000;
 
 /**
  * THE CEILING ON THE MONTH-TO-DATE READ.
@@ -239,6 +247,128 @@ function monthToDateQuery<
     .not("reporting_period_id", "is", null)
     .gte("counted_at", googleReviewsDayStartUtc(monthStart(today)))
     .lt("counted_at", googleReviewsDayStartUtc(shiftDays(today, 1)));
+}
+
+/**
+ * THE LAST-FULL-MONTHS PREDICATE (L3, L6): the month-to-date rule over the closed
+ * months before this one — counted (never history), counting at an instant
+ * from Central midnight on the earliest 1st up to Central midnight on this
+ * month's 1st.
+ */
+function lastFullMonthsQuery<
+  Q extends {
+    not(column: string, operator: string, value: unknown): Q;
+    gte(column: string, value: string): Q;
+    lt(column: string, value: string): Q;
+  },
+>(query: Q, today: string, months: number): Q {
+  const window = lastFullMonthsWindow(months, today);
+  return query
+    .not("reporting_period_id", "is", null)
+    .gte("counted_at", googleReviewsDayStartUtc(window.start))
+    .lt("counted_at", googleReviewsDayStartUtc(window.endExclusive));
+}
+
+/**
+ * ONE CALENDAR MONTH (`yyyy-mm`): the month-to-date rule over the whole month —
+ * counted, counting from Central midnight on its 1st up to Central midnight on
+ * the next month's 1st. What the leaderboard's single-month Period ranks by.
+ */
+function calendarMonthQuery<
+  Q extends {
+    not(column: string, operator: string, value: unknown): Q;
+    gte(column: string, value: string): Q;
+    lt(column: string, value: string): Q;
+  },
+>(query: Q, month: string): Q {
+  const year = Number(month.slice(0, 4));
+  const next = Number(month.slice(5, 7)) === 12
+    ? `${year + 1}-01-01`
+    : `${year}-${String(Number(month.slice(5, 7)) + 1).padStart(2, "0")}-01`;
+  return query
+    .not("reporting_period_id", "is", null)
+    .gte("counted_at", googleReviewsDayStartUtc(`${month}-01`))
+    .lt("counted_at", googleReviewsDayStartUtc(next));
+}
+
+/** Rows read per page for the month-by-month table; PostgREST caps a page. */
+const MONTHLY_PAGE = 1000;
+/** A ceiling on the month-by-month read. Past it the table is refused, never shown low. */
+export const MONTHLY_PROGRESS_LIMIT = 20000;
+
+/**
+ * THE MONTH-BY-MONTH TABLE'S ROWS: every counted, qualifying review counting
+ * from the first month the table shows through today, by `counted_at` — the
+ * month-to-date predicate over more months. Read a page at a time, and refused
+ * rather than returned short: a partial read would be a wrong total.
+ */
+export async function loadMonthlyProgressRows(
+  today: string = googleReviewsToday(),
+): Promise<MonthlyProgressRows> {
+  const supabase = getSupabaseAdmin();
+  const from = googleReviewsDayStartUtc(monthlyProgressStart(today));
+  const to = googleReviewsDayStartUtc(shiftDays(today, 1));
+
+  const [counted, posted, locations] = await Promise.all([
+    readAllPages<{ id: string; store_code: string; counted_at: string }>((offset, size) =>
+      supabase
+        .from("google_reviews_enriched")
+        .select("id,store_code,counted_at")
+        .not("reporting_period_id", "is", null)
+        .eq("eligible_for_weekly_count", true)
+        .gte("counted_at", from)
+        .lt("counted_at", to)
+        .order("id", { ascending: true })
+        .range(offset, offset + size - 1),
+    ),
+    /*
+     * EVERY HELD 3–5★ REVIEW, counted or historical, with the dates Google gave
+     * — for the months before a salon started counting. Not narrowed by date in
+     * the query: the date a review is placed by is a precedence of two columns,
+     * decided in `monthly-progress.ts`, not one a filter can name.
+     */
+    readAllPages<PostedReviewRow>((offset, size) =>
+      supabase
+        .from("google_reviews_enriched")
+        .select("id,store_code,google_absolute_date,google_estimated_at")
+        .eq("eligible_for_weekly_count", true)
+        .order("id", { ascending: true })
+        .range(offset, offset + size - 1),
+    ),
+    supabase.from("google_review_locations").select("store_code,count_by_posted_date_from"),
+  ]);
+  if (locations.error) throw locations.error;
+
+  return {
+    counted,
+    posted,
+    countingFrom: new Map(
+      ((locations.data ?? []) as { store_code: string; count_by_posted_date_from: string | null }[]).map(
+        (row) => [row.store_code, row.count_by_posted_date_from],
+      ),
+    ),
+  };
+}
+
+export interface MonthlyProgressRows {
+  counted: { id: string; store_code: string; counted_at: string }[];
+  posted: PostedReviewRow[];
+  countingFrom: Map<string, string | null>;
+}
+
+/** Reads every page of a query; refused rather than returned short past the ceiling. */
+async function readAllPages<T>(
+  page: (offset: number, size: number) => PromiseLike<{ data: unknown; error: unknown }>,
+): Promise<T[]> {
+  const rows: T[] = [];
+  for (let offset = 0; offset < MONTHLY_PROGRESS_LIMIT; offset += MONTHLY_PAGE) {
+    const { data, error } = await page(offset, MONTHLY_PAGE);
+    if (error) throw error;
+    const batch = (data ?? []) as T[];
+    rows.push(...batch);
+    if (batch.length < MONTHLY_PAGE) return rows;
+  }
+  throw new Error(`Month-by-month read exceeded ${MONTHLY_PROGRESS_LIMIT} reviews.`);
 }
 
 /**
@@ -537,6 +667,18 @@ export async function loadReviewFeed(
   } else if (filters.week === WEEK_MONTH) {
     /* The month-to-date predicate the snapshot counts with, so the two agree. */
     query = monthToDateQuery(query, today);
+  } else if (lastFullMonthsOf(filters.week) !== null) {
+    /* L3 / L6: the closed months before this one. */
+    query = lastFullMonthsQuery(query, today, lastFullMonthsOf(filters.week)!);
+  } else if (filters.week === WEEK_YEAR_TO_DATE) {
+    /* YTD: the month-to-date rule from Jan 1. */
+    query = query
+      .not("reporting_period_id", "is", null)
+      .gte("counted_at", googleReviewsDayStartUtc(yearStart(today)))
+      .lt("counted_at", googleReviewsDayStartUtc(shiftDays(today, 1)));
+  } else if (isMonthWeek(filters.week)) {
+    /* One calendar month: the month-to-date rule over that whole month. */
+    query = calendarMonthQuery(query, filters.week);
   } else if (filters.week !== WEEK_ALL) {
     query = query.eq("period_start", filters.week);
   }
@@ -615,23 +757,39 @@ export async function loadReviewTimeline(
     "district" | "storeCode" | "rating" | "status" | "qualifying" | "search"
   >,
 ): Promise<ReviewTimeline & { truncated: boolean }> {
-  const { data, error, count } = await scopeReviewQuery(TIMELINE_COLUMNS, filters)
-    .order("first_seen_at", { ascending: false })
-    .limit(TIMELINE_LIMIT);
-
   /*
-   * A CHART IS NOT WORTH TAKING THE PAGE DOWN FOR. Every other figure on the
-   * screen comes from a different read; a failure here draws an empty chart
-   * that says nothing is plotted, rather than a 500 over the leaderboard, the
-   * queue and the feed.
+   * READ A PAGE AT A TIME (Nov 19 2026, "none for oct?"). The database answers
+   * at most 1,000 rows per request whatever `limit` asks for, so a single read
+   * of up to TIMELINE_LIMIT silently stopped at 1,000. Once the history import
+   * stored 1,133 older reviews in one afternoon, the newest-first-seen 1,000
+   * were nearly all that import, and the reviews synced through October fell
+   * off the chart. Every page is read now, up to the ceiling.
    */
-  if (error) return { ...EMPTY_REVIEW_TIMELINE, truncated: false };
-
-  const rows = (data ?? []) as unknown as {
+  const rows: {
     google_absolute_date: string | null;
     google_estimated_at: string | null;
     first_seen_at: string;
-  }[];
+  }[] = [];
+  let total: number | null = null;
+  for (let offset = 0; offset < TIMELINE_LIMIT; offset += TIMELINE_PAGE) {
+    const { data, error, count } = await scopeReviewQuery(TIMELINE_COLUMNS, filters)
+      .order("first_seen_at", { ascending: false })
+      .order("id", { ascending: true })
+      .range(offset, Math.min(offset + TIMELINE_PAGE, TIMELINE_LIMIT) - 1);
+
+    /*
+     * A CHART IS NOT WORTH TAKING THE PAGE DOWN FOR. Every other figure on the
+     * screen comes from a different read; a failure here draws an empty chart
+     * that says nothing is plotted, rather than a 500 over the leaderboard, the
+     * queue and the feed.
+     */
+    if (error) return { ...EMPTY_REVIEW_TIMELINE, truncated: false };
+
+    const page = (data ?? []) as unknown as typeof rows;
+    rows.push(...page);
+    total = count ?? total;
+    if (page.length < TIMELINE_PAGE) break;
+  }
 
   const records: TimelineRecord[] = rows.map((row) => ({
     googleAbsoluteDate: row.google_absolute_date,
@@ -641,7 +799,7 @@ export async function loadReviewTimeline(
 
   return {
     ...buildReviewTimeline(records),
-    truncated: (count ?? rows.length) > rows.length,
+    truncated: (total ?? rows.length) > rows.length,
   };
 }
 

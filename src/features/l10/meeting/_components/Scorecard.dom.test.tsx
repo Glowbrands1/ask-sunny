@@ -103,7 +103,8 @@ describe("Bloom-style scorecard (the owner's feedback)", () => {
     const heads = within(table).getAllByRole("columnheader");
     const col = heads.findIndex((h) => h.hasAttribute("data-current-week"));
     expect(heads[col].textContent).toBe("9 Nov / 15 Nov");
-    for (const r of within(table).getAllByRole("row").slice(1)) {
+    // The group divider rows (19 Nov 2026) are one heading cell across the table; the metric rows are checked.
+    for (const r of within(table).getAllByRole("row").slice(1).filter((x) => !x.hasAttribute("data-group-row"))) {
       const cells = within(r).getAllByRole("cell");
       expect(cells[col].hasAttribute("data-current-week")).toBe(true);
       expect(cells.filter((c) => c.hasAttribute("data-current-week"))).toHaveLength(1);
@@ -170,5 +171,75 @@ describe("Scorecard accents in Ask Sunny's yellow (inside .hub-l10)", () => {
       [card, ink], // the other headers: white on black
     ];
     for (const [fg, bg] of pairs) expect(contrast(fg, bg), `${fg} on ${bg}`).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+describe("STC SD L10 scorecard: a divider around each salon (QA, 19 Nov 2026)", () => {
+  // "Is there also a way we can create some distinction around each salon, maybe a divider? It will make it easier to
+  // view-- and we will want that on bubbles too." Her screenshot: the Hub's own setup, rows named "Manhattan · YOY
+  // Revenue" with no salon tag, all one owner, so they ran together. Invented DM name.
+  const salons = [
+    { number: "0462", name: "Manhattan" },
+    { number: "0311", name: "Lincoln O Street" },
+  ];
+  const hubRows = () =>
+    ["Manhattan", "Lincoln O Street"].flatMap((s, si) =>
+      ["YOY Revenue", "Club Close", "PPTA", "Spa per Unique", "SMS Opt-in %"].map((m, mi) => row(`h${si}${mi}`, `${s} · ${m}`, "Bo Lark", [null, null, null])),
+    );
+  const renderWith = (scorecard: ReturnType<typeof row>[]) => {
+    const doc = { weekEndings: ["11/01/2026", "11/08/2026", "11/15/2026"], scorecard } as unknown as MeetingDoc;
+    return render(<Scorecard doc={doc} edit={() => {}} people={["Bo Lark"]} bloom today="2026-11-12" salons={salons} />);
+  };
+
+  it("rows the Hub named '<salon> · <metric>' sit under a divider row per salon, the metric without the salon again", () => {
+    renderWith(hubRows());
+    const table = screen.getByTestId("bloom-scorecard");
+    const dividers = [...table.querySelectorAll("[data-salon-row]")].map((r) => r.textContent);
+    expect(dividers).toEqual(["Manhattan · DM: Bo Lark", "Lincoln O Street · DM: Bo Lark"]);
+    const manhattan = within(screen.getByRole("rowgroup", { name: "Manhattan (Bo Lark)" }));
+    expect(manhattan.getByRole("button", { name: "Remove metric Manhattan · YOY Revenue" }).closest("td")!.textContent).toBe("YOY Revenue✕");
+    expect(manhattan.getAllByRole("row")).toHaveLength(6);
+  });
+
+  it("does not offer to set up again the salons the Hub already set up (one district's scorecard had every salon twice)", () => {
+    renderWith(hubRows());
+    expect(screen.queryByRole("region", { name: "Set up the salon scorecard" })).toBeNull();
+  });
+
+  it("a metric named like a salon that is not this meeting's stays with its owner", () => {
+    renderWith([row("x", "Omaha Maple · PPTA", "Bo Lark", [null, null, null])]);
+    expect(screen.getByTestId("bloom-scorecard").querySelector("[data-salon-row]")).toBeNull();
+    expect(screen.getByRole("rowgroup", { name: "Bo Lark's metrics" })).toBeTruthy();
+  });
+
+  it("every owner's group starts with a divider row naming it, too", () => {
+    render(<Harness />);
+    const heads = [...screen.getByTestId("bloom-scorecard").querySelectorAll("[data-group-row]")].map((r) => r.textContent);
+    expect(heads).toEqual(["Avery Quill", "Bo Lark"]);
+  });
+});
+
+// The Hub's silent-failure audit, 23 Nov 2026: a scorecard entry that is not a number ("n/a", "12x") closed the cell and
+// went back to the old value without a word.
+describe("a scorecard entry that is not a number", () => {
+  it("is not dropped quietly: the cell stays open, says so, and Escape cancels", () => {
+    render(<Harness />);
+    fireEvent.click(screen.getAllByRole("button", { name: /^Sales calls/ })[0]);
+    const input = screen.getByRole("textbox", { name: /^Sales calls/ });
+    fireEvent.change(input, { target: { value: "n/a" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(screen.getByRole("alert").textContent).toMatch(/Not a number/);
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(saved).toHaveLength(0);
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(screen.queryByRole("textbox", { name: /^Sales calls/ })).toBeNull();
+  });
+  it("a valid number still saves", () => {
+    render(<Harness />);
+    fireEvent.click(screen.getAllByRole("button", { name: /^Sales calls/ })[0]);
+    const input = screen.getByRole("textbox", { name: /^Sales calls/ });
+    fireEvent.change(input, { target: { value: "12" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(saved.length).toBeGreaterThan(0);
   });
 });

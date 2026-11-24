@@ -1,4 +1,5 @@
 import { agentLoopStepLimit } from "@/lib/ai/agent-loop/switch";
+import { historyReply } from "@/lib/ai/agent-loop/card-lines";
 import { appendFileSync } from "node:fs";
 
 import { expect, vi } from "vitest";
@@ -47,14 +48,15 @@ function measure(t: ReplayContext, id: string, turns: number, loopCalls: number)
   appendFileSync(process.env.AGENT_LOOP_MEASURE, `${JSON.stringify({ id, loop: t.loopOn?.() === true, turns, calls, loopCalls, tokens })}\n`);
 }
 
-/** After every turn: the history the next turn is given holds the previous reply exactly as the model wrote it. */
+/** After every turn: the history the next turn is given holds the previous reply as the model wrote it. */
 function historyIsTheModelsOwn(views: readonly LoopView[], replies: readonly ReplayAnswer[]) {
   for (const [index, reply] of replies.slice(0, -1).entries()) {
     const next = views.find((view) => view.step === 0 && view.turns.filter((turn) => turn.role === "user").length === index + 2);
     if (!next) continue;
-    // Changed on purpose (the earlier-card note, `run.ts` CARD_NOTE): a card's reply is given as written, plus the app's note after it.
-    const given = next.turns.filter((turn) => turn.role === "assistant").map((turn) => turn.text.replace("\n\n[app note: this reply showed a card built with propose_form]", ""));
-    expect(given, `turn ${index + 2} was not given reply ${index + 1} as written`).toContain(reply.content);
+    // Changed on purpose (port of Ask Bubbles #1038, "saved ≠ card"): a card's reply is given as written without its card lines
+    // (the card is one "[card shown under this reply: …]" line after it, `card-lines.ts`), so the model has no card reply to imitate.
+    const given = next.turns.filter((turn) => turn.role === "assistant").map((turn) => turn.text.replace(/\n\n\[card shown under this reply: [^\]]*\]$/, ""));
+    expect(given, `turn ${index + 2} was not given reply ${index + 1} as written`).toContain(historyReply(reply.content, null));
   }
 }
 
@@ -464,7 +466,12 @@ export const NOV14_AGENT_LOOP_CASES: ReplayCase[] = [
       expect(modelSteps.every((step) => step.input_tokens === 200 && step.output_tokens === 60 && step.cache_read_input_tokens === 1000 && step.ms >= 0)).toBe(true);
       expect(looped.stopped).toBe("reply");
       expect(looped.steps.every((step) => step.resultChars > 0 && step.ms >= 0)).toBe(true);
+      // Board f111 (QA, 23 Nov 2026): the steps stay value-free; the words the loop searched with are their own slot
+      // (`agent_loop_queries`, a sibling of `agent_loop`), so this check is unchanged and still covers every step.
       expect(JSON.stringify(looped)).not.toMatch(/Briony|Calloway|coat/i);
+      const queries = (row!.slots as { agent_loop_queries?: { step: number; tool: string; query: string }[] }).agent_loop_queries ?? [];
+      expect(queries.map((entry) => entry.tool), "the searched words are not on the trace").toEqual(["find_staff", "find_past_forms"]);
+      expect(queries.every((entry) => entry.query.length > 0 && entry.query.length <= 200)).toBe(true);
       // The model and the turn's tokens are on the row, so the monthly budget and the daily cap count it.
       expect(row!.model).toBeTruthy();
       expect(Number(row!.output_tokens)).toBe(4 * 60);
@@ -472,7 +479,7 @@ export const NOV14_AGENT_LOOP_CASES: ReplayCase[] = [
   },
   {
     id: "nov14-agent-loop-stalled-model-times-out",
-    title: "a loop step whose model never sends a token ends at the first-token limit with Part 1's message (504), never an empty reply",
+    title: "a loop step whose model never sends a token ends at the first-token limit with the saved \"nothing was changed\" reply (A1 port; was Part 1's 504), never an empty reply",
     report: `${REPORT}: each call has the Part 1 time limits`,
     status: "fixed",
     fixFlags: [FLAG],
@@ -486,13 +493,15 @@ export const NOV14_AGENT_LOOP_CASES: ReplayCase[] = [
       process.env.AI_MAIN_TIMEOUT_MS = "5000";
       const started = performance.now();
       try {
-        const failure = await t.thread().say("verbal CA for rowan kestrel, she was late on 11/1/26").then(
-          () => null,
-          (error: unknown) => String((error as Error).message),
-        );
-        expect(failure, "the stalled loop answered 200").not.toBeNull();
-        expect(failure).toMatch(/took too long to answer/);
-        expect(failure).toMatch(/504/);
+        /*
+         * Changed on purpose (port from Ask Bubbles 136d85d, A1 follow-up; QA's call (b), 22 Nov 2026): a turn that runs
+         * out of time with nothing done no longer throws Part 1's 504, which the chat never saved, so managers saw a blank
+         * turn on reload. It answers with the saved "nothing was changed" reply. The time limit and "never an empty reply"
+         * still hold.
+         */
+        const reply = await t.thread().say("verbal CA for rowan kestrel, she was late on 11/1/26");
+        expect(reply.content, "the stalled loop gave an empty reply").toMatch(/ran out of time before I could answer that, so nothing was changed/);
+        expect(reply.formProposal ?? null, "a card was made by a stalled loop").toBeNull();
         expect(performance.now() - started).toBeLessThan(15_000);
       } finally {
         if (saved === undefined) delete process.env.AI_MAIN_TIMEOUT_MS;

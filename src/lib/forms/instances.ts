@@ -40,11 +40,15 @@ import {
 } from "./prior-actions";
 import { applyRequiredClosings } from "./required-closing";
 import { offeredOffenseKeys } from "./offense-keys";
-import { caSalesPolicyEnabled } from "@/lib/config/chat-quality-flags";
+import { caSalesPolicyEnabled, requiredFieldsAtFinalizeEnabled } from "@/lib/config/chat-quality-flags";
 import { collapseToTwoSentences } from "./action-plan-sentences";
 import { isIsoCalendarDate } from "./form-date-answer";
 import { refreshedActionPlan } from "./ca-action-plan";
+import { blankRequiredFields, requiredFieldsMessage } from "./required-fields";
 import { getCurrentVersion, getVersion, type TemplateVersionRow } from "./repository";
+import { HELD_FOR_HR, asHrApprovalState, editableDraft, heldForHr, withoutHeldForHr, type HrApprovalState } from "./hr-approval-rules";
+import { hrHoldLive, releaseStaleHold } from "./hr-approval-approvers";
+import { clearRequestBells } from "./hr-approval-bells";
 
 /** The form's own Date line — the same day as `form_instances.form_date`. */
 const FORM_DATE_KEY = "form_date";
@@ -94,6 +98,16 @@ export interface InstanceRow {
   revisesInstanceId: string | null;
   createdAt: string;
   updatedAt: string;
+  /**
+   * HR approval (`hr-approval-rules.ts`): null for a form that never went to HR. Read from the overview view, which
+   * carries it once migration 20261123001000 is applied; before that it is always null.
+   */
+  hrApprovalState: HrApprovalState | null;
+  hrApprovalRequestedAt: string | null;
+  /** Who last sent it to HR (anyone who may edit the draft may); they see it while it waits, as its creator does. */
+  hrApprovalRequestedBy: string | null;
+  /** Everyone who has ever sent it to HR, first send first; each keeps seeing it while it waits. */
+  hrApprovalSenders: string[];
 }
 
 export interface InstanceValueRow {
@@ -140,6 +154,10 @@ function mapInstance(row: Record<string, unknown>): InstanceRow {
     revisesInstanceId: (row.revises_instance_id as string | null) ?? null,
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
+    hrApprovalState: asHrApprovalState(row.hr_approval_state),
+    hrApprovalRequestedAt: (row.hr_approval_requested_at as string | null | undefined) ?? null,
+    hrApprovalRequestedBy: (row.hr_approval_requested_by as string | null | undefined) ?? null,
+    hrApprovalSenders: Array.isArray(row.hr_approval_senders) ? (row.hr_approval_senders as unknown[]).map(String) : [],
   };
 }
 
@@ -238,6 +256,13 @@ export interface InstanceListFilter {
    * case-insensitive ("corrective", "coach"). Letters only, as `employeeNameWords`.
    */
   templateNameWords?: string[];
+  /**
+   * HR APPROVAL: leave out every form waiting for HR (pending, sent back, rejected) except those this account created
+   * or sent.
+   * Set by `instanceListFilterFor` for everyone but HR while FORMS_HR_APPROVAL_ENABLED is on. Leaves `locationIds`
+   * as it is, so an unrestricted reader stays unrestricted otherwise.
+   */
+  hideAwaitingHrExceptCreatedBy?: string;
 }
 
 export async function listInstances(
@@ -254,18 +279,34 @@ export async function listInstances(
   const isoDay = (value: string | undefined) => (value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null);
   const dateFrom = isoDay(filter?.formDateFrom);
   const dateTo = isoDay(filter?.formDateTo);
+  /* An account id is a UUID or a `demo:` label; anything else would be interpolated into a PostgREST filter, so it reads nothing. */
+  const hideAwaitingHrRaw = filter?.hideAwaitingHrExceptCreatedBy;
+  if (hideAwaitingHrRaw !== undefined && !/^[A-Za-z0-9:_-]{1,120}$/.test(hideAwaitingHrRaw)) return [];
+  const hideAwaitingHrFor = hideAwaitingHrRaw;
 
+  /*
+   * QA's f072 (20 Nov 2026): "lucia ramirez" never found a form stored as "Lucía Ramírez": ilike compares the letters as
+   * stored. The overview's employee_name_folded (lower(unaccent(employee_name)), migration 20261120002000) is matched as
+   * well. Until that migration is applied, a read that names the missing column is read again as before.
+   */
+  let foldedColumn = true;
   /** The view and name filters, applied identically to every read below. */
   function scoped() {
     let query = supabase.from("form_instance_overview").select("*");
     if (nameWords.length > 0) {
-      query = query.or(nameWords.map((word) => `employee_name.ilike.*${word}*`).join(","));
+      const columns = foldedColumn ? ["employee_name", "employee_name_folded"] : ["employee_name"];
+      query = query.or(columns.flatMap((column) => nameWords.map((word) => `${column}.ilike.*${word}*`)).join(","));
     }
     if (templateWords.length > 0) {
       query = query.or(templateWords.map((word) => `template_name.ilike.*${word}*`).join(","));
     }
     if (dateFrom) query = query.gte("form_date", dateFrom);
     if (dateTo) query = query.lte("form_date", dateTo);
+    if (hideAwaitingHrFor) {
+      query = query.or(
+        `hr_approval_state.is.null,hr_approval_state.eq.approved,created_by.eq."${hideAwaitingHrFor}",hr_approval_senders.cs.{"${hideAwaitingHrFor}"}`,
+      );
+    }
     // `archived_at` is presentation, not status — see the migration. The active
     // list is the default because it is what somebody opening the screen wants.
     if (view === "active") return query.is("archived_at", null);
@@ -273,76 +314,90 @@ export async function listInstances(
     return query;
   }
 
-  /* Unrestricted: global actors and preview. One ordered, bounded read. */
-  if (!filter || filter.locationIds === undefined) {
-    const { data, error } = await scoped()
-      .order("created_at", { ascending: false })
-      .limit(limit);
-    if (error) throw new Error(`Could not read form history: ${error.message}`);
-    return (data ?? []).map(mapInstance);
-  }
-
-  /*
-   * TWO BOUNDED READS, MERGED SERVER-SIDE.
-   *
-   * Each is ordered and limited independently, so at most `2 * limit` rows are
-   * ever read — the top `limit` of the union is always contained in the union
-   * of the two tops. Neither is a company-wide scan, and nothing extra reaches
-   * the browser: the merge is limited again before it is returned.
-   *
-   * The salon query is SKIPPED ENTIRELY on an empty id list rather than issued
-   * as `in.()`, which PostgREST does not accept — and which would be an odd way
-   * to express "nothing qualifies" even if it did.
-   */
-  const reads = [];
-
-  if (filter.locationIds.length > 0) {
-    reads.push(
-      scoped()
-        .in("location_id", filter.locationIds)
+  async function readAll(): Promise<InstanceRow[]> {
+    /* Unrestricted: global actors and preview. One ordered, bounded read. */
+    if (!filter || filter.locationIds === undefined) {
+      const { data, error } = await scoped()
         .order("created_at", { ascending: false })
-        .limit(limit),
-    );
-  }
-
-  if (filter.ownNullLocationCreatedBy) {
-    reads.push(
-      scoped()
-        .is("location_id", null)
-        .eq("created_by", filter.ownNullLocationCreatedBy)
-        .order("created_at", { ascending: false })
-        .limit(limit),
-    );
-  }
-
-  if (filter.ownCreatedBy) {
-    reads.push(
-      scoped()
-        .not("location_id", "is", null)
-        .eq("created_by", filter.ownCreatedBy)
-        .order("created_at", { ascending: false })
-        .limit(limit),
-    );
-  }
-
-  if (reads.length === 0) return [];
-
-  const results = await Promise.all(reads);
-
-  // Merge, de-duplicate (a row cannot match both predicates, but the union is
-  // written to be correct rather than to rely on that), sort, then bound.
-  const byId = new Map<string, InstanceRow>();
-  for (const result of results) {
-    if (result.error) throw new Error(`Could not read form history: ${result.error.message}`);
-    for (const row of result.data ?? []) {
-      const mapped = mapInstance(row as Record<string, unknown>);
-      byId.set(mapped.id, mapped);
+        .limit(limit);
+      if (error) throw new Error(`Could not read form history: ${error.message}`);
+      return (data ?? []).map(mapInstance);
     }
+
+    /*
+     * TWO BOUNDED READS, MERGED SERVER-SIDE.
+     *
+     * Each is ordered and limited independently, so at most `2 * limit` rows are
+     * ever read — the top `limit` of the union is always contained in the union
+     * of the two tops. Neither is a company-wide scan, and nothing extra reaches
+     * the browser: the merge is limited again before it is returned.
+     *
+     * The salon query is SKIPPED ENTIRELY on an empty id list rather than issued
+     * as `in.()`, which PostgREST does not accept — and which would be an odd way
+     * to express "nothing qualifies" even if it did.
+     */
+    const reads = [];
+
+    if (filter.locationIds.length > 0) {
+      reads.push(
+        scoped()
+          .in("location_id", filter.locationIds)
+          .order("created_at", { ascending: false })
+          .limit(limit),
+      );
+    }
+
+    if (filter.ownNullLocationCreatedBy) {
+      reads.push(
+        scoped()
+          .is("location_id", null)
+          .eq("created_by", filter.ownNullLocationCreatedBy)
+          .order("created_at", { ascending: false })
+          .limit(limit),
+      );
+    }
+
+    if (filter.ownCreatedBy) {
+      reads.push(
+        scoped()
+          .not("location_id", "is", null)
+          .eq("created_by", filter.ownCreatedBy)
+          .order("created_at", { ascending: false })
+          .limit(limit),
+      );
+    }
+
+    if (reads.length === 0) return [];
+
+    const results = await Promise.all(reads);
+
+    // Merge, de-duplicate (a row cannot match both predicates, but the union is
+    // written to be correct rather than to rely on that), sort, then bound.
+    const byId = new Map<string, InstanceRow>();
+    for (const result of results) {
+      if (result.error) throw new Error(`Could not read form history: ${result.error.message}`);
+      for (const row of result.data ?? []) {
+        const mapped = mapInstance(row as Record<string, unknown>);
+        byId.set(mapped.id, mapped);
+      }
+    }
+
+    return [...byId.values()]
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0))
+      .slice(0, limit);
+
   }
 
-  return [...byId.values()]
-    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0))
-    .slice(0, limit);
+  try {
+    return await readAll();
+  } catch (error) {
+    /* Before migration 20261120002000 is applied, the folded column is missing: read again by the stored name only. */
+    if (foldedColumn && nameWords.length > 0 && String(error).includes("employee_name_folded")) {
+      foldedColumn = false;
+      return readAll();
+    }
+    throw error;
+  }
 }
 
 export interface LoadedInstance {
@@ -469,13 +524,15 @@ export async function findRecentAssistantDraft(input: {
   if (templateError || !template) return null;
 
   const since = new Date((input.now ?? new Date()).getTime() - DUPLICATE_DRAFT_WINDOW_HOURS * 3_600_000);
-  const { data, error } = await supabase
+  const { data, error } = await withoutHeldForHr(
+    supabase
     .from("form_instances")
     .select("id, employee_name, location_id, created_at")
     .eq("template_id", template.id)
     .eq("created_by", input.createdBy)
     .eq("source", "ask_sunny")
     .eq("status", "draft")
+    )
     .gte("created_at", since.toISOString())
     .order("created_at", { ascending: false })
     .limit(25);
@@ -651,6 +708,7 @@ async function writeValues(
   accepted: DraftValues,
   filledBy: FieldResponsibility,
   provenance: Record<string, Record<string, unknown>> = {},
+  options: { viaHrApproval?: boolean } = {},
 ): Promise<void> {
   const supabase = getSupabaseAdmin();
   const rows = [
@@ -675,9 +733,22 @@ async function writeValues(
   ];
   if (rows.length === 0) return;
 
-  const { error } = await supabase
-    .from("form_instance_values")
-    .upsert(rows, { onConflict: "instance_id,field_key" });
+  /*
+   * HR's edit of a form waiting for them goes through the one function the value guard lets past the hold
+   * (migration 20261123001000); every other writer is refused there while the form is pending.
+   */
+  const { error } = options.viaHrApproval
+    ? await supabase.rpc("form_hr_approval_write_values", {
+        p_instance_id: instanceId,
+        p_rows: rows.map(({ field_key, value, checked, filled_by, provenance: rowProvenance }) => ({
+          field_key,
+          value,
+          checked,
+          filled_by,
+          provenance: rowProvenance,
+        })),
+      })
+    : await supabase.from("form_instance_values").upsert(rows, { onConflict: "instance_id,field_key" });
   if (error) throw new Error(`Could not save the form: ${error.message}`);
 
   /*
@@ -731,7 +802,7 @@ export async function applyStatedFacts(
   allowedKeys?: ReadonlySet<string>,
 ): Promise<string[]> {
   const loaded = await loadInstance(instanceId);
-  if (!loaded || loaded.instance.status !== "draft") return [];
+  if (!loaded || !editableDraft(loaded.instance)) return [];
 
   const selected = selectStatedFacts({
     document: parseFormDocument(loaded.version.document),
@@ -758,7 +829,21 @@ export async function saveInstanceValues(
    * Where the manager's edit came from, for the event row (batch G5, QA's condition 4; Pau's standing approval, 15 Nov
    * 2026): "chat" when the agent loop wrote a value the manager stated in chat. Absent: the event is as before.
    */
-  options: { readonly via?: "chat" } = {},
+  options: {
+    readonly via?: "chat";
+    /**
+     * HR, or the form's creator or a sender, editing a form that waits for HR (`mayEditWhileWithHr`): written through
+     * `form_hr_approval_write_values`, the one path the database lets past the hold. Only the route that has checked
+     * the actor may edit it sets it.
+     */
+    readonly pastHrHold?: boolean;
+    /**
+     * HR editing a form that is with them in any state (pending, sent back, rejected) that is not their own: the edit
+     * is recorded in the approval history only, never the general one (owner, 23 Nov 2026: no leaks). The route sets
+     * it after checking the actor is an approver and neither the creator nor a sender.
+     */
+    readonly hrHistoryOnly?: boolean;
+  } = {},
 ): Promise<{
   rejected: { key: string; reason: string }[];
   /** What was stored, after any required closing was re-attached. */
@@ -768,6 +853,12 @@ export async function saveInstanceValues(
   if (!loaded) throw new Error("That form no longer exists.");
   if (loaded.instance.status !== "draft") {
     throw new Error("This form is finalized. Create a revision to change it.");
+  }
+  const hrEdit = options.pastHrHold === true && heldForHr(loaded.instance.hrApprovalState);
+  if (heldForHr(loaded.instance.hrApprovalState) && !hrEdit) {
+    // Held only while the hold is live; otherwise (flag off, no approver left) the form goes back to a plain draft.
+    if (await hrHoldLive()) throw new HeldForHrError();
+    await releaseStaleHold(instanceId);
   }
 
   const document = parseFormDocument(loaded.version.document);
@@ -805,7 +896,7 @@ export async function saveInstanceValues(
   );
 
   // `writeValues` moves `form_instances.form_date` with the Date line.
-  await writeValues(instanceId, { values: changedValues, checked: changedChecked }, "manager");
+  await writeValues(instanceId, { values: changedValues, checked: changedChecked }, "manager", {}, { viaHrApproval: hrEdit });
   /*
    * FORM_EDIT_TOUCHES_UPDATED_AT_ENABLED (batch G2; QA's live run part 2: the card's "Save changes" left updated_at
    * where it was). Edited with Pau's standing approval, 15 Nov 2026. A manager's save that writes any value moves the
@@ -816,12 +907,19 @@ export async function saveInstanceValues(
     const { error } = await getSupabaseAdmin().from("form_instances").update({ updated_at: new Date().toISOString() }).eq("id", instanceId);
     if (error) console.warn(`instances: the save to form ${instanceId} was written, but its updated_at could not be moved.`);
   }
-  await recordEvent(instanceId, "edited", actor, {
-    fields: Object.keys(changedValues).length,
-    groups: Object.keys(changedChecked).length,
-    rejected: result.rejected,
-    ...(options.via ? { via: options.via } : {}),
-  });
+  /*
+   * HR's edit of a waiting form is recorded in the approval history only (`recordHrEdit`), which only the creator and
+   * HR read: the form's general history is served to every reader once it is approved, and naming HR there would tell
+   * them it went through HR (owner, 23 Nov 2026).
+   */
+  if (!hrEdit && options.hrHistoryOnly !== true) {
+    await recordEvent(instanceId, "edited", actor, {
+      fields: Object.keys(changedValues).length,
+      groups: Object.keys(changedChecked).length,
+      rejected: result.rejected,
+      ...(options.via ? { via: options.via } : {}),
+    });
+  }
 
   return { rejected: result.rejected, values };
 }
@@ -1006,12 +1104,70 @@ export class UnverifiedPolicyError extends Error {
 }
 
 
+/** Thrown when somebody but HR writes to a form waiting for HR approval. */
+export class HeldForHrError extends Error {
+  readonly code = HELD_FOR_HR;
+  constructor() {
+    super("This form is waiting for HR approval. The person who started it, whoever sent it, or HR can change it on the form itself; HR sees the changes.");
+    this.name = "HeldForHrError";
+  }
+}
+
+/** Thrown when a field the version marks `required` is blank at Finalize. See `required-fields.ts`. */
+export class RequiredFieldsBlankError extends Error {
+  readonly fields: { key: string; label: string }[];
+
+  constructor(fields: { key: string; label: string }[]) {
+    super(requiredFieldsMessage(fields));
+    this.name = "RequiredFieldsBlankError";
+    this.fields = fields;
+  }
+}
+
 export interface FinalizeOptions {
   /**
    * The manager has been shown the unverified-policy warning and chosen to
    * continue. Recorded on the event; never inferred, and never defaulted true.
    */
   readonly acknowledgeUnverifiedPolicy?: boolean;
+  /**
+   * HR approving a form that waits for them (`hr-approval.ts`): the only way a held form is finalized, and the
+   * update marks it approved in the same write.
+   */
+  readonly fromHrApproval?: boolean;
+  /** With `fromHrApproval`: the HR account that approved, stored on the form's private approval columns only. */
+  readonly hrDecidedBy?: string;
+}
+
+/**
+ * WHAT FINALIZE CHECKS BEFORE IT FREEZES ANYTHING: required fields, and an unverified policy the manager has not
+ * acknowledged. Shared with "Finalize and send for approval" (`hr-approval.ts`), so a form sent to HR has passed exactly
+ * what Finalize would have asked of it, while the manager can still fix it.
+ */
+export function finalizePreflight(
+  before: LoadedInstance,
+  options: FinalizeOptions = {},
+): { unverified: string[]; blankPolicy: string[] } {
+  // A required field left blank is refused while the record is still a draft the manager can fix.
+  const blankRequired = !requiredFieldsAtFinalizeEnabled() ? [] : blankRequiredFields(parseFormDocument(before.version.document), before.instance.variantKey, before.values);
+  if (blankRequired.length > 0) throw new RequiredFieldsBlankError(blankRequired);
+
+  const unverifiedFields = unverifiedPolicyFields(
+    parseFormDocument(before.version.document),
+    before.instance.variantKey,
+    before.values,
+  );
+  const unverified = unverifiedFields.map((field) => field.key);
+  // POLICY_GATE_NONBLOCKING_ENABLED: a blank policy field is not held for, but the record says it was blank (empty when off).
+  const blankPolicy = blankPolicyFields(parseFormDocument(before.version.document), before.instance.variantKey, before.values).map(
+    (field) => field.key,
+  );
+
+  if (unverified.length > 0 && options.acknowledgeUnverifiedPolicy !== true) {
+    throw new UnverifiedPolicyError(unverified, policyAcknowledgementWording(unverifiedFields, before.events, Boolean(before.instance.revisesInstanceId))
+        .message);
+  }
+  return { unverified, blankPolicy };
 }
 
 export async function finalizeInstance(
@@ -1036,22 +1192,12 @@ export async function finalizeInstance(
    */
   const before = await loadInstance(instanceId);
   if (!before) throw new Error("That form no longer exists.");
-
-  const unverifiedFields = unverifiedPolicyFields(
-    parseFormDocument(before.version.document),
-    before.instance.variantKey,
-    before.values,
-  );
-  const unverified = unverifiedFields.map((field) => field.key);
-  // POLICY_GATE_NONBLOCKING_ENABLED: a blank policy field is not held for, but the record says it was blank (empty when off).
-  const blankPolicy = blankPolicyFields(parseFormDocument(before.version.document), before.instance.variantKey, before.values).map(
-    (field) => field.key,
-  );
-
-  if (unverified.length > 0 && options.acknowledgeUnverifiedPolicy !== true) {
-    throw new UnverifiedPolicyError(unverified, policyAcknowledgementWording(unverifiedFields, before.events, Boolean(before.instance.revisesInstanceId))
-        .message);
+  // A form waiting for HR is finalized only by HR's approval.
+  // While the hold is live (flag on, an approver exists); otherwise the creator's Finalize finalizes it, clearing the state.
+  if (heldForHr(before.instance.hrApprovalState) && options.fromHrApproval !== true && (await hrHoldLive())) {
+    throw new HeldForHrError();
   }
+  const { unverified, blankPolicy } = finalizePreflight(before, options);
 
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
@@ -1060,6 +1206,16 @@ export async function finalizeInstance(
       status: "finalized",
       finalized_at: new Date().toISOString(),
       follow_up_date: followUpDate,
+      /*
+       * HR APPROVAL: approved in the same write that finalizes it. A form HR sent back or rejected that is finalized
+       * without them (only possible with FORMS_HR_APPROVAL_ENABLED off) leaves the approval flow, so it is not hidden
+       * as still waiting.
+       */
+      ...(options.fromHrApproval === true
+        ? { hr_approval_state: "approved", hr_approval_decided_at: new Date().toISOString(), hr_approval_decided_by: options.hrDecidedBy ?? actor }
+        : before.instance.hrApprovalState && before.instance.hrApprovalState !== "approved"
+          ? { hr_approval_state: null }
+          : {}),
     })
     .eq("id", instanceId)
     .eq("status", "draft")
@@ -1439,7 +1595,7 @@ export class InstanceProtectedError extends Error {}
  * in which values outlive their form. A revision pointing at this row has its
  * `revises_instance_id` set to null by the same declaration.
  */
-export async function deleteInstance(id: string): Promise<InstanceRow> {
+export async function deleteInstance(id: string, by?: DeletionActor): Promise<InstanceRow> {
   const supabase = getSupabaseAdmin();
 
   const { data: row, error: readError } = await supabase
@@ -1457,9 +1613,45 @@ export async function deleteInstance(id: string): Promise<InstanceRow> {
     );
   }
 
+  await stampDeletion([id], by);
   const { error } = await supabase.from("form_instances").delete().eq("id", id);
   if (error) throw new Error(`Could not delete that form: ${error.message}`);
   return instance;
+}
+
+/**
+ * WHO DELETED A FORM, AND HOW (board f066, Pau approved 20 Nov 2026).
+ *
+ * Every delete of a `form_instances` row is recorded by a BEFORE DELETE trigger in `form_instance_deletions`, an
+ * append-only table (`20261120001000_form_instance_deletions.sql`), whatever path made it. The app's own deletes
+ * say who and how by stamping the row just before (`deletion_requested_*`): Postgres is reached one HTTP request at a
+ * time, so the stamp is how the acting user reaches the trigger. A delete without a stamp is still recorded, as
+ * `other`.
+ */
+export interface DeletionActor {
+  /** The app user (`FormsActor.id`, or the loop's `actor.subject`). */
+  id: string;
+  role: string | null;
+  via: "route" | "chat" | "agent_loop" | "demo_sweep";
+}
+
+/**
+ * Stamps the rows about to be deleted. Best-effort and said: a failed stamp (the migration not yet applied, a
+ * network fault) never stops a delete the manager asked for. The trigger then records it without the user, and
+ * the log says why.
+ */
+async function stampDeletion(ids: readonly string[], by: DeletionActor | undefined): Promise<void> {
+  if (!by || ids.length === 0) return;
+  const { error } = await getSupabaseAdmin()
+    .from("form_instances")
+    .update({
+      deletion_requested_by: by.id,
+      deletion_requested_role: by.role,
+      deletion_requested_via: by.via,
+      deletion_requested_at: new Date().toISOString(),
+    })
+    .in("id", [...ids]);
+  if (error) console.error("forms: the deletion stamp was not written; the delete is recorded without its user", { reason: error.message, via: by.via });
 }
 
 /**
@@ -1489,6 +1681,11 @@ export async function archiveInstance(
 
   const loaded = await loadInstance(id);
   if (!loaded) throw new Error("That form vanished while being archived.");
+  /*
+   * An archived form waiting for HR is out of HR's queue, so its "waiting for your approval" bells are marked read and
+   * the bell stops pointing at it (QA, 23 Nov 2026). Restoring it does not ring them again; it is back in the queue.
+   */
+  if (archived && loaded.instance.hrApprovalState === "pending") await clearRequestBells(id);
   return loaded.instance;
 }
 
@@ -1533,7 +1730,7 @@ export async function findDemoInstances(): Promise<DemoSweep> {
  *   If a form was finalized between the confirmation dialog and the click, the
  *   sweep refuses rather than deleting a different set than was agreed to.
  */
-export async function deleteDemoInstances(expected: number): Promise<{ deleted: number }> {
+export async function deleteDemoInstances(expected: number, by?: DeletionActor): Promise<{ deleted: number }> {
   const sweep = await findDemoInstances();
   if (sweep.deletable.length !== expected) {
     throw new InstanceProtectedError(
@@ -1542,6 +1739,7 @@ export async function deleteDemoInstances(expected: number): Promise<{ deleted: 
   }
   if (sweep.deletable.length === 0) return { deleted: 0 };
 
+  await stampDeletion(sweep.deletable.map((row) => row.id), by);
   const supabase = getSupabaseAdmin();
   const { error } = await supabase
     .from("form_instances")

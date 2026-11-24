@@ -19,7 +19,11 @@ const FLAG = "AGENT_LOOP_ENABLED";
 const NEAR_MISS = "NEAR_MISS_NEVER_SEATED_ENABLED";
 const REPORT = "QA (16 Nov 2026): live group E on main 63ba4c48 — \"edit <B>x ca\" with a Coaching card on screen and CAs on file made a new CA card (2 of 2)";
 const TAMSIN: DirectoryRow = { id: "e-tamsin-orwell", firstName: "Tamsin", lastName: "Orwell", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" };
-const WHICH = /^Which one: the Coaching Form on screen, or one of the 2 Corrective Action Forms on file \(Corrective Action Form from 2026-11-0\d; Corrective Action Form from 2026-11-0\d\)\?$/m;
+/*
+ * Changed on purpose (item 18, Pau via QA, 20 Nov 2026): each form on file is named by its choice line (form · status ·
+ * date · salon, and the created time when two match), so choices that share a form name and date never read alike.
+ */
+const WHICH = /^Which one: the Coaching Form on screen, or one of the 2 Corrective Action Forms on file \(Corrective Action Form · finalized · dated 11\/0\d\/2026 · NE Kearney; Corrective Action Form · finalized · dated 11\/0\d\/2026 · NE Kearney\)\?$/m;
 
 function start(t: ReplayContext) {
   vi.setSystemTime(new Date("2026-11-15T22:40:00Z"));
@@ -123,7 +127,9 @@ export const NOV16_AGENT_LOOP_EDIT_ASKS_WHICH_FORM_CASES: ReplayCase[] = [
       t.loopModel!(loopStandIn((view): LoopDecision => {
         const staff = lastResult(view, "find_staff") as Out;
         if (!staff) return { tool: "find_staff", input: { name: "Tamsin Orwell", person_evidence: evidenceFrom(view, "Tamsin Orwell", 1) } };
-        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: staff.matches?.[0]?.employee_id, what_happened: "Not greeting guests at the front desk.", incident_date: "2026-11-14" } };
+        // Changed on purpose (QA item 7, 20 Nov 2026, the form lock): a different form for the card's person needs this turn's words asking for it (form_change_evidence).
+        // Changed on purpose (the issue-line port, 6f27926, account_no_subject): the CA account has the person as its subject, as the live model is taught; the expectation is unchanged.
+        if (!lastResult(view, "propose_form")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: staff.matches?.[0]?.employee_id, what_happened: `Tamsin was not greeting guests at the front desk.`, incident_date: "2026-11-14", form_change_evidence: evidenceFrom(view, "make it a CA") } };
         return { text: "Here's the Corrective Action Form for **Tamsin**." };
       }));
       const switched = await thread.say("make it a CA");

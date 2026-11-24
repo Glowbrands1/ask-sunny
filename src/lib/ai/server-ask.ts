@@ -1,12 +1,15 @@
 import "server-only";
 
+import { withPlanStepsTurn, turnPlanSteps } from "./plan-steps-turn";
 import { besideManualGrounding, besideManualRows, fullManualKeepsRetrieval, startBesideSearch } from "./full-manual-keeps-retrieval";
 import {
+  statedPlanStepsEnabled,
   chatDataToolsEnabled,
   chatParallelLoadsEnabled,
   chatParallelRewriteEnabled,
   chatMemoryEnabled,
   chatStyleRulesEnabled,
+  deadEndSaysWhereEnabled,
   chatTraceEnabled,
   fieldAccuracyEnabled,
   fewShotExamplesEnabled,
@@ -79,7 +82,7 @@ import {
 import { detectTemplateIntent } from "@/lib/forms/template-intent";
 import { buildFormInventory, publishedEntries } from "@/lib/forms/inventory";
 import { listTemplateSummaries, type TemplateSummary } from "@/lib/forms/repository";
-import { isFormRangeQuestion, isFormRecordsQuestion, loadFormRecords } from "@/lib/forms/chat-form-records";
+import { isFormListQuestion, isFormRangeQuestion, isFormRecordsQuestion, loadFormRecords } from "@/lib/forms/chat-form-records";
 import { namesAPerson } from "@/lib/forms/names-a-person";
 import { withRosterOnlyNames } from "@/lib/forms/roster-only-names";
 import { priorFormsReadingForChat } from "@/lib/forms/prior-forms";
@@ -179,6 +182,7 @@ import { cardRequestTurn, listPolicyOnCard, withPolicyListedAtCreate } from "./l
 import { withoutNoAccountAppPolicy } from "./no-account-policy-line";
 import { cardMetaTurn } from "./card-meta-turn";
 import { withFirstNameAsk } from "./first-name-ask";
+import { withStarterFollowUp } from "./starter-follow-up";
 import { withUnknownNameAsk } from "./unknown-name-ask";
 import { withExitOtherPersonNotOffered } from "./exit-other-person";
 import { withoutLetterSigner } from "./letter-signer";
@@ -429,7 +433,18 @@ async function answerQuestionChecked(
     const names = typoReadingCopyEnabled() ? await protectedNameWords() : new Set<string>();
     // FORM_TYPE_SWITCH_ENABLED: "change to coaching" with the card open switches it to the other form.
     // FIRST_NAME_SUGGEST_ENABLED: "yes" to "Is this for **Quinn Marlowe**?" is read as that name.
-    const response = await answerQuestionUntraced(withFormTypeSwitch(withTerseSlots(withNameBeforeTitle(withTypoReadingCopy(await withFirstNameAnswerFor(request, actor), names)))), actor, memory);
+    const turnRequest = withFormTypeSwitch(withTerseSlots(withNameBeforeTitle(withTypoReadingCopy(await withFirstNameAnswerFor(request, actor), names))));
+    /*
+     * STATED_PLAN_STEPS_ENABLED (Pau via QA, 20 Nov 2026, f062): the turn keeps the plan steps its intent reader kept, and a
+     * Corrective Action card built this turn carries them (`planSteps`); Create adds them to the plan. Off, as before.
+     */
+    const response = statedPlanStepsEnabled()
+      ? await withPlanStepsTurn(async () => {
+          const answered = await answerQuestionUntraced(turnRequest, actor, memory);
+          const steps = turnPlanSteps();
+          return answered.formProposal?.templateKey === "dpoa" && steps.length > 0 ? { ...answered, formProposal: { ...answered.formProposal, planSteps: steps } } : answered;
+        })
+      : await answerQuestionUntraced(turnRequest, actor, memory);
     noteTraceOutcome(response);
     // Last on every path, after the reply check too: the Action Plan is the manager's or none.
     // CA_ASKS_WHAT_HAPPENED_ENABLED: a Corrective Action card with no account asks what happened.
@@ -445,8 +460,9 @@ async function answerQuestionChecked(
     // FORM_TYPE_SWITCH_AFTER_CREATE_NOTE_ENABLED: the form already created is said to stay as it is.
     // FIRST_NAME_SUGGEST_ENABLED: a first name alone is asked about from the manager's own roster.
     // MANAGER_NAME_NOT_EMPLOYEE_ENABLED: last — the manager's own name is never the employee.
-    // CARD_POLICY_PLAN_ONLY_ENABLED: outermost — the Action Plan and the sources name only the card's policy.
-    return withCardPolicyPlanOnly(withManagerNameGuard(keepManagerActionPlan(await withFirstNameSuggestFor(
+    // CARD_POLICY_PLAN_ONLY_ENABLED: the Action Plan and the sources name only the card's policy.
+    // STARTER_FOLLOW_UP_EXAMPLE_ENABLED: outermost — a home starter's "who?" / "which issue?" carries one example answer.
+    return withStarterFollowUp(withCardPolicyPlanOnly(withManagerNameGuard(keepManagerActionPlan(await withFirstNameSuggestFor(
       // OUT_OF_SCOPE_PLACE_KEEPS_OWN_ENABLED: the card goes back to the manager's own salon, or asks which.
       // FORM_TYPE_SWITCH: the switched card is drafted from the account, never from the switch turn.
       withSwitchSources(withSwitchNote(withOutOfScopePlace(withOwnPlace(withAmountUnknownAck(
@@ -469,7 +485,7 @@ async function answerQuestionChecked(
       ), request, actor), request, actor), request, "Form Monitoring"), request),
       request,
       actor,
-    ), request), request));
+    ), request), request)), request);
   };
   // MANAGER_NAME_NOT_EMPLOYEE_ENABLED: last on every path — the manager's own name is never the employee.
   if (!chatTraceEnabled()) {
@@ -570,7 +586,9 @@ async function answerQuestionUntraced(
    */
   // LIST_POLICY_IS_EDIT_ENABLED: "please list the policy" with only a card open is a card turn, never a question.
   const listPolicyCard = listPolicyOnCard(request);
-  const askedQuestion = !listPolicyCard && questionNotFormEnabled() && isQuestionNotForm(request.question, request.history);
+  /* FORMS_ON_FILE_COUNTS_ENABLED (QA's f081): "list ca for the month" lists forms on file; it never starts a new form. */
+  const listsForms = isFormListQuestion(request.question, request.context.todayIso);
+  const askedQuestion = listsForms || (!listPolicyCard && questionNotFormEnabled() && isQuestionNotForm(request.question, request.history));
   let intentForm = false;
   /*
    * CHAT_PARALLEL_REWRITE_ENABLED (QA, 9 Nov 2026): the message normalizer (`normalizeForChat`, below) starts now, from
@@ -1421,6 +1439,7 @@ async function answerQuestionUntraced(
    * coaching jba manual 11-1-26"), and each row says who created it.
    */
   const readsFormRecords =
+    listsForms ||
     pastFormsFirst ||
     ((isFormRecordsQuestion(request.question) ||
       (formsOnFileDateRangeEnabled() && isFormRangeQuestion(request.question, request.context.todayIso))) &&
@@ -1432,7 +1451,7 @@ async function answerQuestionUntraced(
         previousQuestion: previousManagerTurn(request),
         today: request.context.todayIso,
         ...(crossChatGuard ? { markCreator: true } : {}),
-        ...(formsOnFileDateRangeEnabled() ? { narrowFromQuestion: true } : {}),
+        ...(formsOnFileDateRangeEnabled() || listsForms ? { narrowFromQuestion: true } : {}),
       })
     : Promise.resolve(null);
 
@@ -1927,6 +1946,15 @@ async function answerQuestionUntraced(
     canViewReports:
       actor.role !== null &&
       hasPermission(DEFAULT_PERMISSION_MATRIX, actor.role, "view_reports"),
+    /* DEAD_END_SAYS_WHERE_ENABLED (QA item 25): where to send this person, by their real permissions. */
+    ...(deadEndSaysWhereEnabled()
+      ? {
+          whereToGo: {
+            canViewDailyStats: actor.role !== null && hasPermission(DEFAULT_PERMISSION_MATRIX, actor.role, "view_daily_stats"),
+            canViewL10: actor.role !== null && hasPermission(DEFAULT_PERMISSION_MATRIX, actor.role, "view_l10_meetings"),
+          },
+        }
+      : {}),
     styleRules: chatStyleRulesEnabled(),
     priorCoachingOptional: priorCoachingOptionalEnabled(),
     recalledMemory,

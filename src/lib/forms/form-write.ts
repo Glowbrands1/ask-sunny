@@ -44,11 +44,12 @@ import {
   saveInstanceValues,
   type LoadedInstance,
 } from "./instances";
-import { NO_PRIOR_ACTION, PRIOR_ACTIONS_KEY } from "./prior-actions";
+import { NO_PRIOR_ACTION, POLICY_MANUAL_SIGNED_KEY, PRIOR_ACTIONS_KEY } from "./prior-actions";
 import { takeReaderFoundNothing } from "./reader-found-nothing";
 import { draftableCheckboxGroups, draftableFields, type DraftValues } from "./responsibility";
 import { copiedContent } from "./same-form-copy";
 import { withSectionSpacing } from "./outline-sections";
+import { editableDraft } from "./hr-approval-rules";
 
 /**
  * ============================================================================
@@ -504,7 +505,8 @@ export async function writeFormEdits(instanceId: string, ops: readonly FormEditO
 
   /* 1. load */
   const loaded = rules.loaded ?? (await loadInstance(instanceId));
-  if (!loaded || loaded.instance.status !== "draft") return refusedAll(keysOfOps.map((key) => ({ key, reason: "not_draft" })));
+  // A form waiting for HR approval is not the chat's to change: refused as a finalized one is.
+  if (!loaded || !editableDraft(loaded.instance)) return refusedAll(keysOfOps.map((key) => ({ key, reason: "not_draft" })));
   const snapshot = snapshotOf(loaded);
   const before: FormDraft = snapshot.draft;
 
@@ -558,7 +560,9 @@ export async function writeFormEdits(instanceId: string, ops: readonly FormEditO
   refused.push(...diff.refused);
 
   /* Code's own values: as computed, never over a typed line (unless exempt), never blanking one. */
-  const writerOf = (op: FormEditOp) => op.by ?? defaultWriter(rules.path);
+  // HR via Pau, 19 Nov 2026: the policy manual's signed date is the form creator's; a chat edit of it is their own, in their words (the reducer's verbatim rule), never the assistant's.
+  const writerOf = (op: FormEditOp) =>
+    op.by ?? (op.field === POLICY_MANUAL_SIGNED_KEY && (rules.path === "patch" || rules.path === "tool") ? ("manager" as const) : defaultWriter(rules.path));
   const derivedChanges: FieldChange[] = [];
   for (const op of derivedOps) {
     const field = before[op.field];
@@ -907,7 +911,7 @@ export async function statedWrite(
 ): Promise<string[]> {
   // As `applyStatedFacts` writes them: only into an empty line. A filled line is kept, not refused.
   const loaded = context.loaded ?? (await loadInstance(instanceId));
-  if (!loaded || loaded.instance.status !== "draft") return [];
+  if (!loaded || !editableDraft(loaded.instance)) return [];
   const filled = new Set(
     loaded.values.filter((row) => (row.value ?? "").trim() !== "" || row.checked.length > 0).map((row) => row.fieldKey),
   );

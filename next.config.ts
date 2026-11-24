@@ -75,6 +75,12 @@ const DEMO_RUNTIME_ABSOLUTE = path.join(process.cwd(), "src/lib/demo/runtime.dem
 
 const nextConfig: NextConfig = {
   /*
+   * THE DEPLOYMENT THE BROWSER'S CODE WAS BUILT FOR (QA, f073, 20 Nov 2026). Inlined at build time, so the card's
+   * create events (`/api/telemetry/client-form`) say which deploy a page came from; the server logs its own beside it.
+   * An opaque id, not a secret. Empty outside Vercel.
+   */
+  env: { NEXT_PUBLIC_BUILD_DEPLOYMENT_ID: process.env.VERCEL_DEPLOYMENT_ID ?? "" },
+  /*
    * TURBOPACK IS WHAT `next build` USES HERE, and the webpack entry below
    * covers a build that opts out. Both point one specifier at one file; there
    * is no per-dataset stub list to keep in step.

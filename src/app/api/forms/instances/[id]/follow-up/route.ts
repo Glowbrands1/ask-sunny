@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { redactHrApproval } from "@/lib/forms/hr-approval-rules";
 
 import { errorResponse } from "@/lib/api/respond";
 import { authorizeInstance, InstanceNotVisibleError } from "@/lib/forms/instance-scope";
@@ -46,7 +47,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     }
 
     const instance = await setFollowUpDate(id, body.date, actor.id);
-    return NextResponse.json({ instance });
+    return NextResponse.json({ instance: redactHrApproval(actor, instance) });
   } catch (error) {
     // A refusal here is an answer, not a fault: the form is archived, already
     // complete, or the date was not a date.
@@ -69,10 +70,10 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     } | null;
 
     if (body?.action === "complete") {
-      return NextResponse.json({ instance: await markFollowedUp(id, actor.id) });
+      return NextResponse.json({ instance: redactHrApproval(actor, await markFollowedUp(id, actor.id)) });
     }
     if (body?.action === "reopen") {
-      return NextResponse.json({ instance: await reopenFollowUp(id, actor.id) });
+      return NextResponse.json({ instance: redactHrApproval(actor, await reopenFollowUp(id, actor.id)) });
     }
 
     return NextResponse.json({ error: "Unknown follow-up action." }, { status: 400 });

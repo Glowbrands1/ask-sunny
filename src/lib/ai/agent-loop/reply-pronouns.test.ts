@@ -148,3 +148,40 @@ describe("withoutPersonPronouns", () => {
     expect(withoutPersonPronouns(plain, "Tamsin")).toEqual({ text: plain, replaced: 0 });
   });
 });
+
+/*
+ * QA (20 Nov 2026, board row f059; the live test of #1117, conv_mwoz3z9a2i44yx4, masked): the manager typed "Test Testy's
+ * shift lead, <L>, told her to clock out early and she refused", and the reply's account line kept "told her … she
+ * refused". The person TOLD is the listener, not part of what <L> said, and "and she refused" is that listener acting.
+ * <L> is invented (Corin Ashby), and is no roster leader here.
+ */
+describe("withoutPersonPronouns: the person told by someone else (f059)", () => {
+  it("names the listener of another person's instruction, and the same person in the joined clause", () => {
+    expect(withoutPersonPronouns("**Observation of Offense:** Corin Ashby, the shift lead, told her to clock out early and she refused.", "Test", ["Corin Ashby"]).text)
+      .toBe("**Observation of Offense:** Corin Ashby, the shift lead, told Test to clock out early and Test refused.");
+    expect(withoutPersonPronouns("Corin Ashby asked him not to leave the front desk, but he left anyway.", "Remy", ["Corin Ashby"]).text)
+      .toBe("Corin Ashby asked Remy not to leave the front desk, but Remy left anyway.");
+  });
+
+  it("keeps a peer's own reported clause, and the card person telling someone else", () => {
+    expect(withoutPersonPronouns("Juno Paxton asked whether she could swap shifts.", "Tamsin", ["Juno Paxton"]).text)
+      .toBe("Juno Paxton asked whether she could swap shifts.");
+    expect(withoutPersonPronouns("Tamsin told her manager she was sick.", "Tamsin", []).text)
+      .toBe("Tamsin told Tamsin's manager Tamsin was sick.");
+  });
+});
+
+/*
+ * QA's live retest of #1147 (20 Nov 2026, conv_mwp5inao2y4s849, masked): the lead was named in T1 and is not on the roster,
+ * so on T2 ("a corrective action") no other name was known, and "Test's shift lead, <L>, told her …" read Test as the
+ * teller. The teller is the subject before the verb, known or not; a possessive never tells. <L> is invented (Dana Fairweather).
+ */
+describe("withoutPersonPronouns: the teller need not be a known name (f059 retest)", () => {
+  it("\"Test's shift lead, Dana Fairweather, told her …\" and \"Her shift lead, …\" name Test, with no other name known", () => {
+    expect(withoutPersonPronouns("**Observation of Offense:** Test's shift lead, Dana Fairweather, told her to clock out early and she refused.", "Test", []).text)
+      .toBe("**Observation of Offense:** Test's shift lead, Dana Fairweather, told Test to clock out early and Test refused.");
+    // Changed on purpose (QA2, 21 Nov 2026, live R3, #1168's case): the opening "Her" is the plain "The" when the told listener is named later in the sentence.
+    expect(withoutPersonPronouns("**Observation of Offense:** Her shift lead, Dana Fairweather, told her to clock out early and she refused.", "Test", []).text)
+      .toBe("**Observation of Offense:** The shift lead, Dana Fairweather, told Test to clock out early and Test refused.");
+  });
+});

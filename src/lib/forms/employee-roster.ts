@@ -32,6 +32,39 @@ export function withRosterLimit<T>(ids: readonly string[] | null, run: () => T):
   return rosterLimit.run(new Set(ids), run);
 }
 
+/*
+ * ============================================================================
+ * THE STAFF LIST IS READ ONCE PER REPLY (QA's f056, 20 Nov 2026)
+ * ============================================================================
+ *
+ * One chat reply read the roster 5 to 8 times per card (find_staff, propose_form's checks, the name question, the title,
+ * the old path's readers), each a set of directory queries. Within one request (`withRosterReadsOncePerReply`, around the
+ * chat route), each raw read runs once per access scope and its result is shared: the same scope reads the same rows, and
+ * every caller gets its own copy. Never across requests: each request has its own store, so never across managers or
+ * turns. A failed read is not kept (the next caller reads again). Outside a request, every call reads, as before.
+ */
+const replyReads = new AsyncLocalStorage<Map<string, Promise<readonly unknown[]>>>();
+
+export function withRosterReadsOncePerReply<T>(run: () => T): T {
+  return replyReads.run(new Map(), run);
+}
+
+function oncePerReply<T>(kind: string, scope: AccessScope | null | "all", read: () => Promise<T[]>): Promise<T[]> {
+  const cache = replyReads.getStore();
+  if (!cache) return read();
+  const key = `${kind}\u0000${JSON.stringify(scope)}`;
+  let pending = cache.get(key) as Promise<T[]> | undefined;
+  if (!pending) {
+    pending = read();
+    cache.set(key, pending);
+    const settled = pending;
+    settled.catch(() => {
+      if (cache.get(key) === settled) cache.delete(key);
+    });
+  }
+  return pending.then((rows) => [...rows]);
+}
+
 /**
  * ============================================================================
  * THE EMPLOYEES A FORM-FILER MAY NAME — FROM THE WOVEN DIRECTORY, IN SCOPE
@@ -119,27 +152,30 @@ function locationIdForSalonNumber(salonNumber: string): string {
  * hundred rows, and none of these tables has a foreign key to join through.
  */
 export async function readDirectoryRoster(): Promise<DirectoryRosterRow[]> {
+  return oncePerReply("directory", "all", readDirectoryRosterFromStore);
+}
+
+async function readDirectoryRosterFromStore(): Promise<DirectoryRosterRow[]> {
   const supabase = getSupabaseAdmin();
-  const [people, affiliations, map, salons] = await Promise.all([
-    supabase
-      .from("employee_access_directory")
-      .select("id, first_name, last_name, preferred_first_name, employment_status")
-      .limit(5000),
-    supabase
-      .from("employee_location_affiliations")
-      .select("employee_id, woven_location_id")
-      .eq("active", true)
-      .limit(20000),
-    supabase
-      .from("woven_location_map")
-      .select("woven_location_id, salon_id")
-      .eq("status", "mapped")
-      .limit(1000),
-    supabase.from("salons").select("id, salon_number").limit(1000),
+  /*
+   * QA's code audit on 9e1d1f67 (item 18, 20 Nov 2026): every read is paged (`readAllPages`, ordered). The service answers
+   * at most 1,000 rows per request whatever `.limit()` says, so a directory past that (terminated people included) was cut
+   * short with no error, and the agent loop's "no longer active in Woven" check reported a terminated person as simply not
+   * on the staff list. Throws on a read error, as before.
+   */
+  const [peopleRows, affiliationRows, mapRows, salonRows] = await Promise.all([
+    readAllPages<Row>((from, to) =>
+      supabase.from("employee_access_directory").select("id, first_name, last_name, preferred_first_name, employment_status").order("id", { ascending: true }).range(from, to)),
+    readAllPages<Row>((from, to) =>
+      supabase.from("employee_location_affiliations").select("employee_id, woven_location_id").eq("active", true).order("employee_id", { ascending: true }).order("woven_location_id", { ascending: true }).range(from, to)),
+    readAllPages<Row>((from, to) =>
+      supabase.from("woven_location_map").select("woven_location_id, salon_id").eq("status", "mapped").order("woven_location_id", { ascending: true }).range(from, to)),
+    readAllPages<Row>((from, to) => supabase.from("salons").select("id, salon_number").order("id", { ascending: true }).range(from, to)),
   ]);
-  if (people.error || affiliations.error || map.error || salons.error) {
-    throw new Error("The employee directory could not be read.");
-  }
+  const people = { data: peopleRows };
+  const affiliations = { data: affiliationRows };
+  const map = { data: mapRows };
+  const salons = { data: salonRows };
 
   const salonNumberById = new Map(
     (salons.data ?? []).map((row) => [String(row.id), String(row.salon_number)]),
@@ -220,6 +256,15 @@ export async function readDirectoryFacts(scope: AccessScope | null): Promise<Dir
     }
   }
   try {
+    return await oncePerReply("facts", scope, () => readDirectoryFactsFromStore(scope));
+  } catch {
+    return [];
+  }
+}
+
+/** The directory read behind `readDirectoryFacts` (flag off); a failed read throws, so it is never kept for the reply. */
+async function readDirectoryFactsFromStore(scope: AccessScope): Promise<DirectoryFact[]> {
+  {
     const supabase = getSupabaseAdmin();
     const [people, affiliations, map, salons] = await Promise.all([
       supabase
@@ -240,7 +285,7 @@ export async function readDirectoryFacts(scope: AccessScope | null): Promise<Dir
         .limit(1000),
       supabase.from("salons").select("id, salon_number").limit(1000),
     ]);
-    if (people.error || affiliations.error || map.error || salons.error) return [];
+    if (people.error || affiliations.error || map.error || salons.error) throw new Error("directory facts read failed");
 
     const salonNumberById = new Map(
       (salons.data ?? []).map((row) => [String(row.id), String(row.salon_number)]),
@@ -287,8 +332,6 @@ export async function readDirectoryFacts(scope: AccessScope | null): Promise<Dir
       });
     }
     return facts;
-  } catch {
-    return [];
   }
 }
 
@@ -347,6 +390,10 @@ const text = (value: unknown): string => (typeof value === "string" ? value.trim
 
 /** The active people at the actor's own salons, with title and primary salon. */
 export async function readStoreRoster(scope: AccessScope | null): Promise<DirectoryFact[]> {
+  return oncePerReply("store", scope, () => readStoreRosterFromStore(scope));
+}
+
+async function readStoreRosterFromStore(scope: AccessScope | null): Promise<DirectoryFact[]> {
   if (!scope || (scope.level !== "salon" && scope.level !== "global")) return [];
   const wanted = scope.level === "salon" ? authorizedSalonIds(scope) : null;
   if (wanted && wanted.length === 0) return [];

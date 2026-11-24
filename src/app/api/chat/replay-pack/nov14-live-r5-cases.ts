@@ -181,7 +181,8 @@ export const NOV14_LIVE_R5_CASES: ReplayCase[] = [
         const tries = view.results.filter((result) => result.tool === "propose_form").length;
         if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: forB ? "oriel fenwick" : "lissa tormane" } };
         const input = forB
-          ? { template_key: "coaching", employee_id: ORIEL.id, what_happened: account("Oriel Fenwick") }
+          ? /* Changed on purpose (live model verified 21 Nov 2026, QA2; #1199): with CARD_PERSON_THIS_REQUEST on in production, another person's card while one is open carries new_form_evidence, as the live model passes it; this message states no date, so the ownRequest rule does not cover it. */
+            { template_key: "coaching", employee_id: ORIEL.id, what_happened: account("Oriel Fenwick"), new_form_evidence: evidenceFrom(view) }
           : { template_key: "coaching", employee_id: LISSA.id, what_happened: account("Lissa Tormane") };
         if (tries === 0) return { tool: "propose_form", input };
         if (forB && tries === 1 && facts(view).employee_salon) return { tool: "propose_form", input: { ...input, salon: facts(view).employee_salon } };
@@ -337,7 +338,8 @@ export const NOV14_LIVE_R5_CASES: ReplayCase[] = [
       const reply = await t.thread().say("ca for remy calder for violating the key holdr policy, she left the back door unlocked last night");
       const policyLine = (reply.formProposal as { policyLine?: string | null } | undefined)?.policyLine ?? "";
       expect(policyLine, "the card cites no section").toMatch(/^Security Policy/);
-      expect(reply.content, `the reply does not say what is on the card:\n${reply.content}`).toMatch(/Remy Calder/);
+      /* Changed on purpose (QA, 20 Nov 2026; #1184): the card's account and the reply call the person by the reply name (the first name, Pau's rule), not the full name the stand-in model wrote. */
+      expect(reply.content, `the reply does not say what is on the card:\n${reply.content}`).toMatch(/Corrective Action Form for \*\*Remy\*\*/);
       expect(reply.content.trim(), "the whole reply is the still-open line").not.toMatch(/^The card above is still open[^\n]*$/);
       const said = /^\s*\*\*Policy:?\*\*:?\s*(.+)$/im.exec(reply.content)?.[1]?.trim() ?? "";
       expect(said.toLowerCase().replace(/[^a-z0-9]+/g, ""), `no whole Policy line:\n${reply.content}`).toBe(policyLine.toLowerCase().replace(/[^a-z0-9]+/g, ""));

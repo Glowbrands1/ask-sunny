@@ -1,5 +1,8 @@
 import "server-only";
 
+import { keptPlanSteps } from "@/lib/forms/stated-plan-steps";
+import { statedPlanStepsEnabled } from "@/lib/config/chat-quality-flags";
+import { notePlanSteps } from "./plan-steps-turn";
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { CLAUDE_HAIKU_MODEL, CLAUDE_READER_MODEL } from "@/lib/config/models";
 import { aiReadsCodeChecksEnabled, intentExtractionEnabled, lastFirstNameReadEnabled, onFileLineNotThePolicyEnabled, remapIncidentFixEnabled } from "@/lib/config/chat-quality-flags";
@@ -21,7 +24,8 @@ import type { GroundedPerson } from "./grounded-entities";
 import {
   decideIntentTurn,
   INTENT_TOOL_DESCRIPTION,
-  INTENT_TOOL_INPUT_SCHEMA,
+  intentToolInputSchema,
+  intentSlotSchema,
   INTENT_TOOL_NAME,
 } from "./intent-slots";
 import { lastFirstReading } from "./reader/last-first";
@@ -87,7 +91,7 @@ export async function applyIntentExtraction(input: {
       tool: {
         name: INTENT_TOOL_NAME,
         description: INTENT_TOOL_DESCRIPTION,
-        input_schema: INTENT_TOOL_INPUT_SCHEMA,
+        input_schema: intentToolInputSchema(statedPlanStepsEnabled()),
       },
       messages: [
         {
@@ -96,6 +100,16 @@ export async function applyIntentExtraction(input: {
         },
       ],
     }).catch(() => null);
+    /*
+     * STATED_PLAN_STEPS_ENABLED (Pau via QA, 20 Nov 2026, f062): the plan steps the reader returned, each kept only when its
+     * words are the manager's own (`keptPlanSteps`), for this turn's card (`plan-steps-turn.ts`).
+     */
+    if (statedPlanStepsEnabled()) {
+      const slots = intentSlotSchema.safeParse(raw);
+      /* The manager's own turns in this chat: the "yes" to "Do you want a Corrective Action …?" carries the request's words. */
+      const managerText = [...input.request.history.filter((turn) => turn.role === "user").map((turn) => turn.content), input.request.question].join("\n");
+      notePlanSteps(slots.success ? keptPlanSteps(slots.data.planSteps, managerText) : []);
+    }
     // LAST_FIRST_NAME_READ_ENABLED: with no AI reader, "Marlowe, Quinn" is read by the reader's own checks, no model.
     const lastFirst = !reading && readsForm && lastFirstNameReadEnabled() ? lastFirstReading(checkContext) : null;
     const read: ReaderResult | { readonly fallback: string } | null = reading

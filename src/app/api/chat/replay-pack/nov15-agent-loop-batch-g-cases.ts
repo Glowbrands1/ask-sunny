@@ -16,7 +16,12 @@ import { lastResult, loopStandIn, type LoopDecision, type LoopView, evidenceFrom
 
 const FLAG = "AGENT_LOOP_ENABLED";
 const REPORT = "QA's live test with a form open (15 Nov 2026)";
-const PAUSED = "Rewording isn't available yet. Tell me exactly what to change and I'll update it.";
+/*
+ * Changed on purpose (22 Nov 2026, port of Ask Bubbles #1053, its QA's U23 T7): the rules book's reword_paused line now
+ * offers what the app can do ("I can't reword the whole account, but I can change any line you give me …"), never
+ * "isn't available yet". Rewording itself stays paused, as these cases check.
+ */
+const PAUSED = "I can't reword the whole account, but I can change any line you give me — tell me what to change.";
 
 const toolResults = (views: readonly LoopView[], tool: string) => views.flatMap((view) => view.results.filter((result) => result.tool === tool)).map((result) => JSON.stringify(result.output));
 /** Offline only: a live run checks outcomes, never which tool facts the real model asked for. */
@@ -46,7 +51,7 @@ async function onFile(t: ReplayContext, employeeId: string, name: string, templa
 export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
   {
     id: "nov15-agent-loop-g0-reword-on-a-draft-writes-nothing",
-    title: "G0 (Pau 15 Nov: rewording paused): \"make it professional\" with a draft open writes nothing and says rewording isn't available yet",
+    title: "G0 (Pau 15 Nov: rewording paused): \"make it professional\" with a draft open writes nothing and says it can't reword the whole account",
     report: `${REPORT}: a reword touched the Action Plan and merged the Observation's sections; Pau paused rewording`,
     status: "fixed",
     fixFlags: [FLAG],
@@ -74,13 +79,13 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       const reply = await thread.say("make it professional");
       expect(JSON.stringify(t.values(id)), "a reword was written while rewording is paused").toBe(before);
       expect(reply.formUpdate ?? null).toBeNull();
-      expect(reply.content, `the reply does not say rewording is paused:\n${reply.content}`).toMatch(/Rewording isn't available yet/);
+      expect(reply.content, `the reply does not say rewording is paused:\n${reply.content}`).toMatch(/I can't reword the whole account/);
       if (offline) expect(toolResults(model.views, "edit_form")[0], "edit_form did not refuse the reword").toMatch(/"reword_paused":true/);
     },
   },
   {
     id: "nov15-agent-loop-g0-reword-on-a-card-writes-nothing",
-    title: "G0 (Pau 15 Nov: rewording paused): \"reword it\" with a card on screen leaves the card as it is and says rewording isn't available yet",
+    title: "G0 (Pau 15 Nov: rewording paused): \"reword it\" with a card on screen leaves the card as it is and says it can't reword the whole account",
     report: `${REPORT}: Pau paused rewording; a same-card re-proposal with new wording is refused too`,
     status: "fixed",
     fixFlags: [FLAG],
@@ -106,7 +111,7 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       const card = thread.proposal?.issue;
       const reply = await thread.say("reword it");
       expect(thread.proposal?.issue, "the card was reworded while rewording is paused").toBe(card);
-      expect(reply.content, `the reply does not say rewording is paused:\n${reply.content}`).toMatch(/Rewording isn't available yet/);
+      expect(reply.content, `the reply does not say rewording is paused:\n${reply.content}`).toMatch(/I can't reword the whole account/);
       if (offline) expect(toolResults(model.views, "propose_form").some((result) => /"reword_paused":true/.test(result)), "propose_form did not refuse the reword").toBe(true);
     },
   },
@@ -249,7 +254,7 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
   },
   {
     id: "nov15-agent-loop-g4-edit-a-misspelled-name-ca",
-    title: "G4 (REOPEN_CLOSE_SPELLING, parity gap #43): \"edit remy caldr ca\" opens the one form on file whose employee's name it closely spells; two close names are asked about",
+    title: "G4 (REOPEN_CLOSE_SPELLING, parity gap #43): \"edit remy caldr ca\" asks \"Did you mean **Remy Calder**?\" and opens nothing; the full name opens the form; two close names are asked about",
     report: `${REPORT}; parity matrix #43: "Edit <misspelled name> CA" with that person's CA on file`,
     status: "fixed",
     fixFlags: [FLAG],
@@ -260,14 +265,26 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       t.as("salon_director", KEARNEY);
       const ca = await onFile(t, "e-2", "Remy Calder", "dpoa", "2026-11-12", "Remy Calder was 20 minutes late on 11/12.");
       const model = loopStandIn((view): LoopDecision => {
-        const found = lastResult(view, "find_past_forms") as { best_match?: string; close_names?: string[] } | null;
-        if (!found) return { tool: "find_past_forms", input: { employee_name: "remy caldr", form: "ca", forms_on_file_evidence: evidenceFrom(view), open: true } };
-        if (found.best_match && !lastResult(view, "open_form")) return { tool: "open_form", input: { instance_id: found.best_match, forms_on_file_evidence: evidenceFrom(view) } };
-        return { text: found.close_names ? `Which one: ${found.close_names.join(" or ")}?` : "Opening **Remy Calder**'s form." };
+        const found = lastResult(view, "find_past_forms") as { best_match?: string; close_names?: string[]; ask_exactly?: string; forms?: { instance_id: string }[] } | null;
+        const typed = /remy calder/i.test(view.turns.at(-1)?.text ?? "") ? "remy calder" : "remy caldr";
+        if (!found) return { tool: "find_past_forms", input: { employee_name: typed, form: "ca", forms_on_file_evidence: evidenceFrom(view), open: true } };
+        const one = found.best_match ?? (found.forms?.length === 1 ? found.forms[0]!.instance_id : undefined);
+        if (one && !lastResult(view, "open_form")) return { tool: "open_form", input: { instance_id: one, forms_on_file_evidence: evidenceFrom(view) } };
+        if (lastResult(view, "open_form")) return { text: "Opening **Remy Calder**'s form." };
+        return { text: found.close_names ? `Which one: ${found.close_names.join(" or ")}?` : (found.ask_exactly ?? "There's nothing on file under that name.") };
       });
       t.loopModel!(model);
-      const reply = await t.thread().say("edit remy caldr ca");
-      expect(reply.formOpened?.instanceId, `the close spelling's form was not opened:\n${reply.content}`).toBe(ca);
+      /*
+       * Changed on purpose (QA, 20 Nov 2026, live: "show me forms for Tes" opened another person's draft): a close spelling
+       * is only ever a Did-you-mean question (Pau's ruling A), never a silent open. The form opens once the full name is
+       * typed.
+       */
+      const asked = await t.thread().say("edit remy caldr ca");
+      expect(asked.formOpened ?? null, `a form was opened on a close spelling:\n${asked.content}`).toBeNull();
+      expect(asked.content).toMatch(/Did you mean \*\*Remy Calder\*\*\?/);
+      t.loopModel!(model);
+      const reply = await t.thread().say("edit remy calder ca");
+      expect(reply.formOpened?.instanceId, `the full name's form was not opened:\n${reply.content}`).toBe(ca);
       // A second person on file with a name as close: ask which, open nothing.
       await onFile(t, REMI.id, "Remi Calder", "dpoa", "2026-11-10", "Remi Calder was late on 11/10.");
       t.loopModel!(model);
@@ -483,7 +500,8 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       const reply = await thread.say("ca for remy calder, Remy Calder failed to have Juno Paxton complete required policy acknowledgements in Woven during her onboarding");
       expect(thread.proposal?.employeeName).toBe("Remy Calder");
       expect(thread.proposal?.issue ?? "", `the account blames someone else:\n${reply.content}`).not.toMatch(/^Juno Paxton did not/);
-      expect(thread.proposal?.issue ?? "", "the employee is not the one responsible").toMatch(/Remy Calder failed to have Juno Paxton/);
+      /* Changed on purpose (QA, 20 Nov 2026; #1184): the card's account and the reply call the person by the reply name (the first name, Pau's rule), not the full name the stand-in model wrote. */
+      expect(thread.proposal?.issue ?? "", "the employee is not the one responsible").toMatch(/^Remy failed to have Juno Paxton/);
       if (offline) expect(toolResults(model.views, "propose_form")[0], "the changed subject is not a fact").toMatch(/"account_subject_changed":\{"employee":"Remy Calder","account_says_it_was":"Juno Paxton"\}/);
     },
   },

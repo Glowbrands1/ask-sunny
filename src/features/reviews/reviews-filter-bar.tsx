@@ -12,14 +12,24 @@ import {
   SEARCH_LIMIT,
   STATUS_FILTERS,
   hasActiveReviewFilters,
+  isMonthWeek,
   reviewsHref,
   reviewsTabHref,
   WEEK_ALL,
   WEEK_CURRENT,
   WEEK_MONTH,
+  WEEK_LAST_THREE_MONTHS,
+  WEEK_LAST_SIX_MONTHS,
+  WEEK_YEAR_TO_DATE,
   type ReviewFilters,
 } from "@/lib/reviews/filters";
-import { formatWeekRange } from "@/lib/reviews/reporting-week";
+import {
+  formatLongMonth,
+  leaderboardMonths,
+  leaderboardPeriodOf,
+  leaderboardPeriodWeek,
+} from "@/lib/reviews/leaderboard-period";
+import { formatMonthsWindow, formatWeekRange, lastFullMonthsWindow } from "@/lib/reviews/reporting-week";
 import { cn } from "@/lib/utils/cn";
 
 /**
@@ -82,6 +92,7 @@ export function ReviewsFilterBar({
   locations,
   weekStarts,
   controls = ALL_CONTROLS,
+  periodsOnly = false,
 }: {
   filters: ReviewFilters;
   districts: string[];
@@ -89,6 +100,14 @@ export function ReviewsFilterBar({
   weekStarts: string[];
   /** The controls this view leads with. Everything else sits behind More. */
   controls?: ReviewFilterControl[];
+  /**
+   * THE SALON LEADERBOARD'S PERIOD (Pau, 23 Nov 2026: "they dont want week, they
+   * want per month, per 3 months per 6 months and YTD"). The Week control
+   * becomes "Period" and offers This month to date, L3, L6, YTD and each full
+   * month ("October 2026"); any other week value reads as This month, the
+   * board's default.
+   */
+  periodsOnly?: boolean;
 }) {
   const router = useRouter();
   const [search, setSearch] = useState(filters.search ?? "");
@@ -107,15 +126,50 @@ export function ReviewsFilterBar({
     router.push(reviewsHref({ ...filters, ...next, openReviewId: null }));
   };
 
+  /*
+   * ONE MONTH AT A TIME (Pau, 23 Nov 2026: "pls add the per month for both like
+   * September october november"). Every full month the Month by month table
+   * shows; a month linked to from elsewhere that is not among them is still
+   * listed, so the control always says what is in force.
+   */
+  const monthOptions = leaderboardMonths().map((month) => ({
+    value: month,
+    label: formatLongMonth(month),
+  }));
+  if (isMonthWeek(filters.week) && !monthOptions.some((option) => option.value === filters.week)) {
+    monthOptions.push({ value: filters.week, label: formatLongMonth(filters.week) });
+  }
+
   /* The weeks newest first: "this week" is what somebody reaches for. */
   const weekOptions = [
     { value: WEEK_ALL, label: "All time" },
     { value: WEEK_CURRENT, label: "This week" },
     { value: WEEK_MONTH, label: "This month to date" },
+    /* L3 / L6 name their months, "L3 · Aug – Oct 2026": closed months, never this one. */
+    {
+      value: WEEK_LAST_THREE_MONTHS,
+      label: `L3 · last 3 full months (${formatMonthsWindow(lastFullMonthsWindow(3))})`,
+    },
+    {
+      value: WEEK_LAST_SIX_MONTHS,
+      label: `L6 · last 6 full months (${formatMonthsWindow(lastFullMonthsWindow(6))})`,
+    },
+    { value: WEEK_YEAR_TO_DATE, label: "YTD · year to date" },
+    /* Each full month on its own, newest first: "October 2026", "September 2026" … */
+    ...monthOptions,
     ...[...weekStarts]
       .reverse()
       .slice(1)
       .map((weekStart) => ({ value: weekStart, label: formatWeekRange(weekStart) })),
+  ];
+
+  const monthOption = weekOptions.find((option) => option.value === WEEK_MONTH)!;
+  const periodOptions = [
+    monthOption,
+    ...weekOptions.filter((option) =>
+      [WEEK_LAST_THREE_MONTHS, WEEK_LAST_SIX_MONTHS, WEEK_YEAR_TO_DATE].includes(option.value),
+    ),
+    ...monthOptions,
   ];
 
   /*
@@ -178,7 +232,15 @@ export function ReviewsFilterBar({
         />
       ) : null}
 
-      {shows("week") ? (
+      {periodsOnly ? (
+        <FilterSelect
+          label="Period"
+          value={leaderboardPeriodWeek(leaderboardPeriodOf(filters.week))}
+          onChange={(week) => go({ week })}
+          defaultValue={WEEK_MONTH}
+          options={periodOptions}
+        />
+      ) : shows("week") ? (
         <FilterSelect
           label="Week"
           value={filters.week}

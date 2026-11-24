@@ -2,15 +2,16 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { AlertTriangle, Check, Download, ExternalLink, Loader2, PencilLine, Plus } from "lucide-react";
+import { AlertTriangle, Check, Download, ExternalLink, Loader2, PencilLine, Plus, Printer } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input, Label } from "@/components/ui/field";
+import { Input, Label, Textarea } from "@/components/ui/field";
 import { Notice } from "@/components/ui/feedback";
 import { Dialog, DialogActions, DialogContent } from "@/components/ui/overlays";
 import { FinalizedChangePanel } from "./finalized-change-panel";
-import { downloadFormPdf, formsFetch, FormsFetchError } from "@/features/forms/forms-fetch";
+import { HrApprovalPanel, type HrApprovalPanelView } from "@/features/forms/hr-approval-panel";
+import { downloadFormPdf, formsFetch, FormsFetchError, printFormPdf } from "@/features/forms/forms-fetch";
 import { onFormUpdate } from "./form-update-events";
 import {
   ResponsiveForm,
@@ -19,6 +20,7 @@ import {
 import { useSession } from "@/lib/session/session-context";
 import { asdNoFormMonitoringEnabled } from "@/lib/permissions";
 import { checkboxGroupsForVariant, fieldsForVariant } from "@/lib/forms/document";
+import { yearCheckWarnings } from "@/lib/forms/date-year-check";
 import { planSummary } from "@/lib/forms/plan-summary";
 import { manualStandingNotice } from "@/lib/forms/standing-notices";
 import {
@@ -148,6 +150,12 @@ interface LoadedInstance {
   events: { kind: string; actor: string; createdAt: string; detail?: Record<string, unknown> }[];
   /** CARD_CHANGE_PLAN_REBUILD_ENABLED: the Change something panel offers the Payroll deduction amount. */
   cardChangeAmount?: boolean;
+  /**
+   * HR APPROVAL (FORMS_HR_APPROVAL_ENABLED): the approval panel, sent by the server only to the form's creator and HR.
+   * `finalizeToHr`: this reader's Finalize sends the form to HR instead ("Finalize and send for approval").
+   */
+  hrApproval?: HrApprovalPanelView;
+  finalizeToHr?: boolean;
 }
 
 type SaveState =
@@ -159,7 +167,7 @@ type SaveState =
 
 type ActionState =
   | { kind: "idle" }
-  | { kind: "busy"; what: "follow-up" | "finalize" | "pdf" | "revise" }
+  | { kind: "busy"; what: "follow-up" | "finalize" | "pdf" | "print" | "revise" }
   | { kind: "error"; message: string };
 
 type LoadState =
@@ -276,6 +284,8 @@ export function InlineForm({
    * twice.
    */
   const [confirmingFinalize, setConfirmingFinalize] = React.useState(false);
+  /** The optional "Note to HR" typed beside "Finalize and send for approval"; sent with it, cleared once sent. */
+  const [hrNote, setHrNote] = React.useState("");
 
   const call = React.useCallback(
     <T,>(url: string, init: RequestInit = {}) => formsFetch<T>(url, role, user.name, init),
@@ -364,7 +374,16 @@ export function InlineForm({
     loaded.instance.variantKey,
   ).some((field) => field.semantics === "follow_up_timeframe");
   const prefilling = prefill.kind === "running";
-  const readOnly = finalized || prefilling;
+  /*
+   * HR APPROVAL: while a form waits for HR, HR, its creator and its senders may still edit it (`canEdit`; owner, 24 Nov
+   * 2026), and HR reads the updated version. Anybody else's card is read-only.
+   * `toHr`: this Finalize sends the form to HR, so the button and the confirmation say so.
+   */
+  const hrApproval = loaded.hrApproval ?? null;
+  const heldForHr = hrApproval?.state === "pending" && !hrApproval.canEdit && hrApproval.released !== true;
+  const hrReviewing = hrApproval?.state === "pending" && hrApproval.canEdit;
+  const toHr = loaded.finalizeToHr === true;
+  const readOnly = finalized || prefilling || heldForHr;
   const notice = prefillNoticeFor(prefill, loaded);
   const reviewNotice = reviewConversationNoticeFor(loaded, prefilling);
   const policyNotice = policyVerificationNoticeFor(loaded, prefilling);
@@ -450,6 +469,16 @@ export function InlineForm({
    * would stop anyway — unsaved changes, or the policy acknowledgement that is
    * itself a confirmation — it goes straight there instead.
    */
+  /*
+   * "CHECK THE YEAR" (QA2, 21 Nov 2026; a real exit form finalized with a notice date of 2020-11-20 beside a 2026 form):
+   * the exit date lines more than a year from the form's date, said above Finalize and in its confirmation. A warning,
+   * never a block. See `lib/forms/date-year-check.ts`.
+   */
+  const yearWarnings = finalized
+    ? []
+    : yearCheckWarnings(fieldsForVariant(loaded.version.document, loaded.instance.variantKey), edits.values, edits.values.form_date);
+  const yearWarningText = yearWarnings.map((warning) => `${warning.label} is ${warning.value}`).join("; ");
+
   function requestFinalize() {
     if (action.kind === "busy") return;
     if (save.kind === "dirty" || save.kind === "saving" || unresolvedPolicy.length > 0) {
@@ -505,8 +534,11 @@ export function InlineForm({
           action: "finalize",
           followUpDate: followUp || null,
           ...(acknowledgeUnverifiedPolicy ? { acknowledgeUnverifiedPolicy: true } : {}),
+          // HR APPROVAL: the "Note to HR", only when this Finalize sends the form to HR.
+          ...(toHr && hrNote.trim() ? { note: hrNote.trim() } : {}),
         }),
       });
+      setHrNote("");
       await reload();
       setAction({ kind: "idle" });
     } catch (error) {
@@ -542,6 +574,18 @@ export function InlineForm({
     setAction({ kind: "busy", what: "pdf" });
     try {
       await downloadFormPdf(instanceId, role, user.name);
+      setAction({ kind: "idle" });
+    } catch (error) {
+      setAction({ kind: "error", message: (error as Error).message });
+    }
+  }
+
+  /** Print: the same server PDF, opened in a new tab to print (Pau, via QA, 23 Nov 2026). */
+  async function printPdf() {
+    if (action.kind === "busy") return;
+    setAction({ kind: "busy", what: "print" });
+    try {
+      await printFormPdf(instanceId, role, user.name);
       setAction({ kind: "idle" });
     } catch (error) {
       setAction({ kind: "error", message: (error as Error).message });
@@ -642,6 +686,9 @@ export function InlineForm({
         <Badge tone={finalized ? "outline" : "accent"} size="sm">
           {revised ? "Revised" : finalized ? "Finalized" : "Draft"}
         </Badge>
+        {hrApproval && !finalized ? (
+          <span className="text-xs text-subtle-foreground">{hrApproval.label}</span>
+        ) : null}
         {!finalized && loaded.instance.revisesInstanceId ? (
           <span className="text-xs text-subtle-foreground">New draft of a finalized form</span>
         ) : null}
@@ -906,6 +953,10 @@ export function InlineForm({
                 )}
                 Download PDF
               </Button>
+              <Button variant="secondary" size="sm" onClick={() => void printPdf()} disabled={action.kind === "busy"} data-testid="form-print">
+                {action.kind === "busy" && action.what === "print" ? <Loader2 className="animate-spin" /> : <Printer />}
+                Print
+              </Button>
               {/* ASD_NO_FORM_MONITORING: no link into a page the reader cannot open. */}
               {!asdNoFormMonitoringEnabled() || can("view_form_monitoring") ? (
               <Button variant="secondary" size="sm" asChild>
@@ -922,7 +973,34 @@ export function InlineForm({
                 </Button>
               ) : null}
             </div>
+          ) : heldForHr || hrReviewing ? (
+            /* HR APPROVAL: no Finalize while the form waits — HR decides in the approval panel below; edits still save. */
+            null
           ) : (
+            <>
+            {yearWarnings.length > 0 ? (
+              <p data-testid="year-check" className="flex items-start gap-1 text-xs text-status-attention">
+                <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+                Check the year: {yearWarningText}.
+              </p>
+            ) : null}
+            {toHr ? (
+              /* HR APPROVAL: an optional note that reaches HR with the form, in their bell and the approval history. */
+              <div className="space-y-1.5">
+                <Label htmlFor={`hr-send-note-${instanceId}`} className="text-xs">
+                  Note to HR (optional)
+                </Label>
+                <Textarea
+                  id={`hr-send-note-${instanceId}`}
+                  value={hrNote}
+                  onChange={(event) => setHrNote(event.target.value)}
+                  rows={2}
+                  maxLength={4000}
+                  placeholder="Anything HR should know about this form"
+                  disabled={action.kind === "busy"}
+                />
+              </div>
+            ) : null}
             <div className="flex flex-wrap items-center gap-2">
               <Button
                 variant="accent"
@@ -933,15 +1011,31 @@ export function InlineForm({
                 {action.kind === "busy" && action.what === "finalize" ? (
                   <Loader2 className="animate-spin" />
                 ) : null}
-                Finalize
+                {toHr ? "Finalize and send for approval" : "Finalize"}
               </Button>
               <span className="text-xs text-subtle-foreground">
-                {loaded.instance.revisesInstanceId
+                {toHr
+                  ? loaded.instance.revisesInstanceId
+                    ? "Sends this form to HR. It is finalized, and replaces the finalized original, when HR approves it; until then only you, the person who started it, and HR can see it."
+                    : "Sends this form to HR. It is finalized when HR approves it; until then only you, the person who started it, and HR can see it."
+                  : loaded.instance.revisesInstanceId
                   ? "Freezes these values and replaces the finalized original. Signatures are signed on paper afterwards."
                   : "Freezes these values. Signatures are signed on paper afterwards."}
               </span>
             </div>
+            </>
           )}
+
+          {hrApproval ? (
+            <HrApprovalPanel
+              instanceId={instanceId}
+              view={hrApproval}
+              call={(url, init) => call(url, init)}
+              onChanged={async () => {
+                await reload();
+              }}
+            />
+          ) : null}
 
           {action.kind === "error" ? (
             <p className="flex items-start gap-1 text-xs text-status-attention">
@@ -1019,14 +1113,22 @@ export function InlineForm({
       >
         {confirmingFinalize ? (
           <DialogContent
-            title="Finalize this form?"
+            title={toHr ? "Send this form for HR approval?" : "Finalize this form?"}
             description={`${loaded.instance.templateName} · ${loaded.instance.employeeName}`}
           >
             <p className="text-[13px] leading-relaxed text-muted-foreground">
-              {loaded.instance.revisesInstanceId
+              {toHr
+                ? "This form will be reviewed and approved by HR before it is final. HR approves it, sends it back for changes, or rejects it, and you get a notification either way. You can still edit it while HR has it; HR sees the updated version."
+                : loaded.instance.revisesInstanceId
                 ? "Its values are frozen and it replaces the finalized original. To change it afterwards, edit it as a new draft. Signatures are signed on paper."
                 : "Its values are frozen. To change it afterwards, edit it as a new draft. Signatures are signed on paper."}
             </p>
+            {yearWarnings.length > 0 ? (
+              <p data-testid="year-check-confirm" className="flex items-start gap-1 text-[13px] text-status-attention">
+                <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+                Check the year: {yearWarningText}.
+              </p>
+            ) : null}
             <DialogActions>
               <Button variant="ghost" onClick={() => setConfirmingFinalize(false)}>
                 Keep editing
@@ -1039,7 +1141,7 @@ export function InlineForm({
                 {action.kind === "busy" && action.what === "finalize" ? (
                   <Loader2 className="animate-spin" />
                 ) : null}
-                Yes, finalize
+                {toHr ? "Yes, send to HR" : "Yes, finalize"}
               </Button>
             </DialogActions>
           </DialogContent>

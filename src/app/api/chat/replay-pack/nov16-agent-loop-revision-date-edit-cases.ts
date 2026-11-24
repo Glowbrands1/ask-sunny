@@ -68,7 +68,8 @@ export const NOV16_REVISION_DATE_EDIT_CASES: ReplayCase[] = [
         if (!lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { employee_name: "Test Testy", form: "dpoa", date: "11/10", open: true, forms_on_file_evidence: evidenceFrom(view, askedTurn, 1) } };
         const forms = ((lastResult(view, "find_past_forms") as { forms?: { instance_id: string; form_date: string }[] }).forms ?? []);
         const target = forms.find((form) => form.form_date === "2026-11-10")?.instance_id ?? finalizedId;
-        if (!lastResult(view, "open_form")) return { tool: "open_form", input: { instance_id: target, forms_on_file_evidence: evidenceFrom(view, askedTurn, 1) } };
+        // Changed on purpose (port from Ask Bubbles 1b34db2, A11): after "Which one should I open?" the open passes the manager's pick from this message (choice_evidence); the expectations are unchanged.
+        if (!lastResult(view, "open_form")) return { tool: "open_form", input: { instance_id: target, forms_on_file_evidence: evidenceFrom(view, askedTurn, 1), choice_evidence: evidenceFrom(view) } };
         const edits = results([view], "edit_form") as { revision_draft?: { id: string }; saved?: unknown[]; reason_code?: string }[];
         const savedDate = edits.some((edit) => (edit.saved as { field: string }[] | undefined)?.some((row) => row.field === "form_date"));
         if (savedDate || edits.length >= 3) return { text: savedDate ? "Done: the new draft's date is 11/9/2026." : "I couldn't change the date." };

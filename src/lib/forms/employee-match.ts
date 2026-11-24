@@ -1,3 +1,4 @@
+import { foldName } from "./fold-name";
 import { rosterCompoundSurnameEnabled, sharedLoginNotStaffEnabled } from "@/lib/config/chat-quality-flags";
 
 /**
@@ -123,9 +124,7 @@ export function displayName(employee: RosterEmployee): string {
 }
 
 function normalize(text: string): string {
-  return text
-    .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")
+  return foldName(text)
     .toLowerCase()
     .replace(/['’.]/g, "")
     .replace(/[^a-z\s-]/g, " ")
@@ -263,7 +262,28 @@ function firstNames(employee: RosterEmployee): string[] {
  *   "Kaitlyn" with two                       confirm, both offered
  *   "Zelda Quinn"                            none — kept as typed
  */
+/** A trailing possessive on the typed name's last word ("Brindle's", "Brindle’s"): grammar, never part of a name. */
+const POSSESSIVE = /['’]s$/i;
+
+/**
+ * The typed name without a trailing possessive, ONLY when that is the name the roster matches (the 266-chat run's
+ * 053/116/117/138/237/239, QA 22 Nov 2026: "Odalys Brindle's" missed the roster and was carded with the "'s"). The
+ * name as typed is kept when it matches exactly itself, when it has no possessive ("Ross" is a surname), or when the
+ * name without it matches nobody.
+ */
+export function possessiveRead(typed: string, roster: readonly RosterEmployee[]): string {
+  const trimmed = typed.trim();
+  if (!POSSESSIVE.test(trimmed) || roster.length === 0) return typed;
+  const bare = trimmed.replace(POSSESSIVE, "").trim();
+  if (!bare || matchName(trimmed, roster).kind === "exact") return typed;
+  return matchName(bare, roster).kind === "none" ? typed : bare;
+}
+
 export function matchEmployeeName(typed: string, roster: readonly RosterEmployee[]): NameMatch {
+  return matchName(possessiveRead(typed, roster), roster);
+}
+
+function matchName(typed: string, roster: readonly RosterEmployee[]): NameMatch {
   if (roster.length === 0) return { kind: "unchecked" };
   const words = normalize(typed).split(" ").filter(Boolean);
   if (words.length === 0) return { kind: "none" };
@@ -357,6 +377,16 @@ export function matchEmployeeName(typed: string, roster: readonly RosterEmployee
   }
   // A surname initial, or two people with the same full name: the manager says which.
   const candidates = exact.length > 0 ? exact.map((employee) => ({ employee, score: 0 })) : close;
+  /*
+   * The 266-chat run's 117 (QA, 22 Nov 2026): "Brindle Tavish" for Tavish Brindle, the name in reverse order. When the
+   * typed order matches nobody, the roster's own "<last> <first>" order is read: one person whose surname then first
+   * (or preferred) name is exactly what was typed is that person. Roster data only; a reading that fits two is no match.
+   */
+  if (candidates.length === 0 && words.length >= 2) {
+    const typedWords = words.join(" ");
+    const reversed = roster.filter((employee) => firstNames(employee).some((first) => `${normalize(employee.lastName)} ${first}` === typedWords));
+    if (reversed.length === 1) return { kind: "exact", employee: reversed[0]!, name: displayName(reversed[0]!) };
+  }
   if (candidates.length === 0) return { kind: "none" };
 
   const ranked = [...candidates]
@@ -479,4 +509,19 @@ export function settledNameQuestions(
     }
   }
   return { accepted, kept };
+}
+
+/**
+ * Port from the sibling app (its QA's live re-test, 21 Nov 2026): a two-word name the roster reads as this roster person
+ * ALONE, by a close spelling ("<First> <Lastx>" for <First> <Lasty>), is this person's misspelt name. Another roster
+ * person's exact name, two close people, or no roster id: never. The card and the drafted write-up put the corrected name
+ * in place of the old spelling (`short-name.ts` withCorrectedSpelling).
+ */
+export function rosterSpellingOf(id: string | null, roster: readonly RosterEmployee[]): ((name: string) => boolean) | undefined {
+  if (!id || roster.length === 0) return undefined;
+  if (!roster.some((row) => row.id === id)) return undefined;
+  return (name: string) => {
+    const match = matchEmployeeName(name, roster);
+    return match.kind === "confirm" && match.candidates.length === 1 && match.candidates[0]!.employee.id === id;
+  };
 }

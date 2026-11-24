@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withRosterReadsOncePerReply } from "@/lib/forms/employee-roster";
 import { noteSpendUser } from "@/lib/ai/spend-meter";
 import { withSpendMeter } from "@/lib/ai/spend-meter-run";
 import { agentLoopFor, agentLoopSkipReason, loopCarriedOnly } from "@/lib/ai/agent-loop/switch";
@@ -11,6 +12,7 @@ import { modelSpendGuard } from "@/lib/ai/spend-guard";
 import { isQuestionNotForm } from "@/lib/ai/question-not-form";
 import { wantsSeparateDocument } from "@/lib/ai/second-form";
 import {
+  statedPlanStepsEnabled,
   chatLongMessageEnabled,
   closeSpellingMatchEnabled,
   draftActionsEnabled,
@@ -135,6 +137,11 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** SPEND_GUARD_ALL_CALLS_ENABLED: this route's Claude calls are counted (`ai/spend-meter.ts`). Off, as before. */
 export async function POST(request: Request) {
+  /* QA's f056 (20 Nov 2026): the staff list is read once per reply, for this request only (`withRosterReadsOncePerReply`). */
+  return withRosterReadsOncePerReply(() => postWithMeter(request));
+}
+
+async function postWithMeter(request: Request) {
   // CHAT_RESPONSE_STREAM_ENABLED: a slow answer is streamed so nothing cuts it off at 30 s. See `api/streamed-response.ts`.
   if (chatResponseStreamEnabled()) {
     /* PR 6 item 5: progress lines only when the browser asks AND the loop answers this turn (enabled in its branch below). */
@@ -890,7 +897,10 @@ async function postChat(request: Request, progress?: ProgressChannel) {
        * `lib/forms/chat-reopen.ts`.
        */
       const reopened =
-        !sameCopy && !draftAnswer && !correction && !policyChange && !redraft && !revision && (mayAskToReopen(parsed.question, reopenByAnyOpenVerbEnabled()) || (reopenByAnyOpenVerbEnabled() && answersWhichFormOnFile(parsed.history)))
+        !sameCopy && !draftAnswer && !correction && !policyChange && !redraft && !revision &&
+        // FORMS_ON_FILE_COUNTS_ENABLED (QA's f081): "show me CA and coaching forms for <A> this month" is a list, not an open.
+        !(await import("@/lib/forms/chat-form-records")).isFormListQuestion(parsed.question, parsed.context.todayIso) &&
+        (mayAskToReopen(parsed.question, reopenByAnyOpenVerbEnabled()) || (reopenByAnyOpenVerbEnabled() && answersWhichFormOnFile(parsed.history)))
           ? await (await import("@/lib/forms/chat-reopen")).reopenRequestedForm({
               request,
               question: parsed.question,
@@ -1043,6 +1053,10 @@ async function postChat(request: Request, progress?: ProgressChannel) {
           ...parsed.history.filter((turn) => turn.role === "user").map((turn) => turn.content),
           asked.question,
         ].join("\n\n"));
+      }
+      // STATED_PLAN_STEPS_ENABLED (f062): the card's plan line adds the steps the manager stated, as Create will save it.
+      if (statedPlanStepsEnabled() && answer.formProposal?.planSteps?.length) {
+        answer = (await import("@/lib/forms/stated-plan-steps")).withCardPlanSteps(answer);
       }
       // TWO_FORMS_CARD_NOT_ASKED_ENABLED: a card that names its employee is never asked "Which of them … — <that employee> or …?" (`lib/forms/card-not-asked.ts`).
       if (twoFormsCardNotAskedEnabled()) answer = (await import("@/lib/forms/card-not-asked")).withoutWhichAskOnSeatedCard(answer);

@@ -50,7 +50,12 @@ export const NOV16_AGENT_LOOP_NO_PRONOUN_CASES: ReplayCase[] = [
       const thread = t.thread();
       const card = await thread.say("ca for Tamsin Orwell, late to the shift on 11/14");
       expect(personPronoun(card.content), `a pronoun on the card reply:\n${card.content}`).toBeNull();
-      expect(card.content).toContain("Tamsin was late to Tamsin's shift on 11/14, with Tamsin's 146 tans this month.");
+      /*
+       * Changed on purpose (QA, 20 Nov 2026, item 19): the second mention in one sentence reads naturally ("late to the
+       * shift"), never "Tamsin was late to Tamsin's shift". Still no pronoun, and the person is still Tamsin.
+       */
+      expect(card.content).toContain("Tamsin was late to the shift on 11/14, with Tamsin's 146 tans this month.");
+      expect(card.content).not.toContain("Tamsin's shift");
       t.loopModel!(wordsOnly("I'll start the Corrective Action Form for her now. Since you've already talked to her, print it and walk through it with her."));
       const later = await thread.say("ok go ahead");
       expect(personPronoun(later.content), `a pronoun on a turn with no tool:\n${later.content}`).toBeNull();

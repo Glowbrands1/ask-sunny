@@ -30,7 +30,8 @@ export interface ReplayThread {
   /** `reading`: what the stand-in form-reading model returns this turn (e.g. `{ employeeName }`); none by default. */
   /** `extra`: other request fields the browser can send (batch F5: attachments, report context, answer mode). */
   say(text: string, reading?: Record<string, unknown>, extra?: Record<string, unknown>): Promise<ReplayAnswer>;
-  create(): Promise<string>;
+  /** `salon`: the salon the manager picks on the card before Create (the browser's picker; port of Ask Bubbles #1072, f140). */
+  create(salon?: string): Promise<string>;
   /** Create from the latest card for this person (an earlier card still on screen). */
   createCard?(employeeName: string): Promise<string>;
   /** The chat as the browser holds it. */
@@ -47,7 +48,11 @@ export interface ReplayThread {
 }
 
 export interface ReplayContext {
-  thread(): ReplayThread;
+  /**
+   * A browser tab's thread. `options.conversationId`: join this conversation id (a second tab on the same chat, e.g. a
+   * duplicated tab); `options.idPrefix`: this tab's message ids (browsers mint distinct ids; default "m").
+   */
+  thread(options?: { readonly conversationId?: string; readonly idPrefix?: string }): ReplayThread & { readonly conversationId?: string };
   /** `subject`: who is signed in (default "qa-manager"), for a case with two managers. */
   as(role: string, scope: unknown, subject?: string): void;
   directory(rows: readonly DirectoryRow[]): void;
@@ -55,7 +60,11 @@ export interface ReplayContext {
   /** `extra`: other fields of the draft tool's input, e.g. `{ offense_basis: "sales" }` (CA_SALES_POLICY_ENABLED). */
   draftWrites(values: Record<string, string>, checked?: Record<string, string[]>, extra?: Record<string, unknown>): void;
   /** The pinned policy manual also has these chunks this case (as `fetchOfficialPolicyManual` returns them); none by default. */
-  manualAlsoHas?(chunks: readonly Record<string, unknown>[]): void;
+  /**
+   * Chunks the pinned manual also has. `inPlace` (QA2, 21 Nov 2026): they take the place of the pinned chunks with the same
+   * chunk numbers, so a case reads production's own layout of those sections (the pinned CA fixture words them differently).
+   */
+  manualAlsoHas?(chunks: readonly Record<string, unknown>[], options?: { inPlace?: boolean }): void;
   /**
    * FULL_MANUAL_KEEPS_RETRIEVAL (QA, 10 Nov 2026): what the knowledge search returns this case (none by default), the
    * message normalizer's intent label (none by default: the glossary's reading), and whether the whole JBA Policy Manual
@@ -72,6 +81,16 @@ export interface ReplayContext {
   manualVersionChecks?(): number;
   /** The grounding block the answering model was given on its last answer. */
   lastGrounding?(): string;
+  /** The REPORT DATA block the answering model was last given (empty when none): Google reviews in chat, 18 Nov 2026. */
+  lastReportData?(): string;
+  /** The answering model's last system prompt (its report-figure rule): Google reviews in chat, 18 Nov 2026. */
+  lastSystem?(): string;
+  /**
+   * The Google Reviews page holds the harness's fixed figures for this case (every listing: 2 reviews this reporting
+   * week, both qualifying; 4 last week, 3 qualifying; week of Sun 15 Nov 2026). Without it the page's reads go to the
+   * fake database, which holds no review.
+   */
+  reviewsOnFile?(): void;
   /** The FORMS ON FILE block the answering model was last given (empty when none): FORMS_ON_FILE_DATE_RANGE, 18 Nov 2026. */
   lastFormRecords?(): string;
   /** What the revision model writes on the next revision. */
@@ -101,6 +120,8 @@ export interface ReplayContext {
    * order. Past the end it confirms (no set, no clear); `null` is a fallback. Every scripted round is in the case file.
    */
   patchChecks?(outputs: readonly unknown[]): void;
+  /** QA's audit (item 14b, 20 Nov 2026): every form-patch call this case takes this long first (real time), as a slow reviser does. */
+  patchTakes?(ms: number): void;
   /** EDIT_SEES_SAVED_FORM_ENABLED: how many check rounds the patch model was asked this case. */
   patchCheckCalls?(): number;
   /** CARD_CHECKED_AGAINST_WORDS_ENABLED: the card check's model outputs, in order; past the end it falls back. */
@@ -115,6 +136,8 @@ export interface ReplayContext {
   summaryWrites?(summary: string): void;
   /** The rows a table holds now (`user_memory`, `chat_context_summaries`, …). */
   rows?(table: string): Record<string, unknown>[];
+  /** Adds rows to a table of the case's database (HR approval, 23 Nov 2026: the approver's `form_hr_approvers` row). */
+  addRows?(table: string, rows: readonly Record<string, unknown>[]): void;
   /** Fault injection (DRAFT_WRITE_NEVER_SILENT_ENABLED): the draft route's next one-writer write also carries this field, once; the real writer refuses it and, all or nothing, the whole write. */
   draftWriteCarries?(field: string): void;
   calls(): { chat: number; draft: number; revision: number; tool: number; patch: number };
@@ -134,8 +157,14 @@ export interface ReplayContext {
   draftTools(): string[];
   /** The draft route's POST for this form, as a redraft sends it (`keepManagerValues`); the route's response. */
   redraft(instanceId: string, notes: string): Promise<Record<string, unknown>>;
+  /** The card's Save, through the real PATCH route as the current identity (owner, 24 Nov 2026: editing a form waiting for HR). */
+  saveOnCard?(instanceId: string, values: Record<string, string>): Promise<Record<string, unknown>>;
   /** The manager types on the form and saves (filled by the manager). */
   typeOnForm(instanceId: string, values: Record<string, string>): void;
+  /** Tick a form's checkbox groups (form_instance_values.checked), as a form on file holds them: its warning level, its boxes. */
+  checkOnForm?(instanceId: string, checked: Record<string, string[]>): void;
+  /** The real template and current version ids of a form, for a row a case puts on file directly (its values then load as a saved form's). */
+  templateIds?(key: string): { template_id: string; template_version_id: string };
   /** Production's race: the next message arrives before the drafting model's values are saved. */
   draftNotYetSaved(instanceId: string): void;
   /** The draft route's replies this case, in order (e.g. its `notice`). */
@@ -144,8 +173,12 @@ export interface ReplayContext {
   loopOn?(): boolean;
   /** AGENT_LOOP_ENABLED: the loop really answers this case's turns (the flag on, a stand-in model, the manager listed). */
   loopActive?(): boolean;
-  /** AGENT_LOOP_ENABLED: the loop's stand-in model for this case (`loop-stand-in.ts`); lists the signed-in manager in AGENT_LOOP_USERS. */
-  loopModel?(standIn: import("./loop-stand-in").LoopStandIn): void;
+  /**
+   * AGENT_LOOP_ENABLED: the loop's stand-in model for this case (`loop-stand-in.ts`); lists the signed-in manager in
+   * AGENT_LOOP_USERS. `scripted` (QA, 22 Nov 2026): the stand-in even in an AGENT_LOOP_LIVE run, for a case whose point is
+   * the app's own path around a model behaviour no real model can be made to show (a turn that stalls past the time limit).
+   */
+  loopModel?(standIn: import("./loop-stand-in").LoopStandIn, options?: { scripted?: boolean }): void;
   /** AGENT_LOOP_ENABLED: find_staff's roster read fails from now on. */
   rosterFails?(): void;
   /**

@@ -92,8 +92,16 @@ export function formatValue(v: number | null | undefined, format: MetricFormat):
   return v.toLocaleString("en-US");
 }
 
+/**
+ * Whether a metric has a goal. A metric set up with its goal left blank (the STC SD L10s' scorecards, owner's request
+ * 18 Nov 2026: "leave goals blank" until the DMs fill them in) has none, so it is never on or off goal.
+ */
+export function hasGoal(row: Pick<ScorecardRow, "goal">): boolean {
+  return typeof row.goal !== "string" || row.goal.trim() !== "";
+}
+
 export function isMiss(row: ScorecardRow, v: number | null | undefined): boolean {
-  if (v == null || row.bidirectional) return false;
+  if (v == null || row.bidirectional || !hasGoal(row)) return false;
   return row.higherIsBetter ? v < row.goalValue : v > row.goalValue;
 }
 
@@ -108,12 +116,13 @@ function tolerancePct(row: ScorecardRow): number {
 /**
  * Cell text colour. Green: meets or beats the goal. Black: short of it by no more than the tolerance
  * (default 10% of the goal value, or the row's own `tolerance`). Red: worse than that, and any negative
- * value (as in Lovable). Bidirectional goals count as met, as before.
+ * value (as in Lovable). Bidirectional goals count as met, as before. Plain (no tint): a value on a metric with no goal yet.
  */
-export type CellTone = "empty" | "negative" | "bad" | "near" | "good";
+export type CellTone = "empty" | "negative" | "bad" | "near" | "good" | "plain";
 export function cellTone(row: ScorecardRow, v: number | null | undefined): CellTone {
   if (v == null) return "empty";
   if (v < 0) return "negative";
+  if (!hasGoal(row)) return "plain";
   if (!isMiss(row, v)) return "good";
   const band = (Math.abs(row.goalValue) * tolerancePct(row)) / 100;
   const shortBy = row.higherIsBetter ? row.goalValue - v : v - row.goalValue;

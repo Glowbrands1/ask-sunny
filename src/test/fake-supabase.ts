@@ -53,6 +53,12 @@ export interface FakeStore {
    * once — and never twice — would have nothing to run against.
    */
   form_template_assets?: Row[];
+  /**
+   * Present to model the deletion record (board f066, `20261120001000_form_instance_deletions.sql`): a store that
+   * has it gets one row per deleted form, as the BEFORE DELETE trigger writes it, from the row's stamp (who, role,
+   * how) when it is under ten minutes old, else as `other`. A store without it is as before.
+   */
+  form_instance_deletions?: Row[];
 }
 
 /** The view is a read of the same array — see the note above. */
@@ -141,6 +147,10 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: null }> {
     this.filters.push((row) => row[column] === value);
     return this;
   }
+  neq(column: string, value: unknown) {
+    this.filters.push((row) => row[column] !== undefined && row[column] !== null && row[column] !== value);
+    return this;
+  }
   is(column: string, value: null) {
     this.filters.push((row) => (row[column] ?? null) === value);
     return this;
@@ -185,13 +195,34 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: null }> {
     this.filters.push((row) => values.includes(row[column]));
     return this;
   }
-  /** Only `col.ilike.*word*` alternatives — the employee-name search — are modelled. */
+  /**
+   * Alternatives of `col.ilike.*word*` (the employee-name search), and — for HR approval's filters
+   * (`hr-approval-rules.ts`) — `col.is.null`, `col.eq.value` and `col.neq.value`, a value optionally in double quotes.
+   */
   or(expression: string) {
     const tests = expression.split(",").map((part) => {
-      const match = /^(\w+)\.ilike\.\*([^*]*)\*$/.exec(part);
-      if (!match) throw new Error(`fake-supabase: or(${part}) unsupported`);
-      const [, column, word] = match;
-      return (row: Row) => String(row[column!] ?? "").toLowerCase().includes(word!.toLowerCase());
+      const ilike = /^(\w+)\.ilike\.\*([^*]*)\*$/.exec(part);
+      if (ilike) {
+        const [, column, word] = ilike;
+        return (row: Row) => String(row[column!] ?? "").toLowerCase().includes(word!.toLowerCase());
+      }
+      // `col.cs.{"value"}`: an array column that contains the value (HR approval's senders).
+      const contains = /^(\w+)\.cs\.\{"?([^"}]*)"?\}$/.exec(part);
+      if (contains) {
+        const [, column, value] = contains;
+        return (row: Row) => Array.isArray(row[column!]) && (row[column!] as unknown[]).map(String).includes(value!);
+      }
+      const isNull = /^(\w+)\.is\.null$/.exec(part);
+      if (isNull) return (row: Row) => (row[isNull[1]!] ?? null) === null;
+      const compare = /^(\w+)\.(eq|neq)\.(?:"([^"]*)"|([^",]*))$/.exec(part);
+      if (compare) {
+        const [, column, op, quoted, bare] = compare;
+        const value = quoted ?? bare ?? "";
+        return op === "eq"
+          ? (row: Row) => row[column!] !== undefined && row[column!] !== null && String(row[column!]) === value
+          : (row: Row) => row[column!] !== undefined && row[column!] !== null && String(row[column!]) !== value;
+      }
+      throw new Error(`fake-supabase: or(${part}) unsupported`);
     });
     this.filters.push((row) => tests.some((test) => test(row)));
     return this;
@@ -279,6 +310,7 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: null }> {
     if (this.op === "delete") {
       const cascades = (VIEW_SOURCE[this.table] ?? this.table) === "form_instances";
       for (const row of hits) {
+        if (cascades && this.store.form_instance_deletions) recordDeletion(this.store, row);
         rows.splice(rows.indexOf(row), 1);
         if (!cascades) continue;
         for (const child of CASCADES) {
@@ -311,8 +343,54 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: null }> {
   }
 }
 
+/** The deletion trigger, modelled: the row as Postgres's `forms_record_deletion()` writes it. */
+function recordDeletion(store: FakeStore, row: Row): void {
+  const at = typeof row.deletion_requested_at === "string" ? Date.parse(row.deletion_requested_at) : NaN;
+  const stamped = Number.isFinite(at) && Date.now() - at < 10 * 60_000;
+  const template = (store.form_templates ?? []).find((entry) => entry.id === row.template_id);
+  store.form_instance_deletions!.push({
+    id: `fake-${(insertCounter += 1)}`,
+    instance_id: row.id,
+    template_key: template?.key ?? row.template_key ?? null,
+    template_name: template?.name ?? row.template_name ?? null,
+    employee_name: row.employee_name ?? null,
+    form_date: row.form_date ?? null,
+    status: row.status ?? null,
+    location_id: row.location_id ?? null,
+    location_name: row.location_name ?? null,
+    created_by: row.created_by ?? null,
+    deleted_by: stamped ? row.deletion_requested_by ?? null : null,
+    deleted_by_role: stamped ? row.deletion_requested_role ?? null : null,
+    deleted_via: (stamped ? row.deletion_requested_via : null) ?? "other",
+    deleted_at: new Date().toISOString(),
+    snapshot: { instance: { ...row }, values: store.form_instance_values.filter((value) => value.instance_id === row.id) },
+  });
+}
+
 export function fakeSupabase(store: FakeStore) {
-  return { from: (table: string) => new FakeQuery(store, table) };
+  return { from: (table: string) => new FakeQuery(store, table), rpc: (name: string, args: Record<string, unknown>) => fakeRpc(store, name, args) };
+}
+
+/**
+ * The database functions a test reaches, modelled on their migrations. Only `form_hr_approval_write_values`
+ * (20261123001000): HR's edit of a form waiting for them — refused unless the form is a draft pending HR, then the rows
+ * are upserted on (instance_id, field_key) as `writeValues` upserts them. Anything else fails loudly.
+ */
+async function fakeRpc(store: FakeStore, name: string, args: Record<string, unknown>): Promise<{ data: null; error: { message: string } | null }> {
+  if (name !== "form_hr_approval_write_values") throw new Error(`fake-supabase: rpc(${name}) unsupported`);
+  const tables = store as unknown as Record<string, Row[] | undefined>;
+  const instance = (tables.form_instances ?? []).find((row) => row.id === args.p_instance_id);
+  if (!instance || instance.status !== "draft" || instance.hr_approval_state !== "pending") {
+    return { data: null, error: { message: "That form is not waiting for HR approval." } };
+  }
+  const values = (tables.form_instance_values ??= []);
+  for (const incoming of (args.p_rows ?? []) as Row[]) {
+    const row: Row = { instance_id: args.p_instance_id, ...incoming, updated_at: new Date().toISOString() };
+    const at = values.findIndex((existing) => existing.instance_id === row.instance_id && existing.field_key === row.field_key);
+    if (at >= 0) values[at] = { ...values[at], ...row };
+    else values.push({ id: `value-${values.length + 1}`, ...row });
+  }
+  return { data: null, error: null };
 }
 
 const exactIlike = { on: false };

@@ -163,6 +163,12 @@ export type Permission =
   | "view_forms_workspace"
   | "view_videos"
   | "manage_videos"
+  /**
+   * OPEN AI TRAINING — the JBA AI Training program's lessons, policy and best
+   * practices, and submitting a response to a lesson. Every role holds it;
+   * EDITING the program is the admin console roles' (`ADMIN_CONSOLE_ROLES`).
+   */
+  | "view_ai_training"
   | "view_reports"
   | "view_google_reviews"
   | "manage_knowledge"
@@ -668,10 +674,43 @@ export interface ChatFormProposal {
    * conversation's user turns carry that word again, checked server-side (`lib/forms/termination-word.ts`).
    */
   loopTermination?: true;
+  /**
+   * The agent loop's exit card (a real manager's exit form, 20 Nov 2026): how the person left (a resignation_type option,
+   * never the involuntary one), as the model read the manager's words, with the words it quoted. Create ticks it only
+   * when that quote is in the chat's manager turns, checked server-side.
+   */
+  exitHow?: string;
+  exitHowQuote?: string;
+  /**
+   * The agent loop's exit card (port of Ask Bubbles #1034, its QA's round 2, 22 Nov 2026, U22): the lines Create saves, as
+   * the reply may read them back ("**<label>:** <value>"); a reply line under an exit field label that is not one of them
+   * is handed back.
+   */
+  exitReadBack?: string[];
+  /**
+   * The agent loop's exit card (QA's Bubbles round 2, 22 Nov 2026, U26): How Employee Resigned as the model read it (one of
+   * the line's own methods) and the manager's words for it. Create writes it only when the quote is in the chat's manager
+   * turns and names that method, checked server-side.
+   */
+  exitMethod?: string;
+  exitMethodQuote?: string;
+  /** The agent loop's exit card (port of Ask Bubbles #1047, B6, 22 Nov 2026): Reason for Resignation in the manager's words, and their quote; Create checks it again. */
+  exitReason?: string;
+  exitReasonQuote?: string;
   /** The agent loop's card (QA's third review): Create never runs today's termination reader for it. */
   fromAgentLoop?: true;
   /** The agent loop's coaching card: the topic, in the manager's words, checked against their message (QA, 17 Nov 2026). */
   coachingTopic?: string;
+  /**
+   * STATED_PLAN_STEPS_ENABLED (Pau via QA, 20 Nov 2026, f062): the Action Plan steps the manager stated, in their words, each
+   * checked against them (the loop's plan_steps or the intent reader's planSteps). Create adds them before the closing.
+   */
+  planSteps?: string[];
+  /**
+   * The agent loop's Corrective Action card: what the manager described for an attendance offense, kept on their quoted
+   * words (QA's production audit, 20 Nov 2026, item 21). "absence" is a missed shift, never written up as lateness.
+   */
+  attendanceKind?: "absence" | "lateness" | "left_early" | "both";
   /**
    * The agent loop's card (PR 2, the card record): the latest earlier card in this chat was another person's, and it
    * stays creatable (`isProposalSuperseded`). Set from the server's card record, by roster id, never from reply text.

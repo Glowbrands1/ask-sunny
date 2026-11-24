@@ -13,6 +13,7 @@ import { continuationFor, offeredCopyForTurn, type OfferedCopy } from "@/lib/for
 import { createId } from "@/lib/utils/id";
 import { fakeSupabase, type FakeStore } from "@/test/fake-supabase";
 import { JBA_MANUAL_CA_CHUNKS } from "@/test/fixtures/jba-manual-ca-sections";
+import { fullPolicyManualChunks, replayReadsFullPolicyManual } from "@/test/fixtures/jba-manual-full";
 import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
 
 import type { ReplayContext } from "./cases";
@@ -59,6 +60,18 @@ const store: FakeStore = {
   // without them every write failed silently and the record's row counts were always 0).
   user_memory: [],
   chat_context_summaries: [],
+  // Board f066 (20 Nov 2026): the deletion record, written by the fake as the BEFORE DELETE trigger writes it.
+  form_instance_deletions: [],
+  // AI Training -> Assignments (23 Nov 2026): the AI assignment tracker read_ai_assignments reads.
+  ai_assignment_people: [],
+  ai_assignment_marks: [],
+  // HR approval (23 Nov 2026, migration 20261123001000): the approver list, the approval history, the 6 AM reminder's
+  // record, the bell, and the user directory the bell and the queue read names and emails from.
+  form_hr_approvers: [],
+  form_hr_approval_events: [],
+  form_hr_reminder_sends: [],
+  app_notifications: [],
+  app_users: [],
 } as unknown as FakeStore;
 
 // As production builds the role table when the ASD may create forms (NEXT_PUBLIC_, read once at load).
@@ -77,6 +90,8 @@ const state = vi.hoisted(() => ({
   slotReading: "none" as "none" | "ca" | "copy",
   /** Chunks the pinned manual also has, when a case sets them (`manualAlsoHas`); none by default. */
   manualExtra: [] as Record<string, unknown>[],
+  /** `manualAlsoHas(…, { inPlace: true })`: the added chunks replace the pinned ones with the same chunk numbers. */
+  manualExtraInPlace: false,
   /** FULL_MANUAL_KEEPS_RETRIEVAL: what the knowledge search returns (`knowledgeHas`), the normalizer's label, the full manual. */
   knowledgeRows: [] as Record<string, unknown>[],
   /** POLICY_CARRY_RETRIEVAL (#248 rebuilt, 12 Nov 2026): every knowledge search's query, in order (`searches`). */
@@ -91,6 +106,11 @@ const state = vi.hoisted(() => ({
   lastGrounding: "",
   /** The FORMS ON FILE block the answering model was last given (`lastFormRecords`). */
   lastFormRecords: "",
+  /** The REPORT DATA and the system prompt the answering model was last given (`lastReportData`, `lastSystem`). */
+  lastReportData: "",
+  lastSystem: "",
+  /** `t.reviewsOnFile()`: the Google Reviews page holds the fixed figures below, this case only. */
+  reviewsOnFile: false,
   /** What the slot model (record_intent_slots) reads this turn, when a case sets it — as a production trace shows. */
   slotsRead: {} as Record<string, unknown>,
   /** The employee the AI reader quotes this turn, when a case sets it (it is checked against the roster as in production). */
@@ -127,6 +147,8 @@ const patchScript = vi.hoisted(() => ({
   // CARD_CHECKED_AGAINST_WORDS_ENABLED: the card check's model outputs (`t.cardChecks`).
   cards: [] as unknown[],
   cardCalls: 0,
+  // QA's audit (item 14b): how long each form-patch call takes this case (`t.patchTakes`), in real time.
+  delayMs: 0,
 }));
 vi.mock("@/lib/forms/form-patch-call", () => ({
   FORM_PATCH_DEFAULT_TIMEOUT_MS: 5_000,
@@ -134,6 +156,7 @@ vi.mock("@/lib/forms/form-patch-call", () => ({
   callFormPatchModel: async (input?: { prompt?: string }) => {
     /* PR 6: a model call made inside a loop tool counts toward the step limit, as the real call notes itself. */
     (await import("@/lib/ai/model-call-scope")).noteModelCall();
+    if (patchScript.delayMs > 0) await new Promise<void>((resolve) => setTimeout(resolve, patchScript.delayMs));
     /*
      * EDIT_SEES_SAVED_FORM_ENABLED (coding 6, 13 Nov 2026): a check round (the prompt holds "SAVED AFTER YOUR LAST
      * PATCH") never takes a reading from the script above. It answers `t.patchChecks([...])` in order; past the end,
@@ -318,12 +341,14 @@ vi.mock("@/lib/ai/call-claude", () => ({
       usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 },
     };
   },
-  callClaude: async (input?: { system?: string; grounding?: string; formRecords?: string | null; formEditTool?: { data: string; onToolUse: (call: unknown) => void } | null }) => {
+  callClaude: async (input?: { system?: string; grounding?: string; reportData?: string | null; formRecords?: string | null; formEditTool?: { data: string; onToolUse: (call: unknown) => void } | null }) => {
     /* PR 6: a model call made inside a loop tool counts toward the step limit, as the real call notes itself. */
     (await import("@/lib/ai/model-call-scope")).noteModelCall();
     state.chatModelCalls += 1;
     state.lastGrounding = String(input?.grounding ?? "");
     state.lastFormRecords = String(input?.formRecords ?? "");
+    state.lastReportData = String(input?.reportData ?? "");
+    state.lastSystem = String(input?.system ?? "");
     // REPLAY_RECORD (QA, 10 Nov 2026): the system prompt each answer was asked with, as a hash, so two versions of the
     // prompt's assembly can be compared case by case (the stage-timing split of buildSystemPrompt's awaits).
     systemPrompts.texts.push(String(input?.system ?? ""));
@@ -511,7 +536,13 @@ vi.mock("@/lib/knowledge/providers/supabase", () => ({
         documentTitle: "2025 JBA Policy Manual - Edited 5-2025",
         documentCategory: "policies_compliance",
         matchedBy: "tag",
-        chunks: [...JBA_MANUAL_CA_CHUNKS, ...state.manualExtra],
+        // REPLAY_FULL_POLICY_MANUAL=1 (QA, 20 Nov 2026): shadow and saved-form runs read the manual production reads.
+        chunks: [
+          ...(replayReadsFullPolicyManual() ? fullPolicyManualChunks() : JBA_MANUAL_CA_CHUNKS).filter(
+            (chunk) => !state.manualExtraInPlace || !state.manualExtra.some((extra) => extra.chunkIndex === (chunk as { chunkIndex?: unknown }).chunkIndex),
+          ),
+          ...state.manualExtra,
+        ],
       };
     }
   },
@@ -554,6 +585,66 @@ vi.mock("@/lib/knowledge", () => ({
 }));
 
 vi.mock("@/lib/reporting/read/report-briefing", () => ({ loadReportBriefing: async () => null }));
+
+/*
+ * THE GOOGLE REVIEWS PAGE'S READS (QA 18 Nov 2026, port from Ask Bubbles). Only for a case that calls
+ * `t.reviewsOnFile()`: fixed figures for the reporting week of Sun 15 Nov 2026, every listing: 2 reviews this week (both
+ * qualifying), 4 last week (3 qualifying), 6 qualifying month to date, average 4.6 of 40. Otherwise the real reads.
+ */
+vi.mock("@/lib/reviews/queries", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/reviews/queries")>();
+  const { goalContext } = await import("@/lib/reviews/goal");
+  const { GOOGLE_REVIEW_LOCATIONS } = await import("@/lib/reviews/store-codes");
+  return {
+    ...actual,
+    loadReviewsSnapshot: async (...args: Parameters<typeof actual.loadReviewsSnapshot>) =>
+      state.reviewsOnFile
+        ? ({
+            empty: false,
+            lastSyncAt: new Date().toISOString(),
+            goal: goalContext("2026-11-18", 10),
+            currentWeek: "2026-11-15",
+            previousWeek: "2026-11-08",
+            locations: GOOGLE_REVIEW_LOCATIONS.map((listing) => ({
+              storeCode: listing.storeCode,
+              locationName: listing.googleLabel,
+              district: null,
+              salonNumber: listing.salonNumber,
+              listingState: "verified",
+              anchorReviewId: `anchor-${listing.storeCode}`,
+              anchorReviewer: null,
+              historical: 0,
+              reviewsThisWeek: 2,
+              qualifyingThisWeek: 2,
+              lastWeek: 4,
+              qualifyingLastWeek: 3,
+              qualifyingMonthToDate: 6,
+              unanswered: 0,
+              criticalOpen: 0,
+              averageRating: 4.6,
+              total: 40,
+            })),
+          } as unknown as Awaited<ReturnType<typeof actual.loadReviewsSnapshot>>)
+        : actual.loadReviewsSnapshot(...args),
+    loadReviewFeed: async (...args: Parameters<typeof actual.loadReviewFeed>) =>
+      state.reviewsOnFile ? { reviews: [], total: 0, truncated: false } : actual.loadReviewFeed(...args),
+    /* L3, L6 and YTD (19 Nov 2026): every listing counted 2 qualifying reviews in each of Aug, Sep and Oct and 1 so far in Nov. */
+    loadMonthlyProgressRows: async (...args: Parameters<typeof actual.loadMonthlyProgressRows>) =>
+      state.reviewsOnFile
+        ? {
+            counted: GOOGLE_REVIEW_LOCATIONS.flatMap((listing) =>
+              ["2026-08-12", "2026-08-20", "2026-09-04", "2026-09-18", "2026-10-06", "2026-10-22", "2026-11-03"].map((day, index) => ({
+                id: `${listing.storeCode}-${index}`,
+                store_code: listing.storeCode,
+                counted_at: `${day}T18:00:00Z`,
+              })),
+            ),
+            posted: [],
+            countingFrom: new Map<string, string | null>(),
+          }
+        : actual.loadMonthlyProgressRows(...args),
+  };
+});
 vi.mock("@/lib/reporting/read/employee-facts", () => ({
   loadEmployeeFacts: async () => null,
   NO_EMPLOYEE_DATA_REASON: "no dataset",
@@ -600,15 +691,20 @@ vi.setConfig({ hookTimeout: 30_000, testTimeout: process.env.AGENT_LOOP_LIVE ===
 const { ensureTemplateLibrary } = await import("@/lib/forms/repository");
 const { stillAsks } = await import("@/lib/forms/reply-guards");
 const { createInlineForm } = await import("@/features/chat/create-inline-form");
+const { foldName } = await import("@/lib/forms/fold-name");
 const chatRoute = await import("../route");
 const instancesRoute = await import("../../forms/instances/route");
 const draftRoute = await import("../../forms/instances/[id]/draft/route");
+const instanceRoute = await import("../../forms/instances/[id]/route");
 
 async function call<T>(url: string, init?: RequestInit): Promise<T> {
   const request = new Request(`https://app.test${url}`, init);
   const draft = /^\/api\/forms\/instances\/([^/]+)\/draft$/.exec(url);
+  const instance = /^\/api\/forms\/instances\/([^/]+)$/.exec(url);
   const response = draft
     ? await draftRoute.POST(request, { params: Promise.resolve({ id: draft[1]! }) })
+    : instance && init?.method === "PATCH"
+      ? await instanceRoute.PATCH(request, { params: Promise.resolve({ id: instance[1]! }) })
     : url === "/api/forms/instances"
       ? await instancesRoute.POST(request)
       : null;
@@ -674,7 +770,13 @@ class Thread {
   private sequence = 0;
   private offeredCopy: OfferedCopy | undefined;
   // A well-formed client id, so the route keeps the intake state between turns (`isClientConversationId`).
-  private readonly conversationId = createId("conv");
+  readonly conversationId: string;
+  private readonly idPrefix: string;
+
+  constructor(options: { readonly conversationId?: string; readonly idPrefix?: string } = {}) {
+    this.conversationId = options.conversationId ?? createId("conv");
+    this.idPrefix = options.idPrefix ?? "m";
+  }
   /** PR 6 item 5: the thread asks for progress lines (`askProgress`); the last turn's statuses and stream version. */
   private progressAsked = false;
   lastProgress: string[] = [];
@@ -687,7 +789,7 @@ class Thread {
   async say(question: string, reading: Record<string, unknown> = {}, extra: Record<string, unknown> = {}): Promise<Answer> {
     state.reading = reading;
     const history = this.messages.map(({ id, role, content, formProposal }) => ({ id, role, content, ...(formProposal ? { formProposal } : {}) }));
-    const id = `m${(this.sequence += 1)}`;
+    const id = `${this.idPrefix}${(this.sequence += 1)}`;
     const pendingCopy = offeredCopyForTurn(this.offeredCopy, this.messages);
     this.offeredCopy = undefined;
     const response = await chatRoute.POST(
@@ -745,13 +847,24 @@ class Thread {
        */
       const unquoted = (payload.content ?? "").replace(/"[^"\n]*"|“[^”\n]*”/g, "");
       const own = (cardShown.employeeName ?? "").toLowerCase().split(/\s+/);
-      const judged = unquoted
-        .split(/(?<=[.!?])\s+|\n+/)
-        .filter((sentence) => {
+      /*
+       * Changed on purpose (22 Nov 2026, port of Ask Bubbles #1053, two people of one pronoun kind): the app now keeps a
+       * pronoun whose nearest named person of its kind is someone else, named in an EARLIER sentence too ("… her coworker
+       * <B>. She was giving her an attitude"). So a sentence is also left out of the judgement when an earlier sentence of
+       * the reply names another person whom the manager's message names as well (never the card's person).
+       */
+      const isOther = (named: string) => !named.toLowerCase().split(/\s+/).every((word) => own.includes(word));
+      const sentences = unquoted.split(/(?<=[.!?])\s+|\n+/);
+      const managerNamed = (named: string) => question.toLowerCase().includes(named.toLowerCase());
+      const judged = sentences
+        .filter((sentence, index) => {
           const pronoun = /\b(?:he|him|his|she|her|hers|himself|herself|they|them|their)\b/i.exec(sentence);
           if (!pronoun) return true;
           const before = sentence.slice(0, pronoun.index).replace(/\*\*/g, "");
-          return !extractEmployeeNames(before).some((named) => !named.toLowerCase().split(/\s+/).every((word) => own.includes(word)));
+          if (extractEmployeeNames(before).some(isOther)) return false;
+          const earlier = sentences.slice(0, index).join(" ").replace(/\*\*/g, "");
+          const fullNames = [...earlier.matchAll(/\b\p{Lu}\p{Ll}+ \p{Lu}\p{Ll}+\b/gu)].map((match) => match[0]);
+          return ![...extractEmployeeNames(earlier), ...fullNames].some((named) => isOther(named) && managerNamed(named));
         })
         .join("\n");
       expect(personPronoun(judged), `a pronoun for the card's person:\n${payload.content}`).toBeNull();
@@ -796,9 +909,14 @@ class Thread {
   }
 
   /** The card's Create, as the browser does it. */
-  async create(): Promise<string> {
+  /**
+   * `salon`: the salon the manager picks on the card before Create, as the browser's salon picker does (port of Ask
+   * Bubbles #1072, board f140: Create on a card that still asks which salon saves nothing, so a case that means to save
+   * one picks it).
+   */
+  async create(salon?: string): Promise<string> {
     expect(this.proposal, "no card to create from").not.toBeNull();
-    const result = await createInlineForm({ proposal: this.proposal!, messages: this.messages, call, onCreated: () => {} });
+    const result = await createInlineForm({ proposal: salon ? { ...this.proposal!, locationId: salon } : this.proposal!, messages: this.messages, call, onCreated: () => {} });
     this.instanceId = toUuid(result.reference.instanceId);
     return this.instanceId;
   }
@@ -828,6 +946,10 @@ function joinOverview() {
     if (!template && row.template_name) continue;
     Object.assign(row, { template_key: template?.key, template_name: template?.name, layout_family: template?.layout_family, template_version: version?.version });
   }
+  /* The overview's employee_name_folded, as migration 20261120002000 defines it (lower(unaccent(employee_name))): QA's f072. */
+  for (const row of store.form_instances ?? []) {
+    if (typeof row.employee_name === "string") Object.assign(row, { employee_name_folded: foldName(row.employee_name).toLowerCase() });
+  }
 }
 class JoiningRows extends Array<Record<string, unknown>> {
   override push(...rows: Record<string, unknown>[]) {
@@ -844,6 +966,7 @@ beforeEach(async () => {
   // A case that pinned extra manual passages leaves the heading index with them; the next case starts without.
   if (state.manualExtra.length > 0) forgetManualIndexForTests();
   state.manualExtra = [];
+  state.manualExtraInPlace = false;
   state.knowledgeRows = [];
   state.knowledgeQueries = [];
   state.normalizerIntent = null;
@@ -852,6 +975,9 @@ beforeEach(async () => {
   state.manualVersionChecks = 0;
   state.lastGrounding = "";
   state.lastFormRecords = "";
+  state.lastReportData = "";
+  state.lastSystem = "";
+  state.reviewsOnFile = false;
   state.readerEmployee = null;
   state.slotsOnlyIfSaid = false;
   state.remapObservation = null;
@@ -865,6 +991,7 @@ beforeEach(async () => {
   patchScript.checkCalls = 0;
   patchScript.cards = [];
   patchScript.cardCalls = 0;
+  patchScript.delayMs = 0;
   faults.field = null;
   faults.deleteTable = null;
   summaries.reply = null;
@@ -1018,7 +1145,7 @@ afterEach(() => {
 
 function context(): ReplayContext {
   return {
-    thread: () => new Thread(),
+    thread: (options) => new Thread(options),
     as: (role, scope, subject) => {
       setRole(role);
       setScope(scope);
@@ -1041,8 +1168,14 @@ function context(): ReplayContext {
     },
     lastGrounding: () => state.lastGrounding,
     lastFormRecords: () => state.lastFormRecords,
-    manualAlsoHas: (chunks) => {
+    lastReportData: () => state.lastReportData,
+    lastSystem: () => state.lastSystem,
+    reviewsOnFile: () => {
+      state.reviewsOnFile = true;
+    },
+    manualAlsoHas: (chunks, options = {}) => {
       state.manualExtra = [...chunks];
+      state.manualExtraInPlace = options.inPlace === true;
       // The slot reader's heading index is cached per scope: an earlier case's index would not have these passages.
       forgetManualIndexForTests();
     },
@@ -1079,6 +1212,9 @@ function context(): ReplayContext {
       patchScript.checkCalls = 0;
     },
     patchCheckCalls: () => patchScript.checkCalls,
+    patchTakes: (ms) => {
+      patchScript.delayMs = ms;
+    },
     cardChecks: (outputs) => {
       patchScript.cards = [...outputs];
       patchScript.cardCalls = 0;
@@ -1094,6 +1230,11 @@ function context(): ReplayContext {
       summaries.reply = summary;
     },
     rows: (table) => [...(((store as unknown as Record<string, unknown[] | undefined>)[table] ?? []) as Record<string, unknown>[])],
+    addRows: (table, rows) => {
+      const tables = store as unknown as Record<string, Record<string, unknown>[] | undefined>;
+      if (!tables[table]) throw new Error(`replay pack: no table "${table}" in the case database`);
+      tables[table]!.push(...rows.map((row) => ({ ...row })));
+    },
     draftWriteCarries: (field) => {
       faults.strayDraftField = field;
     },
@@ -1110,11 +1251,31 @@ function context(): ReplayContext {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ notes, keepManagerValues: true }),
       }),
+    saveOnCard: (instanceId, values) =>
+      call<Record<string, unknown>>(`/api/forms/instances/${instanceId}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ values, checked: {} }),
+      }),
     typeOnForm: (instanceId, values) => {
       for (const [key, value] of Object.entries(values)) {
         const row = store.form_instance_values.find((entry) => entry.instance_id === instanceId && entry.field_key === key);
         if (row) Object.assign(row, { value, filled_by: "manager" });
         else store.form_instance_values.push({ id: `typed-${key}`, instance_id: instanceId, field_key: key, value, checked: [], filled_by: "manager", provenance: {}, updated_at: new Date().toISOString() } as never);
+      }
+    },
+    templateIds: (key) => {
+      const template = (store.form_templates ?? []).find((entry) => entry.key === key);
+      if (!template) throw new Error(`no template ${key} in the store`);
+      const versions = store.form_template_versions.filter((entry) => entry.template_id === template.id).sort((a, b) => Number(b.version) - Number(a.version));
+      if (!versions[0]) throw new Error(`no version of ${key} in the store`);
+      return { template_id: String(template.id), template_version_id: String(versions[0].id) };
+    },
+    checkOnForm: (instanceId, checked) => {
+      for (const [key, options] of Object.entries(checked)) {
+        const row = store.form_instance_values.find((entry) => entry.instance_id === instanceId && entry.field_key === key);
+        if (row) Object.assign(row, { checked: [...options], filled_by: "manager" });
+        else store.form_instance_values.push({ id: `checked-${instanceId}-${key}`, instance_id: instanceId, field_key: key, value: null, checked: [...options], filled_by: "manager", provenance: {}, updated_at: new Date().toISOString() } as never);
       }
     },
     values: (instanceId) =>
@@ -1127,12 +1288,12 @@ function context(): ReplayContext {
       ),
     draftReplies: () => [...draftReplies],
     loopOn: () => process.env.AGENT_LOOP_ENABLED === "true",
-    loopModel: (standIn) => {
+    loopModel: (standIn, options) => {
       loop.standIn = standIn;
       // The loop's inactive_in_woven fact reads the whole directory (terminated people too) through its own seam.
       __setAgentLoopDirectoryForTests(async () => state.directory as never);
       // AGENT_LOOP_LIVE (dev, opt-in): the real model, recorded into the case's stand-in (`liveRecording`).
-      __setAgentLoopModelForTests(liveModel ? liveRecording(standIn, liveModel) : standIn.model);
+      __setAgentLoopModelForTests(liveModel && !options?.scripted ? liveRecording(standIn, liveModel) : standIn.model);
       // The loop runs only for listed users (an empty list is nobody): this case's signed-in manager is listed.
       if (!loop.listed) {
         loop.users = process.env.AGENT_LOOP_USERS;
@@ -1169,12 +1330,39 @@ function sourceText(dir: string): string {
   return out;
 }
 
+/*
+ * EVERY FLAG THIS APP READS IS IN THE FLAG FILE (port of Ask Bubbles #985; QA's audit, P3, 20 Nov 2026). The check above
+ * runs one way only, so 39 *_ENABLED flags the code reads were listed nowhere and the pack quietly ran them off, whatever
+ * production had. A flag read in production code (`envFlag("…")` or `process.env.…`; tests, replay cases and src/test
+ * are not production) must be in 'on', 'assumedOn', 'off' or 'unknown' ('unknown': never read from Vercel; QA records it).
+ */
+function productionFlagReads(dir: string, found = new Set<string>()): Set<string> {
+  for (const entry of readdirSync(dir)) {
+    const path = join(dir, entry);
+    if (statSync(path).isDirectory()) {
+      if (entry !== "replay-pack" && path !== join("src", "test")) productionFlagReads(path, found);
+    } else if (/\.tsx?$/.test(entry) && !/\.test\.tsx?$/.test(entry) && !entry.endsWith("-cases.ts")) {
+      const text = readFileSync(path, "utf8");
+      for (const match of text.matchAll(/envFlag\("([A-Z0-9_]+_ENABLED)"\)|process\.env\.([A-Z0-9_]+_ENABLED)\b|process\.env\["([A-Z0-9_]+_ENABLED)"\]/g)) {
+        found.add(match[1] ?? match[2] ?? match[3]);
+      }
+    }
+  }
+  return found;
+}
+
 describe("src/config/production-flags.json", () => {
+  const listed = [...PRODUCTION_FLAGS.on, ...PRODUCTION_FLAGS.assumedOn, ...PRODUCTION_FLAGS.off, ...PRODUCTION_FLAGS.unknown];
+
   it("names only flags this app reads, each once", () => {
     const source = sourceText("src");
-    const names = [...PRODUCTION_FLAGS.on, ...PRODUCTION_FLAGS.assumedOn, ...PRODUCTION_FLAGS.off];
-    expect(names.filter((name) => !source.includes(`"${name}"`) && !source.includes(`process.env.${name}`))).toEqual([]);
-    expect(names.filter((name, index) => names.indexOf(name) !== index)).toEqual([]);
+    expect(listed.filter((name) => !source.includes(`"${name}"`) && !source.includes(`process.env.${name}`))).toEqual([]);
+    expect(listed.filter((name, index) => listed.indexOf(name) !== index)).toEqual([]);
+  });
+
+  it("lists every *_ENABLED flag this app's code reads (on, assumedOn, off, or unknown until QA reads it)", () => {
+    const unlisted = [...productionFlagReads("src")].filter((name) => !listed.includes(name)).sort();
+    expect(unlisted, "add each to production-flags.json: its Vercel value in 'on' or 'off', or 'unknown' until read").toEqual([]);
   });
 });
 

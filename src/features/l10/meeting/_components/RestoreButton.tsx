@@ -25,12 +25,16 @@ export function RestoreButton({ meetingKey, meetingName, version, savedAtLabel, 
   };
   const confirm = () =>
     start(async () => {
-      const r = await restore(meetingKey, version);
-      if (r.ok) {
-        setOpen(false);
-        setMessage(`Restored. It is now version ${r.version}.`);
-        router.refresh();
-      } else setMessage(r.message);
+      try {
+        const r = await restore(meetingKey, version);
+        if (r.ok) {
+          setOpen(false);
+          setMessage(`Restored. It is now version ${r.version}.`);
+          router.refresh();
+        } else setMessage(r.message);
+      } catch {
+        setMessage("The restore did not go through. Nothing was changed: try again.");
+      }
     });
 
   return (

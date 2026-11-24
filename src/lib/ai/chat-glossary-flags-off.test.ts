@@ -228,6 +228,11 @@ const FLIPPED_AFTER_FIXTURE: readonly string[] = [
   // Changed on purpose (10 Nov 2026): QA round 23 turned this on in production. A name-only coaching ask no longer offers Create
   // beside "what happened" (the card's text changes); the fixture predates it, so it is compared with it off.
   "WHAT_HAPPENED_NO_CREATE_ENABLED",
+  /*
+   * Changed on purpose (21 Nov 2026, QA2; Pau approved it on in production at 13:31Z): the intent reader's tool now
+   * carries the planSteps slot, so the reader's request body changes; the fixture predates it, so it is compared with it off.
+   */
+  "STATED_PLAN_STEPS_ENABLED",
 ];
 const PRODUCTION = [...PRODUCTION_FLAGS.on, ...PRODUCTION_FLAGS.assumedOn].filter((name) => name !== FLAG && !FLIPPED_AFTER_FIXTURE.includes(name));
 const TOUCHED = [...new Set([FLAG, "FORM_EDIT_SINGLE_WRITER_ENABLED", "FORM_EDIT_TOOL_IN_STREAM_ENABLED", ...PRODUCTION, ...PRODUCTION_FLAGS.off])];
@@ -308,6 +313,11 @@ async function script(): Promise<{ replies: unknown[]; bodies: string[] }> {
   return { replies, bodies };
 }
 
+/*
+ * Re-recorded on purpose on 20 Nov 2026 (QA item 25): DEAD_END_SAYS_WHERE_ENABLED is on in production with its pull
+ * request, so the production run's two answering bodies carry its where-to-go lines in the reports section. The
+ * flags-off run is unchanged, and no body carries the glossary.
+ */
 const FIXTURE = join("src", "lib", "ai", "chat-glossary-flags-off.main.json");
 const RECORDING = process.env.RECORD_MAIN_FIXTURE === "1";
 const GLOSSARY_HEAD = "ABBREVIATIONS MANAGERS USE";

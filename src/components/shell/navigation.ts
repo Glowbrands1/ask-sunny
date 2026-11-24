@@ -2,6 +2,7 @@ import {
   BarChart3,
   FileStack,
   Gauge,
+  GraduationCap,
   LayoutDashboard,
   LayoutTemplate,
   Library,
@@ -158,6 +159,16 @@ export const NAV_SECTIONS: NavSection[] = [
         href: "/videos",
         icon: Video,
         permission: "view_videos",
+      },
+      {
+        /*
+         * THE JBA AI TRAINING PROGRAM, rebuilt here from its own app. The label
+         * is the client's own wording, in capitals as they asked for it.
+         */
+        label: "AI TRAINING",
+        href: "/ai-training",
+        icon: GraduationCap,
+        permission: "view_ai_training",
       },
     ],
   },

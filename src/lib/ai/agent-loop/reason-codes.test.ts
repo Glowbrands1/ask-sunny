@@ -14,7 +14,7 @@ const FILES = ["tools.ts", "data-tools.ts", "run.ts"];
 /** Every code a refusal or a roster outcome may carry. */
 const KNOWN = new Set([
   "missing_input", "roster_failed", "not_on_roster", "ambiguous_person", "scope", "privacy_not_asked", "read_failed",
-  "form_not_visible", "not_a_heading", "one_card", "wrong_tool", "whole_staff", "right_person", "draft_open", "date_not_stated",
+  "form_not_visible", "not_a_heading", "one_card", "wrong_tool", "whole_staff", "right_person", "draft_open", "date_not_stated", "follow_up_date_not_stated", "follow_up_date_passed",
   "salon_unknown", "not_stated", "name_correction_only", "date_after_today", "drafts_only", "unknown_field", "empty_account",
   "bad_level", "not_a_saved_form", "not_a_form_id", "write_failed", "finalized_revision_refused", "not_configured", "not_synced",
   "unknown_tool", "tool_threw",
@@ -30,9 +30,11 @@ const KNOWN = new Set([
   "account_evidence_invalid", "account_evidence_other_person", "account_evidence_not_this_request", "account_evidence_missing", "open_requested",
   // Batch J5 (#1028): "late to open" proposed as Attendance; the words are the manual's Late Opening section.
   "wrong_heading",
+  // Added on purpose (Pau's ruling, 20 Nov 2026, c091): a Corrective Action cites one heading or two, never three.
+  "too_many_headings",
   // Added on purpose (PR 3, tools return exactly what was saved): propose_form's not_on_card codes, a field left off the card.
   "level_not_stated", "termination_not_stated", "payroll_not_stated", "amount_not_stated", "prior_actions_not_kept",
-  "several_dates_not_chosen", "date_from_another_request", "not_on_this_form",
+  "several_dates_not_chosen", "date_from_another_request", "not_on_this_form", "date_is_prior_action",
   // Fix batch item 1 (16 Nov 2026): a resignation told with no ask makes no exit card; the app offers the form.
   "exit_not_asked",
   // The retry guard (QA, 16 Nov 2026): a third call of a tool refused twice this turn for one reason_code is not run.
@@ -46,10 +48,39 @@ const KNOWN = new Set([
   "name_answer_keeps_form", "close_spelling_not_confirmed",
   // Added on purpose (QA, 16 Nov 2026; Runner 2's c014 T6): a heading on a non-CA card that the manager never named for it.
   "policy_not_for_this_card",
+  // Added on purpose (Pau's job-title rule via QA, 23 Nov 2026): a job_title with no instruction quoted, or said beside the name.
+  "job_title_not_instructed",
+  // Added on purpose (port of Ask Bubbles #1077): a re-propose of the card on screen with no account goes back once.
+  "card_account_missing",
+  // Added on purpose (QA's item 9, 22 Nov 2026; Ask Bubbles' R21): a bare "Yes" that answers no policy question never sets one.
+  "yes_sets_no_policy",
   // QA (16 Nov 2026, live group E): an edit asked for a form type with forms on file and another card on screen.
   "edit_asked_forms_on_file",
+  // Added on purpose (QA, 23 Nov 2026, the live duplicate exit form): an exit card for a person who already has an exit form on file.
+  "exit_on_file",
+  // QA item 7 (20 Nov 2026): another form proposed for the open card's person with no words asking for it.
+  "form_locked",
+  // QA item 8 (20 Nov 2026): a roster person nobody named, picked or confirmed in this chat.
+  "person_not_named",
+  "person_change_not_asked",
   // QA (16 Nov 2026, the 266 audit on train 4): c261/c263 dress code cited as another heading; c207 Must See Behaviors with no MSB said.
   "dress_code_heading", "msb_not_said",
+  // Added on purpose (QA's review of #1137, 20 Nov 2026): an Attendance CA card with no attendance record, or one not in the manager's words.
+  "attendance_not_given", "attendance_evidence_not_found",
+  // Added on purpose (port from the sibling app, its QA's live re-test, 21 Nov 2026, A5): a Corrective Action account with no subject.
+  "account_no_subject",
+  // Added on purpose (port from the sibling app, its QA's round 2, 22 Nov 2026, R14): a one-word name that is the first word
+  // of the full name the manager typed in this request goes back with that full name.
+  "full_name_typed",
+  // Added on purpose (port from the sibling app, its QA's round 2, 22 Nov 2026, U21): a card asked for the card on screen
+  // for another person, with no account, goes back once to be proposed with that card's account.
+  "same_card_account_missing",
+  // Added on purpose (Pau, 21 Nov 2026; FORM_TOPIC_SEARCH_ENABLED off): find_past_forms asked for forms by topic alone
+  // says plainly that searching by topic is not available yet.
+  "topic_search_off",
+  // Added on purpose (port of Ask Bubbles #1111, board f099 on the loop): the form the manager asked for by its title is
+  // another library form, or no form in the library; never a silent swap.
+  "form_asked_is_another", "form_not_in_library",
 ]);
 
 /** A line that returns a refusal: `error:` followed by a string, a template or a named message (not `error: Boolean(...)`). */

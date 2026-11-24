@@ -1,4 +1,9 @@
 import { NextResponse } from "next/server";
+import { withoutTopicPrefix } from "@/lib/forms/coaching-topic-prefix";
+import { keptPlanSteps, withPlanSteps } from "@/lib/forms/stated-plan-steps";
+import { statedPlanStepsEnabled } from "@/lib/config/chat-quality-flags";
+import { loopWriteUpSections } from "@/lib/forms/loop-write-up-sections";
+import { withAccountFactsKept } from "@/lib/forms/account-facts-kept";
 import { TERMINATION_OPTION, withTerminationPlan } from "@/lib/forms/termination-stated";
 import { salesResultsOffenseLine, withCaChosenRule } from "@/lib/ai/ca-sales-prompt-lines";
 import { noteSpendUser } from "@/lib/ai/spend-meter";
@@ -98,6 +103,7 @@ import {
 } from "@/lib/forms/responsibility";
 import { stripPlaceholdersFromDraft } from "@/lib/forms/drafted-text";
 import { splitAppCitationLine } from "@/lib/forms/app-citation-line";
+import { withCardTimes } from "@/lib/forms/card-times";
 import { withoutUnstatedDates } from "@/lib/forms/form-date-grounding";
 import {
   FOLLOW_UP_TIMEFRAME_RULES,
@@ -145,9 +151,10 @@ import {
   officialManualProvenance,
   type ManualSection,
   unconfirmedManualNotice,
+  offenseKeyForManualHeading,
 } from "@/lib/forms/official-policy-manual";
 import { manualGroundedPolicies, policyFieldValue } from "@/lib/forms/policy-citation";
-import { cardPolicyPhrase } from "@/lib/forms/card-policy";
+import { cardPolicyHeading, cardPolicyPhrase } from "@/lib/forms/card-policy";
 import {
   EPP_POLICY_REFERENCE_KEY,
   EPP_POLICY_RULES,
@@ -163,7 +170,9 @@ import {
   isExitDocumentKeys,
   withoutDerivedKeys,
 } from "@/lib/forms/exit-draft";
-import { EXIT_DERIVED_KEYS } from "@/lib/forms/exit-facts";
+import { EXIT_DERIVED_KEYS, readExitFacts } from "@/lib/forms/exit-facts";
+import { terminationDetails } from "@/lib/forms/exit-termination-details";
+import { EXIT_DETAIL_FIELDS, EXIT_OPTION, EXIT_TYPE_GROUP } from "@/lib/forms/exit-library";
 import { ABSENCE_CLAIM_REMOVED_NOTICE, guardAbsenceClaims } from "@/lib/forms/absence-claims";
 import { describesIncident, describesMoreThanTheRequest } from "@/lib/forms/corrective-action-intake";
 import {
@@ -189,6 +198,7 @@ import {
   SPECIFIC_SECTION_BOXES,
   describedManualChoices,
   describedManualSection,
+  manualSectionNamedBy,
   namedManualSection,
 } from "@/lib/forms/named-policy-section";
 import { OTHER_WRITE_IN_INSTRUCTION, specificTopic, withConductLinePage, withConductLineWording, withoutPrimedTopic } from "@/lib/forms/specific-policy-topics";
@@ -211,8 +221,15 @@ import {
 } from "@/lib/forms/ca-action-plan";
 import { twoSentenceActionPlan } from "@/lib/forms/action-plan-sentences";
 import { attendanceActionPlan, isAttendancePlan, missedMeetingNotLateness } from "@/lib/forms/attendance-action-plan";
+import { absenceWriteUp } from "@/lib/forms/absence-write-up";
 import { withPayrollSentence } from "@/lib/forms/plan-payroll-sentence";
 import { managerTypedActionPlan } from "@/lib/forms/manager-action-plan";
+import { firstNameNotPronouns, otherRosterPeopleIn } from "@/lib/forms/first-name-write-up";
+import { withoutUnsaidPlace } from "@/lib/forms/unsaid-place";
+import { appConfig } from "@/lib/ai/agent-loop/app-config";
+import { accountPassage } from "@/lib/forms/account-passage";
+import { loopCoachingWriteUp } from "@/lib/forms/loop-coaching-write-up";
+import { cardNotesPayrollAmount } from "@/lib/forms/card-payroll-amount";
 import {
   citeAttendanceForTardiness,
   policyFieldsWithCitation,
@@ -237,6 +254,7 @@ import { WARNING_TYPE_KEY } from "@/lib/forms/corrective-action-intake";
 import { WARNING_LEVEL_KEYS, WARNING_LEVEL_STATED_KEYS, warningLevelFromTurns, withoutModelWarningLevel } from "@/lib/forms/warning-level";
 import {
   COACHING_CONTEXT_RULES,
+  COACHING_TYPE_KEY,
   LANGUAGE_CLEANUP_RULES,
   guardCoachingFraming,
 } from "@/lib/forms/coaching-framing";
@@ -250,7 +268,7 @@ import {
 } from "@/lib/forms/follow-up-observation";
 import { TEAM_SUBJECT_RULES, isTeamSubject } from "@/lib/forms/team-subject";
 import { teamCardNotes } from "@/lib/forms/whole-team-coaching";
-import { applyEmployeeName, employeeNameRules } from "@/lib/forms/employee-reference";
+import { applyEmployeeName, employeeFirstName, employeeNameRules } from "@/lib/forms/employee-reference";
 import {
   LEGACY_PREVIOUS_ACTION_DATE_KEY,
   NO_PRIOR_ACTION,
@@ -276,6 +294,7 @@ import {
   resolveFormDate,
 } from "@/lib/forms/form-date-grounding";
 import { unreadDayBrief, unreadDayNotice, unreadIncidentDay } from "@/lib/forms/unread-day-date";
+import { heldForHr } from "@/lib/forms/hr-approval-rules";
 
 /**
  * POST /api/forms/instances/[id]/draft
@@ -324,6 +343,10 @@ interface DraftBody {
   cardPolicyLine?: string;
   /** The coaching topic the agent loop's card carried (`coachingTopic`), for the form's Other topic (QA, 17 Nov 2026). */
   cardTopic?: string;
+  /** STATED_PLAN_STEPS_ENABLED (f062): the plan steps the card carried, re-checked against the notes before use. */
+  cardPlanSteps?: unknown;
+  /** The agent loop card's attendance record ("absence" / "lateness" / "both"; QA's production audit, 20 Nov 2026, item 21). */
+  cardAttendance?: string;
   /**
    * HOTFIX (QA, 17 Nov 2026; the tester's form 7545d162): the "Other — <topic>" the card cited ("10-minute
    * sanitization"). With NEXT_PUBLIC_CARD_POLICY_TO_DRAFT_ENABLED, a Corrective Action whose Type of Offense offers Other
@@ -332,6 +355,13 @@ interface DraftBody {
   cardOther?: string;
   /** HOTFIX (QA, 17 Nov 2026): the card came from the agent loop, so its policy is the form's (`loopCardHeading`). */
   cardFromLoop?: boolean;
+  /** The prior actions the loop's card recorded ("" for none), sent with `cardFromLoop` (Pau via QA, 20 Nov 2026). */
+  cardPriorActions?: string;
+  /**
+   * The loop card's own account (`issue`), the record of what the manager said: the saved account keeps its times
+   * (QA, 20 Nov 2026; c198, `withCardTimes`) and every fact on it (QA's live test of #1121, f061, `account-facts-kept.ts`).
+   */
+  cardAccount?: string;
   /**
    * SAME_FORM_COPY_NEW_PERSON_ENABLED: the form the card was asked to copy
    * ("the same draft that we did with <name>"). Re-checked: this account's
@@ -380,6 +410,19 @@ async function readOfficialPolicyManual(
 }
 
 /** SPEND_GUARD_ALL_CALLS_ENABLED: this route's Claude calls are counted (`ai/spend-meter.ts`). Off, as before. */
+
+/* QA f071 / c259: the headings filed under another box are `READERS_LINE_HEADINGS` (forms/readers-line-headings.ts); since Pau's 23 Nov 2026 ruling their saved Policy Violated is the card's line too, page included. */
+
+/**
+ * Port from the sibling app (its QA's live re-run, 23 Nov 2026, A1): the topic a loop card's policy line names after
+ * "Other — " ("Other — Opening checklist"), the Coaching Form's Other write-in; null when the card cites "Other" alone or no Other.
+ */
+function cardOtherTopic(line: unknown): string | null {
+  if (typeof line !== "string") return null;
+  const topic = /(?:^|;\s*)other\s*[—–:-]\s*([^;]+)$/i.exec(line.trim())?.[1]?.trim() ?? "";
+  return topic ? topic.slice(0, 120) : null;
+}
+
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   return withSpendMeter("forms_draft", () => postFormsDraft(request, context));
 }
@@ -404,6 +447,13 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
     if (loaded.instance.status !== "draft") {
       return NextResponse.json(
         { error: "This form is finalized. Create a revision to change it." },
+        { status: 409 },
+      );
+    }
+    // HR APPROVAL: a waiting form is not redrafted by the assistant; its creator, a sender or HR edits it on the form (owner, 24 Nov 2026).
+    if (heldForHr(loaded.instance.hrApprovalState)) {
+      return NextResponse.json(
+        { error: "This form is waiting for HR approval. Change it on the form itself; HR sees your changes.", code: "HELD_FOR_HR" },
         { status: 409 },
       );
     }
@@ -464,9 +514,13 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         (loaded.values ?? [])
           .find((row) => row.fieldKey === PAYROLL_DEDUCT_KEY)
           ?.checked.find(isPayrollDeductAnswer) ?? null;
-      const amount = payrollAmountFromConversation([{ role: "user", content: notes }], {
-        payrollAnswer,
-      });
+      // QA's code audit (20 Nov 2026, item 20): a loop card's amount is the card's own line in the notes.
+      const amount =
+        body.cardFromLoop === true
+          ? payrollAnswer === "yes" ? cardNotesPayrollAmount(notes) : null
+          : payrollAmountFromConversation([{ role: "user", content: notes }], {
+              payrollAnswer,
+            });
       // FORM_EDIT_SINGLE_WRITER_ENABLED: each stated-facts write through the one writer (`lib/forms/form-write.ts`).
       if (amount && formEditSingleWriterEnabled()) {
         await (await import("@/lib/forms/form-write")).statedWrite(
@@ -651,18 +705,65 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      * `exit-details.ts`, written before the model runs and only into empty
      * lines. Anything the manager did not say stays blank.
      */
-    const exitStatedFacts = isExitForm
+    /*
+     * QA item 17 (20 Nov 2026; the production audit's exit form): the lines the manager STATED on this exit form (written
+     * as their statement at Create: the agent loop's termination, reason and payroll answer) are never replaced by the
+     * reader, the derived ticks or the model. A stated involuntary separation is not a resignation: the reader's
+     * "resignation method" and its own type tick are not written for it (the termination story landed in the method).
+     */
+    const exitStatedRows = isExitForm
+      ? (loaded.values ?? []).filter((row) => row.provenance?.source === "manager_statement" && ((row.value ?? "").trim() !== "" || row.checked.length > 0))
+      : [];
+    const exitStatedKeysNow = new Set(exitStatedRows.map((row) => row.fieldKey));
+    const statedInvoluntary = exitStatedRows.some((row) => row.fieldKey === EXIT_TYPE_GROUP && row.checked.includes(EXIT_OPTION.immediateInvoluntary));
+    const withoutStatedExit = (read: { values: Record<string, string>; checked: Record<string, string[]> }) => ({
+      // QA's f077: a termination has no resignation date either (the reader read "notice given 11/17" as one).
+      values: Object.fromEntries(Object.entries(read.values).filter(([key]) => !exitStatedKeysNow.has(key) && !(statedInvoluntary && (key === EXIT_DETAIL_FIELDS.resignationMethod || key === EXIT_DETAIL_FIELDS.resignationDate)))),
+      checked: Object.fromEntries(Object.entries(read.checked).filter(([key]) => !exitStatedKeysNow.has(key) && !(statedInvoluntary && key === EXIT_TYPE_GROUP))),
+    });
+    /*
+     * ONLY THE MANAGER'S OWN ADDRESS (Pau via QA, item 19): the Permanent Address is kept only when it is in the manager's
+     * own lines of the notes. A loop card's lines ("What happened: …") are the agent loop's words, never the manager's.
+     */
+    const exitDetails = isExitForm ? readExitDetails(notes, businessToday()) : null;
+    /*
+     * Port from Ask Bubbles (#1021, U26; its QA's round 2, 22 Nov 2026): on a loop card's Create, How Employee Resigned is
+     * read only from the sentences the exit form's own reader reads a resignation type from (`resignationStatementMethod`),
+     * never from a voicemail someone else left in the account before it. The card's own method (the model's, checked) was
+     * written at Create and is kept; with no stating sentence, the account is read as before.
+     */
+    if (exitDetails && body.cardFromLoop === true) {
+      const { resignationStatementMethod } = await import("@/lib/forms/exit-details");
+      const { notesWithoutCardLines } = await import("@/lib/forms/draft-notes");
+      const stated = resignationStatementMethod(notesWithoutCardLines(notes), businessToday());
+      if (stated !== undefined) exitDetails.resignationMethod = stated;
+    }
+    if (exitDetails?.permanentAddress) {
+      const { addressTypedIn } = await import("@/lib/forms/exit-details");
+      const managerLines = body.cardFromLoop === true ? (await import("@/lib/forms/draft-notes")).notesWithoutCardLines(notes) : notes;
+      if (!addressTypedIn(exitDetails.permanentAddress, managerLines)) delete exitDetails.permanentAddress;
+    }
+    /*
+     * Pau via QA (20 Nov 2026, item 15; Runner 2's c151): on a loop card's Create the Details lines name the employee by
+     * first name, never "she"/"her" ("Reason for resignation: she said her new job pays more").
+     */
+    const exitDetailsRead = (details: NonNullable<typeof exitDetails>) => {
+      const read = exitDetailValues(details);
+      if (body.cardFromLoop !== true) return read;
+      return { ...read, values: firstNameNotPronouns(read.values, loaded.instance.employeeName, new Set(Object.keys(read.values))).values };
+    };
+    const exitStatedFacts = isExitForm && exitDetails
       ? formEditSingleWriterEnabled()
         ? await (await import("@/lib/forms/form-write")).statedWrite(
             id,
-            exitDetailValues(readExitDetails(notes, businessToday())),
+            withoutStatedExit(exitDetailsRead(exitDetails)),
             actor.id,
             exitStatedKeys(),
             { notes },
           )
         : await applyStatedFacts(
             id,
-            exitDetailValues(readExitDetails(notes, businessToday())),
+            withoutStatedExit(exitDetailsRead(exitDetails)),
             actor.id,
             // EXIT_INTAKE_FIX_ENABLED adds the Permanent Address the manager typed.
             exitStatedKeys(),
@@ -810,8 +911,20 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       body.cardFromLoop === true && cardPolicyToDraftEnabled() && typeof body.cardPolicy === "string" && body.cardPolicy.trim() && !/^other$/i.test(body.cardPolicy.trim())
         ? body.cardPolicy.trim().slice(0, 80)
         : null;
+    /*
+     * Pau's ruling (20 Nov 2026, via QA; c091): a loop Corrective Action may cite two headings ("Dress Code …; Standards of
+     * Conduct …"). The second is the card line's second part that is not Other; it is grounded and ticked beside the first.
+     */
+    const loopCardSecondHeading = ((): string | null => {
+      if (!loopCardHeading || typeof body.cardPolicyLine !== "string") return null;
+      const second = body.cardPolicyLine.split(";").map((part) => part.trim()).filter((part) => part && !/^other\b/i.test(part))[1];
+      const heading = second ? cardPolicyHeading(`**Policy:** ${second}`) : null;
+      return heading && heading.toLowerCase() !== loopCardHeading.toLowerCase() ? heading.slice(0, 80) : null;
+    })();
     const requestPolicyNotes = secondRequestOwnAccountEnabled() ? currentFormRequestText(notes) : notes;
-    const policyNotes = loopCardHeading ? `${requestPolicyNotes}\nfor violating the ${cardPolicyPhrase(loopCardHeading)}` : requestPolicyNotes;
+    const policyNotes = loopCardHeading
+      ? `${requestPolicyNotes}\nfor violating the ${cardPolicyPhrase(loopCardHeading)}${loopCardSecondHeading ? ` and the ${cardPolicyPhrase(loopCardSecondHeading)}` : ""}`
+      : requestPolicyNotes;
     const wantsEppPolicy = fields.some((field) => field.key === EPP_POLICY_REFERENCE_KEY);
     const needsPolicy = fields.some(
       (field) => field.policyGrounded && field.key !== EPP_POLICY_REFERENCE_KEY,
@@ -893,9 +1006,20 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      * made from it "Attendance p.14". Where the pinned manual has the card's
      * heading, it is the policy named — over the account's own reading.
      */
+    /*
+     * Port from Ask Bubbles (fee69631; its QA's round 2, 22 Nov 2026, U06/U09/U15/U17): a loop card citing "Care and
+     * Cleaning of Equipment and Facilities, p.21" saved no Direct policy. Its heading went through `namedPolicies`, which
+     * reads "of" as a sentence about a policy, not its name. A loop card's heading is already a heading of the pinned
+     * manual (the tool checked it): it is looked up as that heading (`manualSectionNamedBy`).
+     */
+    const loopHeadingSection = (() => {
+      if (!loopCardHeading || !manual.ok) return null;
+      const section = manualSectionNamedBy(loopCardHeading, manual.chunks);
+      return section ? { phrase: loopCardHeading, section, offenseKey: offenseKeyForManualHeading(section.heading) } : null;
+    })();
     const cardHeading =
       caPolicy && manual.ok && cardPolicyToDraftEnabled() && typeof body.cardPolicy === "string" && body.cardPolicy.trim()
-        ? namedManualSection({ text: cardPolicyPhrase(body.cardPolicy), chunks: manual.chunks })
+        ? (loopHeadingSection ?? namedManualSection({ text: cardPolicyPhrase(body.cardPolicy), chunks: manual.chunks }))
         : null;
     // Only where it ticks the box the manager's own words tick, or they tick none: a card's generic
     // "Attendance" never turns a missed meeting (Absenteeism) into Tardiness.
@@ -1602,7 +1726,22 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       ? guardCoachingFraming({ values: followUp.values, checked: followUp.checked }, notes)
       : { values: followUp.values, checked: followUp.checked, adjusted: [] as string[], underperformanceRefused: false };
     // OTHER_WRITE_IN_GUARD_ENABLED: a ticked "Other" gets its write-in in the manager's words, or is unticked.
-    const framing = guardOtherWriteIn(framed, notes, new Set(fields.map((field) => field.key)), loaded.instance.employeeName, typeof body.cardTopic === "string" ? body.cardTopic.trim().slice(0, 120) : null);
+    const otherWritten = guardOtherWriteIn(framed, notes, new Set(fields.map((field) => field.key)), loaded.instance.employeeName, typeof body.cardTopic === "string" && body.cardTopic.trim() ? body.cardTopic.trim().slice(0, 120) : body.cardFromLoop === true ? cardOtherTopic(body.cardPolicyLine) : null, body.cardFromLoop === true);
+    /*
+     * Pau via QA (20 Nov 2026, item 14): a loop coaching card's Create saves Observed as what was seen, an Expectation
+     * about the employee, and no Type of Coaching the manager did not name. See `loop-coaching-write-up.ts`.
+     */
+    const coachingDetailsKey = [...narrativeKeys].find((key) => fields.some((field) => field.key === key));
+    const framing =
+      isCoachingFamily && body.cardFromLoop === true
+        ? loopCoachingWriteUp(otherWritten, {
+            detailsKey: coachingDetailsKey,
+            notes,
+            employeeName: loaded.instance.employeeName,
+            typeOptions: groups.find((group) => group.key === COACHING_TYPE_KEY)?.options ?? [],
+            drafted: coachingDetailsKey ? dated.values[coachingDetailsKey] : undefined,
+          })
+        : otherWritten;
 
     /*
      * ========================================================================
@@ -1903,7 +2042,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       checked: isExitForm ? withoutDerivedKeys(modelChecked) : modelChecked,
     });
 
-    const exit = isExitForm
+    const exitDrafted = isExitForm
       ? applyExitDraft({
           values: attributions.values,
           checked: sensitive.checked,
@@ -1915,6 +2054,17 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
           },
         })
       : null;
+    /* QA item 17: the manager's stated exit lines stay as stated (see `withoutStatedExit` above). */
+    const exitKept = exitDrafted ? { ...exitDrafted, ...withoutStatedExit(exitDrafted) } : null;
+    /*
+     * QA's f077 (20 Nov 2026; #1139 live, draft cd69d389): on a stated involuntary separation the AI-written Details said
+     * "<P> gave notice on 11/17", which reads as a resignation. Reads the MODEL's Details, never the manager's words: a
+     * sentence saying the employee gave notice, resigned or quit is taken out, and the notice date the manager gave is said
+     * in the form's own terms ("Notice date recorded: 11/17").
+     */
+    const exit = exitKept && statedInvoluntary && typeof exitKept.values.details === "string"
+      ? { ...exitKept, values: { ...exitKept.values, details: terminationDetails(exitKept.values.details, readExitFacts(notes, businessToday()).noticeGiven) } }
+      : exitKept;
 
     /*
      * ========================================================================
@@ -2296,6 +2446,19 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       manual.ok ? manual.chunks : [],
     );
 
+    /*
+     * QA's live check (20 Nov 2026, item 16): on a loop card's Create, each cited section is quoted at the passage of its
+     * heading that fits the card's account, not the first thing under the heading. See `account-passage.ts`.
+     */
+    const cardAccount = body.cardFromLoop === true ? (/^What happened:\s*(.+)$/im.exec(notes)?.[1]?.trim() ?? "") : "";
+    const cardGroundedPolicies = <P extends { sectionTitle: string | null; policyText: string }>(policies: P[]): P[] =>
+      cardAccount === "" || !manual.ok
+        ? policies
+        : policies.map((policy) => {
+            const section = manualSections.find((entry) => entry.heading === policy.sectionTitle);
+            const passage = section ? accountPassage(manual.chunks, section, cardAccount, loaded.instance.employeeName) : null;
+            return passage ? { ...policy, policyText: passage } : policy;
+          });
     const derivedPolicy = applyDerivedPolicyFields({
       document,
       variantKey,
@@ -2320,7 +2483,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       manualReference:
         manual.ok && manualSections.length > 0
           ? policyFieldValue(
-              withConductLineWording(manualGroundedPolicies(manual, manualSections), `${body.topic ?? ""} ${notes}`, manual.chunks),
+              withConductLineWording(cardGroundedPolicies(manualGroundedPolicies(manual, manualSections)), `${body.topic ?? ""} ${notes}`, manual.chunks),
             )
           : null,
       manualAmbiguous: !manual.ok && manual.problem === "ambiguous",
@@ -2389,7 +2552,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
                 sections: manualSections,
               }),
               /* The structured citation the value was rendered from. */
-              citation: manualGroundedPolicies(manual, manualSections),
+              citation: cardGroundedPolicies(manualGroundedPolicies(manual, manualSections)),
             },
           }
         : {}),
@@ -2555,12 +2718,25 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         await applyStatedFacts(id, { values: { [fixedPlan.key]: typed }, checked: {} }, actor.id, new Set([fixedPlan.key]));
       }
     }
-    const planText = (input: ActionPlanInput) =>
+    /* f082: leaving early is not lateness either; it keeps the general plan as an absence does. */
+    const loopCardNotLateness = body.cardFromLoop === true && (body.cardAttendance === "absence" || body.cardAttendance === "left_early") ? body.cardAttendance : null;
+    const loopCardAbsence = loopCardNotLateness !== null;
+    /*
+     * STATED_PLAN_STEPS_ENABLED (Pau via QA, 20 Nov 2026, f062): the steps the manager stated are added before the plan's
+     * closing; the plan itself is unchanged. A loop card's steps were checked against the manager's quoted words when the
+     * card was made (its notes hold only the card's lines), so here they are only tidied and capped; the regular chat's
+     * are checked again against the notes, which are the manager's own turns (`keptPlanSteps`).
+     */
+    const cardSteps = Array.isArray(body.cardPlanSteps) ? body.cardPlanSteps.filter((step): step is string => typeof step === "string") : [];
+    const statedSteps = statedPlanStepsEnabled() ? keptPlanSteps(cardSteps, body.cardFromLoop === true ? cardSteps.join(" ") : notes) : [];
+    const planText = (input: ActionPlanInput) => withPlanSteps(planTextStandard(input), statedSteps, loaded.instance.employeeName);
+    const planTextStandard = (input: ActionPlanInput) =>
       // PLAN_PAYROLL_SENTENCE_ENABLED: the deduction the manager stated is said in the plan.
       // TERMINATION_STATED_TICKS_ENABLED: on a termination, the plan ends with the termination sentence.
       withTerminationPlan(withPayrollSentence(
         // MEETING_NOT_LATENESS_PLAN_ENABLED: a missed meeting keeps the general plan.
-        attendanceActionPlanEnabled() && isAttendancePlan(input) && !missedMeetingNotLateness(notes)
+        // QA's production audit (20 Nov 2026, item 21): a loop card recording an absence keeps the general plan, as a missed shift does.
+        attendanceActionPlanEnabled() && isAttendancePlan(input) && !missedMeetingNotLateness(notes) && !loopCardAbsence
           ? attendanceActionPlan(input)
           : actionPlanSentencesEnabled()
             ? twoSentenceActionPlan(input)
@@ -2675,6 +2851,29 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       draftedPayload.checked = { ...draftedPayload.checked, offense_type: [...(draftedPayload.checked.offense_type ?? []), "other"] };
     }
     /*
+     * QA's item 9 (2) (22 Nov 2026; Ask Bubbles' R21): a Coaching Form whose card cited "Other — <topic>" was saved with no
+     * Type of Coaching ticked and no Other topic. The form's own Other box is ticked and its topic is the card's, as the
+     * Corrective Action's above; a topic the manager typed on the form is kept. Keyed on the version's own fields.
+     */
+    const coachingOther =
+      isCoachingFamily &&
+      cardPolicyToDraftEnabled() &&
+      typeof body.cardOther === "string" &&
+      body.cardOther.trim() !== "" &&
+      body.cardOther.trim().length <= 120 &&
+      (groups.find((group) => group.key === "coaching_topics")?.options.some((option) => option.key === "other") ?? false) &&
+      fields.some((field) => field.key === "other_topic")
+        ? body.cardOther.trim()
+        : null;
+    if (coachingOther) {
+      if (!(draftedPayload.checked.coaching_topics ?? []).includes("other")) {
+        draftedPayload.checked = { ...draftedPayload.checked, coaching_topics: [...(draftedPayload.checked.coaching_topics ?? []), "other"] };
+      }
+      if (!keeps("other_topic") && !(draftedPayload.values.other_topic ?? "").trim()) {
+        draftedPayload.values = { ...draftedPayload.values, other_topic: coachingOther };
+      }
+    }
+    /*
      * NO DATE THE MANAGER DID NOT STATE (Pau's ruling via QA, 17 Nov 2026; c094's "On October 22, 2026, …" with no date
      * typed): a drafted date in the Observation sections or the Action Plan whose day the manager never stated is taken out
      * and logged (`withoutUnstatedDates`). Their own dates stay; the form's Date field is not touched.
@@ -2705,25 +2904,61 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      * Code": the box came from the manual section's place, not the card. The box follows the card's heading, read
      * against this form's own Type of Offense labels ("Dress Code Violation" is the Dress Code; "Attendance Policy" the
      * Attendance), and Policy Violated is the card's own heading line with its page. A heading no label names (Late
-     * Opening) is left as the readers above set it.
+     * Opening) keeps the box the readers above set.
      */
     if (loopCardHeading && !keeps("policy_violated")) {
-      const headingWords = new Set(loopCardHeading.toLowerCase().match(/[a-z0-9]+/g) ?? []);
       const generic = new Set(["policy", "policies", "violation", "violations", "of", "the", "for", "and"]);
       const options = groups.find((group) => group.key === "offense_type")?.options ?? [];
-      const box = options
-        .filter((option) => option.key !== "other")
-        .map((option) => ({ key: option.key, core: (option.label.toLowerCase().match(/[a-z0-9]+/g) ?? []).filter((word) => !generic.has(word)) }))
-        .filter((option) => option.core.length > 0 && option.core.every((word) => headingWords.has(word)))
-        .sort((a, b) => b.core.length - a.core.length)[0];
-      const cardLine = typeof body.cardPolicyLine === "string" ? body.cardPolicyLine.split(";")[0]!.trim().slice(0, 200) : "";
+      const boxFor = (heading: string) => {
+        const headingWords = new Set(heading.toLowerCase().match(/[a-z0-9]+/g) ?? []);
+        return options
+          .filter((option) => option.key !== "other")
+          .map((option) => ({ key: option.key, core: (option.label.toLowerCase().match(/[a-z0-9]+/g) ?? []).filter((word) => !generic.has(word)) }))
+          .filter((option) => option.core.length > 0 && option.core.every((word) => headingWords.has(word)))
+          .sort((a, b) => b.core.length - a.core.length)[0];
+      };
+      const box = boxFor(loopCardHeading);
+      /* Pau's ruling (20 Nov 2026; c091): the card's second heading ticks its own box, and Policy Violated names both. */
+      const secondBox = loopCardSecondHeading ? boxFor(loopCardSecondHeading) : undefined;
+      const headingLines = typeof body.cardPolicyLine === "string" ? body.cardPolicyLine.split(";").map((part) => part.trim()).filter((part) => part && !/^other\b/i.test(part)) : [];
+      /*
+       * QA's f094 (21 Nov 2026 live retest): a second heading with no box of its own (Time Records, filed under Standards of
+       * Conduct) was dropped from Policy Violated. The saved line names both whenever the card has a second heading, joined
+       * as the card joins them.
+       */
+      const cardLine = (loopCardSecondHeading ? headingLines.slice(0, 2).join("; ") : (headingLines[0] ?? "")).slice(0, 400);
       if (box) {
         const keepOther = (draftedPayload.checked.offense_type ?? []).includes("other") && cardOther !== null;
-        draftedPayload.checked = { ...draftedPayload.checked, offense_type: [box.key, ...(keepOther ? ["other"] : [])] };
-        if (cardLine && fields.some((field) => field.key === "policy_violated")) {
-          draftedPayload.values = { ...draftedPayload.values, policy_violated: cardLine };
-        }
+        const boxes = [box.key, ...(secondBox && secondBox.key !== box.key ? [secondBox.key] : [])];
+        draftedPayload.checked = { ...draftedPayload.checked, offense_type: [...boxes, ...(keepOther ? ["other"] : [])] };
       }
+      /*
+       * QA f071 (20 Nov 2026, live item 15): a card citing "Late Opening Policy, JBA Policy Manual p.15" saved Policy
+       * Violated "Attendance Policy — Late Opening", so the card and the form showed two labels. The card's line is the
+       * saved Policy Violated whether or not a Type of Offense label names its heading; the box is left as set above.
+       * Port from the sibling app (Pau's ruling, 23 Nov 2026, via QA: "add the page everywhere"): the headings in
+       * `READERS_LINE_HEADINGS` (Time Records) kept the readers' "<box> — <section>" and dropped the card's ", JBA Policy
+       * Manual p.<n>"; since c259 the card's line names the box itself, so it is saved for them too. Supersedes f071.
+       */
+      if (cardLine && fields.some((field) => field.key === "policy_violated")) {
+        draftedPayload.values = { ...draftedPayload.values, policy_violated: cardLine };
+      }
+    }
+    /*
+     * Pau via QA (20 Nov 2026, item 13): Prior actions read "None \u2014 first occurrence" though the manager said nothing
+     * about earlier steps. A loop card's Create saves the drafter's prior actions only when the card recorded some (the
+     * loop's record of what the manager said, checked against their words); with none recorded the line stays blank.
+     */
+    if (body.cardFromLoop === true && typeof body.cardPriorActions === "string" && body.cardPriorActions.trim() === "" && !keeps("prior_actions") && (draftedPayload.values.prior_actions ?? "").trim() !== "") {
+      draftedPayload.values = { ...draftedPayload.values, prior_actions: "" };
+    }
+    /*
+     * QA's live test of #1121 (20 Nov 2026, f061): the card showed "Prior actions: Verbal (2), dates not given" and the form
+     * saved "Verbal coaching \u2014 date not given", one of the two talks lost. When the loop card recorded prior actions,
+     * the saved line is the card's own, count and all.
+     */
+    if (body.cardFromLoop === true && typeof body.cardPriorActions === "string" && body.cardPriorActions.trim() !== "" && !keeps("prior_actions") && fields.some((field) => field.key === "prior_actions")) {
+      draftedPayload.values = { ...draftedPayload.values, prior_actions: body.cardPriorActions.trim().slice(0, 600) };
     }
     // The citation line above is rebuilt from the cited sections; the card's Other goes back on it.
     if (cardOtherOnViolated && typeof draftedPayload.values.policy_violated === "string") {
@@ -2761,6 +2996,108 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       if (details.trim() !== "") {
         const { body: account } = splitAppCitationLine(details);
         draftedPayload.values = { ...draftedPayload.values, [detailsKey]: `${account}\n\nPolicy reference: ${coachingPolicyLine}` };
+      }
+    }
+    /*
+     * QA (20 Nov 2026; Runner 2's c198): the loop card's account held 9:15PM, 9:01 and 8:11 PM, and the saved observation
+     * kept only 8:11 PM. A clock time of the card's own account that the drafted account lost brings back the card's
+     * sentence that holds it (`withCardTimes`), before the app's citation line. A field the manager typed is never touched.
+     *
+     * QA's live test of #1121 (20 Nov 2026, f061): a 351-word account saved without "this is the third time in two months"
+     * and "a customer said she would not come back". Then every other fact on the card's account stays: one the drafter
+     * dropped is added to the Observed part in the card's own words (`account-facts-kept.ts`), also before the citation line.
+     */
+    const accountKey = narrativeTargets[0];
+    if (body.cardFromLoop === true && typeof body.cardAccount === "string" && accountKey && !keeps(accountKey)) {
+      const drafted = draftedPayload.values[accountKey] ?? "";
+      if (drafted.trim() !== "") {
+        const { body: account, line: citation } = splitAppCitationLine(drafted);
+        const timed = withCardTimes(account, body.cardAccount.slice(0, 2_000));
+        const facts = withAccountFactsKept(timed, body.cardAccount.trim().slice(0, 6_000), loaded.instance.employeeName);
+        if (facts.text !== account) draftedPayload.values = { ...draftedPayload.values, [accountKey]: citation ? `${facts.text}\n\n${citation}` : facts.text };
+      }
+    }
+    /*
+     * QA (20 Nov 2026; live on main b06e51be, draft 9f0b35c6): a loop card's Create saved "Test Testy was late to work on
+     * November 18, 2026." in Observed, then "Test" in Expectation and Going Forward. Pau's rule is the first name: in the
+     * drafted prose fields (never the manual's quoted policy fields, never one the manager typed), the employee's full
+     * name becomes the first name (`short-name.ts`).
+     */
+    if (body.cardFromLoop === true && loaded.instance.employeeName) {
+      const first = employeeFirstName(loaded.instance.employeeName);
+      if (first) {
+        const { withCorrectedSpelling, withShortName } = await import("@/lib/forms/short-name");
+        /*
+         * Port from the sibling app (its QA's live re-test, 21 Nov 2026): the name corrected mid-chat moved the form's
+         * name, but this app drafts from the manager's own lines too, and they still held the first spelling ("My employee
+         * <First> <Lastx> …"). A close spelling the roster reads as this person alone becomes the form's name first.
+         */
+        const roster = await (await import("@/lib/forms/employee-roster")).loadScopedRoster(actor.scope).catch(() => []);
+        const { displayName, rosterSpellingOf } = await import("@/lib/forms/employee-match");
+        const own = roster.filter((row) => displayName(row).toLowerCase() === loaded.instance.employeeName.trim().toLowerCase());
+        const sameByRoster = own.length === 1 ? rosterSpellingOf(own[0]!.id, roster) : undefined;
+        const prose = fields.filter((field) => !field.policyGrounded && !DERIVED_POLICY_FIELD_KEYS.has(field.key) && !keeps(field.key)).map((field) => field.key);
+        for (const key of prose) {
+          const value = draftedPayload.values[key];
+          if (typeof value !== "string" || value.trim() === "") continue;
+          const corrected = sameByRoster ? withCorrectedSpelling(value, loaded.instance.employeeName, [], sameByRoster) : { text: value, replaced: 0 };
+          const named = withShortName(corrected.text, loaded.instance.employeeName, first);
+          if (named.replaced > 0 || corrected.replaced > 0) draftedPayload.values = { ...draftedPayload.values, [key]: named.text };
+        }
+      }
+    }
+    /*
+     * QA's production audit (20 Nov 2026, item 21): the loop card recorded an absence ("did not come into her scheduled
+     * shift"), so no sentence of the drafted write-up calls it lateness (`absence-write-up.ts`). Read from the card's
+     * record, never the manager's words.
+     */
+    if (loopCardAbsence) {
+      const cardAccount = /^What happened:\s*(.+)$/im.exec(notes)?.[1]?.trim() ?? null;
+      const absence = absenceWriteUp(draftedPayload.values, narrativeTargets.filter((key) => !keeps(key)), { employeeName: loaded.instance.employeeName, cardAccount, kind: loopCardNotLateness ?? "absence" });
+      if (absence.changed) draftedPayload.values = absence.values;
+    }
+    /*
+     * QA's live test of #1154 (20 Nov 2026, f075): a loop card citing two headings saved an empty Expectation, its sentence
+     * under Going Forward, and the full name after the first. The loop card's write-up keeps the first name throughout and
+     * a filled Expectation (`loop-write-up-sections.ts`); the app's own drafted text only.
+     */
+    const sectionsKey = narrativeTargets[0];
+    if (body.cardFromLoop === true && sectionsKey && !keeps(sectionsKey) && typeof draftedPayload.values[sectionsKey] === "string") {
+      const { body: account, line: citation } = splitAppCitationLine(draftedPayload.values[sectionsKey]!);
+      const laid = loopWriteUpSections(account, loaded.instance.employeeName);
+      if (laid.changed) draftedPayload.values = { ...draftedPayload.values, [sectionsKey]: citation ? `${laid.text}\n\n${citation}` : laid.text };
+    }
+    /*
+     * QA's live check (20 Nov 2026, item 17): a loop card's saved write-up never adds "at the <salon>" the manager did
+     * not say. The manual's quoted policy fields are left as they are. See `unsaid-place.ts`.
+     */
+    if (body.cardFromLoop === true) {
+      const proseKeys = new Set(fields.filter((field) => !field.policyGrounded && !DERIVED_POLICY_FIELD_KEYS.has(field.key)).map((field) => field.key));
+      const placed = withoutUnsaidPlace(draftedPayload.values, proseKeys, notes, appConfig().locationWord);
+      if (placed.changed.length > 0) draftedPayload.values = placed.values;
+    }
+    /*
+     * Pau via QA (20 Nov 2026, item 15): a loop card's saved write-up calls the employee by first name, never a pronoun.
+     * The manual's quoted policy fields (and the two the server derives) are left exactly as the manual has them.
+     */
+    if (body.cardFromLoop === true) {
+      const proseKeys = new Set(fields.filter((field) => !field.policyGrounded && !DERIVED_POLICY_FIELD_KEYS.has(field.key)).map((field) => field.key));
+      /*
+       * Port of Ask Bubbles #1053 (its QA, 22 Nov 2026): a coworker the notes name who is "she" too keeps her own "she",
+       * and another person's "they" stays "they" (U23): Create reads pronouns from the manager's notes, as the card does.
+       */
+      const roster = await (await import("@/lib/forms/employee-roster")).loadScopedRoster(actor.scope).catch(() => []);
+      const named = firstNameNotPronouns(draftedPayload.values, loaded.instance.employeeName, proseKeys, { others: otherRosterPeopleIn(notes, roster, loaded.instance.employeeName), managerWords: notes });
+      if (named.changed.length > 0) draftedPayload.values = named.values;
+      /*
+       * QA's live test of #1144 (20 Nov 2026): a coaching card's Observed opened with its topic ("Greeting guests, she
+       * didn't greet 3 guests"). It starts with what was seen: the card's own topic prefix is dropped (`coaching-topic-prefix.ts`).
+       */
+      const topicKey = narrativeTargets[0];
+      const cardTopicWords = typeof body.cardTopic === "string" ? body.cardTopic.trim().slice(0, 120) : "";
+      if (isCoachingFamily && cardTopicWords && topicKey && !keeps(topicKey) && typeof draftedPayload.values[topicKey] === "string") {
+        const unprefixed = withoutTopicPrefix(draftedPayload.values[topicKey]!, cardTopicWords);
+        if (unprefixed !== draftedPayload.values[topicKey]) draftedPayload.values = { ...draftedPayload.values, [topicKey]: unprefixed };
       }
     }
     const kept = draftMergeEnabled()
@@ -2860,9 +3197,12 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
     if (payrollAmountFieldEnabled() && payrollAnswer === "yes") {
       const held =
         (loaded.values ?? []).find((row) => row.fieldKey === PAYROLL_AMOUNT_KEY)?.value?.trim() || null;
-      const statedNow = payrollAmountFromConversation([{ role: "user", content: notes }], {
-        payrollAnswer: "yes",
-      });
+      const statedNow =
+        body.cardFromLoop === true
+          ? cardNotesPayrollAmount(notes)
+          : payrollAmountFromConversation([{ role: "user", content: notes }], {
+              payrollAnswer: "yes",
+            });
       const keep = statedNow ?? held;
       if (keep && formEditSingleWriterEnabled()) {
         await (await import("@/lib/forms/form-write")).statedWrite(
@@ -2884,8 +3224,22 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
 
     // FORM_PATCH_REDUCER_ENABLED: the plan's payroll sentence (none while the plan is manager-only), then what the write really changed.
     const formDiff = reduced ? await reduced.settle() : null;
+    /*
+     * Pau (20 Nov 2026): an agent-loop form whose drafted Action Plan promises a follow-up gets a follow-up date (the
+     * one the manager stated, or one week after the form date). A Corrective Action already has one from Create.
+     */
+    const loopFollowUp = body.cardFromLoop === true
+      ? await (async () => {
+          const now = await (await import("@/lib/forms/instances")).loadInstance(id);
+          const { applyLoopFollowUpDefault, PLAN_FIELD_KEYS } = await import("@/lib/forms/follow-up-default-write");
+          if (!now) return null;
+          const actionPlan = now.values.filter((row) => PLAN_FIELD_KEYS.has(row.fieldKey)).map((row) => row.value ?? "").join("\n");
+          return applyLoopFollowUpDefault({ instance: now.instance, managerWords: sent, actorId: actor.id, actionPlan });
+        })().catch(() => null)
+      : null;
     return NextResponse.json({
       ...(reduced ? { formDiff } : {}),
+      ...(loopFollowUp ? { followUpNotice: loopFollowUp.notice } : {}),
       values: guarded.accepted.values,
       checked: guarded.accepted.checked,
       /*

@@ -42,8 +42,12 @@ const ORDINAL = "(?:st|nd|rd|th)?";
 const YEAR = "(?:,?\\s+(\\d{4})|\\s+'(\\d{2}))?";
 
 const PATTERNS: readonly { readonly pattern: RegExp; readonly read: (match: RegExpExecArray) => [month: number, day: number, year: string | undefined] }[] = [
-  /* 6/11, 6-11, 06/11/2026, 6/11/26 (one separator throughout). */
-  { pattern: /\b(\d{1,2})([/-])(\d{1,2})(?:\2(\d{4}|\d{2}))?(?![\d/-])/g, read: (m) => [Number(m[1]), Number(m[3]), m[4]] },
+  /*
+   * 6/11, 6-11, 06/11/2026, 6/11/26 (one separator throughout). QA's code audit (20 Nov 2026, on d7960a5f): a number range
+   * followed by a length of time ("10-15 minutes late", "2-3 hrs") is never a date; it read as 10/15, so an account with
+   * another date counted two dates and asked which.
+   */
+  { pattern: /\b(\d{1,2})([/-])(\d{1,2})(?:\2(\d{4}|\d{2}))?(?![\d/-])(?!\s*(?:minutes?|mins?|hours?|hrs?)\b)/gi, read: (m) => [Number(m[1]), Number(m[3]), m[4]] },
   /* 6.11.26, 6.11.2026; "on 6.11". */
   { pattern: /(?<![\d$.])(\d{1,2})\.(\d{1,2})\.(\d{4}|\d{2})(?![\d.])/g, read: (m) => [Number(m[1]), Number(m[2]), m[3]] },
   { pattern: /(?<=\bon\s)(\d{1,2})\.(\d{1,2})(?![\d.])/gi, read: (m) => [Number(m[1]), Number(m[2]), undefined] },

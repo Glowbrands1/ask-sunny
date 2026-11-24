@@ -31,7 +31,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 
 const EXIT = TEMPLATE_SEEDS.find((entry) => entry.key === "stc-exit")!;
 
-function loaded(status: "draft" | "finalized") {
+function loaded(status: "draft" | "finalized", noticeGiven = "2026-09-14") {
   return {
     instance: {
       id: "inst-exit",
@@ -52,7 +52,7 @@ function loaded(status: "draft" | "finalized") {
       { fieldKey: "form_date", value: "2026-09-28", checked: [], filledBy: "system" },
       { fieldKey: "location", value: "NE Lincoln O Street", checked: [], filledBy: "system" },
       { fieldKey: "last_day_worked", value: "2026-09-26", checked: [], filledBy: "ai" },
-      { fieldKey: "notice_given_date", value: "2026-09-14", checked: [], filledBy: "ai" },
+      { fieldKey: "notice_given_date", value: noticeGiven, checked: [], filledBy: "ai" },
       { fieldKey: "resignation_notice", value: null, checked: ["submitted_fulfilled_notice"], filledBy: "ai" },
       {
         fieldKey: "details",
@@ -70,7 +70,7 @@ function loaded(status: "draft" | "finalized") {
 
 let requested: string[] = [];
 
-function serve(status: "draft" | "finalized") {
+function serve(status: "draft" | "finalized", noticeGiven?: string) {
   requested = [];
   globalThis.fetch = vi.fn().mockImplementation(async (input: unknown) => {
     const url = String(input);
@@ -83,7 +83,7 @@ function serve(status: "draft" | "finalized") {
         json: async () => ({}),
       } as unknown as Response;
     }
-    return { ok: true, json: async () => loaded(status) } as unknown as Response;
+    return { ok: true, json: async () => loaded(status, noticeGiven) } as unknown as Response;
   }) as typeof fetch;
 }
 
@@ -289,5 +289,29 @@ describe("dates, as a person reads them", () => {
     const lastDay = draft.container.querySelector<HTMLInputElement>("#form-field-last_day_worked")!;
     expect(lastDay.type).toBe("date");
     expect(lastDay.value).toBe("2026-09-26");
+  });
+});
+
+/*
+ * QA2 (21 Nov 2026; a real exit form finalized with "Date that notice was given" 2020-11-20 beside a 2026 form): an exit
+ * date more than a year from the form's date says "Check the year" above Finalize and in its confirmation. A warning,
+ * never a block.
+ */
+describe("Check the year, before Finalize", () => {
+  it("names a notice date years from the form's date, above Finalize and in the confirmation, and still finalizes", async () => {
+    serve("draft", "2020-09-14");
+    const { container } = mount();
+    await waitFor(() => expect(container.textContent).toContain("Resignation Details"));
+    expect(screen.getByTestId("year-check").textContent).toContain("Check the year: Date that notice was given is 2020-09-14.");
+    fireEvent.click(screen.getByRole("button", { name: "Finalize" }));
+    await waitFor(() => expect(screen.getByTestId("year-check-confirm").textContent).toContain("Date that notice was given is 2020-09-14"));
+    expect((screen.getByRole("button", { name: "Yes, finalize" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("says nothing when the dates are this year's", async () => {
+    serve("draft");
+    const { container } = mount();
+    await waitFor(() => expect(container.textContent).toContain("Resignation Details"));
+    expect(screen.queryByTestId("year-check")).toBeNull();
   });
 });

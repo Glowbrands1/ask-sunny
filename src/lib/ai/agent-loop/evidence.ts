@@ -14,6 +14,7 @@
  * id uses), and the message being answered now is `questionMessageId`, or `CURRENT_MESSAGE_ID`.
  */
 
+import { foldName } from "@/lib/forms/fold-name";
 import type { ChatMessage } from "@/types";
 
 /** What the model passes: which manager message, and the words it quotes from it. */
@@ -86,8 +87,7 @@ export function identifiedTurns(history: readonly ChatMessage[], question: strin
 
 /** Case- and space-insensitive, with curly quotes, every hyphen and dash, and the ellipsis read as plain ones. */
 function normalized(text: string): string {
-  return text
-    .replace(/[‘’]/g, "'")
+  return foldName(text)
     .replace(/[“”]/g, '"')
     .replace(/[\u2010-\u2015\u2212]/g, "-")
     .replace(/\u2026/g, "...")

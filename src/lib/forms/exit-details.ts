@@ -323,9 +323,14 @@ function payrollDeduction(clause: string, sentence: string): Reading {
   // "payroll" alone is usually the department — "notify payroll".
   const match = /\b(?:payroll deduct(?:ed|ion|ions)?|deduct(?:ed|ing|s|ion|ions)?)\b/.exec(clause);
   if (!match) return undefined;
-  if (/\b(?:not|n't)\s+(?:be\s+)?(?:appl(?:y|ies|icable)|needed|required|necessary)\b|\bn\/a\b/.test(clause)) {
+  /*
+   * QA item 17 (20 Nov 2026; the production audit's exit form): "payroll deduct no apply" was read as Yes. "no apply" /
+   * "no applicable" and "payroll deduct: no" / "payroll deduct no" answer No, as "not apply" did.
+   */
+  if (/\b(?:not|n't|no)\s+(?:be\s+)?(?:appl(?:y|ies|icable)|needed|required|necessary)\b|\bn\/a\b/.test(clause)) {
     return "no";
   }
+  if (/\bdeduct(?:ed|ion|ions)?\s*[:=-]?\s*no\b(?!\s+(?:more|longer|later)\b)/.test(clause)) return "no";
   return negatedAt(clause, match.index) ? "no" : "yes";
 }
 
@@ -640,6 +645,56 @@ export function readPermanentAddress(rawText: string): string | null {
   return address;
 }
 
+/*
+ * ============================================================================
+ * ONLY THE MANAGER'S OWN ADDRESS (Pau via QA, item 19, 17 and 20 Nov 2026)
+ * ============================================================================
+ *
+ * An exit form came back with a home address the manager never typed. The staff record carries no address, so it can
+ * only come from text someone else wrote (the agent loop's card account, which Create drafts from). An address is the
+ * manager's when its letters and digits appear, in order, in a message they typed in this chat. Never gated by a flag:
+ * it only ever leaves something out.
+ */
+const addressKey = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, "");
+
+/** Whether `address` is in `managerText` (every message the manager typed in this chat), letters and digits alike. */
+export function addressTypedIn(address: string, managerText: string): boolean {
+  const want = addressKey(address);
+  return want !== "" && addressKey(managerText).includes(want);
+}
+
+/**
+ * `text` (an account someone other than the manager wrote) without any labelled address ("home address 412 …") the
+ * manager did not type in `managerText`; the label goes with it. `removed` lists what was left out.
+ */
+export function withoutUntypedAddresses(text: string, managerText: string): { text: string; removed: string[] } {
+  const spans: [number, number, string][] = [];
+  for (const match of text.matchAll(ADDRESS_LABEL)) {
+    const start = match.index ?? 0;
+    const rest = text.slice(start + match[0].length);
+    const found = ADDRESS_THROUGH_ZIP.exec(rest) ?? ADDRESS_TO_END.exec(rest);
+    if (!found) continue;
+    const address = found[0].replace(/[\s,]+$/g, "");
+    if (!addressTypedIn(address, managerText)) spans.push([start, start + match[0].length + found[0].length, address.replace(/\s+/g, " ")]);
+  }
+  if (spans.length === 0) return { text, removed: [] };
+  let kept = "";
+  let at = 0;
+  for (const [start, end] of spans) {
+    kept += text.slice(at, start);
+    at = end;
+  }
+  kept += text.slice(at);
+  const tidy = kept
+    .replace(/\b(?:her|his|their|the|and|with)\s*([.,;])/gi, "$1")
+    .replace(/\s+([.,;!?])/g, "$1")
+    .replace(/([.,;])\s*[.,;]+/g, "$1")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/^[\s.,;]+/, "")
+    .trim();
+  return { text: tidy, removed: spans.map(([, , address]) => address) };
+}
+
 /**
  * Whether `candidate` sits inside the Permanent Address the manager typed in
  * `text` ("Main St" in "permanent address 123 Main St, …"): a street, not a
@@ -858,6 +913,51 @@ export function readExitDetails(rawText: string, today: string, facts?: ExitFact
     answers,
     ambiguities,
   };
+}
+
+/*
+ * ============================================================================
+ * HOW THE PERSON RESIGNED IS HOW THEY QUIT (QA's Bubbles round 2, 22 Nov 2026, U26)
+ * ============================================================================
+ *
+ * "<GM> called and left a voicemail for <P> when she did not show for her shift. Later that day <P> returned the call
+ * and told <AGM> … she quit effective immediately." saved How Employee Resigned "Voicemail": the voicemail was the
+ * manager's, not how she quit. Two readings for the agent loop's exit card, from the line's own methods and the exit
+ * form's own reader, no new word lists:
+ *
+ *   `EXIT_METHOD_LABELS`            the methods this line takes; the model reads one (`exit_method`).
+ *   `quoteNamesMethod`              the manager's quoted words name that method: half its words or more (three letters
+ *                                   or more each), said whole, as a prefix, or a close spelling; or the line's own
+ *                                   reader reads it in the quote.
+ *   `resignationStatementMethod`    with no method from the model: only the sentences the exit form's own reader reads a
+ *                                   resignation type from (`readExitFacts`, one sentence at a time) are read for the
+ *                                   method; undefined when no sentence states one (the whole account is read, as before).
+ */
+export const EXIT_METHOD_LABELS: readonly string[] = METHODS.map((method) => method.label);
+
+export function quoteNamesMethod(quote: string, label: string): boolean {
+  if (!EXIT_METHOD_LABELS.includes(label)) return false;
+  if (methodsIn(normalize(quote)).includes(label)) return true;
+  const wordsOf = (text: string) => [...new Set((text.toLowerCase().match(/[a-z]+/g) ?? []).filter((word) => word.length >= 3))];
+  const labelWords = wordsOf(label);
+  const quoted = wordsOf(quote);
+  const named = labelWords.filter((word) =>
+    quoted.some((typed) => typed === word || word.startsWith(typed) || typed.startsWith(word) || (typed.length >= 5 && word.length >= 5 && editDistance(typed, word) <= 2)),
+  );
+  return labelWords.length > 0 && named.length >= Math.ceil(labelWords.length / 2);
+}
+
+export function resignationStatementMethod(rawText: string, today: string): string | null | undefined {
+  const stating: string[] = [];
+  for (const turn of normalize(rawText).split(JOIN)) {
+    for (const sentence of statements(turn)) {
+      if ((exitFactValues(readExitFacts(sentence, today)).checked[EXIT_TYPE_GROUP] ?? []).length > 0) stating.push(sentence);
+    }
+  }
+  if (stating.length === 0) return undefined;
+  const found: string[] = [];
+  for (const sentence of stating) for (const label of methodsIn(sentence)) if (!found.includes(label)) found.push(label);
+  return joinMethods(found);
 }
 
 /** The Details answers as form values, keyed the way the stored version keys them. */
