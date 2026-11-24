@@ -20,10 +20,10 @@ left a parity entry saying Sunny's port was pending. The owner asked for it on 2
 `read_form` keeps no `formsRead` record (Bubbles' U16 copy feature). Create's last gate still checks the date the form is
 saved with.
 
-**Added in Sunny, and in Ask Bubbles in the same session (owner, 24 Nov 2026):** a draft waiting for HR approval is
-named "waiting for HR approval" in the question, not "a draft" (`withHr` in `same-incident.ts`). It is never called
-filed or finalized. That form is only seen by its creator and HR, so another manager is never told it exists.
+**Forms waiting for HR:** the manager's own form with HR is opened or named first by #1306 (`ownFormsWithHr`, the
+port of Bubbles' #1130), before this check runs; another manager's is never visible. So, as in Bubbles, the question
+only ever names a draft or a finalized form. A "waiting for HR approval" wording tried in this port was dropped.
 
-**Cases:** `src/app/api/chat/replay-pack/nov24-agent-loop-same-incident-on-file-cases.ts`. The finalized, draft,
-with-HR and Create-gate cases fail before the port. The separate-incident answer, other-date and Create-after-separate
+**Cases:** `src/app/api/chat/replay-pack/nov24-agent-loop-same-incident-on-file-cases.ts`. The finalized, draft
+and Create-gate cases fail before the port. The separate-incident answer, other-date and Create-after-separate
 controls pass both before and after.

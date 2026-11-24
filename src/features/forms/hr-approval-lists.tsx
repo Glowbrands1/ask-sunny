@@ -73,7 +73,7 @@ export function HrApprovalTabs({
   overdue,
   sibling = null,
 }: {
-  active: "all" | "hr" | "sibling";
+  active: "all" | "hr" | "sibling" | "approved";
   pending: number;
   overdue: number;
   sibling?: { name: string | null; pending: number | null } | null;
@@ -122,7 +122,96 @@ export function HrApprovalTabs({
           {sibling.name ?? "Other app"} approvals{sibling.pending === null ? "" : ` (${sibling.pending})`}
         </Link>
       ) : null}
+      {/* Owner, 24 Nov 2026: "a separate tab (not a link) for HR to see which forms she approved already". */}
+      <Link
+        href="/forms/monitoring?view=hr&app=approved"
+        className={tab(active === "approved")}
+        aria-current={active === "approved" ? "page" : undefined}
+        data-testid="hr-approved-tab"
+      >
+        Approved
+      </Link>
     </nav>
+  );
+}
+
+export interface HrApprovedListRow {
+  line: string;
+  from: string;
+  approvedAt: string | null;
+  approvedBy: string;
+  /** This app's review page (`/forms/hr-approval/<id>`), or the sibling's absolute one. */
+  href: string;
+}
+
+/**
+ * HR'S APPROVED TAB, FOR BOTH APPS (owner, 24 Nov 2026: "a separate tab (not a link) for HR to see which forms she
+ * approved already for both sunnyt and bubble"). This app's approved forms, newest first, then the sibling app's, read
+ * from its server with the waiting forms (`fetchSiblingHrQueue`). Each opens its review page in the app it belongs to.
+ */
+export function HrApprovedList({
+  appName,
+  rows,
+  sibling,
+}: {
+  appName: string;
+  rows: readonly HrApprovedListRow[];
+  sibling: { status: "off" } | { status: "error" } | { status: "ok"; app: string; approver: boolean; approved: readonly HrApprovedListRow[] };
+}) {
+  const section = (title: string, list: readonly HrApprovedListRow[], external: boolean, testId: string) => (
+    <section className="mb-5" data-testid={testId}>
+      <h2 className="mb-2 text-sm font-bold text-foreground">
+        {title} ({list.length})
+      </h2>
+      {list.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No approved forms yet.</p>
+      ) : (
+        <ul className="divide-y divide-border rounded-[var(--radius-md)] border border-border">
+          {list.map((row) => {
+            const body = (
+              <>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-foreground">{row.line}</p>
+                  <p className="text-xs text-subtle-foreground">
+                    From {row.from}
+                    {formatBusinessTime(row.approvedAt) ? ` · approved ${formatBusinessTime(row.approvedAt)}` : ""} · by {row.approvedBy}
+                  </p>
+                </div>
+                <Badge tone="outline" size="sm">
+                  Approved
+                </Badge>
+                {external ? <ExternalLink className="size-4 shrink-0 text-subtle-foreground" aria-hidden /> : <ChevronRight className="size-4 shrink-0 text-subtle-foreground" aria-hidden />}
+              </>
+            );
+            return (
+              <li key={row.href}>
+                {external ? (
+                  <a href={row.href} className="flex items-center gap-3 px-3 py-2.5 hover:bg-surface-muted">
+                    {body}
+                  </a>
+                ) : (
+                  <Link href={row.href} className="flex items-center gap-3 px-3 py-2.5 hover:bg-surface-muted">
+                    {body}
+                  </Link>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+  return (
+    <div data-testid="hr-approved-list">
+      {section(appName, rows, false, "hr-approved-this-app")}
+      {sibling.status === "ok" && sibling.approver ? (
+        section(sibling.app, sibling.approved, true, "hr-approved-sibling")
+      ) : sibling.status === "error" ? (
+        <p className="text-sm text-muted-foreground" data-testid="hr-approved-sibling-error">
+          The other app&apos;s approved forms could not be read just now. Try again in a minute.
+        </p>
+      ) : null}
+    </div>
   );
 }
 

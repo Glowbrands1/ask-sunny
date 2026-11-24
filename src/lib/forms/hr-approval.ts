@@ -14,7 +14,7 @@ import {
   ringBells,
   withoutUnread,
 } from "./hr-approval-bells";
-import { accountEmail, listHrApprovers } from "./hr-approval-approvers";
+import { accountEmail, listHrApprovers, resolveHrApprover } from "./hr-approval-approvers";
 import {
   HR_STATE_LABEL,
   approvableFromSentBack,
@@ -238,20 +238,17 @@ export async function decideHrApproval(
   const before = await loadInstance(instanceId);
   if (!before) throw new HrApprovalError("That form no longer exists.", 404);
   /*
-   * Pau (via QA, 23 Nov 2026): a form HR sent back may be APPROVED, or SENT BACK AGAIN with a note (QA: HR may still need
-   * more changes), once the manager has replied with a note, without waiting for them to send it again
-   * (`approvableFromSentBack`). Reject still needs it waiting.
+   * A form HR sent back may be APPROVED, or SENT BACK AGAIN with a note (QA: HR may still need more changes). First only
+   * once the manager replied (Pau, via QA, 23 Nov 2026); then always (owner, 24 Nov 2026: "check if HR approver has tha
+   * button to actually approve the form after goin gback and forth with manager ... can u keep the button "approve"
+   * there always"). Reject still needs it waiting.
    */
   const fromSentBack =
     decision !== "reject" &&
     before.instance.status === "draft" &&
-    approvableFromSentBack(before.instance, await approvalEventFacts(instanceId));
+    before.instance.hrApprovalState === "changes_requested";
   if (!heldForHr(before.instance.hrApprovalState) && !fromSentBack) {
-    throw new HrApprovalError(
-      before.instance.hrApprovalState === "changes_requested" && decision !== "reject"
-        ? "This form was sent back for changes. It can be approved or sent back again once the manager replies with a note, or sends it again."
-        : "This form is not waiting for HR approval.",
-    );
+    throw new HrApprovalError("This form is not waiting for HR approval.");
   }
   const note = cleanNote(noteInput);
   if (decision !== "approve" && !note) {
@@ -385,15 +382,32 @@ export async function recordHrEdit(instanceId: string, actor: FormsActor, now: D
   const href = formHref(instanceId);
   const approvers = (await listHrApprovers()).filter((approver) => approver.id !== actor.id).map((approver) => approver.email);
   const editor = await displayName(actor.id);
+  // A sent-back form the manager edited is their reply: HR may approve it now (`approvableFromSentBack`).
+  const sentBack = loaded.instance.hrApprovalState === "changes_requested";
   await ringBells(
     (await withoutUnread(HR_UPDATED_KIND, href, approvers)).map((recipientEmail) => ({
       recipientEmail,
       kind: HR_UPDATED_KIND,
-      title: "A form waiting for your approval was updated",
-      body: `${formLine(loaded.instance)}, changed by ${editor}. Open it to see the updated version.`,
+      title: sentBack ? "A form you sent back was updated" : "A form waiting for your approval was updated",
+      body: sentBack
+        ? `${formLine(loaded.instance)}, changed by ${editor}. You can approve it now, or send it back again.`
+        : `${formLine(loaded.instance)}, changed by ${editor}. Open it to see the updated version.`,
       href,
     })),
   );
+}
+
+/**
+ * A save to a form HR sent back, by its creator or a sender, from any path (the card, or chat): recorded in the
+ * approval history as the manager's reply, and HR is told (owner, 24 Nov 2026: editing alone counts as a reply).
+ * Anybody else's save, or a form in any other state, records nothing here.
+ */
+export async function recordSentBackEdit(instance: InstanceRow, actorId: string): Promise<void> {
+  if (instance.status !== "draft" || instance.hrApprovalState !== "changes_requested") return;
+  if (!isCreatorOrSender({ id: actorId }, instance)) return;
+  // HR's own edit of a form they sent back is recorded by the route, and is never the manager's reply.
+  if (await resolveHrApprover(actorId)) return;
+  await recordHrEdit(instance.id, { id: actorId, role: null, verified: true, scope: null, visibility: null, hrApprover: false } as unknown as FormsActor);
 }
 
 /** A waiting form was deleted: HR's bell stops pointing at it. */
@@ -474,11 +488,70 @@ export async function hrApprovalViewFor(actor: FormsActor, instance: InstanceRow
     canDecide: hr && state === "pending" && !released,
     // HR, and the form's creator and senders (owner, 24 Nov 2026), may change it while it waits; HR sees the changes.
     canEdit: state === "pending" && !released && (hr || (actor.verified && isCreatorOrSender(actor, instance))),
-    canApproveSentBack:
-      hr && instance.status === "draft" && hrApprovalEnabled() &&
-      approvableFromSentBack(instance, rows.map((row) => ({ action: row.action, actor: row.actor, at: row.created_at }))),
+    // HR's Approve is always there on a form they sent back, replied to or not (owner, 24 Nov 2026: "keep the button
+    // "approve" there always").
+    canApproveSentBack: hr && instance.status === "draft" && state === "changes_requested" && hrApprovalEnabled(),
     history,
   };
+}
+
+/**
+ * ============================================================================
+ * THE FORMS HR HAS APPROVED (owner, 24 Nov 2026)
+ * ============================================================================
+ *
+ * The owner: "a separate tab (not a link) for HR to see which forms she approved already for both sunnyt and bubble".
+ * HR's Approved tab, newest first, with who approved each and when. HR only. An archived form is left out. Read from
+ * `form_instances` (the overview view has no decision columns), with the template's name and the people's names.
+ */
+export interface HrApprovedRow {
+  id: string;
+  line: string;
+  createdByName: string;
+  approvedAt: string | null;
+  approvedByName: string;
+}
+
+export const HR_APPROVED_LIMIT = 100;
+
+export async function listHrApproved(actor: FormsActor, limit: number = HR_APPROVED_LIMIT): Promise<HrApprovedRow[]> {
+  if (!hrApprovalEnabled() || actor.hrApprover !== true) return [];
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("form_instances")
+    .select("id, template_id, employee_name, location_name, created_by, hr_approval_decided_at, hr_approval_decided_by")
+    .eq("hr_approval_state", "approved")
+    .is("archived_at", null)
+    .order("hr_approval_decided_at", { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(`Could not read the approved forms: ${error.message}`);
+  const rows = (data ?? []) as {
+    id: string;
+    template_id: string;
+    employee_name: string;
+    location_name: string | null;
+    created_by: string;
+    hr_approval_decided_at: string | null;
+    hr_approval_decided_by: string | null;
+  }[];
+  if (rows.length === 0) return [];
+  const templates = new Map<string, string>();
+  const templateIds = [...new Set(rows.map((row) => row.template_id))];
+  const { data: templateRows } = await supabase.from("form_templates").select("id, name").in("id", templateIds);
+  for (const row of (templateRows ?? []) as { id: string; name: string }[]) templates.set(row.id, row.name);
+  const people = [...new Set(rows.flatMap((row) => [row.created_by, row.hr_approval_decided_by ?? ""]).filter(Boolean))];
+  const names = new Map<string, string>();
+  const users = await supabase.from("app_users").select("id, display_name").in("id", people);
+  for (const user of (users.data ?? []) as { id: string; display_name: string | null }[]) {
+    if (user.display_name) names.set(user.id, user.display_name);
+  }
+  return rows.map((row) => ({
+    id: row.id,
+    line: formLine({ templateName: templates.get(row.template_id) ?? "Form", employeeName: row.employee_name, locationName: row.location_name }),
+    createdByName: names.get(row.created_by) ?? "A manager",
+    approvedAt: row.hr_approval_decided_at,
+    approvedByName: row.hr_approval_decided_by === actor.id ? "You" : (row.hr_approval_decided_by && names.get(row.hr_approval_decided_by)) || "HR",
+  }));
 }
 
 export interface HrQueueRow {
@@ -655,7 +728,13 @@ export interface HrDecidedRow extends MyHrFormRow {
 export type SiblingHrRead =
   | null
   | "unavailable"
-  | { app: string; approver: boolean; forms: { line: string; from: string; state: HrApprovalState; requestedAt: string | null; waiting: string; overdue: boolean; managerReplied: boolean }[] };
+  | {
+      app: string;
+      approver: boolean;
+      forms: { line: string; from: string; state: HrApprovalState; requestedAt: string | null; waiting: string; overdue: boolean; managerReplied: boolean }[];
+      /** The forms HR approved there, newest first (owner, 24 Nov 2026: the Approved tab, for both apps). */
+      approved: { line: string; from: string; approvedAt: string | null; approvedBy: string }[];
+    };
 
 async function siblingHrReadFor(subject: string): Promise<SiblingHrRead> {
   try {
@@ -670,6 +749,7 @@ async function siblingHrReadFor(subject: string): Promise<SiblingHrRead> {
       app: sibling.app,
       approver: sibling.approver,
       forms: sibling.forms.map(({ line, from, state, requestedAt, waiting, overdue, managerReplied }) => ({ line, from, state, requestedAt, waiting, overdue, managerReplied })),
+      approved: sibling.approved.map(({ line, from, approvedAt, approvedBy }) => ({ line, from, approvedAt, approvedBy })),
     };
   } catch {
     return "unavailable";
@@ -678,7 +758,7 @@ async function siblingHrReadFor(subject: string): Promise<SiblingHrRead> {
 
 export async function readHrApprovalsFor(subject: string, verified: boolean, now: Date = new Date()): Promise<
   | { kind: "off" }
-  | { kind: "hr"; queue: HrQueueRow[]; sibling: SiblingHrRead }
+  | { kind: "hr"; queue: HrQueueRow[]; sibling: SiblingHrRead; approved: HrApprovedRow[] }
   | { kind: "manager"; forms: HrDecidedRow[] }
 > {
   if (!hrApprovalEnabled() || !verified || !subject || !SAFE_ID.test(subject)) return { kind: "off" };
@@ -686,8 +766,8 @@ export async function readHrApprovalsFor(subject: string, verified: boolean, now
   const hrApprover = await resolveHrApprover(subject);
   const actor: FormsActor = { id: subject, role: null, verified: true, scope: null, visibility: null, hrApprover };
   if (hrApprover) {
-    const [queue, sibling] = await Promise.all([listHrQueue(actor, now), siblingHrReadFor(subject)]);
-    return { kind: "hr", queue, sibling };
+    const [queue, sibling, approved] = await Promise.all([listHrQueue(actor, now), siblingHrReadFor(subject), listHrApproved(actor, 20)]);
+    return { kind: "hr", queue, sibling, approved };
   }
 
   const supabase = getSupabaseAdmin();

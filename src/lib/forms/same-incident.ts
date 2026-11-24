@@ -22,11 +22,6 @@ export interface SameDayOnFile {
   readonly status: "draft" | "finalized";
   readonly formDate: string;
   readonly finalizedAt: string | null;
-  /**
-   * The draft is waiting for HR approval (owner, 24 Nov 2026: a manager starting a new form for someone whose form is with
-   * HR should see that one), so the question says so rather than "a draft". It is never called filed or finalized.
-   */
-  readonly withHr?: boolean;
 }
 
 export async function formsOnFileSameDay(
@@ -39,7 +34,7 @@ export async function formsOnFileSameDay(
     .filter((row) => row.templateKey === input.templateKey && row.formDate === input.formDate && (row.status === "draft" || row.status === "finalized") && !(input.except ?? []).includes(row.id))
     .filter((row) => input.isPerson(row.employeeName ?? ""))
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-    .map((row) => ({ id: row.id, form: row.templateName, status: row.status as "draft" | "finalized", formDate: row.formDate!, finalizedAt: row.finalizedAt ?? null, ...(row.status === "draft" && row.hrApprovalState === "pending" ? { withHr: true } : {}) }));
+    .map((row) => ({ id: row.id, form: row.templateName, status: row.status as "draft" | "finalized", formDate: row.formDate!, finalizedAt: row.finalizedAt ?? null }));
 }
 
 /** "<P> already has a Corrective Action for 11/18 (finalized 11/19). Do you want to open that one, or is this a separate incident?" */
@@ -49,7 +44,7 @@ export function sameDayOnFileQuestion(name: string, formName: string, onFile: re
     return found ? `${found[1]}/${found[2]}` : null;
   };
   const kind = formName.replace(/\s+Form$/i, "");
-  const states = onFile.map((form) => (form.status === "finalized" ? (md(form.finalizedAt) ? `finalized ${md(form.finalizedAt)}` : "finalized") : form.withHr ? "waiting for HR approval" : "a draft"));
+  const states = onFile.map((form) => (form.status === "finalized" ? (md(form.finalizedAt) ? `finalized ${md(form.finalizedAt)}` : "finalized") : "a draft"));
   const day = md(onFile[0]!.formDate);
   const which = onFile.length === 1 ? "that one" : "one of those";
   const has = onFile.length === 1 ? `a ${kind} for ${day} (${states[0]})` : `${onFile.length} ${kind}s for ${day} (${states.join("; ")})`;

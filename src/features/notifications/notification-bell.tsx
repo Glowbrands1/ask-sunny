@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useState, useTransition } from "react";
 import { Bell } from "lucide-react";
 
@@ -97,8 +98,21 @@ export function NotificationBell({
     });
   }
 
-  const label = unread ? `Notifications, ${unread} unread` : "Notifications";
-  const badge = unread ? (
+  /*
+   * FORMS STILL WAITING FOR HR KEEP THE BADGE (Pau, 24 Nov 2026, on Form Monitoring showing "Pending HR approval (2)"
+   * under an empty bar: "can u please not remove the notification in the bar on the left side if there are still
+   * pending inside"). Opening, reading or removing a notification does not decide the form, so the badge shows the
+   * larger of the unread count and the forms still needing this approver; only deciding them takes it away.
+   */
+  const waitingHr = Math.max(0, data.waitingHr ?? 0);
+  const count = Math.max(unread, waitingHr);
+  const waitingWords = `${waitingHr} ${waitingHr === 1 ? "form" : "forms"} waiting for your approval`;
+  const label = unread
+    ? `Notifications, ${unread} unread${waitingHr ? `, ${waitingWords}` : ""}`
+    : waitingHr
+      ? `Notifications, ${waitingWords}`
+      : "Notifications";
+  const badge = count ? (
     <span
       aria-hidden
       className={cn(
@@ -106,7 +120,7 @@ export function NotificationBell({
         variant === "bar" || collapsed ? "absolute -top-0.5 -right-0.5" : "ml-auto",
       )}
     >
-      {unread > 9 ? "9+" : unread}
+      {count > 9 ? "9+" : count}
     </span>
   ) : null;
 
@@ -164,6 +178,20 @@ export function NotificationBell({
           onDismiss={dismissOne}
           onClearAll={clearAll}
           onMarkAllRead={readAll}
+          footer={
+            waitingHr ? (
+              <Link
+                href="/forms/monitoring?view=hr"
+                onClick={() => {
+                  setOpen(false);
+                  onNavigate?.();
+                }}
+                className="text-xs font-semibold text-foreground underline-offset-4 hover:underline"
+              >
+                {waitingHr === 1 ? "1 form still needs your decision" : `${waitingHr} forms still need your decision`} →
+              </Link>
+            ) : undefined
+          }
         />
       </PopoverContent>
     </Popover>

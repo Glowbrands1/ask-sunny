@@ -11,8 +11,9 @@ import { evidenceFrom, headingWith, lastResult, loopStandIn, type LoopDecision, 
  * Pau's review (via QA): an employee had two FINALIZED Corrective Actions for one incident date (a no-show on 11/18) and a
  * third draft, and the AI never mentioned that one already existed. Ask Sunny's agent loop had no such check (Bubbles'
  * parity entry, port pending). The owner (24 Nov 2026) asked for it here. A Corrective Action or Coaching card for a person
- * and incident date that already has that form on file (draft, waiting for HR, or finalized) is not made: the reply says
- * so and asks "Do you want to open that one, or is this a separate incident?". The manager's words that it is a separate
+ * and incident date that already has that form on file (draft or finalized) is not made: the reply says
+ * so and asks "Do you want to open that one, or is this a separate incident?". (The manager's own form waiting for HR is
+ * opened or named first by #1306's ownFormsWithHr, before this check; another manager's is never seen.) The manager's words that it is a separate
  * incident build the card; another date gets no question; Create is the last gate. Sunny's salon; the person invented.
  * (Bubbles' dateless-copy case is not ported: Sunny's read_form keeps no record of the form a copy was read from.)
  */
@@ -24,18 +25,16 @@ const ON_1118 = "create a corrective action for Odessa Fernwick, she was a no ca
 const ON_1120 = "create a corrective action for Odessa Fernwick, she was a no call no show on 11/20";
 const SEPARATE = "this is a separate incident, she no-showed her second shift that day too";
 
-type OnFile = "finalized" | "draft" | "with_hr";
+type OnFile = "finalized" | "draft";
 
-/** Odessa's Corrective Action on file for one date: finalized 11/19, a draft, or a draft waiting for HR approval. */
+/** Odessa's Corrective Action on file for one date: finalized 11/19, or a draft. */
 function onFile(t: ReplayContext, state: OnFile, id = "ca-odessa-1118", formDate = "2026-11-18"): void {
   (t.forms() as Record<string, unknown>[]).push({
     id, ...t.templateIds!("dpoa"), variant_key: null, employee_role: null, location_id: KEARNEY.primaryAreaId, location_name: "NE Kearney",
-    /* A form waiting for HR is read only by its creator and HR, so that one is this manager's own (the owner's case: she sent it). */
-    created_by: state === "with_hr" ? "qa-manager" : "another-manager", created_by_role: "salon_director", source: "ask_sunny", status: state === "finalized" ? "finalized" : "draft",
+    created_by: "another-manager", created_by_role: "salon_director", source: "ask_sunny", status: state,
     follow_up_date: null, archived_at: null, revises_instance_id: null, template_key: "dpoa", template_name: "Corrective Action Form",
     employee_name: "Odessa Fernwick", form_date: formDate, created_at: `${formDate}T22:00:00Z`, updated_at: "2026-11-19T16:00:00Z",
     ...(state === "finalized" ? { finalized_at: "2026-11-19T16:00:00Z" } : {}),
-    ...(state === "with_hr" ? { hr_approval_state: "pending" } : {}),
   });
   t.typeOnForm(id, { observation: `Odessa was a no call no show for her shift on ${formDate.slice(5, 7)}/${formDate.slice(8)}/26.` });
 }
@@ -104,19 +103,6 @@ export const NOV24_AGENT_LOOP_SAME_INCIDENT_ON_FILE_CASES: ReplayCase[] = [
       const { thread, reply } = await chat(t, ON_1118, "2026-11-18", "draft");
       expect(thread.proposal ?? null, reply.content).toBeNull();
       expect(reply.content).toContain("already has a Corrective Action for 11/18 (a draft)");
-    },
-  },
-  {
-    id: "nov24-same-incident-with-hr-on-file-is-said",
-    title: "Owner (24 Nov 2026): the CA for 11/18 is waiting for HR approval: the reply says Odessa already has one for 11/18 (waiting for HR approval) and asks; never calls it filed or finalized",
-    report: "Owner, 24 Nov 2026: a manager starting a new form for the same person should see the one she already sent to HR",
-    status: "fixed",
-    fixFlags: [FLAG],
-    async run(t) {
-      if (skip(t)) return;
-      const { thread, reply } = await chat(t, ON_1118, "2026-11-18", "with_hr");
-      expect(thread.proposal ?? null, reply.content).toBeNull();
-      expect(reply.content).toContain("already has a Corrective Action for 11/18 (waiting for HR approval). Do you want to open that one, or is this a separate incident?");
     },
   },
   {
