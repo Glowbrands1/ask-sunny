@@ -81,6 +81,9 @@ const KNOWN = new Set([
   // Added on purpose (port of Ask Bubbles #1111, board f099 on the loop): the form the manager asked for by its title is
   // another library form, or no form in the library; never a silent swap.
   "form_asked_is_another", "form_not_in_library",
+  // Added on purpose (owner, 24 Nov 2026, chat edits of a form waiting for HR): anybody but its creator, its senders and
+  // HR is refused with the reason (edit_form).
+  "held_for_hr",
 ]);
 
 /** A line that returns a refusal: `error:` followed by a string, a template or a named message (not `error: Boolean(...)`). */

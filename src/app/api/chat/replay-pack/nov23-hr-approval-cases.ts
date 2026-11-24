@@ -68,6 +68,65 @@ function asksHr(t: ReplayContext, role: string, scope: unknown, subject?: string
 
 export const NOV23_HR_APPROVAL_CASES: ReplayCase[] = [
   {
+    id: "nov24-hr-approval-edit-form-saves-while-hr-has-it",
+    title:
+      'the salon director who made it, on a form waiting for HR: "change the date on Peregrine Ashdown\'s write up to 11/12": edit_form saves it, the form stays with HR, HR is told, and the edit is in the approval history',
+    report: 'Owner, 24 Nov 2026, asked "Should I let chat edits work there too, like edits on the form?": "sure"',
+    status: "fixed",
+    fixFlags: FLAGS,
+    async run(t) {
+      if (!t.loopOn?.() || !hrApprovalEnabled()) return;
+      const id = await sentToHr(t);
+      const creator = String((t.rows?.("form_instances") ?? []).find((candidate) => candidate.id === id)!.created_by);
+      t.addRows!("form_hr_approvers", [{ app_user_id: HR_ACCOUNT, revoked_at: null }]);
+      t.addRows!("app_users", [{ id: HR_ACCOUNT, email: "hr.wren@example.com", display_name: "Wren", status: "active" }]);
+      t.addRows!("form_hr_approval_events", [{ instance_id: id, action: "submitted", actor: creator, note: null, created_at: "2026-11-20T15:00:00Z" }]);
+
+      t.as("salon_director", KEARNEY);
+      const model = loopStandIn((view: LoopView): LoopDecision =>
+        lastResult(view, "edit_form") !== null || view.results.some((result) => result.tool === "edit_form")
+          ? { text: "Changed the date; HR sees the updated form." }
+          : { tool: "edit_form", input: { instance_id: id, values: { form_date: "2026-11-12" }, forms_on_file_evidence: evidenceFrom(view, "Peregrine Ashdown's write up") } },
+      );
+      t.loopModel!(model);
+      await t.thread().say("change the date on Peregrine Ashdown's write up to 11/12");
+      const output = model.views.flatMap((view) => view.results.filter((result) => result.tool === "edit_form")).at(-1)?.output as Record<string, unknown> | undefined;
+      expect(output?.error, `edit_form refused the creator's edit:\n${JSON.stringify(output)}`).toBeUndefined();
+      expect(t.values(id).form_date, "the waiting form was not changed").toBe("2026-11-12");
+      const row = (t.rows?.("form_instances") ?? []).find((candidate) => candidate.id === id);
+      expect(row?.hr_approval_state, "the chat edit took the form away from HR").toBe("pending");
+      const events = (t.rows?.("form_hr_approval_events") ?? []).filter((event) => event.instance_id === id).map((event) => [event.action, event.actor]);
+      expect(events, "the edit is not in the approval history").toContainEqual(["edited", creator]);
+      const told = (t.rows?.("app_notifications") ?? []).filter((bell) => bell.kind === "form_hr_approval_updated");
+      expect(told.map((bell) => [bell.recipient_email, bell.title])).toEqual([["hr.wren@example.com", "A form waiting for your approval was updated"]]);
+    },
+  },
+  {
+    id: "nov24-hr-approval-edit-form-other-manager-changes-nothing",
+    title: 'control: another salon director at the same salon, on that form waiting for HR: "change the date on Peregrine Ashdown\'s write up to 11/12": nothing changes',
+    report: "Owner, 24 Nov 2026: only the manager who made it, whoever sent it, and HR change a form while HR has it",
+    status: "fixed",
+    fixFlags: FLAGS,
+    async run(t) {
+      if (!t.loopOn?.() || !hrApprovalEnabled()) return;
+      const id = await sentToHr(t);
+      t.addRows!("form_hr_approvers", [{ app_user_id: HR_ACCOUNT, revoked_at: null }]);
+      t.addRows!("app_users", [{ id: HR_ACCOUNT, email: "hr.wren@example.com", display_name: "Wren", status: "active" }]);
+      const before = t.values(id).form_date;
+      t.as("salon_director", KEARNEY, "sd-other-tansy-brook");
+      const model = loopStandIn((view: LoopView): LoopDecision =>
+        lastResult(view, "edit_form") !== null || view.results.some((result) => result.tool === "edit_form")
+          ? { text: "I can't change that one." }
+          : { tool: "edit_form", input: { instance_id: id, values: { form_date: "2026-11-12" }, forms_on_file_evidence: evidenceFrom(view, "Peregrine Ashdown's write up") } },
+      );
+      t.loopModel!(model);
+      await t.thread().say("change the date on Peregrine Ashdown's write up to 11/12");
+      const output = model.views.flatMap((view) => view.results.filter((result) => result.tool === "edit_form")).at(-1)?.output as Record<string, unknown> | undefined;
+      expect(output?.error, `edit_form wrote another manager's waiting form:\n${JSON.stringify(output)}`).toBeDefined();
+      expect(t.values(id).form_date, "a form waiting for HR was changed by somebody else").toBe(before);
+    },
+  },
+  {
     id: "nov23-hr-approval-manager-asks-has-hr-approved-it",
     title: 'the manager who sent it: "has HR approved Peregrine\'s write up yet?": read_hr_approvals gives their form, waiting for HR',
     report: REPORT,

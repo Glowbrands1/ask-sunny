@@ -1,6 +1,7 @@
 import { editDistance as closeEditDistance } from "@/lib/forms/close-spelling";
 import { whichFormChoice, whichFormEntry, type WhichFormEntry, type WhichFormRecord } from "./which-form";
 import "server-only";
+import type { FormsActor } from "@/lib/forms/access";
 
 import { keptPlanSteps } from "@/lib/forms/stated-plan-steps";
 import { withReadersLineBox } from "@/lib/forms/readers-line-headings";
@@ -6210,6 +6211,42 @@ export async function editForm(
     if (unchosen) return unchosen;
     const refused = await formOnFileRefusal(context, id, input.forms_on_file_evidence);
     if (refused) return refused;
+  }
+  /*
+   * WAITING FOR HR. One waiting for HR may be changed by its creator, anyone who sent it, and HR, as on the card
+   * (`mayEditWhileWithHr`; owner, 24 Nov 2026, asked "Should I let chat edits work there too, like edits on the form?":
+   * "sure"). Their edit runs inside the scope that lets the writers past the hold for this one form (`hr-edit-scope.ts`),
+   * and is recorded in the approval history with HR told, as the card's Save does (`recordHrEdit`). Anybody else is
+   * refused with the reason, instead of each field's bare "not_draft". After the privacy gates above, so it never tells
+   * somebody the form exists.
+   */
+  {
+    const { heldForHr } = await import("@/lib/forms/hr-approval-rules");
+    const instances = await import("@/lib/forms/instances");
+    const held = await instances.loadInstance(id).catch(() => null);
+    const scoped = await import("@/lib/forms/hr-edit-scope");
+    if (
+      held &&
+      held.instance.status === "draft" &&
+      heldForHr(held.instance.hrApprovalState) &&
+      !scoped.inHrEditScope(id) &&
+      (await (await import("@/lib/forms/hr-approval-approvers")).hrHoldLive())
+    ) {
+      const approvals = await import("@/lib/forms/hr-approval");
+      const hrApprover = await (await import("@/lib/forms/hr-approval-approvers")).resolveHrApprover(context.actor.subject);
+      const formsActor = { id: context.actor.subject, role: context.actor.role, verified: context.actor.verified, scope: context.actor.scope, visibility: context.actor.scope, hrApprover } as unknown as FormsActor;
+      if (!approvals.mayEditWhileWithHr(formsActor, held.instance)) {
+        const heldReason = "This form is waiting for HR approval, so only the manager who made it, whoever sent it, and HR can change it until HR decides. Nothing was written. Tell the manager it is with HR.";
+        return { reason_code: "held_for_hr", error: heldReason };
+      }
+      const valuesBefore = JSON.stringify(held.values.map((row) => [row.fieldKey, row.value, row.checked]));
+      const result = await scoped.withHrEditScope(id, () => editForm(context, effects, input));
+      const after = await instances.loadInstance(id).catch(() => null);
+      if (after && JSON.stringify(after.values.map((row) => [row.fieldKey, row.value, row.checked])) !== valuesBefore) {
+        await approvals.recordHrEdit(id, formsActor);
+      }
+      return result;
+    }
   }
   const values: Record<string, string> = {};
   if (input.values && typeof input.values === "object") {
