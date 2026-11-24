@@ -7,7 +7,7 @@ import type { FormsActor } from "./access";
 /**
  * HR APPROVAL, THE WHOLE ROUND TRIP (owner request, 23 Nov 2026), against the real `instances.ts` and `hr-approval.ts`:
  *
- *   the manager presses "Finalize and send to HR for approval"   → still a draft, pending; HR's bell rings
+ *   the manager presses "Finalize and send for approval"   → still a draft, pending; HR's bell rings
  *   the manager tries to change it                          → refused while HR has it
  *   HR edits it                                             → saved, in the approval history only
  *   HR sends it back without a note                         → refused: a note is required
@@ -128,7 +128,7 @@ describe("the round trip", () => {
     // 4. HR edits it: saved through the one path past the hold, recorded in the approval history only.
     const eventsBefore = store.form_instance_events!.length;
     // As the PATCH route does it: the save, then the approval history's "edited".
-    await saveInstanceValues(instance.id, { values: { form_date: "2026-11-22" }, checked: {} }, HR, { asHrApprover: true });
+    await saveInstanceValues(instance.id, { values: { form_date: "2026-11-22" }, checked: {} }, HR, { pastHrHold: true });
     await recordHrEdit(instance.id, hr);
     expect((await loadInstance(instance.id))!.instance.formDate).toBe("2026-11-22");
     expect(store.form_instance_events!.length, "HR's edit reached the form's general history").toBe(eventsBefore);
@@ -138,7 +138,9 @@ describe("the round trip", () => {
     await expect(decideHrApproval(instance.id, manager, "approve", null)).rejects.toThrow(/Only HR/);
     const back = await decideHrApproval(instance.id, hr, "send_back", "Please add the date she was told.");
     expect(back.hrApprovalState).toBe("changes_requested");
-    expect(bells("thistle@example.com")[0]).toMatchObject({ kind: "form_hr_approval_decision", title: "HR sent your form back for changes" });
+    // Changed on purpose (24 Nov 2026): the sender's first bell is now their own "You sent a form for HR approval"
+    // receipt (owner request), so the decision is looked up by kind instead of being the first item.
+    expect(bells("thistle@example.com").find((bell) => bell.kind === "form_hr_approval_decision")).toMatchObject({ title: "HR sent your form back for changes" });
     await saveInstanceValues(instance.id, { values: { form_date: "2026-11-21" }, checked: {} }, CREATOR);
 
     // 6. The manager's reply and HR's note: only the two of them read the history.
@@ -252,5 +254,62 @@ describe("the round trip", () => {
     for (const email of ["marigold@example.com", "thistle@example.com"]) {
       expect(bells(email).map((bell) => bell.title), email).toContain("HR approved your form");
     }
+  });
+});
+
+/*
+ * THE NOTE REACHES HR'S BELL (owner, 23 Nov 2026, testing as HR in the sibling app, first):
+ *   "also make sure colene recieves the note, because i added a note when i finalized it and it didnt appear in colenes"
+ *   "oh it shows here but also make it appear i nnotification"
+ * The note was saved and shown on the review page, but the bell put it after the form line, on a line the bell cut
+ * off. Now a note comes first in the bell, and the manager can write one beside the send button.
+ */
+// The invented Policy Review cites a policy the test knowledge base does not hold, so it is sent acknowledged.
+const ACK = { acknowledgeUnverifiedPolicy: true } as const;
+
+describe("the manager's note reaches HR's bell", () => {
+  it("a note typed beside the send button is in HR's request bell, first, and in the approval history", async () => {
+    const instance = await policyReview();
+    await sendForHrApproval(instance.id, manager, null, ACK, "  test  ");
+
+    const [request] = bells("hr.wren@example.com");
+    expect(request?.title).toBe("A form is waiting for your approval");
+    expect(String(request?.body)).toMatch(/^“test” — .*for Juniper Calloway at KC Wornall/);
+    expect(String(request?.body)).toContain("sent by Thistle.");
+    // One bell for the send and its note, not a second "added a note" bell.
+    expect(bells("hr.wren@example.com")).toHaveLength(1);
+
+    const view = await hrApprovalViewFor(hr, (await loadInstance(instance.id))!.instance);
+    expect(view?.history.map((entry) => [entry.action, entry.note])).toEqual([
+      // The send records the policy acknowledgement this invented form needs (ACK); the manager's note is its own entry.
+      ["submitted", "Sent with an unverified policy reference, acknowledged by the manager."],
+      ["commented", "test"],
+    ]);
+  });
+
+  it("no note: the request bell is as before", async () => {
+    const instance = await policyReview();
+    await sendForHrApproval(instance.id, manager, null, ACK, "   ");
+    const [request] = bells("hr.wren@example.com");
+    expect(String(request?.body)).toMatch(/for Juniper Calloway at KC Wornall, sent by Thistle\.$/);
+    expect(String(request?.body)).not.toMatch(/^“/);
+    expect(extra.form_hr_approval_events!.filter((row) => row.action === "commented")).toHaveLength(0);
+  });
+
+  it("a note added after sending: the bell names who wrote it and starts with the note", async () => {
+    const instance = await policyReview();
+    await sendForHrApproval(instance.id, manager, null, ACK);
+    await commentOnHrApproval(instance.id, manager, "test");
+    const comment = bells("hr.wren@example.com").find((row) => row.kind === "form_hr_approval_comment");
+    expect(comment?.title).toBe("Thistle added a note on a form you are approving");
+    expect(String(comment?.body)).toMatch(/^“test” — .*for Juniper Calloway at KC Wornall/);
+  });
+
+  it("HR's note on a send back starts the manager's bell too", async () => {
+    const instance = await policyReview();
+    await sendForHrApproval(instance.id, manager, null, ACK);
+    await decideHrApproval(instance.id, hr, "send_back", "Add the date of the prior coaching.");
+    const decision = bells("thistle@example.com").find((row) => row.kind === "form_hr_approval_decision");
+    expect(String(decision?.body)).toMatch(/^“Add the date of the prior coaching\.” — .*for Juniper Calloway/);
   });
 });

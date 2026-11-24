@@ -87,3 +87,33 @@ describe("a typed name's trailing possessive", () => {
     expect(match.kind === "exact" ? match.name : null).toBe("Juno Ross");
   });
 });
+
+/*
+ * The 266-chat run's 117 (QA, 22 Nov 2026): "Brindle Tavish" for the roster's Tavish Brindle. The roster's own
+ * "<last> <first>" order is read only when the typed order matches nobody, and only for one person.
+ */
+describe("a typed name in the roster's last-first order", () => {
+  it.each([
+    ["Calder Remy", "Remy Calder"],
+    ["calder remy", "Remy Calder"],
+    ["Lind Teddy", "Theodora Lind"],
+  ])("%s is %s", (typed, name) => {
+    const match = matchEmployeeName(typed, ROSTER);
+    expect(match.kind).toBe("exact");
+    expect(match.kind === "exact" ? match.name : null).toBe(name);
+  });
+
+  it("control: two people with that name in reverse is no exact match", () => {
+    expect(matchEmployeeName("Varga Tess", ROSTER).kind).not.toBe("exact");
+  });
+
+  it("control: the typed order wins when it matches someone", () => {
+    const both = [...ROSTER, person("7", "Calder", "Remy")];
+    const match = matchEmployeeName("Calder Remy", both);
+    expect(match.kind === "exact" ? match.employee.id : null).toBe("7");
+  });
+
+  it("control: a reversed name nobody has stays no match", () => {
+    expect(matchEmployeeName("Quinn Zelda", ROSTER).kind).toBe("none");
+  });
+});

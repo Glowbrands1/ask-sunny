@@ -30,7 +30,8 @@ export interface ReplayThread {
   /** `reading`: what the stand-in form-reading model returns this turn (e.g. `{ employeeName }`); none by default. */
   /** `extra`: other request fields the browser can send (batch F5: attachments, report context, answer mode). */
   say(text: string, reading?: Record<string, unknown>, extra?: Record<string, unknown>): Promise<ReplayAnswer>;
-  create(): Promise<string>;
+  /** `salon`: the salon the manager picks on the card before Create (the browser's picker; port of Ask Bubbles #1072, f140). */
+  create(salon?: string): Promise<string>;
   /** Create from the latest card for this person (an earlier card still on screen). */
   createCard?(employeeName: string): Promise<string>;
   /** The chat as the browser holds it. */
@@ -156,6 +157,8 @@ export interface ReplayContext {
   draftTools(): string[];
   /** The draft route's POST for this form, as a redraft sends it (`keepManagerValues`); the route's response. */
   redraft(instanceId: string, notes: string): Promise<Record<string, unknown>>;
+  /** The card's Save, through the real PATCH route as the current identity (owner, 24 Nov 2026: editing a form waiting for HR). */
+  saveOnCard?(instanceId: string, values: Record<string, string>): Promise<Record<string, unknown>>;
   /** The manager types on the form and saves (filled by the manager). */
   typeOnForm(instanceId: string, values: Record<string, string>): void;
   /** Tick a form's checkbox groups (form_instance_values.checked), as a form on file holds them: its warning level, its boxes. */

@@ -1,4 +1,5 @@
 import "server-only";
+import { withoutAddressLines } from "./address-spans";
 
 import { closeSpellingMatchEnabled, sharedCityAsksSalonEnabled } from "@/lib/config/chat-quality-flags";
 import { PRODUCTION_SALONS, type ProductionSalon } from "@/data/salons";
@@ -269,7 +270,9 @@ const TIME_BEFORE =
  */
 export function readSalonMentions(said: string): SalonMention[] {
   // REASON_PLACE_NOT_SALON_ENABLED: "because she was at grand island" is why, not the salon (`reason-place.ts`).
-  const text = placeReadingText(said);
+  // Port of Ask Bubbles 4f9f706c (its QA, u22 live): an address given as the employee's ("address: <street>, <city>, …")
+  // names no salon; it is the exit form's Permanent Address (`address-spans.ts`).
+  const text = placeReadingText(withoutAddressLines(said));
   const mentions: SalonMention[] = [];
 
   for (const match of text.matchAll(SALON_NUMBER)) {

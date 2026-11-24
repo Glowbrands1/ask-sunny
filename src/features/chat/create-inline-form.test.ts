@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   DRAFT_FAILED_WARNING,
   NO_NOTES_WARNING,
+  SALON_NEEDED_MESSAGE,
   createInlineForm,
 } from "./create-inline-form";
 import type { ChatFormInstanceRef, ChatFormProposal, ChatMessage } from "@/types";
@@ -492,5 +493,36 @@ describe("no second drafting path was built", () => {
     for (const forbidden of ["anthropic", "Anthropic", "messages.create", "CLAUDE_MODEL"]) {
       expect(chat, forbidden).not.toContain(forbidden);
     }
+  });
+});
+
+/*
+ * Port of Ask Bubbles #1072 (board f140, its QA's round 2, U06): a card "ready" while its salon is still open was created
+ * with NO salon. Every Create (the agent loop's cards and the regular chat's) refuses it in one line, and nothing is posted.
+ */
+describe("f140. a card that still asks which salon is never created", () => {
+  for (const open of [{ locationResolution: "needs_selection" as const }, { status: "needs_location" as const }]) {
+    it(`${JSON.stringify(open)} and no salon: the card's question, in one line, and no request at all`, async () => {
+      const { calls, call } = recorder();
+      const onCreated = vi.fn();
+      await expect(
+        createInlineForm({ proposal: proposal({ locationId: null, authorizedLocationIds: ["loc-0309", "loc-0314"], ...open }), messages: [ACCOUNT], call, onCreated }),
+      ).rejects.toThrow(SALON_NEEDED_MESSAGE);
+      expect(SALON_NEEDED_MESSAGE).toBe("Which salon is this about? Choose the salon on the card, then press Create.");
+      expect(calls).toHaveLength(0);
+      expect(onCreated).not.toHaveBeenCalled();
+    });
+  }
+
+  it("control: the same card with its salon chosen is created as before", async () => {
+    const { calls, call } = recorder();
+    await createInlineForm({ proposal: proposal({ locationId: "loc-0314", locationResolution: "needs_selection", authorizedLocationIds: ["loc-0309", "loc-0314"] }), messages: [ACCOUNT], call, onCreated: () => {} });
+    expect(calls[0]?.body.locationId).toBe("loc-0314");
+  });
+
+  it("control: a card with no salon that is not asking for one (an admin's card) is created as before", async () => {
+    const { calls, call } = recorder();
+    await createInlineForm({ proposal: proposal({ locationId: null, locationResolution: "not_applicable" }), messages: [ACCOUNT], call, onCreated: () => {} });
+    expect(calls[0]?.url).toBe("/api/forms/instances");
   });
 });

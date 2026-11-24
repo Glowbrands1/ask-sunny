@@ -377,6 +377,16 @@ function matchName(typed: string, roster: readonly RosterEmployee[]): NameMatch 
   }
   // A surname initial, or two people with the same full name: the manager says which.
   const candidates = exact.length > 0 ? exact.map((employee) => ({ employee, score: 0 })) : close;
+  /*
+   * The 266-chat run's 117 (QA, 22 Nov 2026): "Brindle Tavish" for Tavish Brindle, the name in reverse order. When the
+   * typed order matches nobody, the roster's own "<last> <first>" order is read: one person whose surname then first
+   * (or preferred) name is exactly what was typed is that person. Roster data only; a reading that fits two is no match.
+   */
+  if (candidates.length === 0 && words.length >= 2) {
+    const typedWords = words.join(" ");
+    const reversed = roster.filter((employee) => firstNames(employee).some((first) => `${normalize(employee.lastName)} ${first}` === typedWords));
+    if (reversed.length === 1) return { kind: "exact", employee: reversed[0]!, name: displayName(reversed[0]!) };
+  }
   if (candidates.length === 0) return { kind: "none" };
 
   const ranked = [...candidates]

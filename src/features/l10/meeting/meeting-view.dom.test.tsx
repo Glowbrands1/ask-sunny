@@ -852,6 +852,46 @@ describe("Conclude: every meeting attendee can submit their own meeting rating",
   });
 });
 
+// The 23 Nov 2026 audit of every meeting tab: a signed-in person who is not on the meeting's people list (not a member, or
+// the list did not load) had no "(you)" row at Conclude, so no way to give their own rating.
+describe("Conclude: a signed-in person not on the meeting's people list can still rate", () => {
+  const timer = { started: true, running: true, startedAt: Date.now(), leader: "hub-user-2", leaderLabel: "Bo", sessionId: "s9" };
+  const attendees = [
+    { id: "att-avery", name: "Avery Quill", role: "Visionary", shared: true, rating: null },
+    { id: "att-bo", name: "Bo Lark", role: "Integrator", shared: true, rating: 8 },
+  ];
+  const openConclude = () => fireEvent.click(within(screen.getByRole("region", { name: "Agenda" })).getByRole("button", { name: /Conclude/ }));
+  const saved = (save: ReturnType<typeof vi.fn>) => (save.mock.calls.at(-1)![2] as { attendees: { name: string; rating: number | null }[] }).attendees;
+
+  it("an attendee whose first name is their sign-in name is them: their row is marked (you), no second row", async () => {
+    const save = vi.fn().mockResolvedValue({ ok: true, version: 4, updatedAt: "t" } satisfies SaveOutcome);
+    // The viewer signs in as "Avery" and the people list is empty (it did not load).
+    renderView({ save: save as unknown as SaveFn, mentionPeople: [], initial: loaded(3, { attendees, timer }) });
+    openConclude();
+    const groups = within(screen.getByRole("region", { name: "Ratings" })).getAllByRole("group");
+    const labels = groups.map((g) => g.getAttribute("aria-label"));
+    expect(labels[0]).toBe("Rating for Avery Quill"); // their own row first
+    expect(labels.filter((l) => l?.startsWith("Rating for Avery"))).toHaveLength(1); // and no second row for them
+    expect(labels).not.toContain("Rating for Avery");
+    expect(screen.getByText("(you)")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Avery Quill: 9" }));
+    await waitFor(() => expect(save).toHaveBeenCalled());
+    expect(saved(save)).toEqual(expect.arrayContaining([expect.objectContaining({ name: "Avery Quill", rating: 9 })]));
+  });
+
+  it("someone matching no attendee gets a row of their own under their sign-in name and can rate", async () => {
+    const save = vi.fn().mockResolvedValue({ ok: true, version: 4, updatedAt: "t" } satisfies SaveOutcome);
+    render(
+      <MeetingView info={info} initial={loaded(3, { attendees, timer })} save={save as unknown as SaveFn} end={vi.fn() as unknown as EndFn} viewer={{ id: "hub-admin-9", label: "dana@example.test", name: "Dana Fenn" }} roster={roster} mentionPeople={[{ id: "hub-user-2", name: "Bo Lark" }]} hubMeetingUrl={HUB} pollMs={0} debounceMs={0} today="2026-11-13" dateLabel="Fri, Nov 13" />,
+    );
+    openConclude();
+    expect(within(screen.getByRole("region", { name: "Ratings" })).getAllByRole("group")[0].getAttribute("aria-label")).toBe("Rating for Dana Fenn");
+    fireEvent.click(screen.getByRole("button", { name: "Dana Fenn: 7" }));
+    await waitFor(() => expect(save).toHaveBeenCalled());
+    expect(saved(save)).toEqual(expect.arrayContaining([expect.objectContaining({ name: "Dana Fenn", rating: 7 }), expect.objectContaining({ name: "Bo Lark", rating: 8 })]));
+  });
+});
+
 // 17 Nov 2026: "SD L10 in Ask Sunny ... We don't use rocks at the GM/SD level, so the agenda for both should be:
 // 1. Segue 2. Scorecard 3. To-dos 4. IDS 5. Conclude" and "Ask Sunny will need three separate district meeting spaces".
 // "On the STC SD scorecard, please list each store individually with its assigned DM" with the metrics "YOY Revenue,
@@ -909,5 +949,74 @@ describe("the STC SD L10s", () => {
     expect(SD_DISTRICT_SALONS["stc-sd-three"].map((s) => s.name)).toEqual(["Lawrence", "Overland Park", "Shawnee"]);
     const { salonByNumber } = await import("@/data/salons");
     for (const list of Object.values(SD_DISTRICT_SALONS)) for (const s of list) expect(salonByNumber(s.number)).toBeTruthy();
+  });
+});
+
+// The DM L10 facilitator, 23 Nov 2026, in their words:
+//  - "can you remove the timer setting on the L10 meetings? Currently, it moves us to the next section after a certain
+//    timeframe, even when we aren't ready yet."
+//  - the "Someone else changed this while you were editing" banner ("issues › GB for DM and Office use › resolvedAt")
+//    "throughout our meeting"
+//  - "i also cannot add IDS topics anymore to the DM l10 meeting."
+describe("DM L10 report, 23 Nov 2026 (the DM L10 facilitator)", () => {
+  it('"it moves us to the next section after a certain timeframe, even when we aren\'t ready yet": the meeting stays on its section when the planned time is over', async () => {
+    vi.useFakeTimers();
+    renderView();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Start meeting" }));
+    });
+    const before = screen.getByTestId("section-position").textContent;
+    // 12 minutes: past every planned time on the agenda (the first section is planned for 5).
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(12 * 60 * 1000);
+    });
+    expect(screen.getByTestId("section-position").textContent).toBe(before);
+    expect(screen.queryByText(/ran out of time/)).toBeNull();
+  });
+
+  const solvedMine = { id: "i1", title: "GB for DM and Office use", notes: "", resolved: false };
+  const stale = (latestDoc: Record<string, unknown>) => ({ ok: false as const, kind: "stale" as const, latest: loaded(7, latestDoc) });
+
+  it('"issues › GB for DM and Office use › resolvedAt": both of us solving the issue shows no banner and saves', async () => {
+    const save = vi.fn<() => Promise<SaveOutcome>>().mockResolvedValueOnce(stale({ issues: [{ ...solvedMine, resolved: true, resolvedSession: "s1", resolvedAt: "2026-11-23T08:10:09.000Z" }] }));
+    renderView({ save: save as unknown as SaveFn, initial: loaded(3, { issues: [solvedMine] }) });
+    fireEvent.click(screen.getByRole("button", { name: /\d · IDS/ }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Solve GB for DM and Office use" }));
+    });
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByTestId("save-status").textContent).toBe("All changes saved"));
+    expect(screen.queryByText(/Someone else changed this while you were editing/)).toBeNull();
+  });
+
+  describe('"i also cannot add IDS topics anymore to the DM l10 meeting": two people changing the same thing never pauses the page', () => {
+    it("a real clash (we both retitled an issue) shows no banner, the page stays usable, a new topic is added and saved with the latest title", async () => {
+      const save = vi
+        .fn<() => Promise<SaveOutcome>>()
+        .mockResolvedValueOnce(stale({ issues: [{ ...solvedMine, title: "Their title" }] }))
+        .mockResolvedValue({ ok: true, version: 8, updatedAt: "t" });
+      renderView({ save: save as unknown as SaveFn, initial: loaded(3, { issues: [solvedMine] }) });
+      fireEvent.click(screen.getByRole("button", { name: /\d · IDS/ }));
+      fireEvent.click(screen.getByRole("button", { name: /GB for DM and Office use/, expanded: false }));
+      await act(async () => {
+        fireEvent.change(screen.getByLabelText("Issue title"), { target: { value: "My title" } });
+      });
+      await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+      expect(screen.queryByText(/Someone else changed this while you were editing/)).toBeNull();
+      expect(document.querySelector("[inert]")).toBeNull();
+      // Add topics both ways: the Identify field on the IDS page and the "+ New Issue" window.
+      await act(async () => {
+        fireEvent.change(screen.getByLabelText("Identify a new issue"), { target: { value: "Topic one" } });
+        fireEvent.click(screen.getByRole("button", { name: "Add issue" }));
+      });
+      fireEvent.click(screen.getByRole("button", { name: "+ New Issue" }));
+      await act(async () => {
+        fireEvent.change(within(screen.getByRole("form", { name: "New Issue" })).getByRole("textbox", { name: "New Issue" }), { target: { value: "Topic two" } });
+        fireEvent.click(screen.getByRole("button", { name: "Add to IDS" }));
+      });
+      await waitFor(() => expect(screen.getByTestId("save-status").textContent).toBe("All changes saved"));
+      const doc = (save.mock.calls.at(-1) as unknown as [string, number, unknown])[2] as { issues: { title: string }[] };
+      expect(doc.issues.map((i) => i.title)).toEqual(["My title", "Topic one", "Topic two"]);
+    });
   });
 });

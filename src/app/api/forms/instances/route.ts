@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { redactHrApproval } from "@/lib/forms/hr-approval-rules";
 
 import { cardPayrollAmount } from "@/lib/forms/card-payroll-amount";
 import { teamTopicReadConversation } from "@/lib/forms/team-card-not-product";
@@ -48,7 +49,7 @@ import {
   InstanceProtectedError,
   listInstances,
 } from "@/lib/forms/instances";
-import { instanceListFilterFor, visibleInstances } from "@/lib/forms/instance-scope";
+import { actorMaySeeInstance, instanceListFilterFor, visibleInstances } from "@/lib/forms/instance-scope";
 import { privateAwareLimit, privateCreatorsActive } from "@/lib/forms/private-creators";
 import { historySaysDifferentIncident } from "@/lib/forms/draft-actions";
 import { findOpenIncidentDraft, findResentDraft } from "@/lib/forms/draft-reopen";
@@ -158,7 +159,8 @@ export async function GET(request: Request) {
     // offer a "Delete 5" that removed nothing, and would leak how many exist.
     const sweep = await findDemoInstances();
     return NextResponse.json({
-      instances,
+      // The approval columns only for those who may read HR's decision (owner, 23 Nov 2026: no leaks).
+      instances: instances.map((instance) => redactHrApproval(actor, instance)),
       demo: {
         deletable: visibleInstances(actor, sweep.deletable).length,
         protected: visibleInstances(actor, sweep.protected).length,
@@ -193,6 +195,9 @@ export async function POST(request: Request) {
       /** The loop's exit card: How Employee Resigned and the manager's words for it (port from Ask Bubbles #1021, U26). */
       exitMethod?: unknown;
       exitMethodQuote?: unknown;
+      /** The loop's exit card: Reason for Resignation in the manager's words, and their quote (port of Ask Bubbles #1047, B6). */
+      exitReason?: unknown;
+      exitReasonQuote?: unknown;
       /** The chat the proposal came from, for `checkProposalIsCurrent`. Ask Sunny only. */
       conversation?: unknown;
       /** Optional stable id for this chat. The first message id is used when this is absent. */
@@ -489,6 +494,17 @@ export async function POST(request: Request) {
             exitStated.values[EXIT_DETAIL_FIELDS.resignationMethod] = card.exitMethod;
           }
         }
+        /*
+         * Port of Ask Bubbles #1047 (B6, its QA's live round 3, 22 Nov 2026): the loop card's Reason for Resignation, written as
+         * the manager's statement only on a resignation, when its quote is in this chat's manager turns and holds every word of
+         * the reason (`exit-reason-said.ts`).
+         */
+        if (card.templateKey === EXIT_TEMPLATE_KEY && card.warningLevel !== "termination" && typeof card.exitReason === "string" && typeof card.exitReasonQuote === "string") {
+          const { reasonFromQuote } = await import("@/lib/forms/exit-reason-said");
+          const flat = (text: string) => text.toLowerCase().replace(/[*_"“”]/g, "").replace(/\s+/g, " ").trim();
+          const reason = flat(card.exitReasonQuote) !== "" && flat(userTurns).includes(flat(card.exitReasonQuote)) ? reasonFromQuote(card.exitReason, card.exitReasonQuote) : null;
+          if (reason) exitStated.values[EXIT_DETAIL_FIELDS.resignationReason] = reason;
+        }
         if (Object.keys(exitStated.checked).length > 0 || Object.keys(exitStated.values).length > 0) {
           await applyStatedFacts(instanceId, exitStated, actor.id, new Set([EXIT_PAYROLL_KEY, EXIT_TYPE_GROUP, EXIT_NOTICE_GROUP, EXIT_DETAIL_FIELDS.resignationReason, EXIT_DETAIL_FIELDS.resignationMethod, EXIT_ADDITIONAL_DETAILS_KEY, EXIT_REHIRE_KEY]));
         }
@@ -596,7 +612,9 @@ export async function POST(request: Request) {
         incident: incidentText || null,
         ...(sameChat ? { sameChat } : {}),
       }).catch(() => null);
-      if (open && mine(open)) return reused(open);
+      // Re-checked against the reader, as the sibling app's cross-chat lookup is (leak audit, 23 Nov 2026): a draft they
+      // may not see, such as someone else's waiting for HR with the approval flag since turned off, is never handed over.
+      if (open && mine(open) && actorMaySeeInstance(actor, open)) return reused(open);
     }
 
     /*
