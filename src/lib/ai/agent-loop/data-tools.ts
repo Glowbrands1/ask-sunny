@@ -170,7 +170,22 @@ export type HrApprovalsRead =
         requestedAt: string | null;
         waiting: string;
         overdue: boolean;
+        /** Sent back, and the manager has replied since: HR may approve it now (Pau, via QA, 23 Nov 2026). */
+        managerReplied?: boolean;
       }[];
+      /**
+       * The same approver's queue in the sibling app (`siblingHrReadFor`): null when the link is not configured,
+       * "unavailable" when the sibling did not answer. Optional, so a dep that predates it reads as not configured.
+       */
+      readonly sibling?:
+        | null
+        | "unavailable"
+        | {
+            app: string;
+            approver: boolean;
+            /** `managerReplied`: sent back, and the manager replied since (absent from an older sibling: not replied). */
+            forms: readonly { line: string; from: string; state: string; requestedAt: string | null; waiting: string; overdue: boolean; managerReplied?: boolean }[];
+          };
     }
   | {
       readonly kind: "manager";
@@ -220,13 +235,22 @@ export const DEFAULT_DATA_TOOL_DEPS: DataToolDeps = {
     const { getSupabaseAdmin } = await import("@/lib/supabase/server");
     let query = getSupabaseAdmin()
       .from("form_instance_deletions")
-      .select("template_name, employee_name, form_date, status, location_name, deleted_by, deleted_by_role, deleted_via, deleted_at");
+      .select(
+        "template_name, employee_name, form_date, status, location_name, deleted_by, deleted_by_role, deleted_via, deleted_at, hr_state:snapshot->instance->>hr_approval_state",
+      );
     // The forms' own employee-name search shape (part of the name, any case); characters the filter syntax reads are dropped.
     const said = (employeeName ?? "").replace(/[^\p{L}\p{N}' -]/gu, " ").replace(/\s+/g, " ").trim();
     if (said) query = query.or(`employee_name.ilike.*${said}*`);
     const { data, error } = await query.order("deleted_at", { ascending: false }).limit(limit);
     if (error) throw new Error(`Could not read the form deletion record: ${error.message}`);
-    const rows = (data ?? []) as Record<string, unknown>[];
+    /*
+     * A FORM DELETED WHILE IT WAS WITH HR IS LEFT OUT (owner, 23 Nov 2026: "are u sure this doesnt leak information,
+     * that other people cant see what a certain manager created?"). While it waited only its creator, its senders and
+     * HR knew it existed; this record is read by administrators. The state is read from the deletion trigger's
+     * snapshot of the row; older records carry none and show as before.
+     */
+    const withHr = new Set(["pending", "changes_requested", "rejected"]);
+    const rows = ((data ?? []) as Record<string, unknown>[]).filter((row) => !withHr.has(String(row.hr_state ?? "")));
     // The deleter's name, from the user directory; an account it cannot find keeps its id.
     const { readUser } = await import("@/lib/admin/user-directory");
     const names = new Map<string, string | null>();
@@ -565,6 +589,40 @@ function hrApprovalsSource(): string {
  * manager reads ONLY the forms they created that went to HR, with HR's latest note to them. A form waiting for HR is
  * not on file: never call it filed, finalized or a prior warning.
  */
+/**
+ * HR's queue in the sibling app (owner, 23 Nov 2026: HR sees both apps' queues), under its own key so the model never
+ * mixes the two apps' forms. Named by the sibling's own answer; nothing when the link is not configured.
+ */
+function siblingHrSection(sibling: NonNullable<Extract<HrApprovalsRead, { kind: "hr" }>["sibling"]> | null): Record<string, unknown> {
+  if (sibling === null) return {};
+  if (sibling === "unavailable") {
+    return { other_app: { note: "The other app's HR queue could not be read just now. Say so, and that its forms are listed under its own tab next to Pending HR approval." } };
+  }
+  const source = `HR approval (${sibling.app})`;
+  if (!sibling.approver) {
+    return { other_app: { app: sibling.app, note: `This account is not the HR approver in ${sibling.app}, so nothing waits for them there.` } };
+  }
+  return {
+    other_app: {
+      app: sibling.app,
+      waiting_for_you: sibling.forms
+        .filter((row) => row.state === "pending" || row.managerReplied === true)
+        .map((row) => ({
+          form: untrusted(row.line, source),
+          from: row.from,
+          state: row.managerReplied ? "manager replied to changes: you can approve it now, or send it back again" : "waiting for approval",
+          sent: formatBusinessTime(row.requestedAt) ?? row.requestedAt,
+          waiting: row.waiting,
+          overdue: row.overdue,
+        })),
+      sent_back_or_rejected: sibling.forms
+        .filter((row) => !(row.state === "pending" || row.managerReplied === true))
+        .map((row) => ({ form: untrusted(row.line, source), from: row.from, state: row.state === "rejected" ? "rejected" : "sent back for changes" })),
+      note: `These forms are in ${sibling.app}, not this app: list them separately, under ${sibling.app}'s name. They are approved in ${sibling.app}, opened from the ${sibling.app} approvals tab next to Pending HR approval.`,
+    },
+  };
+}
+
 export async function readHrApprovals(context: DataToolContext, deps: DataToolDeps = DEFAULT_DATA_TOOL_DEPS): Promise<ToolResult> {
   const subject = context.actor.subject ?? "";
   const read = await deps.loadHrApprovals({ subject, verified: context.actor.verified === true, now: context.now ?? new Date() });
@@ -576,12 +634,20 @@ export async function readHrApprovals(context: DataToolContext, deps: DataToolDe
       source: hrApprovalsSource(),
       reader: "HR approver",
       waiting_for_you: read.queue
-        .filter((row) => row.state === "pending")
-        .map((row) => ({ form: untrusted(row.line, hrApprovalsSource()), from: row.createdByName, sent: formatBusinessTime(row.requestedAt) ?? row.requestedAt, waiting: row.waiting, overdue: row.overdue })),
+        .filter((row) => row.state === "pending" || row.managerReplied === true)
+        .map((row) => ({
+          form: untrusted(row.line, hrApprovalsSource()),
+          from: row.createdByName,
+          ...(row.managerReplied ? { state: "manager replied to changes: you can approve it, or send it back again with a note" } : {}),
+          sent: formatBusinessTime(row.requestedAt) ?? row.requestedAt,
+          waiting: row.waiting,
+          overdue: row.overdue,
+        })),
       sent_back_or_rejected: read.queue
-        .filter((row) => row.state !== "pending")
+        .filter((row) => row.state !== "pending" && row.managerReplied !== true)
         .map((row) => ({ form: untrusted(row.line, hrApprovalsSource()), from: row.createdByName, state: row.state === "rejected" ? "rejected" : "sent back for changes" })),
       note: "List the forms waiting for this HR approver, oldest first, saying which are overdue (waited more than one business day). They approve, send back or reject each one from Pending HR approval in " + appConfig().formsPageName + ".",
+      ...siblingHrSection(read.sibling ?? null),
     };
   }
   return {
@@ -638,7 +704,7 @@ export function dataToolSpecs(config: AppConfig) {
   {
     name: "read_hr_approvals",
     description:
-      "HR approval of forms: for HR, every form waiting for their approval (oldest first, overdue after one business day) and the ones they sent back or rejected; for any other manager, only the forms THEY created that went to HR (waiting, sent back, rejected, or approved in the last 30 days) with HR's latest note to them. Use it for \"has HR approved it?\", \"what's waiting on me?\", \"did HR send my form back?\". A form waiting for HR is not on file.",
+      "HR approval of forms: for HR, every form waiting for their approval (oldest first, overdue after one business day) and the ones they sent back or rejected, plus (other_app) the forms waiting for them in the sibling app; for any other manager, only the forms THEY created that went to HR (waiting, sent back, rejected, or approved in the last 30 days) with HR's latest note to them. Use it for \"has HR approved it?\", \"what's waiting on me?\", \"did HR send my form back?\". A form waiting for HR is not on file.",
     input_schema: { type: "object", properties: {}, required: [] },
   },
   {

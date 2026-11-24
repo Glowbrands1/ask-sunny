@@ -232,14 +232,20 @@ describe("an Assistant Salon Director signs in on the browser a Salon Director u
     expect(localHistory.find((entry) => entry.id === MANAGER_CHAT.id)).toEqual(MANAGER_CHAT);
   });
 
-  it("on (case 4): a legacy unstamped chat this account does not hold stays visible as today, and is not stamped as this account's", async () => {
+  /*
+   * Changed on purpose (owner, 23 Nov 2026: "that chats from other account leak to other poeples log in, i dont want
+   * that"). This case used to show the legacy chat to the assistant (Pau, 31 Oct 2026: "Keep them visible"). An
+   * unstamped chat this account does not hold is now held back like another account's: not shown, not offered for
+   * Import, kept in the browser untouched.
+   */
+  it("on (case 4): a legacy unstamped chat this account does not hold is held back — not shown, not importable, kept untouched", async () => {
     process.env[FLAG] = "true";
     localHistory = [MANAGER_CHAT, LEGACY_CHAT];
     historyState = { stored: [], deleted: [], clearedAt: null, ownerKey: ASSISTANT_KEY };
     const captured = await mount();
-    expect(captured.store.conversations.map((entry) => entry.id)).toEqual([LEGACY_CHAT.id]);
-    expect(captured.store.importableConversations.map((entry) => entry.id)).toContain(LEGACY_CHAT.id);
-    expect((localHistory.find((entry) => entry.id === LEGACY_CHAT.id) as { ownerKey?: string }).ownerKey).toBeUndefined();
+    expect(captured.store.conversations.map((entry) => entry.id)).toEqual([]);
+    expect(captured.store.importableConversations.map((entry) => entry.id)).not.toContain(LEGACY_CHAT.id);
+    expect(localHistory.find((entry) => entry.id === LEGACY_CHAT.id)).toEqual(LEGACY_CHAT);
   });
 
   it("on: a new chat the assistant starts is theirs, stamped, and kept beside the manager's", async () => {

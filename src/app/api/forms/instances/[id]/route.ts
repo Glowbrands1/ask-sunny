@@ -7,6 +7,7 @@ import { errorResponse } from "@/lib/api/respond";
 import { REQUIRED_FIELDS_BLANK } from "@/lib/forms/required-fields";
 import { POLICY_ACKNOWLEDGEMENT_REQUIRED } from "@/lib/forms/policy-verification";
 import {
+  actorMaySeeInstance,
   authorizeInstance,
   InstanceNotVisibleError,
 } from "@/lib/forms/instance-scope";
@@ -27,11 +28,19 @@ import {
   finalizeGoesToHr,
   HrApprovalError,
   hrApprovalViewFor,
+  mayEditWhileWithHr,
   recordHrEdit,
   sendForHrApproval,
   withdrawnFromHr,
 } from "@/lib/forms/hr-approval";
-import { heldForHr, isHeldForHr } from "@/lib/forms/hr-approval-rules";
+import {
+  awaitingHr,
+  FormNotEditableNowError,
+  isCreatorOrSender,
+  isHeldForHr,
+  redactHrApproval,
+  redactLoadedHrApproval,
+} from "@/lib/forms/hr-approval-rules";
 
 /**
  * One form.
@@ -70,11 +79,16 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     const { actor, loaded } = await authorizeInstance(request, id, "view");
     /*
      * HR APPROVAL: the approval panel — state, waiting time, HR's notes — for the form's creator and HR only; null for
-     * every other reader. `finalizeToHr` tells the card to label its button "Finalize and send to HR for approval".
+     * every other reader. `finalizeToHr` tells the card to label its button "Finalize and send for approval".
      */
     const hrApproval = await hrApprovalViewFor(actor, loaded.instance);
     const finalizeToHr = await finalizeGoesToHr(actor, loaded.instance).catch(() => false);
-    const withHr = { ...loaded, ...(hrApproval ? { hrApproval } : {}), ...(finalizeToHr ? { finalizeToHr: true } : {}) };
+    // The approval columns only for those who may read HR's decision (`redactHrApproval`).
+    const withHr = {
+      ...redactLoadedHrApproval(actor, loaded),
+      ...(hrApproval ? { hrApproval } : {}),
+      ...(finalizeToHr ? { finalizeToHr: true } : {}),
+    };
     // CARD_CHANGE_PLAN_REBUILD_ENABLED: the Change something panel offers the Payroll deduction amount.
     return NextResponse.json(cardChangePlanRebuildEnabled() ? { ...withHr, cardChangeAmount: true } : withHr);
   } catch (error) {
@@ -97,18 +111,23 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     } | null;
 
     /*
-     * HR APPROVAL: HR may edit a form waiting for them (owner, 23 Nov 2026); the change is written through the one path
-     * the database lets past the hold and is recorded in the approval history the creator reads. Anybody else's save
-     * of a waiting form is refused (`HeldForHrError`).
+     * HR APPROVAL: HR may edit a form waiting for them (owner, 23 Nov 2026), and so may its creator and anyone who sent
+     * it (owner, 24 Nov 2026: "have the option to edit the form but also make sure the edited form carries over to [HR]
+     * so she sees the updated version"). The change is written through the one path the database lets past the hold,
+     * to the same form HR reviews, and is recorded in the approval history; a manager's change rings HR's bell.
+     * Anybody else's save of a waiting form is refused (`HeldForHrError`).
      */
-    const asHrApprover = actor.hrApprover === true && heldForHr(before.instance.hrApprovalState);
+    const pastHrHold = mayEditWhileWithHr(actor, before.instance);
+    // HR's edit of a form with them in ANY state (sent back, rejected too) goes in the approval history only.
+    const hrHistoryOnly =
+      actor.hrApprover === true && awaitingHr(before.instance.hrApprovalState) && !isCreatorOrSender(actor, before.instance);
     const result = await saveInstanceValues(
       id,
       { values: body?.values ?? {}, checked: body?.checked ?? {} },
       actor.id,
-      { asHrApprover },
+      { pastHrHold, hrHistoryOnly },
     );
-    if (asHrApprover) await recordHrEdit(id, actor);
+    if (pastHrHold || hrHistoryOnly) await recordHrEdit(id, actor);
     /*
      * CARD_CHANGE_PLAN_REBUILD_ENABLED (Pau, 28 Oct 2026): payroll deduct
      * changed from the Change something panel rebuilds the Corrective Action
@@ -130,7 +149,11 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
         ? (await syncCorrectiveActionPlan(id, actor.id, { amountSentence: true })).length > 0
         : false;
     const loaded = await loadInstance(id);
-    return NextResponse.json({ ...loaded, rejected: result.rejected, ...(planRebuilt ? { actionPlanRebuilt: true } : {}) });
+    return NextResponse.json({
+      ...(loaded ? redactLoadedHrApproval(actor, loaded) : loaded),
+      rejected: result.rejected,
+      ...(planRebuilt ? { actionPlanRebuilt: true } : {}),
+    });
   } catch (error) {
     if (error instanceof InstanceNotVisibleError) {
       return NextResponse.json({ error: error.message }, { status: 404 });
@@ -172,20 +195,25 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
        * while the manager can fix it. HR's own forms finalize as before.
        */
       if (await finalizeGoesToHr(actor, loaded.instance)) {
-        const instance = await sendForHrApproval(id, actor, body.followUpDate ?? null, {
-          acknowledgeUnverifiedPolicy: body.acknowledgeUnverifiedPolicy === true,
-        });
-        return NextResponse.json({ instance, sentToHr: true });
+        const instance = await sendForHrApproval(
+          id,
+          actor,
+          body.followUpDate ?? null,
+          { acknowledgeUnverifiedPolicy: body.acknowledgeUnverifiedPolicy === true },
+          // The optional "Note to HR" typed beside the button.
+          body.note,
+        );
+        return NextResponse.json({ instance: redactHrApproval(actor, instance), sentToHr: true });
       }
       const instance = await finalizeInstance(id, actor.id, body.followUpDate ?? null, {
         acknowledgeUnverifiedPolicy: body.acknowledgeUnverifiedPolicy === true,
       });
-      return NextResponse.json({ instance });
+      return NextResponse.json({ instance: redactHrApproval(actor, instance) });
     }
     if (body?.action === "hr_approve" || body?.action === "hr_reject" || body?.action === "hr_send_back") {
       const decision = body.action === "hr_approve" ? "approve" : body.action === "hr_reject" ? "reject" : "send_back";
       const instance = await decideHrApproval(id, actor, decision, body.note);
-      return NextResponse.json({ instance, hrApproval: await hrApprovalViewFor(actor, instance) });
+      return NextResponse.json({ instance: redactHrApproval(actor, instance), hrApproval: await hrApprovalViewFor(actor, instance) });
     }
     if (body?.action === "hr_comment") {
       await commentOnHrApproval(id, actor, body.note);
@@ -198,7 +226,12 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         body.action === "reevaluate" ? "reevaluated" : "revised",
         body.reason,
       );
-      return NextResponse.json({ instance });
+      /*
+       * AN OPEN REVISION THIS READER MAY NOT SEE (owner, 23 Nov 2026: no leaks). "Edit as new draft" returns the
+       * revision already open, which may be someone else's waiting for HR. It is not handed back, nor is why.
+       */
+      if (instance.id !== id && !actorMaySeeInstance(actor, instance)) throw new FormNotEditableNowError();
+      return NextResponse.json({ instance: redactHrApproval(actor, instance) });
     }
 
     return NextResponse.json({ error: "Unknown action." }, { status: 400 });
@@ -221,6 +254,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
     if (isHeldForHr(error)) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: 409 });
+    }
+    if (error instanceof FormNotEditableNowError) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: 409 });
     }
     if (error instanceof RevisionReasonRequiredError) {
@@ -258,7 +294,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     const body = (await request.json().catch(() => null)) as { archived?: boolean } | null;
 
     const instance = await archiveInstance(id, actor.id, body?.archived !== false);
-    return NextResponse.json({ instance });
+    return NextResponse.json({ instance: redactHrApproval(actor, instance) });
   } catch (error) {
     if (error instanceof InstanceNotVisibleError) {
       return NextResponse.json({ error: error.message }, { status: 404 });

@@ -2,7 +2,8 @@ import "server-only";
 
 import type { AskResponse } from "@/lib/ai/types";
 
-import { authorizeInstance } from "./instance-scope";
+import { FormNotEditableNowError } from "./hr-approval-rules";
+import { actorMaySeeInstance, authorizeInstance } from "./instance-scope";
 import { findOpenRevision, type LoadedInstance } from "./instances";
 import { reviseFinalizedForm, RevisionReasonRequiredError } from "./revision-chain";
 import { REVISION_RESIGN_NOTICE } from "./revision-history";
@@ -84,6 +85,11 @@ export async function openEditableDraft(
       // A revision already open is the draft, whether or not this call revises.
       const open = await findOpenRevision(instance.id);
       if (open) {
+        /*
+         * An open revision this reader may not see (someone else's, waiting for HR) is neither opened nor described:
+         * one answer that names nobody (owner, 23 Nov 2026: no leaks).
+         */
+        if (!actorMaySeeInstance(actor, open)) throw new FormNotEditableNowError();
         id = open.id;
         continue;
       }
@@ -142,6 +148,8 @@ export async function changeOnEditableDraft(
     draft = await openEditableDraft(request, instanceId);
   } catch (error) {
     if (error instanceof RevisionReasonRequiredError) return reasonRequiredReply(request, instanceId);
+    // Someone else's revision of it is open and not this reader's to see: no reason, no name.
+    if (error instanceof FormNotEditableNowError) return reply("I can't open that form to edit right now.");
     return reply(
       `That form is finalized, and I couldn't open a new draft of it: ${(error as Error).message} You can try again from the form card's **Edit as new draft** button.`,
     );

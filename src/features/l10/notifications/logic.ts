@@ -12,8 +12,11 @@ export const DEFAULT_PREFS: NotificationPrefs = {
   todo_assigned: true,
   rock_added: true,
   rock_changed: true,
-  issue_added: false,
+  issue_added: true,
   issue_solved: true,
+  item_added: true,
+  item_resolved: true,
+  item_archived: true,
   recap_saved: true,
   ai_suggestion: true,
   edited: false,
@@ -25,8 +28,11 @@ export const KIND_LABEL: Record<PrefKind, { title: string; hint: string }> = {
   todo_assigned: { title: "A to-do is given to me", hint: "When someone else adds or reassigns a to-do to you." },
   rock_added: { title: "A rock is added for me", hint: "When a rock is created with you as its owner." },
   rock_changed: { title: "A rock of mine changes", hint: "Its status changes, or a milestone is added, ticked or removed." },
-  issue_added: { title: "An issue is added", hint: "Any new issue in a meeting you attend. Can be chatty." },
+  issue_added: { title: "An issue is added", hint: "Any new issue in a meeting you attend." },
   issue_solved: { title: "An issue is solved", hint: "In a meeting you attend." },
+  item_added: { title: "A to-do, rock or headline is added", hint: "In a meeting you attend. If it is yours, you get the to-do or rock note instead." },
+  item_resolved: { title: "A to-do or rock is done", hint: "A to-do is ticked done or a rock is marked done, in a meeting you attend." },
+  item_archived: { title: "A rock is archived", hint: "In a meeting you attend." },
   recap_saved: { title: "A recap is saved", hint: "When a meeting you attend ends and its recap is saved." },
   ai_suggestion: { title: "An assistant suggestion is waiting", hint: "Only once assistant suggestions exist; nothing is sent today." },
   edited: { title: "Someone edits something of mine", hint: "Off by default. Not sent yet." },
@@ -39,9 +45,16 @@ export function isPrefKind(v: unknown): v is PrefKind {
 
 const KINDS: readonly string[] = [...PREF_KINDS, "more"];
 
+/** What a meeting-activity note is about, from its item id ("todos:<id>", "rocks:<id>", "headlines:<id>"). */
+function itemNoun(itemId: string | undefined): string {
+  const list = (itemId ?? "").split(":")[0];
+  return list === "todos" ? "a to-do" : list === "rocks" ? "a rock" : list === "headlines" ? "a headline" : list === "issues" ? "an issue" : "an item";
+}
+
 /** What the note says, without the excerpt. Plain text. */
-export function headline(n: Pick<AppNotification, "kind" | "actor_name" | "count">): string {
+export function headline(n: Pick<AppNotification, "kind" | "actor_name" | "count"> & { item_id?: string }): string {
   const who = n.actor_name?.trim() || "Someone";
+  const what = itemNoun(n.item_id);
   const base: Record<NotificationKind, string> = {
     mention: `${who} mentioned you`,
     todo_assigned: `${who} gave you a to-do`,
@@ -49,6 +62,9 @@ export function headline(n: Pick<AppNotification, "kind" | "actor_name" | "count
     rock_changed: `${who} changed a rock of yours`,
     issue_added: `${who} added an issue`,
     issue_solved: `${who} solved an issue`,
+    item_added: `${who} added ${what}`,
+    item_resolved: `${who} completed ${what}`,
+    item_archived: `${who} archived ${what}`,
     recap_saved: `A recap was saved`,
     ai_suggestion: `A suggestion is waiting for you`,
     edited: `${who} edited something of yours`,

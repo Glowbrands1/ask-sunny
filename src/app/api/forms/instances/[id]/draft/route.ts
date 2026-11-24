@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { withoutTopicPrefix } from "@/lib/forms/coaching-topic-prefix";
 import { keptPlanSteps, withPlanSteps } from "@/lib/forms/stated-plan-steps";
 import { statedPlanStepsEnabled } from "@/lib/config/chat-quality-flags";
-import { READERS_LINE_HEADINGS } from "@/lib/forms/readers-line-headings";
 import { loopWriteUpSections } from "@/lib/forms/loop-write-up-sections";
 import { withAccountFactsKept } from "@/lib/forms/account-facts-kept";
 import { TERMINATION_OPTION, withTerminationPlan } from "@/lib/forms/termination-stated";
@@ -225,7 +224,7 @@ import { attendanceActionPlan, isAttendancePlan, missedMeetingNotLateness } from
 import { absenceWriteUp } from "@/lib/forms/absence-write-up";
 import { withPayrollSentence } from "@/lib/forms/plan-payroll-sentence";
 import { managerTypedActionPlan } from "@/lib/forms/manager-action-plan";
-import { firstNameNotPronouns } from "@/lib/forms/first-name-write-up";
+import { firstNameNotPronouns, otherRosterPeopleIn } from "@/lib/forms/first-name-write-up";
 import { withoutUnsaidPlace } from "@/lib/forms/unsaid-place";
 import { appConfig } from "@/lib/ai/agent-loop/app-config";
 import { accountPassage } from "@/lib/forms/account-passage";
@@ -412,7 +411,17 @@ async function readOfficialPolicyManual(
 
 /** SPEND_GUARD_ALL_CALLS_ENABLED: this route's Claude calls are counted (`ai/spend-meter.ts`). Off, as before. */
 
-/* QA f071 / c259: the headings whose saved Policy Violated keeps "<box> — <section>" are `READERS_LINE_HEADINGS` (forms/readers-line-headings.ts). */
+/* QA f071 / c259: the headings filed under another box are `READERS_LINE_HEADINGS` (forms/readers-line-headings.ts); since Pau's 23 Nov 2026 ruling their saved Policy Violated is the card's line too, page included. */
+
+/**
+ * Port from the sibling app (its QA's live re-run, 23 Nov 2026, A1): the topic a loop card's policy line names after
+ * "Other — " ("Other — Opening checklist"), the Coaching Form's Other write-in; null when the card cites "Other" alone or no Other.
+ */
+function cardOtherTopic(line: unknown): string | null {
+  if (typeof line !== "string") return null;
+  const topic = /(?:^|;\s*)other\s*[—–:-]\s*([^;]+)$/i.exec(line.trim())?.[1]?.trim() ?? "";
+  return topic ? topic.slice(0, 120) : null;
+}
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   return withSpendMeter("forms_draft", () => postFormsDraft(request, context));
@@ -441,10 +450,10 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         { status: 409 },
       );
     }
-    // HR APPROVAL: a form waiting for HR is changed only by HR until they send it back.
+    // HR APPROVAL: a waiting form is not redrafted by the assistant; its creator, a sender or HR edits it on the form (owner, 24 Nov 2026).
     if (heldForHr(loaded.instance.hrApprovalState)) {
       return NextResponse.json(
-        { error: "This form is waiting for HR approval. You can change it again if HR sends it back.", code: "HELD_FOR_HR" },
+        { error: "This form is waiting for HR approval. Change it on the form itself; HR sees your changes.", code: "HELD_FOR_HR" },
         { status: 409 },
       );
     }
@@ -1717,7 +1726,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       ? guardCoachingFraming({ values: followUp.values, checked: followUp.checked }, notes)
       : { values: followUp.values, checked: followUp.checked, adjusted: [] as string[], underperformanceRefused: false };
     // OTHER_WRITE_IN_GUARD_ENABLED: a ticked "Other" gets its write-in in the manager's words, or is unticked.
-    const otherWritten = guardOtherWriteIn(framed, notes, new Set(fields.map((field) => field.key)), loaded.instance.employeeName, typeof body.cardTopic === "string" ? body.cardTopic.trim().slice(0, 120) : null);
+    const otherWritten = guardOtherWriteIn(framed, notes, new Set(fields.map((field) => field.key)), loaded.instance.employeeName, typeof body.cardTopic === "string" && body.cardTopic.trim() ? body.cardTopic.trim().slice(0, 120) : body.cardFromLoop === true ? cardOtherTopic(body.cardPolicyLine) : null, body.cardFromLoop === true);
     /*
      * Pau via QA (20 Nov 2026, item 14): a loop coaching card's Create saves Observed as what was seen, an Expectation
      * about the employee, and no Type of Coaching the manager did not name. See `loop-coaching-write-up.ts`.
@@ -2912,7 +2921,12 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       /* Pau's ruling (20 Nov 2026; c091): the card's second heading ticks its own box, and Policy Violated names both. */
       const secondBox = loopCardSecondHeading ? boxFor(loopCardSecondHeading) : undefined;
       const headingLines = typeof body.cardPolicyLine === "string" ? body.cardPolicyLine.split(";").map((part) => part.trim()).filter((part) => part && !/^other\b/i.test(part)) : [];
-      const cardLine = (secondBox ? headingLines.slice(0, 2).join("; ") : (headingLines[0] ?? "")).slice(0, 400);
+      /*
+       * QA's f094 (21 Nov 2026 live retest): a second heading with no box of its own (Time Records, filed under Standards of
+       * Conduct) was dropped from Policy Violated. The saved line names both whenever the card has a second heading, joined
+       * as the card joins them.
+       */
+      const cardLine = (loopCardSecondHeading ? headingLines.slice(0, 2).join("; ") : (headingLines[0] ?? "")).slice(0, 400);
       if (box) {
         const keepOther = (draftedPayload.checked.offense_type ?? []).includes("other") && cardOther !== null;
         const boxes = [box.key, ...(secondBox && secondBox.key !== box.key ? [secondBox.key] : [])];
@@ -2922,9 +2936,11 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
        * QA f071 (20 Nov 2026, live item 15): a card citing "Late Opening Policy, JBA Policy Manual p.15" saved Policy
        * Violated "Attendance Policy — Late Opening", so the card and the form showed two labels. The card's line is the
        * saved Policy Violated whether or not a Type of Offense label names its heading; the box is left as set above.
-       * Except the headings in `READERS_LINE_HEADINGS`, which keep the readers' "<box> — <section>".
+       * Port from the sibling app (Pau's ruling, 23 Nov 2026, via QA: "add the page everywhere"): the headings in
+       * `READERS_LINE_HEADINGS` (Time Records) kept the readers' "<box> — <section>" and dropped the card's ", JBA Policy
+       * Manual p.<n>"; since c259 the card's line names the box itself, so it is saved for them too. Supersedes f071.
        */
-      if (cardLine && !READERS_LINE_HEADINGS.has(loopCardHeading.trim().toLowerCase()) && fields.some((field) => field.key === "policy_violated")) {
+      if (cardLine && fields.some((field) => field.key === "policy_violated")) {
         draftedPayload.values = { ...draftedPayload.values, policy_violated: cardLine };
       }
     }
@@ -3066,7 +3082,12 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      */
     if (body.cardFromLoop === true) {
       const proseKeys = new Set(fields.filter((field) => !field.policyGrounded && !DERIVED_POLICY_FIELD_KEYS.has(field.key)).map((field) => field.key));
-      const named = firstNameNotPronouns(draftedPayload.values, loaded.instance.employeeName, proseKeys);
+      /*
+       * Port of Ask Bubbles #1053 (its QA, 22 Nov 2026): a coworker the notes name who is "she" too keeps her own "she",
+       * and another person's "they" stays "they" (U23): Create reads pronouns from the manager's notes, as the card does.
+       */
+      const roster = await (await import("@/lib/forms/employee-roster")).loadScopedRoster(actor.scope).catch(() => []);
+      const named = firstNameNotPronouns(draftedPayload.values, loaded.instance.employeeName, proseKeys, { others: otherRosterPeopleIn(notes, roster, loaded.instance.employeeName), managerWords: notes });
       if (named.changed.length > 0) draftedPayload.values = named.values;
       /*
        * QA's live test of #1144 (20 Nov 2026): a coaching card's Observed opened with its topic ("Greeting guests, she

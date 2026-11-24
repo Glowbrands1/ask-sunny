@@ -18,7 +18,7 @@ export interface AppNotification {
 }
 
 /** Kinds a person can switch on or off. */
-export const PREF_KINDS = ["mention", "todo_assigned", "rock_added", "rock_changed", "issue_added", "issue_solved", "recap_saved", "ai_suggestion", "edited", "message"] as const;
+export const PREF_KINDS = ["mention", "todo_assigned", "rock_added", "rock_changed", "issue_added", "issue_solved", "item_added", "item_resolved", "item_archived", "recap_saved", "ai_suggestion", "edited", "message"] as const;
 export type PrefKind = (typeof PREF_KINDS)[number];
 /**
  * The kinds shown on the settings page: only what the hub actually sends today. "An assistant suggestion is waiting"

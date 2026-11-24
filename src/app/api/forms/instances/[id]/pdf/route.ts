@@ -1,6 +1,7 @@
 import { errorResponse } from "@/lib/api/respond";
 import { authorizeInstance, InstanceNotVisibleError } from "@/lib/forms/instance-scope";
 import { markExported } from "@/lib/forms/instances";
+import { awaitingHr } from "@/lib/forms/hr-approval-rules";
 import { parseFormVariants } from "@/lib/forms/document";
 import { pdfFileName, renderFormPdf } from "@/lib/forms/pdf-render";
 import { formRevisionsEnabled } from "@/lib/config/chat-quality-flags";
@@ -61,7 +62,12 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     const printed = marks.length > 0 ? { ...meta, revisionMarks: marks } : meta;
 
     const bytes = renderFormPdf(loaded.version.document, variant, { values, checked }, printed);
-    await markExported(id, actor.id);
+    /*
+     * A form waiting for HR is not on file and has no final PDF, so a download of it is not an export: recording one
+     * would put the downloader (HR, often) in the form's general history, which every reader sees once it is approved
+     * (owner, 23 Nov 2026: no leaks).
+     */
+    if (!awaitingHr(loaded.instance.hrApprovalState)) await markExported(id, actor.id);
 
     return new Response(bytes as BodyInit, {
       headers: {

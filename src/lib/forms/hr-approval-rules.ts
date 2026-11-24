@@ -6,7 +6,7 @@ import { envFlag } from "@/lib/config/chat-quality-flags";
  * ============================================================================
  *
  * Owner request, 23 Nov 2026: every form except the Coaching Form waits for HR
- * after the manager presses "Finalize and send to HR for approval". HR approves (the
+ * after the manager presses "Finalize and send for approval". HR approves (the
  * form is then finalized exactly as before), rejects, or sends it back for
  * changes, each with a note, and may edit it meanwhile.
  *
@@ -113,6 +113,36 @@ export function mayReadHrDecision(
 ): boolean {
   if (!instance.hrApprovalState) return false;
   return isCreatorOrSender(reader, instance) || reader.hrApprover === true;
+}
+
+/**
+ * ============================================================================
+ * APPROVE FROM "SENT BACK", ONCE THE MANAGER HAS REPLIED (Pau, via QA, 23 Nov 2026)
+ * ============================================================================
+ *
+ * "when manager replies in note, there should be approve button here": HR need not wait for the manager to finalize
+ * again. A form HR sent back for changes may be approved once its creator or a sender has added a note AFTER HR's
+ * latest send-back; the approval is the same one as from pending (finalized and approved in one write). A form sent
+ * back with no reply yet, a rejected form, or a reply older than the latest send-back is not approvable this way.
+ */
+export interface HrApprovalEventFact {
+  readonly action: string;
+  readonly actor: string;
+  readonly at: string;
+}
+
+export function approvableFromSentBack(
+  instance: { createdBy: string; hrApprovalState?: HrApprovalState | null; hrApprovalRequestedBy?: string | null; hrApprovalSenders?: readonly string[] },
+  events: readonly HrApprovalEventFact[],
+): boolean {
+  if (instance.hrApprovalState !== "changes_requested") return false;
+  const ordered = [...events].sort((a, b) => a.at.localeCompare(b.at));
+  let sentBackAt = -1;
+  ordered.forEach((event, index) => {
+    if (event.action === "changes_requested") sentBackAt = index;
+  });
+  if (sentBackAt < 0) return false;
+  return ordered.slice(sentBackAt + 1).some((event) => event.action === "commented" && isCreatorOrSender({ id: event.actor }, instance));
 }
 
 export const HR_STATE_LABEL: Record<HrApprovalState, string> = {
@@ -271,4 +301,48 @@ export const HELD_FOR_HR = "HELD_FOR_HR";
 
 export function isHeldForHr(error: unknown): error is Error & { code: typeof HELD_FOR_HR } {
   return error instanceof Error && (error as { code?: unknown }).code === HELD_FOR_HR;
+}
+
+/*
+ * ============================================================================
+ * WHAT THE API SENDS ABOUT HR, TO WHOM (owner, 23 Nov 2026: "are u sure this doesnt leak information, that other
+ * people cant see what a certain manager created?")
+ * ============================================================================
+ *
+ * Every form row carries its approval columns. A reader who may not see HR's decision (anyone but the creator, a
+ * sender or HR: `mayReadHrDecision`) gets them blank, so an approved form reads as an ordinary finalized one in
+ * the JSON too, not only on screen. Applied at every forms route that returns a row.
+ */
+export interface HrApprovalColumns {
+  createdBy: string;
+  hrApprovalState?: HrApprovalState | null;
+  hrApprovalRequestedAt?: string | null;
+  hrApprovalRequestedBy?: string | null;
+  hrApprovalSenders?: readonly string[];
+}
+
+export function redactHrApproval<T extends HrApprovalColumns>(reader: HrReader, row: T): T {
+  if (mayReadHrDecision(reader, row)) return row;
+  const carries = Boolean(row.hrApprovalState || row.hrApprovalRequestedAt || row.hrApprovalRequestedBy || row.hrApprovalSenders?.length);
+  if (!carries) return row;
+  return { ...row, hrApprovalState: null, hrApprovalRequestedAt: null, hrApprovalRequestedBy: null, hrApprovalSenders: [] };
+}
+
+/** The same, for a loaded form (`{ instance, … }`). */
+export function redactLoadedHrApproval<L extends { instance: HrApprovalColumns }>(reader: HrReader, loaded: L): L {
+  const instance = redactHrApproval(reader, loaded.instance);
+  return instance === loaded.instance ? loaded : { ...loaded, instance };
+}
+
+/**
+ * THE ONE ANSWER for a form this reader may not see (owner, 23 Nov 2026). An open revision of a form they can see
+ * may be waiting for HR, sent by someone else; "Edit as new draft" and the chat used to hand that revision back, or
+ * say why it could not be opened. They now get this, which names nobody and nothing about HR.
+ */
+export class FormNotEditableNowError extends Error {
+  readonly code = "FORM_NOT_EDITABLE_NOW";
+  constructor() {
+    super("This form can't be edited right now.");
+    this.name = "FormNotEditableNowError";
+  }
 }
