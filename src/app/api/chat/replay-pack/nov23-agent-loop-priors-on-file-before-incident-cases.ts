@@ -39,7 +39,7 @@ function onFile(t: ReplayContext): void {
 export const NOV23_AGENT_LOOP_PRIORS_ON_FILE_BEFORE_INCIDENT_CASES: ReplayCase[] = [
   {
     id: "nov23-1083-forms-on-file-before-incident-only",
-    title: "Port of Bubbles #1083 (U09's T1–T2, incident 11/1): the card's Prior actions from the forms on file holds the form of 10/2 and never those of 11/10 and 11/17 — also when the card is proposed again with no incident date",
+    title: "Port of Bubbles #1083 (U09's T1–T2, incident 11/1): the forms on file offered for Prior actions (Pau's 23 Nov ruling: offered, never added unasked) name the form of 10/2 and never those of 11/10 and 11/17 — also when the card is proposed again with no incident date",
     report: REPORT,
     status: "fixed",
     fixFlags: [FLAG],
@@ -49,7 +49,7 @@ export const NOV23_AGENT_LOOP_PRIORS_ON_FILE_BEFORE_INCIDENT_CASES: ReplayCase[]
       t.directory([...STAFF, INES]);
       t.as("admin", ADMIN);
       onFile(t);
-      t.loopModel!(loopStandIn((view): LoopDecision => {
+      const model = loopStandIn((view): LoopDecision => {
         const said = view.turns.filter((turn) => turn.role === "user" && !turn.text.includes("[app check]")).at(-1)?.text ?? "";
         const level = { warning_level: "written", level_evidence: evidenceFrom(view, "written", said.startsWith("JBA") ? 1 : 0) };
         const proposals = view.results.filter((entry) => entry.tool === "propose_form").length;
@@ -59,13 +59,23 @@ export const NOV23_AGENT_LOOP_PRIORS_ON_FILE_BEFORE_INCIDENT_CASES: ReplayCase[]
         if (lastResult(view, "propose_form")) return { text: "Here's the Corrective Action Form for **Ines Larkspur**." };
         if (!said.startsWith("JBA")) return { tool: "propose_form", input: { template_key: "dpoa", employee_id: INES.id, ...level, person_evidence: evidenceFrom(view, "Ines Larkspur") } };
         return { tool: "propose_form", input: { template_key: "dpoa", employee_id: INES.id, ...level, ...account, incident_date: "2026-11-01" } };
-      }));
+      });
+      t.loopModel!(model);
       const thread = t.thread();
       await thread.say(T1);
       await thread.say(T2);
       const prior = (thread.proposal as { priorActions?: string | null } | null)?.priorActions ?? "";
-      expect(prior, "a form on file dated after the incident is a prior action").not.toMatch(/11\/10\/2026|11\/17\/2026/);
-      expect(prior, "the form on file of 10/2, before the incident, left Prior actions").toMatch(/10\/02\/2026/);
+      /*
+       * CHANGED ON PURPOSE (QA, 23 Nov 2026; Pau's ruling, port of Ask Bubbles #1089, as Bubbles changed this case): forms
+       * on file are offered, never put on Prior actions by the AI. The before-incident filter (#1083) now applies to the
+       * offer: it names 10/02 and never 11/10 or 11/17, and the card's Prior actions hold none of them.
+       */
+      expect(prior, "a form on file was put on Prior actions unasked").not.toMatch(/10\/02\/2026|11\/10\/2026|11\/17\/2026/);
+      const offers = model.views.flatMap((view) => view.results.filter((result) => result.tool === "propose_form"))
+        .map((result) => (result.output as { facts?: { prior_on_file?: { ask_exactly?: string } } } | null)?.facts?.prior_on_file?.ask_exactly ?? "")
+        .join("\n");
+      expect(offers, "a form on file dated after the incident is offered").not.toMatch(/11\/10\/2026|11\/17\/2026/);
+      expect(offers, "the form on file of 10/2, before the incident, was never offered").toMatch(/10\/02\/2026/);
     },
   },
 ];

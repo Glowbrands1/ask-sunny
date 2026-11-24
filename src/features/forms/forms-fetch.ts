@@ -110,6 +110,30 @@ export async function downloadFormPdf(
 }
 
 /**
+ * PRINT A FINALIZED FORM (Pau, via QA, 23 Nov 2026: "will have option to print and save as PDF"). The same server PDF
+ * as Download PDF (`/api/forms/instances/[id]/pdf`, the pinned template and the stored values, never the approval
+ * notes), opened in a new tab where the browser's viewer prints it. The tab is opened before the fetch, inside the
+ * click, so a pop-up blocker does not stop it.
+ */
+export async function printFormPdf(instanceId: string, role: Role, name: string): Promise<void> {
+  const tab = window.open("", "_blank");
+  if (!tab) throw new Error("Allow pop-ups for this site to print the form.");
+  try {
+    const response = await fetch(`/api/forms/instances/${instanceId}/pdf`, { headers: formsHeaders(role, name) });
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => ({}))) as { error?: string };
+      throw new Error(payload.error ?? "That form could not be printed.");
+    }
+    const url = URL.createObjectURL(await response.blob());
+    tab.location.href = url;
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  } catch (error) {
+    tab.close();
+    throw error;
+  }
+}
+
+/**
  * Opening the PDF preview of a template version.
  *
  * Same reason `downloadFormPdf` exists: a plain link carries none of the Forms

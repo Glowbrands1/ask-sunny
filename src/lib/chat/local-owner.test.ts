@@ -13,16 +13,31 @@ const chat = (id: string, ownerKey?: string): OwnedConversation => ({
 });
 
 describe("partitionByOwner", () => {
-  // Changed on purpose (Pau, 31 Oct 2026: "Keep them visible"): an unstamped chat this account does not hold is shown, not held back.
-  it("this account's key, or no key and stored by this account, is mine; no key and not held is unclaimed; another key is held back", () => {
+  /*
+   * Changed on purpose (owner, 23 Nov 2026: "that chats from other account leak to other poeples log in, i dont
+   * want that"). Until now an unstamped chat this account does not hold was shown (Pau, 31 Oct 2026: "Keep them
+   * visible"), so another account's legacy chat appeared to whoever signed in next on a shared browser. Now it is
+   * held back like another account's.
+   */
+  it("this account's key, or no key and stored by this account, is mine; everything else is held back, unstamped legacy chats included", () => {
     const { mine, unclaimed, others } = partitionByOwner(
       [chat("conv_a", "me"), chat("conv_b", "them"), chat("conv_c"), chat("conv_d")],
       "me",
       new Set(["conv_c"]),
     );
     expect(mine.map((entry) => entry.id)).toEqual(["conv_a", "conv_c"]);
-    expect(unclaimed.map((entry) => entry.id)).toEqual(["conv_d"]);
-    expect(others.map((entry) => entry.id)).toEqual(["conv_b"]);
+    expect(unclaimed).toEqual([]);
+    expect(others.map((entry) => entry.id)).toEqual(["conv_b", "conv_d"]);
+  });
+
+  it("the shared-browser case: the next account to sign in sees none of the first account's chats, stamped or not", () => {
+    const browser = [chat("first_stamped", "first"), chat("first_legacy")];
+    const next = partitionByOwner(browser, "second", new Set());
+    expect(next.mine).toEqual([]);
+    expect(next.unclaimed).toEqual([]);
+    expect(next.others.map((entry) => entry.id)).toEqual(["first_stamped", "first_legacy"]);
+    // The first account still gets its own legacy chat back when the server holds it for them.
+    expect(partitionByOwner(browser, "first", new Set(["first_legacy"])).mine.map((entry) => entry.id)).toEqual(["first_stamped", "first_legacy"]);
   });
 
   it("no key known: nothing is mine", () => {

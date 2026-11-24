@@ -57,6 +57,12 @@ export interface CardRecord {
    */
   readonly coachingTopic?: string | null;
   /**
+   * The live duplicate exit form (QA, 23 Nov 2026): how the person left, as the exit card showed it (an option key of the
+   * form, never the manager's words), so the same person's exit card proposed again keeps it when the new request does
+   * not say. Null when none or for an older record.
+   */
+  readonly exitType?: string | null;
+  /**
    * QA (16 Nov 2026, c219 live: "That change isn't on the card yet: policy (…)"): the policy line the card cited, a line of
    * the manual (never a name), so a later turn's card check compares the reply with the card on screen. Null when none or
    * for an older record.
@@ -68,6 +74,11 @@ export interface CardRecord {
    */
   readonly incidentDate?: string | null;
   /**
+   * Port of Ask Bubbles #1089 (QA, 23 Nov 2026): the forms on file this card's reply offered for Prior actions (their ISO
+   * dates), so the next turn knows the manager is answering that offer. Dates only, never a name.
+   */
+  readonly onFileOffered?: readonly string[];
+  /**
    * QA's re-run (22 Nov 2026, A8; port of Ask Bubbles #1010): the card is the team Coaching card ("All team members"),
    * and it had no salon when shown, so a later turn's reply is checked for a salon nobody named. False for an older record.
    */
@@ -78,10 +89,16 @@ export interface CardRecord {
    * checked for a salon nobody named. False for an older record (which may carry `teamNeedsLocation`).
    */
   readonly teamNoSalon?: boolean;
+  /**
+   * Port of Ask Bubbles #1048 (its QA's live round 3, 22 Nov 2026, A1(a)): the salon any card was filed at (`loc-<code>`),
+   * so a later turn with no card checks the reply's "Filed at <salon>" against the card still shown. A salon id, never a
+   * name. Null when none, or for an older record.
+   */
+  readonly salonId?: string | null;
 }
 
 /** What a turn writes into `slots.agent_loop.card`. */
-export type CardSlot = Omit<CardRecord, "messageId" | "asked" | "level" | "policyLine" | "payroll" | "payrollAmount" | "accountKey" | "coachingTopic" | "incidentDate"> & { readonly asked?: readonly string[]; readonly level?: "verbal" | "written"; readonly policyLine?: string; readonly payroll?: "yes" | "no"; readonly payrollAmount?: string; readonly accountKey?: string; readonly coachingTopic?: string | null; readonly incidentDate?: string };
+export type CardSlot = Omit<CardRecord, "messageId" | "asked" | "level" | "policyLine" | "payroll" | "payrollAmount" | "accountKey" | "coachingTopic" | "exitType" | "incidentDate" | "salonId" | "onFileOffered"> & { readonly onFileOffered?: readonly string[]; readonly asked?: readonly string[]; readonly level?: "verbal" | "written"; readonly policyLine?: string; readonly payroll?: "yes" | "no"; readonly payrollAmount?: string; readonly accountKey?: string; readonly coachingTopic?: string | null; readonly exitType?: string; readonly incidentDate?: string; readonly salonId?: string };
 
 function isCardSlot(value: unknown): value is CardSlot {
   const row = value as Partial<CardSlot> | null;
@@ -247,7 +264,7 @@ export async function readLoopRecords(conversationId: string | undefined, userId
       cards: rows.flatMap((row) => {
         const card = row.slots?.agent_loop?.card;
         return isCardSlot(card)
-          ? [{ proposalId: card.proposalId, employeeKey: card.employeeKey ?? null, nameKey: card.nameKey ?? null, templateKey: card.templateKey, templateName: card.templateName ?? null, messageId: row.message_id, questionKey: questionKeyOf(row), asked: Array.isArray(card.asked) ? card.asked.filter((field): field is string => typeof field === "string") : [], level: card.level === "verbal" || card.level === "written" ? card.level : null, policyLine: typeof card.policyLine === "string" ? card.policyLine : null, payroll: card.payroll === "yes" || card.payroll === "no" ? card.payroll : null, payrollAmount: typeof card.payrollAmount === "string" && /^\d+(?:\.\d+)?$/.test(card.payrollAmount) ? card.payrollAmount : null, accountKey: typeof card.accountKey === "string" && /^[0-9a-f]{16}$/.test(card.accountKey) ? card.accountKey : null, ...(card.coachingTopic === null || (typeof card.coachingTopic === "string" && card.coachingTopic.length <= 80) ? { coachingTopic: card.coachingTopic as string | null } : {}), incidentDate: typeof card.incidentDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(card.incidentDate) ? card.incidentDate : null, teamNeedsLocation: card.teamNeedsLocation === true, teamNoSalon: card.teamNoSalon === true }]
+          ? [{ proposalId: card.proposalId, employeeKey: card.employeeKey ?? null, nameKey: card.nameKey ?? null, templateKey: card.templateKey, templateName: card.templateName ?? null, messageId: row.message_id, questionKey: questionKeyOf(row), asked: Array.isArray(card.asked) ? card.asked.filter((field): field is string => typeof field === "string") : [], level: card.level === "verbal" || card.level === "written" ? card.level : null, policyLine: typeof card.policyLine === "string" ? card.policyLine : null, payroll: card.payroll === "yes" || card.payroll === "no" ? card.payroll : null, payrollAmount: typeof card.payrollAmount === "string" && /^\d+(?:\.\d+)?$/.test(card.payrollAmount) ? card.payrollAmount : null, accountKey: typeof card.accountKey === "string" && /^[0-9a-f]{16}$/.test(card.accountKey) ? card.accountKey : null, ...(card.coachingTopic === null || (typeof card.coachingTopic === "string" && card.coachingTopic.length <= 80) ? { coachingTopic: card.coachingTopic as string | null } : {}), exitType: typeof card.exitType === "string" && /^[a-z_]{3,40}$/.test(card.exitType) ? card.exitType : null, incidentDate: typeof card.incidentDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(card.incidentDate) ? card.incidentDate : null, ...(Array.isArray(card.onFileOffered) ? { onFileOffered: card.onFileOffered.filter((date): date is string => typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date)).slice(0, 12) } : {}), teamNeedsLocation: card.teamNeedsLocation === true, teamNoSalon: card.teamNoSalon === true, salonId: typeof card.salonId === "string" && /^loc-[A-Za-z0-9-]{1,16}$/.test(card.salonId) ? card.salonId : null }]
           : [];
       }),
       nameQuestions: rows.flatMap((row) => {

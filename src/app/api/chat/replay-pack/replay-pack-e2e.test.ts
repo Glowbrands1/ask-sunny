@@ -695,12 +695,16 @@ const { foldName } = await import("@/lib/forms/fold-name");
 const chatRoute = await import("../route");
 const instancesRoute = await import("../../forms/instances/route");
 const draftRoute = await import("../../forms/instances/[id]/draft/route");
+const instanceRoute = await import("../../forms/instances/[id]/route");
 
 async function call<T>(url: string, init?: RequestInit): Promise<T> {
   const request = new Request(`https://app.test${url}`, init);
   const draft = /^\/api\/forms\/instances\/([^/]+)\/draft$/.exec(url);
+  const instance = /^\/api\/forms\/instances\/([^/]+)$/.exec(url);
   const response = draft
     ? await draftRoute.POST(request, { params: Promise.resolve({ id: draft[1]! }) })
+    : instance && init?.method === "PATCH"
+      ? await instanceRoute.PATCH(request, { params: Promise.resolve({ id: instance[1]! }) })
     : url === "/api/forms/instances"
       ? await instancesRoute.POST(request)
       : null;
@@ -843,13 +847,24 @@ class Thread {
        */
       const unquoted = (payload.content ?? "").replace(/"[^"\n]*"|“[^”\n]*”/g, "");
       const own = (cardShown.employeeName ?? "").toLowerCase().split(/\s+/);
-      const judged = unquoted
-        .split(/(?<=[.!?])\s+|\n+/)
-        .filter((sentence) => {
+      /*
+       * Changed on purpose (22 Nov 2026, port of Ask Bubbles #1053, two people of one pronoun kind): the app now keeps a
+       * pronoun whose nearest named person of its kind is someone else, named in an EARLIER sentence too ("… her coworker
+       * <B>. She was giving her an attitude"). So a sentence is also left out of the judgement when an earlier sentence of
+       * the reply names another person whom the manager's message names as well (never the card's person).
+       */
+      const isOther = (named: string) => !named.toLowerCase().split(/\s+/).every((word) => own.includes(word));
+      const sentences = unquoted.split(/(?<=[.!?])\s+|\n+/);
+      const managerNamed = (named: string) => question.toLowerCase().includes(named.toLowerCase());
+      const judged = sentences
+        .filter((sentence, index) => {
           const pronoun = /\b(?:he|him|his|she|her|hers|himself|herself|they|them|their)\b/i.exec(sentence);
           if (!pronoun) return true;
           const before = sentence.slice(0, pronoun.index).replace(/\*\*/g, "");
-          return !extractEmployeeNames(before).some((named) => !named.toLowerCase().split(/\s+/).every((word) => own.includes(word)));
+          if (extractEmployeeNames(before).some(isOther)) return false;
+          const earlier = sentences.slice(0, index).join(" ").replace(/\*\*/g, "");
+          const fullNames = [...earlier.matchAll(/\b\p{Lu}\p{Ll}+ \p{Lu}\p{Ll}+\b/gu)].map((match) => match[0]);
+          return ![...extractEmployeeNames(earlier), ...fullNames].some((named) => isOther(named) && managerNamed(named));
         })
         .join("\n");
       expect(personPronoun(judged), `a pronoun for the card's person:\n${payload.content}`).toBeNull();
@@ -894,9 +909,14 @@ class Thread {
   }
 
   /** The card's Create, as the browser does it. */
-  async create(): Promise<string> {
+  /**
+   * `salon`: the salon the manager picks on the card before Create, as the browser's salon picker does (port of Ask
+   * Bubbles #1072, board f140: Create on a card that still asks which salon saves nothing, so a case that means to save
+   * one picks it).
+   */
+  async create(salon?: string): Promise<string> {
     expect(this.proposal, "no card to create from").not.toBeNull();
-    const result = await createInlineForm({ proposal: this.proposal!, messages: this.messages, call, onCreated: () => {} });
+    const result = await createInlineForm({ proposal: salon ? { ...this.proposal!, locationId: salon } : this.proposal!, messages: this.messages, call, onCreated: () => {} });
     this.instanceId = toUuid(result.reference.instanceId);
     return this.instanceId;
   }
@@ -1230,6 +1250,12 @@ function context(): ReplayContext {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ notes, keepManagerValues: true }),
+      }),
+    saveOnCard: (instanceId, values) =>
+      call<Record<string, unknown>>(`/api/forms/instances/${instanceId}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ values, checked: {} }),
       }),
     typeOnForm: (instanceId, values) => {
       for (const [key, value] of Object.entries(values)) {

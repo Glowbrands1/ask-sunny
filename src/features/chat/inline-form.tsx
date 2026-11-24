@@ -2,16 +2,16 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { AlertTriangle, Check, Download, ExternalLink, Loader2, PencilLine, Plus } from "lucide-react";
+import { AlertTriangle, Check, Download, ExternalLink, Loader2, PencilLine, Plus, Printer } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input, Label } from "@/components/ui/field";
+import { Input, Label, Textarea } from "@/components/ui/field";
 import { Notice } from "@/components/ui/feedback";
 import { Dialog, DialogActions, DialogContent } from "@/components/ui/overlays";
 import { FinalizedChangePanel } from "./finalized-change-panel";
 import { HrApprovalPanel, type HrApprovalPanelView } from "@/features/forms/hr-approval-panel";
-import { downloadFormPdf, formsFetch, FormsFetchError } from "@/features/forms/forms-fetch";
+import { downloadFormPdf, formsFetch, FormsFetchError, printFormPdf } from "@/features/forms/forms-fetch";
 import { onFormUpdate } from "./form-update-events";
 import {
   ResponsiveForm,
@@ -152,7 +152,7 @@ interface LoadedInstance {
   cardChangeAmount?: boolean;
   /**
    * HR APPROVAL (FORMS_HR_APPROVAL_ENABLED): the approval panel, sent by the server only to the form's creator and HR.
-   * `finalizeToHr`: this reader's Finalize sends the form to HR instead ("Finalize and send to HR for approval").
+   * `finalizeToHr`: this reader's Finalize sends the form to HR instead ("Finalize and send for approval").
    */
   hrApproval?: HrApprovalPanelView;
   finalizeToHr?: boolean;
@@ -167,7 +167,7 @@ type SaveState =
 
 type ActionState =
   | { kind: "idle" }
-  | { kind: "busy"; what: "follow-up" | "finalize" | "pdf" | "revise" }
+  | { kind: "busy"; what: "follow-up" | "finalize" | "pdf" | "print" | "revise" }
   | { kind: "error"; message: string };
 
 type LoadState =
@@ -284,6 +284,8 @@ export function InlineForm({
    * twice.
    */
   const [confirmingFinalize, setConfirmingFinalize] = React.useState(false);
+  /** The optional "Note to HR" typed beside "Finalize and send for approval"; sent with it, cleared once sent. */
+  const [hrNote, setHrNote] = React.useState("");
 
   const call = React.useCallback(
     <T,>(url: string, init: RequestInit = {}) => formsFetch<T>(url, role, user.name, init),
@@ -373,7 +375,8 @@ export function InlineForm({
   ).some((field) => field.semantics === "follow_up_timeframe");
   const prefilling = prefill.kind === "running";
   /*
-   * HR APPROVAL: a form waiting for HR is read-only for its creator; HR may edit it (`canEdit`) before deciding.
+   * HR APPROVAL: while a form waits for HR, HR, its creator and its senders may still edit it (`canEdit`; owner, 24 Nov
+   * 2026), and HR reads the updated version. Anybody else's card is read-only.
    * `toHr`: this Finalize sends the form to HR, so the button and the confirmation say so.
    */
   const hrApproval = loaded.hrApproval ?? null;
@@ -531,8 +534,11 @@ export function InlineForm({
           action: "finalize",
           followUpDate: followUp || null,
           ...(acknowledgeUnverifiedPolicy ? { acknowledgeUnverifiedPolicy: true } : {}),
+          // HR APPROVAL: the "Note to HR", only when this Finalize sends the form to HR.
+          ...(toHr && hrNote.trim() ? { note: hrNote.trim() } : {}),
         }),
       });
+      setHrNote("");
       await reload();
       setAction({ kind: "idle" });
     } catch (error) {
@@ -568,6 +574,18 @@ export function InlineForm({
     setAction({ kind: "busy", what: "pdf" });
     try {
       await downloadFormPdf(instanceId, role, user.name);
+      setAction({ kind: "idle" });
+    } catch (error) {
+      setAction({ kind: "error", message: (error as Error).message });
+    }
+  }
+
+  /** Print: the same server PDF, opened in a new tab to print (Pau, via QA, 23 Nov 2026). */
+  async function printPdf() {
+    if (action.kind === "busy") return;
+    setAction({ kind: "busy", what: "print" });
+    try {
+      await printFormPdf(instanceId, role, user.name);
       setAction({ kind: "idle" });
     } catch (error) {
       setAction({ kind: "error", message: (error as Error).message });
@@ -935,6 +953,10 @@ export function InlineForm({
                 )}
                 Download PDF
               </Button>
+              <Button variant="secondary" size="sm" onClick={() => void printPdf()} disabled={action.kind === "busy"} data-testid="form-print">
+                {action.kind === "busy" && action.what === "print" ? <Loader2 className="animate-spin" /> : <Printer />}
+                Print
+              </Button>
               {/* ASD_NO_FORM_MONITORING: no link into a page the reader cannot open. */}
               {!asdNoFormMonitoringEnabled() || can("view_form_monitoring") ? (
               <Button variant="secondary" size="sm" asChild>
@@ -952,7 +974,7 @@ export function InlineForm({
               ) : null}
             </div>
           ) : heldForHr || hrReviewing ? (
-            /* HR APPROVAL: no Finalize while the form waits — HR decides in the approval panel below. */
+            /* HR APPROVAL: no Finalize while the form waits — HR decides in the approval panel below; edits still save. */
             null
           ) : (
             <>
@@ -961,6 +983,23 @@ export function InlineForm({
                 <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
                 Check the year: {yearWarningText}.
               </p>
+            ) : null}
+            {toHr ? (
+              /* HR APPROVAL: an optional note that reaches HR with the form, in their bell and the approval history. */
+              <div className="space-y-1.5">
+                <Label htmlFor={`hr-send-note-${instanceId}`} className="text-xs">
+                  Note to HR (optional)
+                </Label>
+                <Textarea
+                  id={`hr-send-note-${instanceId}`}
+                  value={hrNote}
+                  onChange={(event) => setHrNote(event.target.value)}
+                  rows={2}
+                  maxLength={4000}
+                  placeholder="Anything HR should know about this form"
+                  disabled={action.kind === "busy"}
+                />
+              </div>
             ) : null}
             <div className="flex flex-wrap items-center gap-2">
               <Button
@@ -972,7 +1011,7 @@ export function InlineForm({
                 {action.kind === "busy" && action.what === "finalize" ? (
                   <Loader2 className="animate-spin" />
                 ) : null}
-                {toHr ? "Finalize and send to HR for approval" : "Finalize"}
+                {toHr ? "Finalize and send for approval" : "Finalize"}
               </Button>
               <span className="text-xs text-subtle-foreground">
                 {toHr
@@ -1079,7 +1118,7 @@ export function InlineForm({
           >
             <p className="text-[13px] leading-relaxed text-muted-foreground">
               {toHr
-                ? "HR reviews it and approves, sends it back for changes, or rejects it. You cannot change it while HR has it. It is finalized when HR approves it."
+                ? "This form will be reviewed and approved by HR before it is final. HR approves it, sends it back for changes, or rejects it, and you get a notification either way. You can still edit it while HR has it; HR sees the updated version."
                 : loaded.instance.revisesInstanceId
                 ? "Its values are frozen and it replaces the finalized original. To change it afterwards, edit it as a new draft. Signatures are signed on paper."
                 : "Its values are frozen. To change it afterwards, edit it as a new draft. Signatures are signed on paper."}
@@ -1370,7 +1409,12 @@ function prefillNoticeFor(
     return { tone: "attention", text: prefill.message };
   }
 
-  if (prefill.kind === "complete") return prefill.notice ? { tone: "attention", text: prefill.notice } : null;
+  /*
+   * Pau, 23 Nov 2026: "rmeove this" — the box under the Salon line that strung
+   * together the policy-requirement, draft-left-out and follow-up notices after a
+   * draft completed. A completed draft shows no notice on the card.
+   */
+  if (prefill.kind === "complete") return null;
 
   /* unknown — reopened from storage. Read the form's own history. */
   if (loaded.instance.source !== "ask_sunny") return null;

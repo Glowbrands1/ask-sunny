@@ -78,3 +78,19 @@ export async function markNotificationsRead(email: string, ids: string[] | null)
   const { error } = await query;
   if (error) throw new Error(`Could not mark notifications read: ${error.message}`);
 }
+
+/**
+ * Removes the caller's OWN notifications from their bell (Pau, 23 Nov 2026: "delete notification all or clicking x by
+ * removing 1"): the given ids, or all of them. Each row is one recipient's own copy (`recipient_email`), so deleting it
+ * hides it for that person only; the recipient filter is always applied, so an id that belongs to someone else matches
+ * no row and nothing of theirs is touched. Forms and approvals are other tables and are never read or changed here.
+ * Returns how many rows were removed.
+ */
+export async function dismissNotifications(email: string, ids: string[] | null): Promise<number> {
+  if (ids && !ids.length) return 0;
+  let query = getSupabaseAdmin().from("app_notifications").delete({ count: "exact" }).eq("recipient_email", normalise(email));
+  if (ids) query = query.in("id", ids);
+  const { error, count } = await query;
+  if (error) throw new Error(`Could not remove notifications: ${error.message}`);
+  return count ?? 0;
+}
