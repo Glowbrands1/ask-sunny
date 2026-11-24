@@ -31,7 +31,6 @@ function form(overrides: Partial<FollowUpFacts> = {}): FollowUpFacts {
     status: "finalized",
     followUpDate: null,
     followedUpAt: null,
-    archivedAt: null,
     ...overrides,
   };
 }
@@ -58,15 +57,16 @@ describe("what state a follow-up is in", () => {
     expect(followUpState(form({ followUpDate: "2026-09-05" }), TODAY)).toBe("open");
   });
 
+  it("is somebody's outstanding work only while open or overdue (no archived state: Pau, 23 Nov 2026)", () => {
+    expect(needsFollowUp(form({ followUpDate: "2026-09-10" }), TODAY)).toBe(true);
+    expect(needsFollowUp(form({ followUpDate: "2026-08-01" }), TODAY)).toBe(true);
+    expect(needsFollowUp(form({ followUpDate: "2026-08-01", followedUpAt: "2026-09-01T00:00:00Z" }), TODAY)).toBe(false);
+    expect(needsFollowUp(form({ status: "draft" }), TODAY)).toBe(false);
+  });
+
   it("is followed up once it has been marked done, however late it was", () => {
     const done = form({ followUpDate: "2026-08-01", followedUpAt: "2026-09-04T14:00:00Z" });
     expect(followUpState(done, TODAY)).toBe("followed_up");
-  });
-
-  it("is archived before anything else, so a hidden form is nobody's work", () => {
-    const archived = form({ followUpDate: "2026-08-01", archivedAt: "2026-09-01T00:00:00Z" });
-    expect(followUpState(archived, TODAY)).toBe("archived");
-    expect(needsFollowUp(archived, TODAY)).toBe(false);
   });
 
   /*
@@ -93,13 +93,12 @@ describe("the counts behind the pills", () => {
     form({ followUpDate: TODAY }), // open
     form({ followUpDate: "2026-09-01" }), // overdue
     form({ followUpDate: "2026-08-20", followedUpAt: "2026-08-21T10:00:00Z" }), // followed up
-    form({ followUpDate: "2026-08-20", archivedAt: "2026-08-25T10:00:00Z" }), // archived
     form(), // untracked finalized
   ];
 
   it("counts each state once, and only once", () => {
     expect(followUpCounts(forms, TODAY)).toEqual({
-      all: 8,
+      all: 7,  // was 8 with an archived row; archiving was removed on purpose (Pau, 23 Nov 2026)
       drafted: 2,
       open: 2,
       overdue: 1,
@@ -110,8 +109,8 @@ describe("the counts behind the pills", () => {
   it("adds up: the states are disjoint, so no form is counted twice", () => {
     const counts = followUpCounts(forms, TODAY);
     const accounted = counts.drafted + counts.open + counts.overdue + counts.followed_up;
-    // The remainder is the untracked finalized form and the archived one.
-    expect(counts.all - accounted).toBe(2);
+    // The remainder is the untracked finalized form.
+    expect(counts.all - accounted).toBe(1);
   });
 
   it("filters to exactly what each pill counts", () => {
@@ -150,7 +149,6 @@ describe("what needs attention", () => {
     const summary = attentionSummary(
       [
         form({ followUpDate: "2026-08-01", followedUpAt: "2026-08-02T09:00:00Z" }),
-        form({ followUpDate: "2026-08-01", archivedAt: "2026-08-02T09:00:00Z" }),
         form({ status: "draft" }),
         form(),
       ],

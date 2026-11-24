@@ -294,11 +294,11 @@ export async function staffPickerTurn(input: {
    * either for a form not named — or nothing is listed and the turn is answered
    * as before.
    */
-  const { DEFAULT_PERMISSION_MATRIX, hasPermission } = await import("@/lib/permissions");
+  const { activePermissionMatrix, hasPermission } = await import("@/lib/permissions");
   const form = formName(`${input.question} ${lastAssistant(input.history)}`);
   const needs: Permission[] =
     form === "Coaching Form" ? ["create_coaching_form"] : form === "Corrective Action Form" ? ["create_corrective_action"] : ["create_coaching_form", "create_corrective_action"];
-  if (!needs.some((permission) => hasPermission(DEFAULT_PERMISSION_MATRIX, input.role, permission))) return null;
+  if (!needs.some((permission) => hasPermission(activePermissionMatrix(), input.role, permission))) return null;
   /*
    * WHOLE_TEAM_COACHING_ENABLED (ported from Ask Bubbles: a Location Manager,
    * 2 Nov 2026, 1 star: "it says it cannot make a coaching form for all team

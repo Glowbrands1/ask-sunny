@@ -50,7 +50,6 @@ function instanceRow(row: { id: string; createdBy: string }) {
     followedUpBy: null,
     finalizedAt: null,
     exportedAt: null,
-    archivedAt: null,
     revisesInstanceId: null,
     createdAt: "2026-10-26T12:00:00Z",
     updatedAt: "2026-10-26T12:00:00Z",
@@ -123,7 +122,7 @@ async function load(viewer: Viewer, env: { flag?: boolean; ids?: string } = {}) 
         : null;
     },
     // Honours the limit, newest (listed first) first, so a page can fill with private rows.
-    listInstances: async (_view: string, limit?: number) => {
+    listInstances: async (limit?: number) => {
       limits.push(limit);
       return rows.slice(0, limit ?? 200).map(instanceRow);
     },

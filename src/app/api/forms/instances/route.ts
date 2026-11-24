@@ -48,7 +48,6 @@ import {
   findDemoInstances,
   InstanceProtectedError,
   listInstances,
-  type InstanceView,
 } from "@/lib/forms/instances";
 import { actorMaySeeInstance, instanceListFilterFor, visibleInstances } from "@/lib/forms/instance-scope";
 import { privateAwareLimit, privateCreatorsActive } from "@/lib/forms/private-creators";
@@ -114,11 +113,6 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   try {
     const actor = await authorizeForms(request, "view_form_monitoring");
-    const { searchParams } = new URL(request.url);
-
-    const requested = searchParams.get("view");
-    const view: InstanceView =
-      requested === "archived" || requested === "all" ? requested : "active";
 
     /*
      * ==========================================================================
@@ -154,13 +148,12 @@ export async function GET(request: Request) {
     // PRIVATE_CREATOR_FORMS: over-read, then trim to the default page of 200; off, as before.
     const instances = visibleInstances(
       actor,
-      await listInstances(view, privateCreatorsActive() ? privateAwareLimit(200) : undefined, instanceListFilterFor(actor)),
+      await listInstances(privateCreatorsActive() ? privateAwareLimit(200) : undefined, instanceListFilterFor(actor)),
     ).slice(0, 200);
 
     // The sweep's shape is returned alongside so the screen can say "Delete 5
     // demo forms" with a real number rather than counting what it happens to
-    // be showing — the active list is filtered, and a count taken from it
-    // would be wrong the moment somebody switches to Archived.
+    // be showing — the list is capped, and a count taken from it could be short.
     //
     // Scoped by the same rule: a count of forms the caller may not see would
     // offer a "Delete 5" that removed nothing, and would leak how many exist.
@@ -168,7 +161,6 @@ export async function GET(request: Request) {
     return NextResponse.json({
       // The approval columns only for those who may read HR's decision (owner, 23 Nov 2026: no leaks).
       instances: instances.map((instance) => redactHrApproval(actor, instance)),
-      view,
       demo: {
         deletable: visibleInstances(actor, sweep.deletable).length,
         protected: visibleInstances(actor, sweep.protected).length,
@@ -759,7 +751,7 @@ export async function POST(request: Request) {
  *
  * A finalized demo form is not swept. The rule about signed documents does not
  * bend because the document happens to be synthetic — those are reported and
- * left for archiving.
+ * left on file.
  */
 export async function DELETE(request: Request) {
   try {

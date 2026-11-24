@@ -110,7 +110,7 @@ describe("R2-F3. the fixture really does bury the salon's record", () => {
   it("puts 260 newer foreign rows in front of it", async () => {
     // The guard on the guard: without a filter it is genuinely off the page,
     // so the test below is measuring the query and not the fixture.
-    const unrestricted = await listInstances("active", 200);
+    const unrestricted = await listInstances(200);
 
     expect(unrestricted).toHaveLength(200);
     expect(unrestricted.map((entry) => entry.id)).not.toContain(OLD_SALON_A);
@@ -119,7 +119,7 @@ describe("R2-F3. the fixture really does bury the salon's record", () => {
 
 describe("R2-F3. an authorized record survives any volume of foreign ones", () => {
   it("returns it despite 260 newer records elsewhere", async () => {
-    const visible = await listInstances("active", 200, {
+    const visible = await listInstances(200, {
       locationIds: ["loc-a"],
       ownNullLocationCreatedBy: "user-a",
     });
@@ -128,7 +128,7 @@ describe("R2-F3. an authorized record survives any volume of foreign ones", () =
   });
 
   it("returns no foreign row at all", async () => {
-    const visible = await listInstances("active", 200, {
+    const visible = await listInstances(200, {
       locationIds: ["loc-a"],
       ownNullLocationCreatedBy: "user-a",
     });
@@ -143,7 +143,7 @@ describe("R2-F3. an authorized record survives any volume of foreign ones", () =
       row({ id: "mine-no-salon", location_id: null, created_by: "user-a", created_at: at(2) }),
     );
 
-    const visible = await listInstances("active", 200, {
+    const visible = await listInstances(200, {
       locationIds: ["loc-a"],
       ownNullLocationCreatedBy: "user-a",
     });
@@ -157,7 +157,7 @@ describe("R2-F3. an authorized record survives any volume of foreign ones", () =
       row({ id: "theirs-no-salon", location_id: null, created_by: "user-b", created_at: at(3) }),
     );
 
-    const visible = await listInstances("active", 200, {
+    const visible = await listInstances(200, {
       locationIds: ["loc-a"],
       ownNullLocationCreatedBy: "user-a",
     });
@@ -174,7 +174,7 @@ describe("R2-F3. the limit applies to the VISIBLE set", () => {
       );
     }
 
-    const visible = await listInstances("active", 200, {
+    const visible = await listInstances(200, {
       locationIds: ["loc-a"],
       ownNullLocationCreatedBy: "user-a",
     });
@@ -189,7 +189,7 @@ describe("R2-F3. the limit applies to the VISIBLE set", () => {
       row({ id: "mine-newer", location_id: null, created_by: "user-a", created_at: at(5000) }),
     );
 
-    const visible = await listInstances("active", 200, {
+    const visible = await listInstances(200, {
       locationIds: ["loc-a"],
       ownNullLocationCreatedBy: "user-a",
     });
@@ -200,7 +200,7 @@ describe("R2-F3. the limit applies to the VISIBLE set", () => {
   });
 
   it("de-duplicates across the two reads", async () => {
-    const visible = await listInstances("active", 200, {
+    const visible = await listInstances(200, {
       locationIds: ["loc-a"],
       ownNullLocationCreatedBy: "user-a",
     });
@@ -212,7 +212,7 @@ describe("R2-F3. district and region stay fail-closed on the list too", () => {
   it("returns nothing for an empty authorized-salon set", async () => {
     // `authorizedSalonIds` yields nothing for any level but `salon`, so an
     // empty list is how a district manager's read is expressed.
-    const visible = await listInstances("active", 200, { locationIds: [] });
+    const visible = await listInstances(200, { locationIds: [] });
     expect(visible).toEqual([]);
   });
 
@@ -221,7 +221,7 @@ describe("R2-F3. district and region stay fail-closed on the list too", () => {
       row({ id: "dm-own", location_id: null, created_by: "user-dm", created_at: at(4) }),
     );
 
-    const visible = await listInstances("active", 200, {
+    const visible = await listInstances(200, {
       locationIds: [],
       ownNullLocationCreatedBy: "user-dm",
     });
@@ -232,7 +232,7 @@ describe("R2-F3. district and region stay fail-closed on the list too", () => {
 
 describe("R2-F3. a global actor keeps the ordinary bounded read", () => {
   it("gets one ordered, limited query across everything", async () => {
-    const visible = await listInstances("active", 200);
+    const visible = await listInstances(200);
 
     expect(visible).toHaveLength(200);
     // Newest first, unchanged.
@@ -240,7 +240,7 @@ describe("R2-F3. a global actor keeps the ordinary bounded read", () => {
   });
 
   it("behaves the same when the filter names no location restriction", async () => {
-    const visible = await listInstances("active", 200, {
+    const visible = await listInstances(200, {
       ownNullLocationCreatedBy: "user-a",
     });
     expect(visible).toHaveLength(200);
@@ -248,21 +248,28 @@ describe("R2-F3. a global actor keeps the ordinary bounded read", () => {
   });
 });
 
-describe("R2-F3. the archived view is filtered the same way", () => {
+// R2-F3 was "the archived view is filtered the same way". On purpose (Pau, 23 Nov 2026): there is no archived view; a row
+// the old flag marked is listed like any other, and still narrowed by salon before the limit.
+describe("R2-F3. a form the old archived flag marked is filtered the same way", () => {
   it("narrows by salon before limiting", async () => {
     store.form_instances.push(
       row({
-        id: "archived-mine",
+        id: "once-archived-mine",
         location_id: "loc-a",
+        archived_at: at(9),
+        created_at: at(4),
+      }),
+      row({
+        id: "once-archived-theirs",
+        location_id: "loc-b",
         archived_at: at(9),
         created_at: at(4),
       }),
     );
 
-    const active = await listInstances("active", 200, { locationIds: ["loc-a"] });
-    const archived = await listInstances("archived", 200, { locationIds: ["loc-a"] });
+    const visible = await listInstances(200, { locationIds: ["loc-a"] });
 
-    expect(active.map((entry) => entry.id)).not.toContain("archived-mine");
-    expect(archived.map((entry) => entry.id)).toEqual(["archived-mine"]);
+    expect(visible.map((entry) => entry.id)).toContain("once-archived-mine");
+    expect(visible.map((entry) => entry.id)).not.toContain("once-archived-theirs");
   });
 });

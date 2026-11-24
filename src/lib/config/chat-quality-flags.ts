@@ -5027,9 +5027,8 @@ export function statedPlanStepsEnabled(): boolean {
  * (`forms/chat-form-records.ts`) lists rows and the model counted them: "11/18 — <A> (×2)" where there were 3, a
  * different person's form folded into <A>'s, totals that did not add up. With the flag, the block carries counts built
  * by code (per person as filed, per form, per date with statuses, and a total; `forms/forms-on-file-counts.ts`) for the
- * model to copy; a period is read up to 1000 rows and counted over all of them, with up to 100 listed; and an archived
- * DRAFT is left out unless the question asks for archived forms (finalized forms count archived or not, marked
- * archived: QA's ruling on production's data). The agent loop's find_past_forms does the same without this flag. Off,
+ * model to copy; a period is read up to 1000 rows and counted over all of them, with up to 100 listed; and there is
+ * no archived form (Pau, 23 Nov 2026): every form counts under its own status, draft or finalized. The agent loop's find_past_forms does the same without this flag. Off,
  * as before.
  */
 export function formsOnFileCountsEnabled(): boolean {

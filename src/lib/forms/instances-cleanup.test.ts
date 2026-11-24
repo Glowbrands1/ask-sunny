@@ -10,8 +10,9 @@ import { fakeSupabase, type FakeStore } from "@/test/fake-supabase";
  *
  *   A DRAFT may be deleted outright, and its values and events go with it.
  *   A FINALIZED OR REVISED form may NOT, ever, by any path — it is a signed HR
- *   document, and the only thing on offer is archiving, which changes where it
- *   is shown and nothing about what it says.
+ *   document: it stays on file. There is no archiving (Pau, 23 Nov 2026: "the
+ *   archived should not be acknowledged as a form, all just should be finalized
+ *   or drafted").
  *   THE BULK SWEEP keys on `demo:` PROVENANCE and draft status, so an employee
  *   whose name happens to end "(test)" cannot be caught by it.
  *
@@ -32,7 +33,6 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 
 const {
-  archiveInstance,
   deleteDemoInstances,
   deleteInstance,
   findDemoInstances,
@@ -130,57 +130,12 @@ describe("deleting a form", () => {
     expect(store.form_instances).toHaveLength(1);
   });
 
-  it("says what to do instead, rather than just refusing", async () => {
+  it("says the form is kept on file, rather than just refusing", async () => {
+    // On purpose (Pau, 23 Nov 2026): the message used to say "Archive it instead".
     store.form_instances = [instance({ id: "final-2", status: "finalized" })];
 
-    await expect(deleteInstance("final-2")).rejects.toThrow(/[Aa]rchive/);
-  });
-});
-
-describe("archiving a form", () => {
-  it("hides a finalized form without touching what it says", async () => {
-    store.form_instances = [
-      instance({ id: "final-3", status: "finalized", finalized_at: "2026-09-02T10:00:00Z" }),
-    ];
-
-    const archived = await archiveInstance("final-3", "demo:owner:QA", true);
-
-    expect(archived.archivedAt).not.toBeNull();
-    /*
-     * THE LOAD-BEARING ASSERTION. Archiving must not be a disguised status
-     * change: a finalized form that stopped being finalized would fall out from
-     * under the trigger that freezes its values.
-     */
-    expect(store.form_instances[0].status).toBe("finalized");
-    expect(store.form_instances[0].finalized_at).toBe("2026-09-02T10:00:00Z");
-  });
-
-  it("puts it back, and both decisions join the form's own history", async () => {
-    store.form_instances = [instance({ id: "final-4", status: "finalized" })];
-
-    await archiveInstance("final-4", "demo:owner:QA", true);
-    const restored = await archiveInstance("final-4", "demo:owner:QA", false);
-
-    expect(restored.archivedAt).toBeNull();
-    expect(store.form_instance_events.map((event) => event.kind)).toEqual([
-      "archived",
-      "unarchived",
-    ]);
-  });
-
-  it("records event kinds the database actually accepts", () => {
-    /*
-     * THE BUG THIS PINS. `form_instance_events.kind` is an enum, so recording
-     * an 'archived' event that the type does not list fails the insert and
-     * takes the whole archive call down with it. That is how it was found —
-     * types cannot see it, because the column maps to `string`.
-     */
-    const sql = readdirSync("supabase/migrations")
-      .map((name) => readFileSync(`supabase/migrations/${name}`, "utf8"))
-      .join("\n");
-    for (const kind of ["archived", "unarchived"]) {
-      expect(sql, kind).toMatch(new RegExp(`add value if not exists '${kind}'`));
-    }
+    await expect(deleteInstance("final-2")).rejects.toThrow(/kept on file/);
+    await expect(deleteInstance("final-2")).rejects.not.toThrow(/[Aa]rchive/);
   });
 });
 
@@ -238,27 +193,16 @@ describe("the bulk demo sweep", () => {
   });
 });
 
-describe("the monitoring shelves", () => {
-  beforeEach(() => {
+describe("the monitoring list", () => {
+  // On purpose (Pau, 23 Nov 2026): there were an Active / Archived / All shelf selector and an `archived_at` filter.
+  // A form is only Draft or Finalized, so the list is every form, and a row the old flag marked is no different.
+  it("lists every form, including a row the old archived flag had marked", async () => {
     store.form_instances = [
       instance({ id: "live-1" }),
-      instance({ id: "hidden-1", archived_at: "2026-09-03T10:00:00Z" }),
+      instance({ id: "once-hidden-1", archived_at: "2026-09-03T10:00:00Z" }),
     ];
-  });
 
-  it("shows only un-archived forms by default", async () => {
-    expect((await listInstances()).map((row) => row.id)).toEqual(["live-1"]);
-  });
-
-  it("shows only archived forms on the archived shelf", async () => {
-    expect((await listInstances("archived")).map((row) => row.id)).toEqual(["hidden-1"]);
-  });
-
-  it("shows both on 'all'", async () => {
-    expect((await listInstances("all")).map((row) => row.id).sort()).toEqual([
-      "hidden-1",
-      "live-1",
-    ]);
+    expect((await listInstances()).map((row) => row.id).sort()).toEqual(["live-1", "once-hidden-1"]);
   });
 });
 

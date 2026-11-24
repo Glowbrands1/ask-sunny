@@ -2,10 +2,11 @@ import "server-only";
 
 import { isDemoMode } from "@/lib/config/runtime";
 import {
-  DEFAULT_PERMISSION_MATRIX,
+  activePermissionMatrix,
   canAccessAdminConsole,
   hasPermission,
 } from "@/lib/permissions";
+import { ensurePermissionsLoaded } from "@/lib/permissions/store";
 import type { Permission } from "@/types";
 import { getAuthProvider } from "./index";
 import { AuthError, type AuthorizedContext } from "./types";
@@ -26,9 +27,11 @@ import { AuthError, type AuthorizedContext } from "./types";
  * stops a demo identity from satisfying step 2. Neither can be satisfied by
  * anything the browser sends.
  *
- * PERMISSION SOURCE OF TRUTH: the server uses DEFAULT_PERMISSION_MATRIX, not
- * the browser's copy. The matrix in IndexedDB is an editable demo convenience;
- * a client that edited it must not thereby grant itself server-side access.
+ * PERMISSION SOURCE OF TRUTH: the server uses the active matrix — the built-in
+ * defaults with the changes an administrator saved on the Permissions screen
+ * (`permission_overrides`), loaded here before the check — not the browser's
+ * copy. The matrix in IndexedDB is an editable demo convenience; a client that
+ * edited it must not thereby grant itself server-side access.
  */
 
 /**
@@ -109,6 +112,36 @@ export async function authorizeRequest(
   request: Request,
   permission: Permission,
 ): Promise<AuthorizedContext> {
+  const context = await authenticateForPermission(request, permission);
+
+  /* 4. Permission. The saved matrix is loaded first (cached ten seconds), so every synchronous check after this runs on it. */
+  await ensurePermissionsLoaded();
+  if (!hasPermission(activePermissionMatrix(), context.identity.role, permission)) {
+    throw new AuthError(
+      "forbidden",
+      "Your role does not have permission to do that.",
+    );
+  }
+
+  return context;
+}
+
+/**
+ * Steps 1-3 only: a verified signed-in caller, whatever their role may do. For
+ * the few routes every signed-in person may call (the permissions matrix itself
+ * — the browser needs it to draw its own navigation). Anything that reads or
+ * changes data uses `authorizeRequest`.
+ */
+export async function authenticateRequest(request: Request): Promise<AuthorizedContext> {
+  const context = await authenticateForPermission(request, "ask_questions");
+  await ensurePermissionsLoaded();
+  return context;
+}
+
+async function authenticateForPermission(
+  request: Request,
+  permission: Permission,
+): Promise<AuthorizedContext> {
   const provider = getAuthProvider();
   const demo = isDemoMode();
 
@@ -183,14 +216,6 @@ export async function authorizeRequest(
     throw new AuthError(
       "unauthenticated",
       "The request carried an identity that was not verified by an identity provider.",
-    );
-  }
-
-  /* 4. Permission. */
-  if (!hasPermission(DEFAULT_PERMISSION_MATRIX, identity.role, permission)) {
-    throw new AuthError(
-      "forbidden",
-      "Your role does not have permission to do that.",
     );
   }
 

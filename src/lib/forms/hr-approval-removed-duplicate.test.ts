@@ -6,11 +6,12 @@ import type { AccessScope } from "@/types";
 import type { FormsActor } from "./access";
 
 /**
- * AN ARCHIVED FORM IS OUT OF HR'S QUEUE (QA, 23 Nov 2026). A duplicate exit draft was archived while it still waited
- * for HR ("pending"), and it kept showing in HR's "Needs your decision": the queue, its count and the 6 AM reminder
- * read every pending draft, archived or not. Now none of them reads an archived form. Archiving changes nothing stored:
- * the form stays "pending", and restoring it puts it back in the queue. Against the real `instances.ts`,
- * `hr-approval.ts` and `hr-approval-reminders.ts`; invented accounts and an invented employee only.
+ * ARCHIVING WAS REMOVED (Pau, 23 Nov 2026), on purpose, so the rule this file held ("an archived form is out of HR's
+ * queue, its count and the reminder bell", QA, 23 Nov 2026, #1300) is moot: nothing is archived after the unarchive
+ * migration. What QA wanted is kept: a duplicate pending draft that is taken away (deleted from Form Monitoring, the
+ * only way left) is absent from HR's queue, its count and the 6 AM reminder. The "archive clears the bell" and
+ * "restoring brings it back" tests went with the action. Against the real `instances.ts`, `hr-approval.ts` and
+ * `hr-approval-reminders.ts`; invented accounts and an invented employee only.
  */
 
 const ORIGINAL = { ...process.env };
@@ -29,10 +30,10 @@ const extra = store as unknown as Record<string, Record<string, unknown>[]>;
 vi.mock("@/lib/supabase/server", () => ({ getSupabaseAdmin: () => fakeSupabase(store) }));
 
 const { ensureTemplateLibrary } = await import("./repository");
-const { createInstance, archiveInstance, loadInstance } = await import("./instances");
+const { createInstance, deleteInstance } = await import("./instances");
 const { sendForHrApproval, listHrQueue, hrQueueSummary, listMyFormsWithHr, readHrApprovalsFor } = await import("./hr-approval");
 const { runHrReminders } = await import("./hr-approval-reminders");
-const { HR_REMINDER_KIND, HR_REQUEST_KIND } = await import("./hr-approval-bells");
+const { HR_REMINDER_KIND } = await import("./hr-approval-bells");
 
 const CREATOR = "sd-tamsin";
 const HR = "hr-orrin";
@@ -78,27 +79,22 @@ async function pendingDraft(employeeName: string) {
   return instance.id;
 }
 
-describe("an archived form is out of HR's queue (QA, 23 Nov 2026)", () => {
-  it("an archived pending form is absent from the queue and the count; it stays pending, and restoring brings it back", async () => {
+describe("a removed duplicate is out of HR's queue (QA, 23 Nov 2026; archiving removed the same day)", () => {
+  it("a deleted pending form is absent from the queue and the count", async () => {
     const kept = await pendingDraft("Wren Halloway");
     const duplicate = await pendingDraft("Wren Halloway");
     expect((await listHrQueue(hr)).map((row) => row.id).sort()).toEqual([kept, duplicate].sort());
     expect((await hrQueueSummary(hr))?.pending).toBe(2);
 
-    await archiveInstance(duplicate, HR, true);
+    await deleteInstance(duplicate);
 
     expect((await listHrQueue(hr)).map((row) => row.id)).toEqual([kept]);
     expect((await hrQueueSummary(hr))?.pending).toBe(1);
-    // Nothing stored changes: the archived form still says it waits for HR.
-    expect((await loadInstance(duplicate))!.instance.hrApprovalState).toBe("pending");
-
-    await archiveInstance(duplicate, HR, false);
-    expect((await listHrQueue(hr)).map((row) => row.id).sort()).toEqual([kept, duplicate].sort());
   });
 
-  it("the only pending form archived: the count is 0 and the 6 AM reminder rings no bell", async () => {
+  it("the only pending form deleted: the count is 0 and the 6 AM reminder rings no bell", async () => {
     const only = await pendingDraft("Wren Halloway");
-    await archiveInstance(only, HR, true);
+    await deleteInstance(only);
 
     expect(await hrQueueSummary(hr, SIX_AM_CENTRAL)).toEqual({ pending: 0, overdue: 0 });
     const outcome = await runHrReminders(SIX_AM_CENTRAL);
@@ -106,26 +102,10 @@ describe("an archived form is out of HR's queue (QA, 23 Nov 2026)", () => {
     expect(extra.app_notifications!.filter((row) => row.kind === HR_REMINDER_KIND)).toEqual([]);
   });
 
-  it("archiving a form waiting for HR clears HR's bell for it; restoring it does not ring again", async () => {
+  it("the manager's own list and the chat's reader leave the deleted form out too", async () => {
     const kept = await pendingDraft("Wren Halloway");
     const duplicate = await pendingDraft("Wren Halloway");
-    const unread = () =>
-      extra.app_notifications!.filter((row) => row.kind === HR_REQUEST_KIND && row.recipient_email === "hr.orrin@example.com" && !row.read_at);
-    expect(unread().map((row) => row.href).sort()).toEqual([`/forms/hr-approval/${kept}`, `/forms/hr-approval/${duplicate}`].sort());
-
-    await archiveInstance(duplicate, HR, true);
-    expect(unread().map((row) => row.href), "the bell still points at the archived form").toEqual([`/forms/hr-approval/${kept}`]);
-
-    const before = extra.app_notifications!.length;
-    await archiveInstance(duplicate, HR, false);
-    expect(extra.app_notifications!.length, "restoring it rang a bell").toBe(before);
-    expect(unread().map((row) => row.href)).toEqual([`/forms/hr-approval/${kept}`]);
-  });
-
-  it("the manager's own list and the chat's reader leave the archived form out too", async () => {
-    const kept = await pendingDraft("Wren Halloway");
-    const duplicate = await pendingDraft("Wren Halloway");
-    await archiveInstance(duplicate, CREATOR, true);
+    await deleteInstance(duplicate);
 
     expect((await listMyFormsWithHr(manager)).map((row) => row.id)).toEqual([kept]);
     const forHr = await readHrApprovalsFor(HR, true);
