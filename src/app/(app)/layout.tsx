@@ -13,6 +13,7 @@ import { l10TabsForLayout } from "@/features/l10/data.server";
 import { bellFor } from "@/lib/notifications/bell-for";
 import type { BellData } from "@/lib/notifications/types";
 import { hrQueueSummary } from "@/lib/forms/hr-approval";
+import { siblingHrWaiting } from "@/lib/partner/sibling-hr-waiting";
 
 /**
  * COUNTS, NOT HUES — the rail's overdue badge.
@@ -54,7 +55,27 @@ async function overdueCount(): Promise<number> {
 /** THE BELL: everyone signed in has one (`bellFor`); an HR approver's also counts the forms still waiting for them. */
 async function bellForLayout(): Promise<BellData | null> {
   const identity = await pageIdentity();
-  return bellFor(identity, () => waitingForHr(identity));
+  return bellFor(
+    identity,
+    () => waitingForHr(identity),
+    () => waitingForHrInSibling(identity),
+  );
+}
+
+/**
+ * THE SIBLING APP'S WAITING FORMS (Pau, 24 Nov 2026: "fix", of the bar counting only this app's forms): for a verified
+ * HR approver here, the count on the sibling's approvals tab, asked with their verified email exactly as that tab asks
+ * (`siblingHrWaiting`, kept a minute). Null for anybody else, or when the sibling is off or does not answer.
+ */
+async function waitingForHrInSibling(identity: Awaited<ReturnType<typeof pageIdentity>>): Promise<{ app: string; count: number } | null> {
+  if (!identity?.verified || !identity.email) return null;
+  try {
+    const { actor } = await pageFormsAccess(identity);
+    if (actor.hrApprover !== true || !actor.verified) return null;
+    return await siblingHrWaiting(identity.email);
+  } catch {
+    return null;
+  }
 }
 
 /**
