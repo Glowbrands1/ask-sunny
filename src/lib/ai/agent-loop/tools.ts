@@ -24,6 +24,8 @@ import { detectTemplateIntent } from "@/lib/forms/template-intent";
 import { checkboxGroupsForVariant, parseFormDocument } from "@/lib/forms/document";
 import { draftableCheckboxGroups, draftableFields } from "@/lib/forms/responsibility";
 import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
+import { typedAddressSpans } from "@/lib/forms/address-spans";
+import { salonIdNamedIn } from "@/lib/forms/global-salon-ask";
 import type { DirectoryRosterRow } from "@/lib/forms/employee-roster";
 import { inlineDraftVariantKey, supportsInlineDraft } from "@/lib/forms/inline-draft";
 import { authorizeInstance, InstanceNotVisibleError, instanceListFilterFor, visibleInstances } from "@/lib/forms/instance-scope";
@@ -5341,7 +5343,29 @@ export async function proposeForm(
   }
   const incidentTime = typeof input.incident_time === "string" && input.incident_time.trim() ? input.incident_time.trim().slice(0, 40) : null;
 
-  const typedSalon = typeof input.salon === "string" ? input.salon.trim() : "";
+  const salonTyped = typeof input.salon === "string" ? input.salon.trim() : "";
+  /*
+   * Port of Ask Bubbles 4f9f706c (its QA, the u22 live run): an exit's T2 "address: <street>, <city>, <state>. <zip>" got
+   * "Filed at **<city>**, as you said.". A salon the model passes that the manager named only inside an address given as
+   * the employee's (the exit form's Permanent Address, `typedAddressSpans`) is not the card's salon: it is dropped, and the
+   * card's salon is read as if none was typed. Named anywhere else in the request (`readSalonMentions` leaves addresses
+   * out), it stands.
+   */
+  const typedOnlyInAddress = ((): boolean => {
+    if (!salonTyped) return false;
+    /* Every reader a typed salon resolves through: the roster's mentions, and a salon's own word (`salonIdNamedIn`). */
+    const idsOf = (text: string) => [
+      ...[...readSalonMentions(text), ...readSalonMentions(`at ${text}`)].flatMap((mention) => [...mention.salonIds]),
+      ...[salonIdNamedIn(text)].filter((id): id is string => Boolean(id)),
+    ];
+    const typedIds = new Set(idsOf(salonTyped));
+    if (typedIds.size === 0) return false;
+    const inAddress = typedAddressSpans(requestWords).some((span) => idsOf(span.address).some((id) => typedIds.has(id)));
+    /* Both readers leave an address given as the employee's out, so this is the request's words outside every address. */
+    const outside = idsOf(requestWords).some((id) => typedIds.has(id));
+    return inAddress && !outside;
+  })();
+  const typedSalon = typedOnlyInAddress ? "" : salonTyped;
   const answeredSalonIds = typedSalon ? [...new Set([typedSalon, `at ${typedSalon}`].flatMap((text) => readSalonMentions(text).flatMap((mention) => [...mention.salonIds])))] : [];
   if (typedSalon && answeredSalonIds.length === 0) return { reason_code: "salon_unknown", error: `"${typedSalon}" is not a ${locationWord()} the app knows. Ask which of the manager's ${locationWords()} it is.` };
   /*

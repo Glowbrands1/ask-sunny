@@ -1,4 +1,5 @@
 import { PRODUCTION_SALONS } from "@/data/salons";
+import { withoutAddressLines } from "./address-spans";
 import { globalSalonAskEnabled } from "@/lib/config/chat-quality-flags";
 import type { AskResponse } from "@/lib/ai/types";
 import type { AccessScope, ChatFormProposal, Role } from "@/types";
@@ -63,7 +64,9 @@ export function globalNonAdminNeedsSalon(role: Role | null | undefined, scope: A
 }
 
 /** One roster salon named in the manager's own words, or null when it is not one salon. */
-export function salonIdNamedIn(text: string): string | null {
+export function salonIdNamedIn(said: string): string | null {
+  // Port of Ask Bubbles 4f9f706c (its QA, u22 live): an address given as the employee's names no salon.
+  const text = withoutAddressLines(said);
   const mentions = readSalonMentions(text);
   const mentioned = [...new Set(mentions.flatMap((mention) => mention.salonIds))];
   if (mentioned.length === 1) return mentioned[0]!;

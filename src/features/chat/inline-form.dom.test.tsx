@@ -930,17 +930,22 @@ describe("R2-F1. the drafted values appear when prefill completes", () => {
  * returned to the browser and dropped, so the manager saw an emptied section
  * with no reason. The route's own rule: a shortened HR record is said out loud.
  */
-describe("what the draft left out is said on the card", () => {
+describe("what the draft left out is not said on the card", () => {
   const NOTICE =
     "Ask Sunny kept the observation to what was seen. It removed the statement that a policy was breached, because Woven does not see a policy in the knowledge base that supports it — confirm the exact policy in the official manual, then add the finding yourself.";
 
-  it("shows the drafting route's notice once prefill completes, and the form is editable", async () => {
+  /*
+   * Expectation changed on purpose (Pau, 23 Nov 2026: "rmeove this"): the card no
+   * longer shows the drafting route's notice once the draft completes. Was: the
+   * notice text appeared on the card.
+   */
+  it("shows no drafting notice once prefill completes, and the form is editable", async () => {
     const { release } = delayedDraft();
     await createAndWait();
     release(true, NOTICE);
 
     await waitFor(() => expect(screen.getByDisplayValue("Sarah was late twice.")).toBeTruthy());
-    await waitFor(() => expect(renderResult!.container.textContent).toContain(NOTICE));
+    expect(renderResult!.container.textContent).not.toContain(NOTICE);
     expect(screen.getByRole("button", { name: /save changes/i })).toBeTruthy();
   });
 

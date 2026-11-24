@@ -103,6 +103,7 @@ export const AGENT_LOOP_TOTAL_MS = 100_000;
 /** QA's audit (item 14b): how long a stopped turn waits for a tool still saving (less when the route has less left). */
 export const TOOL_SETTLE_MS = 5_000;
 
+import { pagesToolLine } from "@/config/ai-readable-pages";
 import { LOOP_FAILED_REPLY, STEP_LIMIT_REPLY } from "./replies";
 import { fieldLabel, readableValue } from "./saved-diff";
 
@@ -230,6 +231,46 @@ export interface AgentLoopStep {
   /** PR 3: the names of the fields a tool saved, and the reason codes of what it refused or left off the card. Never values. */
   readonly saved_fields?: readonly string[];
   readonly reason_codes?: readonly string[];
+  /**
+   * find_past_forms only (QA, 23 Nov 2026, the live duplicate exit form: the read that said "no exit form on file" could
+   * not be seen afterwards): what the read returned, value-free. The forms listed per form kind (the form's name and a
+   * number, never a person or text), the counted total, and the path the read took.
+   */
+  readonly forms_read?: FormsReadSummary;
+}
+
+export interface FormsReadSummary {
+  /** "listed" (forms came back), "none" (an empty list), "error:<reason_code>", or the no-forms path's own key. */
+  readonly path: string;
+  readonly by_kind: Readonly<Record<string, number>>;
+  readonly total?: number;
+}
+
+/** No-forms paths a find_past_forms result can take, by the key that marks each (its own result keys; never its values). */
+const FORMS_READ_PATHS = ["names_on_file", "close_names", "card_on_screen", "ask_exactly"] as const;
+
+/**
+ * What a find_past_forms result listed, value-free: the count of listed forms per form kind (`forms[].form`, a form's
+ * name), the total its counts say (`counts.total`), and the path (listed, none, an error with its reason_code, or the
+ * no-forms path's key). Never an employee, a date, a status's row or any text.
+ */
+export function formsReadSummary(result: ToolResult): FormsReadSummary {
+  const record = result as Record<string, unknown>;
+  const forms = Array.isArray(record.forms) ? (record.forms as { form?: unknown }[]) : [];
+  const byKind: Record<string, number> = {};
+  for (const form of forms) {
+    const kind = typeof form.form === "string" && form.form.length <= 60 ? form.form : "unknown";
+    byKind[kind] = (byKind[kind] ?? 0) + 1;
+  }
+  const total = (record.counts as { total?: unknown } | undefined)?.total;
+  const path = typeof record.reason_code === "string"
+    ? `error:${record.reason_code}`
+    : typeof record.error === "string"
+      ? "error:unknown"
+      : forms.length > 0
+        ? "listed"
+        : FORMS_READ_PATHS.find((key) => key in record) ?? "none";
+  return { path, by_kind: byKind, ...(typeof total === "number" ? { total } : {}) };
 }
 
 /*
@@ -240,7 +281,7 @@ export interface AgentLoopStep {
 /** Result keys that are data, not facts (never listed in the trace). */
 const NOT_FACT_KEYS = new Set(["error", "reason_code", "note", "card", "facts", "matches", "staff", "wording", "headings", "source", "salon", "salons", "positions", "templates", "updated", "saved", "refused", "not_on_card", "revision_draft", "forms", "passages", "document", "heading", "page", "fields", "values"]);
 
-function stepReason(result: ToolResult, tool: string): Pick<AgentLoopStep, "error_kind" | "fact_keys" | "missing_kinds" | "saved_fields" | "reason_codes"> {
+function stepReason(result: ToolResult, tool: string): Pick<AgentLoopStep, "error_kind" | "fact_keys" | "missing_kinds" | "saved_fields" | "reason_codes" | "forms_read"> {
   const record = result as Record<string, unknown>;
   const facts = record.facts && typeof record.facts === "object" ? Object.keys(record.facts as object) : [];
   const keys = [...new Set([...facts, ...Object.keys(record).filter((key) => !NOT_FACT_KEYS.has(key))])].sort();
@@ -254,6 +295,7 @@ function stepReason(result: ToolResult, tool: string): Pick<AgentLoopStep, "erro
     ...(codes.length > 0 ? { reason_codes: codes } : {}),
     ...(keys.length > 0 ? { fact_keys: keys } : {}),
     ...(Array.isArray(missing) ? { missing_kinds: [...new Set(missing.map((word) => accountWordKind(String(word))))].sort() } : {}),
+    ...(tool === "find_past_forms" ? { forms_read: formsReadSummary(result) } : {}),
   };
 }
 
@@ -475,7 +517,7 @@ function buildAgentLoopTools(config: AppConfig, planSteps = false) {
   },
   {
     name: "find_past_forms",
-    description: "List the forms on file (" + config.formsPageName + ") for one employee, or, with no employee_name, every form of a kind or period (\"who got a CA this month?\": form and date_from/date_to), or every form about a topic (\"any forms about cash handling this month?\", \"who's been written up for dress code?\": about, with form and dates if given). Only when the manager asks about forms on file or history; never otherwise.",
+    description: "List the forms on file (" + config.formsPageName + ") for one employee, or, with no employee_name, every form of a kind or period (\"who got a CA this month?\": form and date_from/date_to), or every form about a topic (\"any forms about cash handling this month?\", \"who's been written up for dress code?\": about, with form and dates if given). Only when the manager asks about forms on file or history; never otherwise." + pagesToolLine(config.readablePages, "find_past_forms"),
     input_schema: object({
       employee_name: { type: "string", description: "The employee the manager named. Leave it out for a list of every form of a kind or period." },
       form: { type: "string", description: "The form the manager named (\"coaching\", \"CA\"), if any." },
