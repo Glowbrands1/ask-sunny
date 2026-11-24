@@ -12,6 +12,7 @@ import { pageFormsAccess } from "@/lib/forms/page-scope";
 import { l10TabsForLayout } from "@/features/l10/data.server";
 import { bellFor } from "@/lib/notifications/bell-for";
 import type { BellData } from "@/lib/notifications/types";
+import { hrQueueSummary } from "@/lib/forms/hr-approval";
 
 /**
  * COUNTS, NOT HUES — the rail's overdue badge.
@@ -50,9 +51,27 @@ async function overdueCount(): Promise<number> {
   }
 }
 
-/** THE BELL: everyone signed in has one (`bellFor`). */
+/** THE BELL: everyone signed in has one (`bellFor`); an HR approver's also counts the forms still waiting for them. */
 async function bellForLayout(): Promise<BellData | null> {
-  return bellFor(await pageIdentity());
+  const identity = await pageIdentity();
+  return bellFor(identity, () => waitingForHr(identity));
+}
+
+/**
+ * HR APPROVAL, STILL WAITING (Pau, 24 Nov 2026: "can u please not remove the notification in the bar on the left side
+ * if there are still pending inside"). The same count as Form Monitoring's "Pending HR approval (n)" tab, read through
+ * the same `hrQueueSummary`, so the bar and the tab cannot disagree. Null: not a verified HR approver (or the read
+ * failed, which only drops the count, never the bell).
+ */
+async function waitingForHr(identity: Awaited<ReturnType<typeof pageIdentity>>): Promise<number | null> {
+  if (!identity?.verified) return null;
+  try {
+    const { actor } = await pageFormsAccess(identity);
+    if (actor.hrApprover !== true) return null;
+    return (await hrQueueSummary(actor))?.pending ?? 0;
+  } catch {
+    return null;
+  }
 }
 
 export default async function AppLayout({ children }: { children: ReactNode }) {

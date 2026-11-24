@@ -70,6 +70,11 @@ describe("\"i need a bell for all users/managers for when HR send back their for
     expect(await bellFor({ email: "preview@example.com" })).not.toBeNull();
   });
 
+  it("an HR approver's bar still carries the forms waiting for them (#1313's badge kept)", async () => {
+    expect(await bellFor({ email: "hr@example.com" }, async () => 2)).toEqual({ items: [], unread: 0, waitingHr: 2 });
+    expect(await bellFor({ email: "dm@example.com" }, async () => null)).not.toHaveProperty("waitingHr");
+  });
+
   it("reads only the signed-in person's own notifications", async () => {
     store.app_notifications.push(sentBack, { ...sentBack, id: "00000000-0000-4000-8000-000000000002", recipient_email: "someone.else@example.com" });
     expect((await bellFor(manager))?.items).toHaveLength(1);
