@@ -3,7 +3,17 @@ import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
 import type { FormsActor } from "./access";
-import { HR_COMMENT_KIND, HR_DECISION_KIND, HR_REQUEST_KIND, clearRequestBells, formHref, ringBells } from "./hr-approval-bells";
+import {
+  HR_COMMENT_KIND,
+  HR_DECISION_KIND,
+  HR_REQUEST_KIND,
+  HR_SENT_KIND,
+  HR_UPDATED_KIND,
+  clearRequestBells,
+  formHref,
+  ringBells,
+  withoutUnread,
+} from "./hr-approval-bells";
 import { accountEmail, listHrApprovers } from "./hr-approval-approvers";
 import {
   HR_STATE_LABEL,
@@ -43,6 +53,9 @@ import {
  *             with a note required for anything but approve. The creator's
  *             bell rings.
  *   comment   HR or the creator adds a note; the other's bell rings.
+ *   edit      while it waits, HR, its creator or a sender may change it (owner, 24 Nov 2026: "make sure the edited
+ *             form carries over to [HR] so she sees the updated version"). It is the same form, so HR's queue and
+ *             approval page read the updated values; a manager's change rings HR's bell once until read.
  *   view      the approval state and every note, for the creator and HR only.
  *
  * Every note is in `form_hr_approval_events`, which nothing serves to anybody
@@ -182,6 +195,19 @@ export async function sendForHrApproval(
   );
 
   const after = await loadInstance(instanceId);
+  /*
+   * THE SENDER'S RECEIPT (owner, 24 Nov 2026: "they should get a notification as well that they have sent it for
+   * approval"): the sender and the person who started it, so both know HR has it and that it is not final yet.
+   */
+  await ringBells(
+    (await creatorAndSenderEmails((after ?? before).instance)).map((recipientEmail) => ({
+      recipientEmail,
+      kind: HR_SENT_KIND,
+      title: "You sent a form for HR approval",
+      body: `${formLine(before.instance)}. HR reviews it and it is final once HR approves it. You can still edit it; HR sees your changes.`,
+      href: formHref(instanceId),
+    })),
+  );
   return (after ?? before).instance;
 }
 
@@ -315,9 +341,40 @@ export async function commentOnHrApproval(instanceId: string, actor: FormsActor,
   );
 }
 
-/** HR changed a waiting form's values: recorded in the approval history, which the creator sees. */
-export async function recordHrEdit(instanceId: string, actor: FormsActor): Promise<void> {
-  await recordHrEvent(instanceId, "edited", actor.id, null);
+/** Who may change a form while it waits for HR: HR, its creator and anyone who sent it (owner, 24 Nov 2026). */
+export function mayEditWhileWithHr(actor: FormsActor, instance: InstanceRow): boolean {
+  if (!heldForHr(instance.hrApprovalState)) return false;
+  return actor.hrApprover === true || (actor.verified && isCreatorOrSender(actor, instance));
+}
+
+/** Saves by the same person this close together are one edit in the approval history: the card saves as they type. */
+const EDIT_COALESCE_MS = 15 * 60 * 1000;
+
+/**
+ * A waiting form's values were changed by HR, its creator or a sender: recorded in the approval history (once per
+ * sitting), and, when it was the manager, HR's bell says the form was updated, so HR reviews the new version.
+ */
+export async function recordHrEdit(instanceId: string, actor: FormsActor, now: Date = new Date()): Promise<void> {
+  const facts = await approvalEventFacts(instanceId);
+  const last = facts[facts.length - 1];
+  const recent = last && last.action === "edited" && last.actor === actor.id && now.getTime() - new Date(last.at).getTime() < EDIT_COALESCE_MS;
+  if (!recent) await recordHrEvent(instanceId, "edited", actor.id, null);
+
+  if (actor.hrApprover === true) return;
+  const loaded = await loadInstance(instanceId);
+  if (!loaded) return;
+  const href = formHref(instanceId);
+  const approvers = (await listHrApprovers()).filter((approver) => approver.id !== actor.id).map((approver) => approver.email);
+  const editor = await displayName(actor.id);
+  await ringBells(
+    (await withoutUnread(HR_UPDATED_KIND, href, approvers)).map((recipientEmail) => ({
+      recipientEmail,
+      kind: HR_UPDATED_KIND,
+      title: "A form waiting for your approval was updated",
+      body: `${formLine(loaded.instance)}, changed by ${editor}. Open it to see the updated version.`,
+      href,
+    })),
+  );
 }
 
 /** A waiting form was deleted: HR's bell stops pointing at it. */
@@ -396,7 +453,8 @@ export async function hrApprovalViewFor(actor: FormsActor, instance: InstanceRow
     waiting: state === "pending" ? waitingLabel(instance.hrApprovalRequestedAt, now) : null,
     overdue: state === "pending" && isOverdue(instance.hrApprovalRequestedAt, now),
     canDecide: hr && state === "pending" && !released,
-    canEdit: hr && state === "pending" && !released,
+    // HR, and the form's creator and senders (owner, 24 Nov 2026), may change it while it waits; HR sees the changes.
+    canEdit: state === "pending" && !released && (hr || (actor.verified && isCreatorOrSender(actor, instance))),
     canApproveSentBack:
       hr && instance.status === "draft" && hrApprovalEnabled() &&
       approvableFromSentBack(instance, rows.map((row) => ({ action: row.action, actor: row.actor, at: row.created_at }))),

@@ -373,7 +373,8 @@ export function InlineForm({
   ).some((field) => field.semantics === "follow_up_timeframe");
   const prefilling = prefill.kind === "running";
   /*
-   * HR APPROVAL: a form waiting for HR is read-only for its creator; HR may edit it (`canEdit`) before deciding.
+   * HR APPROVAL: while a form waits for HR, HR, its creator and its senders may still edit it (`canEdit`; owner, 24 Nov
+   * 2026), and HR reads the updated version. Anybody else's card is read-only.
    * `toHr`: this Finalize sends the form to HR, so the button and the confirmation say so.
    */
   const hrApproval = loaded.hrApproval ?? null;
@@ -968,7 +969,7 @@ export function InlineForm({
               ) : null}
             </div>
           ) : heldForHr || hrReviewing ? (
-            /* HR APPROVAL: no Finalize while the form waits — HR decides in the approval panel below. */
+            /* HR APPROVAL: no Finalize while the form waits — HR decides in the approval panel below; edits still save. */
             null
           ) : (
             <>
@@ -1095,7 +1096,7 @@ export function InlineForm({
           >
             <p className="text-[13px] leading-relaxed text-muted-foreground">
               {toHr
-                ? "HR reviews it and approves, sends it back for changes, or rejects it. You cannot change it while HR has it. It is finalized when HR approves it."
+                ? "This form will be reviewed and approved by HR before it is final. HR approves it, sends it back for changes, or rejects it, and you get a notification either way. You can still edit it while HR has it; HR sees the updated version."
                 : loaded.instance.revisesInstanceId
                 ? "Its values are frozen and it replaces the finalized original. To change it afterwards, edit it as a new draft. Signatures are signed on paper."
                 : "Its values are frozen. To change it afterwards, edit it as a new draft. Signatures are signed on paper."}
