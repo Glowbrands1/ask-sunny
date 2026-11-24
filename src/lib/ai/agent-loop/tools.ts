@@ -49,6 +49,7 @@ import {
   retrievalRecallEnabled,
   priorFormsUpToTodayEnabled,
   typedEmployeeEveryCardEnabled,
+  adminCardAsksSalonEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { typedEmployeeName } from "@/lib/forms/typed-employee-name";
 import type { AskResponse } from "@/lib/ai/types";
@@ -3434,6 +3435,24 @@ async function exitFormsOnFile(context: ToolContext, name: string, exitKey: stri
     .map((row) => ({ status: row.status, date: mdy(row.formDate), salon: row.locationName }));
 }
 
+/**
+ * ADMIN_CARD_ASKS_SALON_ENABLED (QA, 24 Nov 2026): the salons this person's forms on file are at, as Form Monitoring
+ * lists them for this login (any form, not a revised one), each once.
+ */
+async function formsOnFileSalons(context: ToolContext, name: string): Promise<{ id: string; name: string }[]> {
+  const actor = await chatFormsActor(context.actor).catch(() => null);
+  if (!actor) return [];
+  const nameWords = candidateNameWords(name);
+  if (nameWords.length === 0) return [];
+  const rows = visibleInstances(actor, await listInstances(200, { ...instanceListFilterFor(actor), employeeNameWords: nameWords }).catch(() => []));
+  const found = new Map<string, string>();
+  for (const row of rows) {
+    if (row.status === "revised" || !row.locationId || !samePerson(row.employeeName, name)) continue;
+    if (!found.has(row.locationId)) found.set(row.locationId, rosterSalonName(row.locationId) ?? row.locationName ?? row.locationId);
+  }
+  return [...found].map(([id, label]) => ({ id, name: label }));
+}
+
 async function exitCardTicks(isExit: boolean, termination: boolean, requestWords: string, today: string, exitHow: string | null = null): Promise<{ exit_ticks?: string[]; exit_unset?: string[]; keys?: string[] }> {
   /*
    * QA's live L6 (22 Nov 2026): a termination's reply said "Filed as" twice: exit_termination already gives its tick
@@ -5701,21 +5720,57 @@ export async function proposeForm(
    * and Create saved none. That one Woven salon is the card's salon (salon_from_woven); with several or none the card
    * stays as it was (no new question for an admin).
    */
-  if (!card.locationId && card.employeeName && employee.id && context.actor.scope?.level === "global" && !globalAsk.globalNonAdminNeedsSalon(context.actor.role, context.actor.scope)) {
+  /*
+   * ADMIN_CARD_ASKS_SALON_ENABLED (QA, 24 Nov 2026, live as an Admin): an admin's card never asked which salon, and for a
+   * person Woven lists at one salon it took that salon though her form on file in Form Monitoring is at another. An
+   * admin's card is asked the salon once as a global non-admin's is (the card stays ready); a Woven salon that differs
+   * from this person's forms on file is not taken: the card asks which, naming both.
+   */
+  const adminAsks = adminCardAsksSalonEnabled() && context.actor.role === "admin" && context.actor.scope?.level === "global";
+  let wovenAndForms: { woven: string; forms_on_file: string[]; ask_exactly: string } | null = null;
+  /* The Woven salon, unless this person's forms on file are at another: then the which-salon question naming both. */
+  const wovenDiffersFromForms = async (wovenId: string): Promise<typeof wovenAndForms> => {
+    if (!adminAsks || !card.employeeName) return null;
+    const elsewhere = (await formsOnFileSalons(context, employee.name)).filter((salon) => salon.id !== wovenId);
+    if (elsewhere.length === 0) return null;
+    const woven = rosterSalonName(wovenId) ?? wovenId;
+    const first = (replyNameFor(card.employeeName, read.kind === "read" ? read.roster : [], extractEmployeeNames(managerTurns(context)), employee.id ?? null).split(" ")[0]) || card.employeeName;
+    const onFile = elsewhere.map((salon) => `**${salon.name}**`);
+    const list = onFile.length === 1 ? onFile[0]! : `${onFile.slice(0, -1).join(", ")} and ${onFile[onFile.length - 1]!}`;
+    return {
+      woven,
+      forms_on_file: elsewhere.map((salon) => salon.name),
+      ask_exactly: `Which ${locationWord()} is this about? ${staffSystem()} lists ${first} at **${woven}**, and ${first}'s forms on file in ${appConfig().formsPageName} are at ${list}. The card is ready — choose the ${locationWord()} before you create the draft, so it is not filed with no ${locationWord()}.`,
+    };
+  };
+  /* The card's salon came from the person's Woven salons (the proposal builder's one employee salon), not the manager's words. */
+  if (adminAsks && card.locationId && employee.id && !typedSalon && turnSalonIds.length === 0 && !globalAsk.salonIdNamedIn(requestWords) && employee.salonIds.includes(card.locationId)) {
+    wovenAndForms = await wovenDiffersFromForms(card.locationId);
+    if (wovenAndForms) {
+      Object.assign(card, { locationId: null, locationName: null, locationResolution: "needs_selection" });
+      salonFromWoven = null;
+    }
+  }
+  if (!wovenAndForms && !card.locationId && card.employeeName && employee.id && context.actor.scope?.level === "global" && !globalAsk.globalNonAdminNeedsSalon(context.actor.role, context.actor.scope)) {
     const theirs = await wovenSalonsOf(context.actor.scope, employee.id, read.kind === "read" ? read.roster : [], appConfig().locations().map((salon) => salon.id));
-    if (theirs.length === 1) {
+    wovenAndForms = theirs.length === 1 ? await wovenDiffersFromForms(theirs[0]!) : null;
+    if (wovenAndForms) {
+      /* Not taken: asked below, naming both. */
+    } else if (theirs.length === 1) {
       Object.assign(card, { locationId: theirs[0], locationName: rosterSalonName(theirs[0]!) ?? card.locationName, locationResolution: "resolved", authorizedLocationIds: [theirs[0]], status: card.status === "needs_location" ? "ready" : card.status });
       salonFromWoven = rosterSalonName(theirs[0]!) ?? theirs[0]!;
     }
   }
-  if ((await import("@/lib/config/chat-quality-flags")).globalSalonAskEnabled() && globalAsk.globalNonAdminNeedsSalon(context.actor.role, context.actor.scope) && !card.locationId && card.employeeName) {
+  if (((await import("@/lib/config/chat-quality-flags")).globalSalonAskEnabled() && globalAsk.globalNonAdminNeedsSalon(context.actor.role, context.actor.scope) || adminAsks) && !card.locationId && card.employeeName) {
     const named = globalAsk.salonIdNamedIn(requestWords);
     if (named) {
       Object.assign(card, { locationId: named, locationName: rosterSalonName(named) ?? card.locationName, locationResolution: "resolved", authorizedLocationIds: [named], status: card.status === "needs_location" ? "ready" : card.status });
-    } else if (card.locationResolution === "not_applicable" || card.locationResolution === "needs_selection") {
+      wovenAndForms = null;
+    } else if (card.locationResolution === "not_applicable" || card.locationResolution === "needs_selection" || (adminAsks && card.locationResolution !== "resolved")) {
       Object.assign(card, { locationId: null, locationResolution: "needs_selection", authorizedLocationIds: appConfig().locations().map((salon) => salon.id), status: "ready", supportsInlineDraft: true });
       const askedBefore = context.history.some((turn) => turn.role === "assistant" && new RegExp(`which ${locationWord()} is this about`, "i").test(String(turn.content ?? "")));
-      whichSalon = !askedBefore;
+      whichSalon = !askedBefore && !wovenAndForms;
+      if (askedBefore) wovenAndForms = null;
     }
   }
   /*
@@ -6138,6 +6193,7 @@ export async function proposeForm(
     ...(jobTitleTyped ? { job_title_from_your_words: card.employeeRole } : {}),
     ...(jobTitleInstructed ? { job_title_as_you_said: card.employeeRole } : {}),
     ...(whichSalon ? { which_salon: true } : {}),
+    ...(wovenAndForms ? { which_salon_woven_and_forms: wovenAndForms } : {}),
     ...(terminationStated ? { termination_stated: { approval: stated.TERMINATION_APPROVAL_LINE, plan_closing: stated.TERMINATION_PLAN_SENTENCE } } : {}),
     /*
      * Batch G2 (item 3, QA's live run part 2: the hedge line was missing on 5 of 7): the manager's words name a

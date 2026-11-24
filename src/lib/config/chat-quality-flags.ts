@@ -5081,3 +5081,15 @@ export function priorFormsUpToTodayEnabled(): boolean {
 export function typedEmployeeEveryCardEnabled(): boolean {
   return envFlag("TYPED_EMPLOYEE_EVERY_CARD_ENABLED");
 }
+
+/**
+ * ADMIN_CARD_ASKS_SALON (QA, 24 Nov 2026, live as an Admin; default off; same flag in both apps): an admin's card never
+ * asked which salon (it said the account covers every salon and left Salon "Not recorded"), and for a person Woven lists
+ * at one salon it silently took that salon though her form on file in Form Monitoring is at another. With the flag on,
+ * an admin's loop card with no salon asks once, as a global non-admin's does (the card stays ready); and a salon taken
+ * from Woven while this person's forms on file are at another salon is not taken: the card asks which, naming both.
+ * Salons named in the request still win; non-admins are unchanged. Off, as before.
+ */
+export function adminCardAsksSalonEnabled(): boolean {
+  return envFlag("ADMIN_CARD_ASKS_SALON_ENABLED");
+}
