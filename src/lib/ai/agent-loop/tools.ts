@@ -17,6 +17,7 @@ import { candidateNameWords, chatFormsActor, formDateRangeFromInput, formKindFro
 import { CURRENT_MESSAGE_ID, holdsPhrase, identifiedTurns, readEvidence, verifyEvidence, withoutMessageIdTags, type IdentifiedTurn } from "./evidence";
 import { personNamedInRequest, requestStart } from "./person-in-request";
 import { keptFormDate } from "./kept-form-date";
+import { formDateGiven } from "@/lib/forms/incident-dates";
 import { answeredNameQuestions, answerNamesSomeoneElse, everKeptOrUsedTyped, isConfirmedSpelling, latestTurnAnswersFor, latestTurnConfirms, latestTurnKeepsOrUsesTyped, latestTurnKeepsTyped, spellingKeysConfirmedFor, spellingKeysConfirmedForName, type NameQuestionView } from "./confirmed-spelling";
 import { AFFIRMATIVE, displayName, editDistance, matchEmployeeName, nameConfirmationQuestion, possessiveRead, readNameConfirmation, rosterSpellingOf, type RosterEmployee } from "@/lib/forms/employee-match";
 import { offRosterTyped } from "@/lib/forms/roster-only-names";
@@ -33,6 +34,7 @@ import { applyAssistantRevision, deleteInstance, listInstances } from "@/lib/for
 import { countFormsOnFile } from "@/lib/forms/forms-on-file-counts";
 import {
   cardPersonThisRequestEnabled,
+  formDateIsTodayEnabled,
   statedPlanStepsEnabled,
   currentManualScopeEnabled,
   formEditPlainWordsEnabled,
@@ -4917,7 +4919,15 @@ export async function proposeForm(
   const ownCard = [context.cardOnScreen, context.earlierCard].find((record) => Boolean(record?.incidentDate) && (employee.id ? record!.employeeKey === personKey(employee.id) : !record!.employeeKey && record!.nameKey === personKey(employee.name)));
   const dateKept = keptFormDate({ accountForm: ACCOUNT_FORMS.has(template.key), date, asksNewForm, latestDates, datesGiven, today, ownCardDate: ownCard?.incidentDate });
   if (dateKept) date = dateKept;
-  const datesAsked = datesGiven.length > 1 && !date ? datesGiven : [];
+  /*
+   * FORM_DATE_IS_TODAY_ENABLED (Pau, 24 Nov 2026; port from Ask Bubbles): an incident form is dated the day it is
+   * written, or the date the manager gave the form itself (`formDateGiven`); the incident's date stays in the account,
+   * and "Which date goes on the form?" is never asked. Its forms on file are those dated on or before the form, so a
+   * Corrective Action finalized after the incident is offered as history. Off, null and as before.
+   */
+  const formDatedToday = ACCOUNT_FORMS.has(template.key) && formDateIsTodayEnabled();
+  const givenFormDate = formDatedToday ? formDateGiven(requestWords, template.key, today) : null;
+  const datesAsked = !formDatedToday && datesGiven.length > 1 && !date ? datesGiven : [];
   /* Batch C (code-check #32): a date after today is a fact with today's date; the rules book says to ask. */
   /* Batch G (G6): only an incident form's date is never after today; an exit's last day or effective date may be. */
   const incidentForm = ACCOUNT_FORMS.has(template.key);
@@ -5108,7 +5118,7 @@ export async function proposeForm(
    */
   const rosterPerson = caOnlyFields && employee.id && read.kind === "read" ? read.roster.find((row) => row.id === employee.id) ?? null : null;
   const onFileBefore = date ?? (effects.proposal && effects.proposal.employeeName === employee.name ? effects.proposal.formDate ?? null : null) ?? ownCard?.incidentDate ?? null;
-  const priorsOnFile = rosterPerson ? await finalizedPriorsOnFile(context, rosterPerson, read.kind === "read" ? read.roster : [], today, onFileBefore) : [];
+  const priorsOnFile = rosterPerson ? await finalizedPriorsOnFile(context, rosterPerson, read.kind === "read" ? read.roster : [], today, formDatedToday ? givenFormDate ?? today : onFileBefore) : [];
   const onFileLine = priorsOnFile.length > 0 ? priorsOnFileLine(priorsOnFile) : null;
   /*
    * A PRIOR ACTION IS THE MANAGER'S OWN (QA, 23 Nov 2026, Pau's review of a finalized form; port of Ask Bubbles #1089).
@@ -5518,7 +5528,7 @@ export async function proposeForm(
   const card: ChatFormProposal = {
     ...proposal,
     sourceMessageIds: requestIds,
-    formDate: exitTermination ? exitTermination.date : datesAsked.length > 0 || futureDate ? null : date ?? (fromAnotherRequest(proposal.formDate) || isPriorDate(proposal.formDate) ? null : proposal.formDate) ?? null,
+    formDate: exitTermination ? exitTermination.date : formDatedToday ? givenFormDate : datesAsked.length > 0 || futureDate ? null : date ?? (fromAnotherRequest(proposal.formDate) || isPriorDate(proposal.formDate) ? null : proposal.formDate) ?? null,
     fromAgentLoop: true as const,
     /* QA item 17 (20 Nov 2026): an exit card the model decided is a termination (locked on the word) tells Create, as the CA's does. */
     ...(level ? { warningLevel: level } : loopTermination || exitTermination ? { loopTermination: true as const } : {}),

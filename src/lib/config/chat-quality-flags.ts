@@ -5047,3 +5047,13 @@ export function formsOnFileCountsEnabled(): boolean {
 export function cardPersonThisRequestEnabled(): boolean {
   return envFlag("CARD_PERSON_THIS_REQUEST_ENABLED");
 }
+
+/**
+ * FORM_DATE_IS_TODAY (port from Ask Bubbles; Pau, 24 Nov 2026; default off; same flag in both apps): a form's Date is
+ * the day it is written, never the incident's date, which stays in the account. A date the manager gives the form,
+ * and the day a Coaching Form's coaching was held, still date it. See `forms/incident-dates.ts` decideFormDate and the
+ * agent loop's propose_form (`ai/agent-loop/tools.ts`). Off, as before.
+ */
+export function formDateIsTodayEnabled(): boolean {
+  return envFlag("FORM_DATE_IS_TODAY_ENABLED");
+}
