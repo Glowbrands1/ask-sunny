@@ -853,6 +853,25 @@ export async function dictatedPlanWrite(instanceId: string, plan: string, actorI
 }
 
 /**
+ * Pau, 24 Nov brief, item 4 (QA's ruling, 23 Nov 2026): edits the manager states in this message ("Remove dates for
+ * notice given and notice fulfilled", "How Employee Resigned should state: …"), saved as the manager's own edit (as the
+ * form page saves their typing: the manager as actor, via chat). The caller (the agent loop's edit_form) has checked each
+ * new text, or each clear, against this message's own words; this takes only those fields. Drafts only: the manager's
+ * save refuses a finalized form, so the finalized original is never written.
+ */
+export async function statedFieldsWrite(instanceId: string, values: Record<string, string>, actorId: string): Promise<{ saved: string[]; rejected: { key: string; reason: string }[] }> {
+  const keys = Object.keys(values);
+  if (keys.length === 0) return { saved: [], rejected: [] };
+  try {
+    const result = await saveInstanceValues(instanceId, { values, checked: {} }, actorId, { via: "chat" });
+    const rejected = result.rejected.filter((row) => keys.includes(row.key));
+    return { saved: keys.filter((key) => !rejected.some((row) => row.key === key)), rejected };
+  } catch {
+    return { saved: [], rejected: keys.map((key) => ({ key, reason: "not_draft" })) };
+  }
+}
+
+/**
  * The agent loop's name correction (`edit_form` intent "correct_name", the rebuild plan's `fix-name`): ONLY the
  * Employee Name line, written as the manager's correction (path "correction", via chat, as today's chat writes "fix
  * her last name …"), and the form's subject column moves with it so the card, Form Monitoring and the printed form

@@ -40,9 +40,15 @@ async function onFile(t: ReplayContext): Promise<{ tenthFinal: string; tenthDraf
   t.as("salon_director", KEARNEY);
   const made: string[] = [];
   for (const [date, finalized] of [["2026-11-10", true], ["2026-11-10", false], ["2026-11-12", true]] as const) {
-    t.loopModel!(loopStandIn((view): LoopDecision => (lastResult(view, "propose_form") ? { text: "Here's the card." } : { tool: "propose_form", input: { template_key: "dpoa", employee_id: TESTY.id, what_happened: TESTY_ACCOUNT, incident_date: date } })));
+    t.loopModel!(loopStandIn((view): LoopDecision => (lastResult(view, "propose_form") ? { text: (lastResult(view, "propose_form") as { ask_exactly?: string }).ask_exactly ?? "Here's the card." } : { tool: "propose_form", input: { template_key: "dpoa", employee_id: TESTY.id, what_happened: TESTY_ACCOUNT, incident_date: date, ...(view.turns.filter((turn) => turn.role === "user").at(-1)?.text === "it's a separate incident" ? { separate_incident_evidence: evidenceFrom(view, "it's a separate incident") } : {}) } })));
     const setup = t.thread();
     await setup.say(`ca for test testy, she was late to open the salon on ${date.slice(5).replace("-", "/")}`);
+    /*
+     * Setup only (Failure 2, item 3, 23 Nov 2026): a second Corrective Action for the same person and incident date is
+     * now asked about first ("<P> already has a Corrective Action for 11/10 … or is this a separate incident?"); the manager's
+     * answer makes it, so this case still has its two 11/10 forms on file. The case's own expectations are unchanged.
+     */
+    if (!setup.proposal) await setup.say("it's a separate incident");
     const id = await setup.create();
     Object.assign(t.forms().find((row) => row.id === id)!, { status: finalized ? "finalized" : "draft", form_date: date });
     made.push(id);

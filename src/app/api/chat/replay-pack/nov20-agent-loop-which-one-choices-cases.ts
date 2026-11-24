@@ -3,7 +3,7 @@ import { expect, vi } from "vitest";
 import { TESTY, TESTY_ACCOUNT } from "@/lib/ai/agent-loop/phrasing-table";
 
 import { KEARNEY, STAFF, type DirectoryRow, type ReplayCase, type ReplayContext } from "./cases";
-import { evidenceFrom, lastResult, loopStandIn, type LoopDecision } from "./loop-stand-in";
+import { evidenceFrom, lastResult, loopStandIn, type LoopDecision, SEPARATE_INCIDENT, separateIfSaid } from "./loop-stand-in";
 
 /**
  * ============================================================================
@@ -32,9 +32,11 @@ async function onFile(t: ReplayContext): Promise<string[]> {
   const made: string[] = [];
   for (const [at, finalized] of [["2026-11-12T15:00:00Z", true], ["2026-11-13T15:00:00Z", false], ["2026-11-13T15:20:00Z", false]] as const) {
     vi.setSystemTime(new Date(at));
-    t.loopModel!(loopStandIn((view): LoopDecision => (lastResult(view, "propose_form") ? { text: "Here's the card." } : { tool: "propose_form", input: { template_key: "dpoa", employee_id: TESTY.id, what_happened: TESTY_ACCOUNT, incident_date: "2026-11-10" } })));
+    t.loopModel!(loopStandIn((view): LoopDecision => (lastResult(view, "propose_form") ? { text: (lastResult(view, "propose_form") as { ask_exactly?: string }).ask_exactly ?? "Here's the card." } : { tool: "propose_form", input: { ...separateIfSaid(view), template_key: "dpoa", employee_id: TESTY.id, what_happened: TESTY_ACCOUNT, incident_date: "2026-11-10" } })));
     const setup = t.thread();
     await setup.say("ca for test testy, she was late to open the salon on 11/10");
+    /* Setup only (Failure 2, item 3): a second form for the same person and date is asked about first; the answer files it. */
+    if (!setup.proposal) await setup.say(SEPARATE_INCIDENT);
     const id = await setup.create();
     Object.assign(t.forms().find((row) => row.id === id)!, { status: finalized ? "finalized" : "draft", form_date: "2026-11-10" });
     made.push(id);
@@ -88,9 +90,11 @@ export const NOV20_AGENT_LOOP_WHICH_ONE_CHOICES_CASES: ReplayCase[] = [
       t.as("salon_director", KEARNEY);
       for (const [date, finalized] of [["2026-11-10", true], ["2026-11-12", false]] as const) {
         vi.setSystemTime(new Date("2026-11-13T15:00:00Z"));
-        t.loopModel!(loopStandIn((view): LoopDecision => (lastResult(view, "propose_form") ? { text: "Here's the card." } : { tool: "propose_form", input: { template_key: "dpoa", employee_id: TESTY.id, what_happened: TESTY_ACCOUNT, incident_date: date } })));
+        t.loopModel!(loopStandIn((view): LoopDecision => (lastResult(view, "propose_form") ? { text: (lastResult(view, "propose_form") as { ask_exactly?: string }).ask_exactly ?? "Here's the card." } : { tool: "propose_form", input: { ...separateIfSaid(view), template_key: "dpoa", employee_id: TESTY.id, what_happened: TESTY_ACCOUNT, incident_date: date } })));
         const setup = t.thread();
         await setup.say(`ca for test testy, she was late to open the salon on ${date.slice(5).replace("-", "/")}`);
+        /* Setup only (Failure 2, item 3): a second form for the same person and date is asked about first; the answer files it. */
+        if (!setup.proposal) await setup.say(SEPARATE_INCIDENT);
         const id = await setup.create();
         Object.assign(t.forms().find((row) => row.id === id)!, { status: finalized ? "finalized" : "draft", form_date: date });
       }

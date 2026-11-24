@@ -23,6 +23,10 @@ export interface LoopCardSettlement {
   readonly messageId: string | null;
   readonly questionKey: string | null;
   readonly isSettledName: (name: string) => boolean;
+  /** Pau's review via QA (24 Nov 2026): the incident date this card's same-incident check cleared (its server record), or null. */
+  readonly sameIncidentChecked: string | null;
+  /** The card's person by roster id (a one-way key), or null: Create's same-incident check reads it. */
+  readonly employeeKey: string | null;
 }
 
 export async function loopCardSettlement(input: {
@@ -39,7 +43,7 @@ export async function loopCardSettlement(input: {
   if (card.employeeKey) {
     for (const asked of records.nameQuestions) if (asked.offeredKeys.includes(card.employeeKey)) keys.add(asked.typedKey);
   }
-  return { messageId: card.messageId, questionKey: card.questionKey ?? null, isSettledName: (name: string) => keys.has(personKey(name)) };
+  return { messageId: card.messageId, questionKey: card.questionKey ?? null, isSettledName: (name: string) => keys.has(personKey(name)), sameIncidentChecked: card.sameIncidentChecked ?? null, employeeKey: card.employeeKey ?? null };
 }
 
 /**

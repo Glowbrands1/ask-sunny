@@ -58,6 +58,7 @@ const KNOWN = new Set([
   "edit_asked_forms_on_file",
   // Added on purpose (QA, 23 Nov 2026, the live duplicate exit form): an exit card for a person who already has an exit form on file.
   "exit_on_file",
+  "same_incident_on_file",
   // QA item 7 (20 Nov 2026): another form proposed for the open card's person with no words asking for it.
   "form_locked",
   // QA item 8 (20 Nov 2026): a roster person nobody named, picked or confirmed in this chat.

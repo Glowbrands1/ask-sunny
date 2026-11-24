@@ -28,6 +28,12 @@ const said = (words: string) => `${/remy calder/i.test(words) ? words.replace(/<
 
 /** A Corrective Action card for Remy Calder, where the stand-in model decides `termination` or not. */
 async function card(t: ReplayContext, words: string, termination: boolean) {
+  /*
+   * Setup only (Pau's Failure 2 review, 23-24 Nov 2026): each call is a fresh card for Remy's 11/12 incident, one per
+   * wording tested; a form an earlier call saved would now be asked about as the same incident (same_incident_on_file).
+   * The earlier calls' forms are archived, so each wording is tested on its own. What each case checks is unchanged.
+   */
+  for (const row of t.forms() as Record<string, unknown>[]) if (!row.archived_at) row.archived_at = "2026-11-14T22:00:00Z";
   vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
   t.directory([...STAFF]);
   t.as("salon_director", KEARNEY);
@@ -352,12 +358,20 @@ export const NOV15_AGENT_LOOP_TERMINATION_DECISION_CASES: ReplayCase[] = [
         "exit form for remy calder, she resigned, last day 11/28, she was terminated at her last salon",
       ]) {
         const { thread, model } = await exit(words, false);
-        expect(thread.proposal?.formDate, `the stated last day was replaced after "${words}"`).toBe("2026-11-28");
+        /*
+         * CHANGED ON PURPOSE (Failure 2 item 7; Pau's choice via QA, 24 Nov 2026: item 7 stands over G6): an exit form keeps
+         * its own date (today, 11/15) unless the manager says what to date it; the stated last day (11/28) goes on the Last
+         * Day Worked line, after today and never blanked. Before: the card was dated the last day.
+         */
+        expect(thread.proposal?.formDate, `the exit card was dated the last day after "${words}"`).toBe("2026-11-15");
+        expect(((thread.proposal as { exitReadBack?: string[] } | null)?.exitReadBack ?? []).join("\n"), `the Last Day Worked line lost the stated last day after "${words}"`).toMatch(/Last Day Worked:\*\* November 28, 2026/);
         if (offline) expect(toolResults(model.views, "propose_form")[0] ?? "", `"${words}" was filed as a termination`).not.toMatch(/exit_termination/);
       }
       // The lock: a termination the model asks for where the words carry no termination word.
       const { thread, model } = await exit("exit form for remy calder, she quit, last day 11/28", true);
-      expect(thread.proposal?.formDate).toBe("2026-11-28");
+      /* CHANGED ON PURPOSE (Failure 2 item 7; Pau's choice via QA, 24 Nov 2026): the lock keeps this a resignation, so the form keeps today's date and 11/28 is the Last Day Worked. Before: dated 11/28. */
+      expect(thread.proposal?.formDate).toBe("2026-11-15");
+      expect(((thread.proposal as { exitReadBack?: string[] } | null)?.exitReadBack ?? []).join("\n"), "the Last Day Worked line lost the stated last day").toMatch(/Last Day Worked:\*\* November 28, 2026/);
       if (offline) expect(toolResults(model.views, "propose_form")[0] ?? "", "the lock kept a termination exit with no termination word").toMatch(/"not_on_card":\[[^\]]*"field":"exit_type"/);
     },
   },

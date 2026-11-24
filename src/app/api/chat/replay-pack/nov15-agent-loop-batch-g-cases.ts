@@ -180,7 +180,16 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       expect(reply.formProposal ?? null, "an open request made a new card").toBeNull();
       expect(reply.content, "the reply talks about the staff list").not.toMatch(/staff list/i);
       // Changed on purpose (the rebuild plan's PR 1b: OPEN_REQUEST, a word list, is gone): the card the model proposed first is withdrawn when it finds the form to open (find_past_forms open: true).
-      if (offline) expect(toolResults(model.views, "find_past_forms")[0], "the card proposed first was not withdrawn").toMatch(/"card_withdrawn"/);
+      /*
+       * Changed on purpose (Pau's Failure 2 review, 23-24 Nov 2026): the new card the model reaches for first is dated 10/31,
+       * and Remy has a Coaching Form on file that day, so propose_form now makes no card (same_incident_on_file) and there
+       * is nothing left to withdraw. Either way no new card stands; the open and no-proposal checks above are unchanged.
+       */
+      if (offline) {
+        const firstPropose = toolResults(model.views, "propose_form")[0] ?? "";
+        const withdrawn = /"card_withdrawn"/.test(toolResults(model.views, "find_past_forms")[0] ?? "");
+        expect(withdrawn || /"reason_code":"same_incident_on_file"/.test(firstPropose), `the card proposed first was neither stopped nor withdrawn:\n${firstPropose.slice(0, 400)}`).toBe(true);
+      }
     },
   },
   {
@@ -382,7 +391,13 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       const thread = t.thread();
       const reply = await thread.say("exit form for remy calder, she gave notice, last day is 11/28");
       expect(thread.proposal?.templateKey).toBe("stc-exit");
-      expect(thread.proposal?.formDate, `the exit's last day was blanked:\n${reply.content}`).toBe("2026-11-28");
+      /*
+       * CHANGED ON PURPOSE (Failure 2 item 7; Pau's choice via QA, 24 Nov 2026: item 7 stands over G6): an exit form keeps
+       * its own date (today, 11/15) unless the manager says what to date it; the stated last day (11/28) goes on the Last
+       * Day Worked line, after today and never blanked. Before: the card was dated the last day.
+       */
+      expect(thread.proposal?.formDate, `the exit card was dated the last day:\n${reply.content}`).toBe("2026-11-15");
+      expect(((thread.proposal as { exitReadBack?: string[] } | null)?.exitReadBack ?? []).join("\n"), "the Last Day Worked line lost the stated last day").toMatch(/Last Day Worked:\*\* November 28, 2026/);
       if (offline) expect(toolResults(model.views, "propose_form").some((result) => /date_after_today/.test(result)), "an exit's future last day was treated as after today").toBe(false);
     },
   },
@@ -686,7 +701,13 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       const reply = await thread.say("exit form for isla marrow, she gave notice, last day is 11/28");
       expect(thread.proposal?.locationId, `the exit is not filed at Woven's salon:\n${reply.content}`).toBe("loc-0309");
       expect(thread.proposal?.status).toBe("ready");
-      expect(thread.proposal?.formDate).toBe("2026-11-28");
+      /*
+       * CHANGED ON PURPOSE (Failure 2 item 7; Pau's choice via QA, 24 Nov 2026: item 7 stands over G6): an exit form keeps
+       * its own date (today, 11/15) unless the manager says what to date it; the stated last day (11/28) goes on the Last
+       * Day Worked line, after today and never blanked. Before: the card was dated the last day.
+       */
+      expect(thread.proposal?.formDate).toBe("2026-11-15");
+      expect(((thread.proposal as { exitReadBack?: string[] } | null)?.exitReadBack ?? []).join("\n"), "the Last Day Worked line lost the stated last day").toMatch(/Last Day Worked:\*\* November 28, 2026/);
     },
   },
   {
@@ -715,6 +736,12 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       expect(reply.content, "the reply does not name the Woven legal name once").toMatch(/\(Josephine Quill in Woven\)/);
       const id = await preferred.create();
       expect(t.values(id).employee_name, "the form does not carry the name the manager used").toBe("Jo Quill");
+      /*
+       * Setup only (Pau's Failure 2 review, 23-24 Nov 2026): the second chat is the same person and incident (11/12), which
+       * is now asked about as the same incident (same_incident_on_file). This case is about the name, so the first chat's
+       * form is archived before it. What the case checks is unchanged.
+       */
+      for (const row of t.forms() as Record<string, unknown>[]) if (row.id === id) row.archived_at = "2026-11-14T22:45:00Z";
       t.loopModel!(model("josephine quill"));
       const legal = t.thread();
       const typed = await legal.say("ca for josephine quill, she was late on 11/12");
@@ -805,7 +832,13 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
         t.loopModel!(model);
         const thread = t.thread();
         await thread.say(said);
-        expect(thread.proposal?.formDate, `the stated last day was replaced after "${said}"`).toBe("2026-11-28");
+        /*
+         * CHANGED ON PURPOSE (Failure 2 item 7; Pau's choice via QA, 24 Nov 2026: item 7 stands over G6): an exit form keeps
+         * its own date (today, 11/15) unless the manager says what to date it; the stated last day (11/28) goes on the Last
+         * Day Worked line, after today and never blanked. Before: the card was dated the last day.
+         */
+        expect(thread.proposal?.formDate, `the exit card was dated the last day after "${said}"`).toBe("2026-11-15");
+        expect(((thread.proposal as { exitReadBack?: string[] } | null)?.exitReadBack ?? []).join("\n"), `the Last Day Worked line lost the stated last day after "${said}"`).toMatch(/Last Day Worked:\*\* November 28, 2026/);
         if (offline) expect(toolResults(model.views, "propose_form")[0] ?? "", `"${said}" was read as a termination`).not.toMatch(/exit_termination/);
       }
     },

@@ -224,11 +224,21 @@ import { rulesBookText } from "./rules-book";
  * approval answers come only from read_hr_approvals, which lists only the asker's own forms. It reads the same under
  * every config; nothing else changed.
  *
+ * Re-taken on purpose on 23 Nov 2026 (Pau's Failure 2 review via QA, item 3; the sibling app's mechanism): one line was
+ * added: same_incident_on_file (this person already has this form on file for this incident date, no card made) says so,
+ * ends with its ask_exactly, opens that form or, on "a separate incident", proposes again with separate_incident_evidence.
+ * It reads the same under every config; nothing else changed.
+ *
  * Re-taken on purpose on 23 Nov 2026 (QA: a prior action Pau never said was saved "as you said"; port of Ask Bubbles
  * #1089): the Prior actions line now says only the manager's steps, or a form on file they said yes to, are Prior
  * actions, and the reply offers the forms on file (prior_on_file.ask_exactly); the stated read-back adds "as you said" to
  * prior_actions only when stated_this_turn lists it, and asks for prior_actions_evidence quoting the manager's words. They
  * read the same under every config; nothing else changed.
+ *
+ * Re-taken on purpose on 24 Nov 2026 (Pau's choice via QA: Failure 2 item 7 stands over G6): the exit line now says an
+ * exit form keeps its own date (today) unless the manager says what to date it, and the last day worked goes on its own
+ * line ("Last day 11/28/2026, as you said."), which may be after today. It reads the same under every config; nothing
+ * else changed.
  */
 
 const fixture = (name: string): string => readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), "utf8");
