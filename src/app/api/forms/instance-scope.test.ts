@@ -108,6 +108,9 @@ interface Touched {
   finalized: string[];
 }
 
+/** What each `deleteInstance` call was told about finalized forms (`allowFinalized`), in call order. */
+const deleteOptions: boolean[] = [];
+
 async function load(
   options: {
     scope?: AccessScope | null;
@@ -228,8 +231,9 @@ async function load(
       return instanceRow(ROWS[id]!);
     },
     reviseInstance: async (id: string) => instanceRow(ROWS[id]!),
-    deleteInstance: async (id: string) => {
+    deleteInstance: async (id: string, _by?: unknown, options?: { allowFinalized?: boolean }) => {
       touched.deleted.push(id);
+      deleteOptions.push(options?.allowFinalized === true);
       return { id, employeeName: "Synthetic Person" };
     },
     createInstance: async () => ({ id: "new" }),
@@ -362,6 +366,23 @@ describe("F4. a foreign form cannot be written by knowing its UUID", () => {
 
     expect(response.status).toBe(200);
     expect(touched.deleted).toEqual([MINE]);
+  });
+
+  /*
+   * Pau, 24 Nov 2026: "why cant delete? in bubbles" (a finalized Corrective Action in Ask Bubbles' Forms Register). Decision: an
+   * administrator may delete a finalized form; every other role that may delete drafts may not. The route says which
+   * with `allowFinalized`; `deleteInstance` (instances-cleanup.test.ts) is what refuses without it.
+   */
+  it("passes allowFinalized for an administrator, and never for a district manager", async () => {
+    deleteOptions.length = 0;
+    const manager = await load({ role: "district_manager", scope: SALON_A });
+    expect((await manager.detail.DELETE(req("DELETE"), params(MINE))).status).toBe(200);
+    expect(deleteOptions).toEqual([false]);
+
+    deleteOptions.length = 0;
+    const admin = await load({ role: "admin", scope: { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] } });
+    expect((await admin.detail.DELETE(req("DELETE"), params(MINE))).status).toBe(200);
+    expect(deleteOptions).toEqual([true]);
   });
 
   it("still lets the caller save their OWN form", async () => {

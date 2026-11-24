@@ -9,8 +9,9 @@ import { fakeSupabase, type FakeStore } from "@/test/fake-supabase";
  * Everything here guards the same boundary from a different side:
  *
  *   A DRAFT may be deleted outright, and its values and events go with it.
- *   A FINALIZED OR REVISED form may NOT, ever, by any path — it is a signed HR
- *   document: it stays on file. There is no archiving (Pau, 23 Nov 2026: "the
+ *   A FINALIZED OR REVISED form may NOT, by any path but one — it is a signed HR
+ *   document: it stays on file. The one path: an administrator's delete of a
+ *   FINALIZED form (`allowFinalized`, 24 Nov 2026); a REVISED form never. There is no archiving (Pau, 23 Nov 2026: "the
  *   archived should not be acknowledged as a form, all just should be finalized
  *   or drafted").
  *   THE BULK SWEEP keys on `demo:` PROVENANCE and draft status, so an employee
@@ -136,6 +137,66 @@ describe("deleting a form", () => {
 
     await expect(deleteInstance("final-2")).rejects.toThrow(/kept on file/);
     await expect(deleteInstance("final-2")).rejects.not.toThrow(/[Aa]rchive/);
+  });
+});
+
+/*
+ * Pau, 24 Nov 2026: "why cant delete? in bubbles" — a finalized Corrective Action in Ask Bubbles' Forms Register had no Delete.
+ * Decision: an administrator may delete a finalized form. The route passes `allowFinalized` for one; every other caller
+ * (chat, agent loop, bulk delete, demo sweep) does not, so the tests above still hold for them.
+ */
+describe("deleting a finalized form as an administrator (allowFinalized)", () => {
+  it("removes the finalized form, its values and its events", async () => {
+    store.form_instances = [instance({ id: "final-1", status: "finalized", finalized_at: "2026-09-02T10:00:00Z" })];
+    store.form_instance_values = [
+      { instance_id: "final-1", field_key: "concern", value: "late", checked: [], filled_by: "manager", provenance: {} },
+    ];
+    store.form_instance_events = [{ instance_id: "final-1", kind: "finalized", actor: "admin", detail: {} }];
+
+    const deleted = await deleteInstance("final-1", undefined, { allowFinalized: true });
+
+    expect(deleted.id).toBe("final-1");
+    expect(store.form_instances).toHaveLength(0);
+    expect(store.form_instance_values).toHaveLength(0);
+    expect(store.form_instance_events).toHaveLength(0);
+  });
+
+  it("still refuses a form that was replaced by a newer version: it is the older half of a chain", async () => {
+    store.form_instances = [instance({ id: "rev-1", status: "revised" })];
+
+    await expect(deleteInstance("rev-1", undefined, { allowFinalized: true })).rejects.toThrow(InstanceProtectedError);
+    expect(store.form_instances).toHaveLength(1);
+  });
+
+  it("without the option it still refuses, and says an administrator can delete it", async () => {
+    store.form_instances = [instance({ id: "final-3", status: "finalized", finalized_at: "2026-09-02T10:00:00Z" })];
+
+    await expect(deleteInstance("final-3")).rejects.toThrow(/only an administrator can delete one/);
+    expect(store.form_instances).toHaveLength(1);
+  });
+
+  it("puts the earlier version back to finalized when the revision that replaced it is deleted", async () => {
+    store.form_instances = [
+      instance({ id: "orig", status: "revised", finalized_at: "2026-09-02T10:00:00Z" }),
+      instance({ id: "rev", status: "finalized", finalized_at: "2026-10-02T10:00:00Z", revises_instance_id: "orig" }),
+    ];
+    store.form_instance_events = [{ instance_id: "orig", kind: "revised", actor: "admin", detail: { revisionId: "rev" } }];
+
+    await deleteInstance("rev", undefined, { allowFinalized: true });
+
+    expect(store.form_instances.map((row) => [row.id, row.status])).toEqual([["orig", "finalized"]]);
+  });
+
+  it("leaves the earlier version alone when a different revision replaced it", async () => {
+    store.form_instances = [
+      instance({ id: "orig", status: "revised", finalized_at: "2026-09-02T10:00:00Z" }),
+      instance({ id: "old-rev", status: "finalized", finalized_at: "2026-10-02T10:00:00Z", revises_instance_id: "orig" }),
+    ];
+    store.form_instance_events = [{ instance_id: "orig", kind: "revised", actor: "admin", detail: { revisionId: "someone-else" } }];
+
+    await deleteInstance("old-rev", undefined, { allowFinalized: true });
+
+    expect(store.form_instances.map((row) => [row.id, row.status])).toEqual([["orig", "revised"]]);
   });
 });
 
