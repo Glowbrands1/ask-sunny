@@ -28,6 +28,12 @@ const said = (words: string) => `${/remy calder/i.test(words) ? words.replace(/<
 
 /** A Corrective Action card for Remy Calder, where the stand-in model decides `termination` or not. */
 async function card(t: ReplayContext, words: string, termination: boolean) {
+  /*
+   * Setup only (Pau's Failure 2 review, 23-24 Nov 2026): each call is a fresh card for Remy's 11/12 incident, one per
+   * wording tested; a form an earlier call saved would now be asked about as the same incident (same_incident_on_file).
+   * The earlier calls' forms are archived, so each wording is tested on its own. What each case checks is unchanged.
+   */
+  for (const row of t.forms() as Record<string, unknown>[]) if (!row.archived_at) row.archived_at = "2026-11-14T22:00:00Z";
   vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
   t.directory([...STAFF]);
   t.as("salon_director", KEARNEY);

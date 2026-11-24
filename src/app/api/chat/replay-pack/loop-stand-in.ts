@@ -231,3 +231,14 @@ export function evidenceFrom(view: LoopView, quote?: string, back = 0): { messag
   const opening = (turn?.text ?? "").split(/\s+/).reduce((kept, word) => (kept.full || (kept.text !== "" && kept.text.length + word.length + 1 > 40) ? { ...kept, full: true } : { text: `${kept.text} ${word}`.trim(), full: false }), { text: "", full: false }).text;
   return { message_id: turn?.messageIds?.at(-1) ?? "current", quote: quote ?? opening };
 }
+
+/**
+ * A setup that files a second form for the same person and incident date (to have both on file) now meets the
+ * same-incident question (Pau's Failure 2 review, 23-24 Nov 2026: `same_incident_on_file`). The setup answers it as a
+ * manager would: SEPARATE_INCIDENT, and the stand-in proposes again with that answer as its evidence.
+ */
+export const SEPARATE_INCIDENT = "it's a separate incident";
+export function separateIfSaid(view: LoopView): Record<string, unknown> {
+  return view.turns.filter((turn) => turn.role === "user").at(-1)?.text === SEPARATE_INCIDENT ? { separate_incident_evidence: evidenceFrom(view, SEPARATE_INCIDENT) } : {};
+}
+
