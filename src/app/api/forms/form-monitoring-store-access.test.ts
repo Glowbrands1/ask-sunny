@@ -53,7 +53,6 @@ const row = (id: string, createdBy = "someone-else") => ({
   followedUpBy: null,
   finalizedAt: null,
   exportedAt: null,
-  archivedAt: null,
   revisesInstanceId: null,
   createdAt: "2026-09-07T12:00:00Z",
   updatedAt: "2026-09-07T12:00:00Z",
@@ -176,7 +175,6 @@ async function load(options: Options) {
         ? { instance: row(id, options.created?.includes(id) ? options.subject : "someone-else"), version: { id: "v", document: { paper: "letter", blocks: [] }, variants: [] }, values: [], events: [] }
         : null,
     listInstances: async (
-      _view: string,
       _limit: number | undefined,
       filter?: { locationIds?: string[]; ownNullLocationCreatedBy?: string; ownCreatedBy?: string },
     ) => {
@@ -422,7 +420,7 @@ describe("the server pages (Form Monitoring, Overview, rail badge) apply the sam
       expect(source, file).toMatch(/pageFormsAccess\(/);
       expect(source, file).toMatch(/actorMaySeeInstance\(|mayRead/);
       expect(source, file).not.toMatch(/listOutstandingFollowUps\(\)/);
-      expect(source, file).not.toMatch(/listInstances\(view satisfies InstanceView\)/);
+      expect(source, file).not.toMatch(/listInstances\(\)/);
     }
   });
   it("the all-store list is data, not code: no user id is hardcoded in the visibility module", () => {

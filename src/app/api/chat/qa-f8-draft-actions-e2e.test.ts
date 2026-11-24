@@ -465,7 +465,7 @@ describe('QA F8 case 1: "delete that draft" after Sunny opened a draft', () => {
       const answer = await thread.say(words);
       expect(answer.content).not.toMatch(NOT_CHANGED);
       expect(answer.content).toMatch(/can't delete the draft/);
-      expect(answer.content).toMatch(/Delete and archive filed forms/);
+      expect(answer.content).toMatch(/Delete filed forms/);
       expect(answer.content).toMatch(/Form Monitoring/);
       expect(answer.content).toMatch(/finalized form stays on file/);
       expect(row(draft)?.status).toBe("draft");

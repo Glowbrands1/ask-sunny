@@ -669,6 +669,7 @@ describe("reading one video obeys the list's status boundary", () => {
 
   it("reads the permission from the server's matrix, not from the request", () => {
     const code = ROUTE_SOURCE.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
-    expect(code).toMatch(/hasPermission\(\s*DEFAULT_PERMISSION_MATRIX,\s*context\.identity\.role/);
+    // Changed on purpose (Pau, 23 Nov 2026): the server's matrix is the ACTIVE one — the defaults plus the saved changes.
+    expect(code).toMatch(/hasPermission\(\s*activePermissionMatrix\(\),\s*context\.identity\.role/);
   });
 });

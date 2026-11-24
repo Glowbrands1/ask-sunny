@@ -87,7 +87,7 @@ async function readOnFile(input: {
 
   try {
     // PRIVATE_CREATOR_FORMS: over-read, then trim to the page; off, READ_LIMIT itself.
-    const read = await listInstances("all", privateAwareLimit(READ_LIMIT), {
+    const read = await listInstances(privateAwareLimit(READ_LIMIT), {
       ...instanceListFilterFor(input.actor),
       employeeNameWords: words,
     });

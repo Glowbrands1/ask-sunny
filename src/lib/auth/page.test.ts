@@ -277,7 +277,8 @@ describe("the guard's behaviour, with the framework stubbed", () => {
      * a caller could supply permissions.
      */
     const source = readFileSync("src/lib/auth/page.ts", "utf8");
-    expect(source).toContain("DEFAULT_PERMISSION_MATRIX");
+    // Changed on purpose (Pau, 23 Nov 2026): the SERVER's matrix is the active one — the defaults plus the saved changes.
+    expect(source).toContain("activePermissionMatrix()");
     expect(source).not.toMatch(/permissionMatrix|useAppStore|searchParams/);
   });
 

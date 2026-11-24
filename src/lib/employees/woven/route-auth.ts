@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 
 import { authorizeRequest } from "@/lib/auth/server";
 import { AuthError, type AuthorizedContext } from "@/lib/auth/types";
-import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
+import { activePermissionMatrix, hasPermission } from "@/lib/permissions";
 import { WovenStatusError } from "./status";
 import { EmployeeStoreError } from "./store";
 
@@ -23,7 +23,7 @@ import { EmployeeStoreError } from "./store";
  */
 export async function authorizeWovenPeopleRequest(request: Request): Promise<AuthorizedContext> {
   const context = await authorizeRequest(request, "manage_users");
-  if (!hasPermission(DEFAULT_PERMISSION_MATRIX, context.identity.role, "manage_integrations")) {
+  if (!hasPermission(activePermissionMatrix(), context.identity.role, "manage_integrations")) {
     throw new AuthError("forbidden", "Your role does not have permission to do that.");
   }
   return context;

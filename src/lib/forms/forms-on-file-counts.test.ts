@@ -2,16 +2,16 @@ import { describe, expect, it } from "vitest";
 
 import { countFormsOnFile, type CountedRow } from "./forms-on-file-counts";
 
-/* QA's f081 (20 Nov 2026): 11/19 had 5 of one person's CAs (2 archived) and 1 of a different person's ("<A> Te"). */
+/* QA's f081 (20 Nov 2026): 11/19 had 5 of one person's CAs (2 of them were flagged archived; Pau, 23 Nov 2026: there is no archive, a form is draft or finalized) and 1 of a different person's ("<A> Te"). */
 const CA = "Corrective Action Form";
-const row = (employeeName: string, formDate: string, status: string, archived = false): CountedRow => ({ employeeName, templateName: CA, formDate, status, archivedAt: archived ? `${formDate}T23:00:00Z` : null });
+const row = (employeeName: string, formDate: string, status: string): CountedRow => ({ employeeName, templateName: CA, formDate, status });
 
 describe("countFormsOnFile", () => {
   it("counts per person, form and date, and never folds a different name into another person", () => {
     const rows = [
       ...Array.from({ length: 3 }, () => row("Avery Avebury", "2026-11-19", "draft")),
-      ...Array.from({ length: 2 }, () => row("Avery Avebury", "2026-11-19", "draft", true)),
-      row("Avery Av", "2026-11-19", "draft", true),
+      ...Array.from({ length: 2 }, () => row("Avery Avebury", "2026-11-19", "draft")),
+      row("Avery Av", "2026-11-19", "draft"),
       row("avery  avebury", "2026-11-18", "finalized"),
     ];
     const counts = countFormsOnFile(rows);
@@ -20,7 +20,8 @@ describe("countFormsOnFile", () => {
     const avery = counts.by_person.find((person) => person.employee === "Avery Avebury")!;
     expect(avery.by_form[0]!.by_date).toEqual([
       { date: "2026-11-18", count: 1, statuses: { finalized: 1 } },
-      { date: "2026-11-19", count: 5, statuses: { draft: 3, "draft (archived)": 2 } },
+      { date: "2026-11-19", count: 5, statuses: { draft: 5 } } // was { draft: 3, "draft (archived)": 2 }: no archived bucket, on purpose (Pau, 23 Nov 2026)
+    ,
     ]);
   });
   it("adds up: every person's total is the sum of its dates, and the total the sum of the people", () => {

@@ -41,7 +41,7 @@ export async function applyLoopFollowUpDefault(input: {
   try {
     await setFollowUpDate(input.instance.id, date, input.actorId);
   } catch (error) {
-    // An archived or completed form keeps what it has; the form is created either way.
+    // A completed form keeps what it has; the form is created either way.
     if (error instanceof FollowUpError) return null;
     throw error;
   }
