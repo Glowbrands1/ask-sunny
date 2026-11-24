@@ -459,6 +459,12 @@ export async function listHrQueue(actor: FormsActor, now: Date = new Date()): Pr
     .select("id, template_name, employee_name, location_name, created_by, hr_approval_state, hr_approval_requested_at, hr_approval_requested_by, hr_approval_senders")
     .in("hr_approval_state", ["pending", "changes_requested", "rejected"])
     .eq("status", "draft")
+    /*
+     * An archived form is out of HR's queue, its count and the 6 AM reminder bell (QA, 23 Nov 2026: a duplicate exit
+     * draft archived while still "pending" kept showing under "Needs your decision"). Its stored state is left as is;
+     * un-archiving brings it back.
+     */
+    .is("archived_at", null)
     .order("hr_approval_requested_at", { ascending: true })
     .limit(500);
   if (error) throw new Error(`Could not read the forms waiting for approval: ${error.message}`);
@@ -560,6 +566,7 @@ export async function listMyFormsWithHr(actor: FormsActor): Promise<MyHrFormRow[
     .or(`created_by.eq."${actor.id}",hr_approval_senders.cs.{"${actor.id}"}`)
     .in("hr_approval_state", ["pending", "changes_requested", "rejected"])
     .eq("status", "draft")
+    .is("archived_at", null)
     .order("hr_approval_requested_at", { ascending: false })
     .limit(100);
   if (error) throw new Error(`Could not read your forms with HR: ${error.message}`);
@@ -640,6 +647,7 @@ export async function readHrApprovalsFor(subject: string, verified: boolean, now
     .select("id, template_name, employee_name, location_name, hr_approval_state, hr_approval_requested_at")
     .or(`created_by.eq."${subject}",hr_approval_senders.cs.{"${subject}"}`)
     .eq("hr_approval_state", "approved")
+    .is("archived_at", null)
     .gte("updated_at", since)
     .order("updated_at", { ascending: false })
     .limit(20);
