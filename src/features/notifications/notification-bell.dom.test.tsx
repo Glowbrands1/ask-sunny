@@ -157,3 +157,42 @@ describe("removing notifications from the bell", () => {
     expect(screen.queryByRole("button", { name: "Clear all" })).toBeNull();
   });
 });
+
+/* Owner, 24 Nov 2026: "do not remove the unread if not solved yet keep it persistent unless [HR] or anyone sends it back
+ * to manager". A pinned row (HR's request while the form still waits) stays unread when opened, has no ×, and survives
+ * Mark all as read and Clear all in this panel. */
+describe("a pinned approval request", () => {
+  const pinnedData: BellData = {
+    unread: 2,
+    items: [
+      { id: "p1", kind: "form_hr_approval_request", title: "A form is waiting for your approval", body: "Resignation/Exit Form for Pell Hargrove", href: "/forms/hr-approval/f1", createdAt: new Date().toISOString(), readAt: null, pinned: true },
+      { id: "n9", kind: "ai_training_submission", title: "Rowan Pike submitted their work", body: "", href: null, createdAt: new Date().toISOString(), readAt: null },
+    ],
+  };
+
+  it("opening it goes to the form and leaves it unread", async () => {
+    render(<NotificationBell data={pinnedData} />);
+    fireEvent.click(screen.getByRole("button", { name: /Notifications/ }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /^A form is waiting for your approval/ }));
+    });
+    expect(markRead).not.toHaveBeenCalled();
+    expect(push).toHaveBeenCalledWith("/forms/hr-approval/f1");
+    expect(screen.getByRole("button", { name: "Notifications, 2 unread" })).toBeTruthy();
+  });
+
+  it("has no ×, and Mark all as read and Clear all leave it", async () => {
+    render(<NotificationBell data={pinnedData} />);
+    fireEvent.click(screen.getByRole("button", { name: /Notifications/ }));
+    expect(screen.queryByRole("button", { name: "Remove notification: A form is waiting for your approval" })).toBeNull();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Mark all as read" }));
+    });
+    expect(screen.getByRole("button", { name: "Notifications, 1 unread" })).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Clear all" }));
+    });
+    expect(screen.getByRole("button", { name: /^A form is waiting for your approval/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Rowan Pike/ })).toBeNull();
+  });
+});
