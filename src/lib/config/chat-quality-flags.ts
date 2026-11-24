@@ -5092,6 +5092,9 @@ export function typedEmployeeEveryCardEnabled(): boolean {
  */
 export function adminCardAsksSalonEnabled(): boolean {
   return envFlag("ADMIN_CARD_ASKS_SALON_ENABLED");
+}
+
+/**
  * LOOP_CARD_CITES_CONDUCT_LINE (QA's live test, 24 Nov 2026; default off; same flag in both apps): "Draft a corrective
  * action form for a till shortage for Test Employee" carded "Standards of Conduct …, JBA Policy Manual p.12", the
  * heading's page, while the saved draft cites the Register / Bank shortages line on its own page. On: a loop card citing
