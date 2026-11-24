@@ -911,3 +911,72 @@ describe("the STC SD L10s", () => {
     for (const list of Object.values(SD_DISTRICT_SALONS)) for (const s of list) expect(salonByNumber(s.number)).toBeTruthy();
   });
 });
+
+// The DM L10 facilitator, 23 Nov 2026, in their words:
+//  - "can you remove the timer setting on the L10 meetings? Currently, it moves us to the next section after a certain
+//    timeframe, even when we aren't ready yet."
+//  - the "Someone else changed this while you were editing" banner ("issues › GB for DM and Office use › resolvedAt")
+//    "throughout our meeting"
+//  - "i also cannot add IDS topics anymore to the DM l10 meeting."
+describe("DM L10 report, 23 Nov 2026 (the DM L10 facilitator)", () => {
+  it('"it moves us to the next section after a certain timeframe, even when we aren\'t ready yet": the meeting stays on its section when the planned time is over', async () => {
+    vi.useFakeTimers();
+    renderView();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Start meeting" }));
+    });
+    const before = screen.getByTestId("section-position").textContent;
+    // 12 minutes: past every planned time on the agenda (the first section is planned for 5).
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(12 * 60 * 1000);
+    });
+    expect(screen.getByTestId("section-position").textContent).toBe(before);
+    expect(screen.queryByText(/ran out of time/)).toBeNull();
+  });
+
+  const solvedMine = { id: "i1", title: "GB for DM and Office use", notes: "", resolved: false };
+  const stale = (latestDoc: Record<string, unknown>) => ({ ok: false as const, kind: "stale" as const, latest: loaded(7, latestDoc) });
+
+  it('"issues › GB for DM and Office use › resolvedAt": both of us solving the issue shows no banner and saves', async () => {
+    const save = vi.fn<() => Promise<SaveOutcome>>().mockResolvedValueOnce(stale({ issues: [{ ...solvedMine, resolved: true, resolvedSession: "s1", resolvedAt: "2026-11-23T08:10:09.000Z" }] }));
+    renderView({ save: save as unknown as SaveFn, initial: loaded(3, { issues: [solvedMine] }) });
+    fireEvent.click(screen.getByRole("button", { name: /\d · IDS/ }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Solve GB for DM and Office use" }));
+    });
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByTestId("save-status").textContent).toBe("All changes saved"));
+    expect(screen.queryByText(/Someone else changed this while you were editing/)).toBeNull();
+  });
+
+  describe('"i also cannot add IDS topics anymore to the DM l10 meeting": two people changing the same thing never pauses the page', () => {
+    it("a real clash (we both retitled an issue) shows no banner, the page stays usable, a new topic is added and saved with the latest title", async () => {
+      const save = vi
+        .fn<() => Promise<SaveOutcome>>()
+        .mockResolvedValueOnce(stale({ issues: [{ ...solvedMine, title: "Their title" }] }))
+        .mockResolvedValue({ ok: true, version: 8, updatedAt: "t" });
+      renderView({ save: save as unknown as SaveFn, initial: loaded(3, { issues: [solvedMine] }) });
+      fireEvent.click(screen.getByRole("button", { name: /\d · IDS/ }));
+      fireEvent.click(screen.getByRole("button", { name: /GB for DM and Office use/, expanded: false }));
+      await act(async () => {
+        fireEvent.change(screen.getByLabelText("Issue title"), { target: { value: "My title" } });
+      });
+      await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+      expect(screen.queryByText(/Someone else changed this while you were editing/)).toBeNull();
+      expect(document.querySelector("[inert]")).toBeNull();
+      // Add topics both ways: the Identify field on the IDS page and the "+ New Issue" window.
+      await act(async () => {
+        fireEvent.change(screen.getByLabelText("Identify a new issue"), { target: { value: "Topic one" } });
+        fireEvent.click(screen.getByRole("button", { name: "Add issue" }));
+      });
+      fireEvent.click(screen.getByRole("button", { name: "+ New Issue" }));
+      await act(async () => {
+        fireEvent.change(within(screen.getByRole("form", { name: "New Issue" })).getByRole("textbox", { name: "New Issue" }), { target: { value: "Topic two" } });
+        fireEvent.click(screen.getByRole("button", { name: "Add to IDS" }));
+      });
+      await waitFor(() => expect(screen.getByTestId("save-status").textContent).toBe("All changes saved"));
+      const doc = (save.mock.calls.at(-1) as unknown as [string, number, unknown])[2] as { issues: { title: string }[] };
+      expect(doc.issues.map((i) => i.title)).toEqual(["My title", "Topic one", "Topic two"]);
+    });
+  });
+});
