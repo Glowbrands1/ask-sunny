@@ -37,6 +37,7 @@ import {
   WEEK_MONTH,
   WEEK_YEAR_TO_DATE,
   lastFullMonthsOf,
+  isMonthWeek,
   type ReviewFilters,
 } from "./filters";
 import {
@@ -266,6 +267,28 @@ function lastFullMonthsQuery<
     .not("reporting_period_id", "is", null)
     .gte("counted_at", googleReviewsDayStartUtc(window.start))
     .lt("counted_at", googleReviewsDayStartUtc(window.endExclusive));
+}
+
+/**
+ * ONE CALENDAR MONTH (`yyyy-mm`): the month-to-date rule over the whole month —
+ * counted, counting from Central midnight on its 1st up to Central midnight on
+ * the next month's 1st. What the leaderboard's single-month Period ranks by.
+ */
+function calendarMonthQuery<
+  Q extends {
+    not(column: string, operator: string, value: unknown): Q;
+    gte(column: string, value: string): Q;
+    lt(column: string, value: string): Q;
+  },
+>(query: Q, month: string): Q {
+  const year = Number(month.slice(0, 4));
+  const next = Number(month.slice(5, 7)) === 12
+    ? `${year + 1}-01-01`
+    : `${year}-${String(Number(month.slice(5, 7)) + 1).padStart(2, "0")}-01`;
+  return query
+    .not("reporting_period_id", "is", null)
+    .gte("counted_at", googleReviewsDayStartUtc(`${month}-01`))
+    .lt("counted_at", googleReviewsDayStartUtc(next));
 }
 
 /** Rows read per page for the month-by-month table; PostgREST caps a page. */
@@ -653,6 +676,9 @@ export async function loadReviewFeed(
       .not("reporting_period_id", "is", null)
       .gte("counted_at", googleReviewsDayStartUtc(yearStart(today)))
       .lt("counted_at", googleReviewsDayStartUtc(shiftDays(today, 1)));
+  } else if (isMonthWeek(filters.week)) {
+    /* One calendar month: the month-to-date rule over that whole month. */
+    query = calendarMonthQuery(query, filters.week);
   } else if (filters.week !== WEEK_ALL) {
     query = query.eq("period_start", filters.week);
   }

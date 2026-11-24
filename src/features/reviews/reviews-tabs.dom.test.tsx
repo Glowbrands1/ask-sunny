@@ -7,6 +7,7 @@ import { EMPTY_REVIEW_FILTERS, parseReviewFilters, type ReviewsTab } from "@/lib
 import type { ReviewFeed, ReviewsSnapshot } from "@/lib/reviews/queries";
 import { goalContext } from "@/lib/reviews/goal";
 import type { MonthlyProgress, MonthlyProgressRow } from "@/lib/reviews/monthly-progress";
+import { formatLongMonth, leaderboardMonths } from "@/lib/reviews/leaderboard-period";
 import { EMPTY_REVIEW_TIMELINE, type ReviewTimeline } from "@/lib/reviews/timeline";
 import type {
   DashboardReview,
@@ -789,16 +790,24 @@ describe("the ranked leaderboard", () => {
       total: row("total", 0, 0, 0),
     };
 
-    it("offers only This month, L3, L6 and YTD in Period: no weeks", () => {
+    /*
+     * Was "exactly four options". Changed on purpose (Pau, 23 Nov 2026: "pls add
+     * the per month for both like September october november"): after YTD come
+     * the full months one by one, newest first. Still no weeks.
+     */
+    it("offers This month, L3, L6, YTD and each full month in Period: no weeks", () => {
       draw({ tab: "leaderboard", locations: board, monthly });
 
       const period = screen.getByLabelText(/Period/) as HTMLSelectElement;
       const labels = [...period.options].map((option) => option.textContent ?? "");
-      expect(labels).toHaveLength(4);
       expect(labels[0]).toBe("This month to date");
       expect(labels[1]).toMatch(/^L3 · last 3 full months/);
       expect(labels[2]).toMatch(/^L6 · last 6 full months/);
       expect(labels[3]).toBe("YTD · year to date");
+      const months = leaderboardMonths();
+      expect(months.length).toBeGreaterThanOrEqual(6);
+      expect(labels.slice(4)).toEqual(months.map(formatLongMonth));
+      expect(labels.slice(4).every((label) => /^[A-Z][a-z]+ \d{4}$/.test(label))).toBe(true);
       expect(labels.join(" ")).not.toMatch(/week|Sep \d+ – /i);
       expect(period.value).toBe("month");
       expect(screen.queryByLabelText(/^Week/)).toBeNull();
@@ -826,6 +835,56 @@ describe("the ranked leaderboard", () => {
       expect(within(kearney).getByRole("link", { name: /31/ }).getAttribute("href")).toContain("week=3months");
       expect(document.body.textContent).toContain("L3 · last 3 full months · Jun – Aug 2026");
       expect(document.body.textContent).toContain("2 of 6");
+    });
+
+    /*
+     * Pau, 23 Nov 2026: "pls add the per month for both like September october
+     * november and make sure it syncs in the data below". One month picked in
+     * Period: the rows below rank, draw and link by that month alone.
+     */
+    it("ranks by one month, September, against 10, and shows it in the rows below", () => {
+      const perMonth: MonthlyProgress = {
+        ...monthly,
+        months: ["2026-07", "2026-08", "2026-09", "2026-10"],
+        currentMonth: "2026-10",
+        rows: monthly.rows.map((entry) => ({
+          ...entry,
+          months:
+            entry.storeCode === "307" ? [1, 2, 12, 3]
+            : entry.storeCode === "309" ? [9, 9, 4, 9]
+            : entry.storeCode === "313" ? [0, 0, 10, 0]
+            : [0, 0, 1, 0],
+          beforeCounting: [false, false, false, false],
+        })),
+      };
+      draw({ tab: "leaderboard", locations: board, monthly: perMonth, filterOverrides: { week: "2026-09" } });
+
+      expect((screen.getByLabelText(/Period/) as HTMLSelectElement).value).toBe("2026-09");
+      expect(ranking().slice(0, 3)).toEqual([
+        { salon: "NE Grand Island", rank: "Rank 1" },
+        { salon: "NE Omaha 132nd and Maple", rank: "Rank 2" },
+        { salon: "NE Kearney", rank: "Rank 3" },
+      ]);
+      const grandIsland = screen.getByRole("link", { name: "NE Grand Island" }).closest("li") as HTMLElement;
+      expect(grandIsland.textContent).toContain("12 / 10");
+      expect(grandIsland.textContent).toContain("Goal met");
+      expect(within(grandIsland).getByRole("link", { name: /12/ }).getAttribute("href")).toContain("week=2026-09");
+      const kearney = screen.getByRole("link", { name: "NE Kearney" }).closest("li") as HTMLElement;
+      expect(kearney.textContent).toContain("4 / 10");
+      expect(kearney.textContent).toContain("Below goal");
+      expect(kearney.textContent).not.toContain("pace");
+      expect(document.body.textContent).toContain("September 2026 · full month");
+      expect(document.body.textContent).toContain("2 of 6");
+      expect(screen.getByRole("list", { name: /Salons ranked/ }).getAttribute("aria-label")).toContain(
+        "September 2026",
+      );
+    });
+
+    it("says so when the month picked is not in the month-by-month figures", () => {
+      draw({ tab: "leaderboard", locations: board, monthly, filterOverrides: { week: "2025-02" } });
+
+      expect(document.body.textContent).toContain("No figures are held for February 2025");
+      expect(screen.queryByRole("list", { name: /Salons ranked/ })).toBeNull();
     });
 
     it("ranks by the last 6 full months against 60", () => {

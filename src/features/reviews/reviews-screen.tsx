@@ -46,7 +46,11 @@ import {
 import { WindowTag } from "./review-goal-parts";
 import { ReviewGoalTable } from "./reviews-goal-table";
 import { ReviewsLeaderboard } from "./reviews-leaderboard";
-import { leaderboardPeriodOf } from "@/lib/reviews/leaderboard-period";
+import {
+  isSingleMonthPeriod,
+  leaderboardPeriodLabel,
+  leaderboardPeriodOf,
+} from "@/lib/reviews/leaderboard-period";
 import { ReviewsMonthlyTable } from "./reviews-monthly-table";
 import type { MonthlyProgress } from "@/lib/reviews/monthly-progress";
 import { ReviewsTabs } from "./reviews-tabs";
@@ -615,6 +619,12 @@ function LeaderboardView({
           <>
             Ranked by qualifying reviews this month. The goal is {goal.target} per salon in{" "}
             {formatGoalMonth(goal)}; salons on the same count share a rank.
+          </>
+        ) : isSingleMonthPeriod(leaderboardPeriodOf(filters.week)) ? (
+          <>
+            Ranked by qualifying reviews in {leaderboardPeriodLabel(leaderboardPeriodOf(filters.week))},
+            the month chosen in Period, against {goal.target} per salon; salons on the same count
+            share a rank.
           </>
         ) : (
           <>

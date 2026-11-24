@@ -12,6 +12,7 @@ import {
   SEARCH_LIMIT,
   STATUS_FILTERS,
   hasActiveReviewFilters,
+  isMonthWeek,
   reviewsHref,
   reviewsTabHref,
   WEEK_ALL,
@@ -22,7 +23,12 @@ import {
   WEEK_YEAR_TO_DATE,
   type ReviewFilters,
 } from "@/lib/reviews/filters";
-import { leaderboardPeriodOf, leaderboardPeriodWeek } from "@/lib/reviews/leaderboard-period";
+import {
+  formatLongMonth,
+  leaderboardMonths,
+  leaderboardPeriodOf,
+  leaderboardPeriodWeek,
+} from "@/lib/reviews/leaderboard-period";
 import { formatMonthsWindow, formatWeekRange, lastFullMonthsWindow } from "@/lib/reviews/reporting-week";
 import { cn } from "@/lib/utils/cn";
 
@@ -97,8 +103,9 @@ export function ReviewsFilterBar({
   /**
    * THE SALON LEADERBOARD'S PERIOD (Pau, 23 Nov 2026: "they dont want week, they
    * want per month, per 3 months per 6 months and YTD"). The Week control
-   * becomes "Period" and offers only This month to date, L3, L6 and YTD; any
-   * other week value reads as This month, the board's default.
+   * becomes "Period" and offers This month to date, L3, L6, YTD and each full
+   * month ("October 2026"); any other week value reads as This month, the
+   * board's default.
    */
   periodsOnly?: boolean;
 }) {
@@ -119,6 +126,20 @@ export function ReviewsFilterBar({
     router.push(reviewsHref({ ...filters, ...next, openReviewId: null }));
   };
 
+  /*
+   * ONE MONTH AT A TIME (Pau, 23 Nov 2026: "pls add the per month for both like
+   * September october november"). Every full month the Month by month table
+   * shows; a month linked to from elsewhere that is not among them is still
+   * listed, so the control always says what is in force.
+   */
+  const monthOptions = leaderboardMonths().map((month) => ({
+    value: month,
+    label: formatLongMonth(month),
+  }));
+  if (isMonthWeek(filters.week) && !monthOptions.some((option) => option.value === filters.week)) {
+    monthOptions.push({ value: filters.week, label: formatLongMonth(filters.week) });
+  }
+
   /* The weeks newest first: "this week" is what somebody reaches for. */
   const weekOptions = [
     { value: WEEK_ALL, label: "All time" },
@@ -134,6 +155,8 @@ export function ReviewsFilterBar({
       label: `L6 · last 6 full months (${formatMonthsWindow(lastFullMonthsWindow(6))})`,
     },
     { value: WEEK_YEAR_TO_DATE, label: "YTD · year to date" },
+    /* Each full month on its own, newest first: "October 2026", "September 2026" … */
+    ...monthOptions,
     ...[...weekStarts]
       .reverse()
       .slice(1)
@@ -146,6 +169,7 @@ export function ReviewsFilterBar({
     ...weekOptions.filter((option) =>
       [WEEK_LAST_THREE_MONTHS, WEEK_LAST_SIX_MONTHS, WEEK_YEAR_TO_DATE].includes(option.value),
     ),
+    ...monthOptions,
   ];
 
   /*

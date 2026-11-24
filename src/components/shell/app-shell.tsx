@@ -117,7 +117,8 @@ export function AppShell({
               Demo
             </Badge>
           ) : null}
-          {bell ? <NotificationBell data={bell} /> : null}
+          {/* Phones only: on desktop the rail's "Notifications" row is the bell (sidebar.tsx). */}
+          {bell ? <NotificationBell data={bell} className="lg:hidden" /> : null}
           <Dialog>
             <DialogTrigger asChild>
               <Button
@@ -183,6 +184,7 @@ export function AppShell({
           showAppSwitcher={showAppSwitcher}
           showLeadershipHub={showLeadershipHub}
           meetingTabs={meetingTabs}
+          bell={bell}
         />
         </div>
       </aside>

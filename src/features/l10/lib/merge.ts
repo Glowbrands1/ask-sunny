@@ -31,7 +31,16 @@ export function mergeThreeWay(base: Json, local: Json, remote: Json, path = "", 
     const keys = new Set([...Object.keys(remote), ...Object.keys(local)]);
     const merged: Record<string, Json> = {};
     const conflicts: string[] = [];
+    // Two people solving the same issue is not a clash: both wanted it solved, and only the clock time they pressed
+    // Solve differs (the DM L10 facilitator, 23 Nov 2026: "issues › … › resolvedAt" stopped the page all meeting). The
+    // earlier solve time and the other person's session are kept. Solved by one and reopened by the other still asks.
+    const bothSolved = local.resolved === true && remote.resolved === true;
     for (const k of keys) {
+      if (bothSolved && (k === "resolvedAt" || k === "resolvedSession") && local[k] !== undefined && remote[k] !== undefined) {
+        const lv = local[k], rv = remote[k];
+        merged[k] = k === "resolvedAt" && typeof lv === "string" && typeof rv === "string" && Date.parse(lv) < Date.parse(rv) ? lv : rv;
+        continue;
+      }
       const r = mergeThreeWay(b[k], local[k], remote[k], path ? `${path} › ${k}` : k, prefer);
       conflicts.push(...r.conflicts);
       if (r.merged !== undefined) merged[k] = r.merged;
