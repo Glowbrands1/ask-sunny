@@ -76,6 +76,7 @@ import { expandPolicyQuery } from "@/lib/knowledge/policy-retrieval";
 import type { SourceCitation } from "@/types";
 import { followUpChangeAsked, followUpForCard, followUpLine, statedFollowUpDate } from "@/lib/forms/follow-up-default";
 import type { AccessScope, ChatFormProposal, ChatMessage, Role } from "@/types";
+import { adviceNotForm } from "@/lib/ai/agent-loop/advice-not-form";
 import { accountKey, personKey, replyTurns, type CardRecord, type ExitOfferRecord, type NameQuestionRecord, type PersonAskedRecord, type SameIncidentRecord, type TurnRecord } from "@/lib/ai/agent-loop/card-record";
 
 /**
@@ -3986,6 +3987,18 @@ export async function proposeForm(
   /* HARD GUARD (STAFF_PICKER): a form asked for a whole staff is never one card for everyone. */
   if ((await import("@/lib/forms/staff-picker")).isBareWholeStaff(context.question) || (await import("@/lib/forms/staff-picker")).asksForWholeStaff(context.question)) {
     return { reason_code: "whole_staff", error: "This form was asked for a whole staff. A form is for one person at a time: call list_staff and say what it returns." };
+  }
+  /*
+   * QA (24 Nov 2026, live on the loop, Standard mode, twice): "Coach a leader on running better follow-up conversations"
+   * was answered only "Who is this Coaching Form for?". A turn whose words ask for advice and for no form (the old
+   * path's question reader, plus an advice imperative about nobody in particular: `advice-not-form.ts`) is answered: no
+   * card, and never the who-question. A form asked for in any words ("Create a coaching form.", "coaching form for
+   * <name>", "write up <name>") is no advice and goes on as before.
+   */
+  if (!effects.proposal && !context.cardOnScreen && !context.openFormId && adviceNotForm(context.question, context.history)) {
+    return {
+      reason_code: "advice_not_form", error: "The manager asked for advice, not a form: answer it now in your reply (practical steps, a short checklist, a sample script or role-play where it helps, citing the manual where a policy applies). Propose no card and never ask who a form is for. You may offer the form in one closing line; propose it only when the manager asks for it.",
+    };
   }
   const key = typeof input.template_key === "string" ? input.template_key.trim() : "";
   const templates = await creatableTemplates(context.actor.role).catch(() => null);
