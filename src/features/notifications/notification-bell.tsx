@@ -5,25 +5,57 @@ import { useState, useTransition } from "react";
 import { Bell } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/overlays";
+import { Popover, PopoverContent, PopoverTrigger, Tooltip } from "@/components/ui/overlays";
 import type { AppNotification, BellData } from "@/lib/notifications/types";
 import { cn } from "@/lib/utils/cn";
 
-import { markNotificationsReadAction } from "./actions";
+import { dismissNotificationsAction, markNotificationsReadAction } from "./actions";
+import { NotificationsPanel } from "./notifications-panel";
 
 /**
- * THE BELL in the top bar: the signed-in person's notifications, newest first,
- * with a count of the unread ones. Opening one marks it read and goes to it.
- * First used for AI Training submissions (Pau, 20 Nov 2026).
+ * THE BELL: the signed-in person's notifications, newest first, with a count of
+ * the unread ones. Opening one marks it read and goes to it. First used for AI
+ * Training submissions (Pau, 20 Nov 2026), then the HR form approval.
+ *
+ * WHERE IT SITS (Pau, 23 Nov 2026): first "can we remove this and add a notification bar instead below the overview",
+ * then, with the sibling app's rail as the picture, "i dont want a bell, i need a bar". So it is a labelled
+ * "Notifications" bar in the rail (`rail`), directly under Overview, on desktop and in the phone drawer alike, and the
+ * top bar has no bell. Same people, same panel, same count. (`bar`, the top-bar button, is kept for any other caller.)
  */
-export function NotificationBell({ data }: { data: BellData }) {
+export function NotificationBell({
+  data,
+  variant = "bar",
+  collapsed = false,
+  onNavigate,
+  panelSide = "right",
+  className,
+}: {
+  data: BellData;
+  variant?: "bar" | "rail";
+  /** The rail is collapsed to icons: no label, a tooltip instead. */
+  collapsed?: boolean;
+  /** Called after opening a notification (closes the drawer on a phone). */
+  onNavigate?: () => void;
+  /** Rail only: where the panel opens. The phone drawer is too narrow to open it to the side, so it opens below. */
+  panelSide?: "right" | "bottom";
+  /** Extra classes for the top-bar button (its colour on the band). */
+  className?: string;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   // Read locally at once, so the badge drops before the server answers.
   const [readHere, setReadHere] = useState<Set<string> | "all">(new Set());
+  // Removed locally at once (× or Clear all), so the list and the badge change before the server answers.
+  const [goneHere, setGoneHere] = useState<Set<string> | "all">(new Set());
   const [, start] = useTransition();
   const isRead = (n: AppNotification) => !!n.readAt || readHere === "all" || readHere.has(n.id);
-  const unread = readHere === "all" ? 0 : Math.max(0, data.unread - data.items.filter((n) => !n.readAt && readHere.has(n.id)).length);
+  const isGone = (n: AppNotification) => goneHere === "all" || goneHere.has(n.id);
+  const items = data.items.filter((n) => !isGone(n));
+  // Unread that this panel read or removed come off the server's count straight away.
+  const unread =
+    readHere === "all" || goneHere === "all"
+      ? 0
+      : Math.max(0, data.unread - data.items.filter((n) => !n.readAt && (readHere.has(n.id) || goneHere.has(n.id))).length);
 
   function openOne(n: AppNotification) {
     if (!isRead(n)) {
@@ -33,7 +65,10 @@ export function NotificationBell({ data }: { data: BellData }) {
       });
     }
     setOpen(false);
-    if (n.href) router.push(n.href);
+    if (n.href) {
+      onNavigate?.();
+      router.push(n.href);
+    }
   }
 
   function readAll() {
@@ -43,61 +78,90 @@ export function NotificationBell({ data }: { data: BellData }) {
     });
   }
 
+  /** The × on a row: removes that one from this person's list; never opens it. */
+  function dismissOne(id: string) {
+    setGoneHere((prev) => (prev === "all" ? prev : new Set(prev).add(id)));
+    start(async () => {
+      await dismissNotificationsAction([id]);
+    });
+  }
+
+  /** Clear all: removes every one of this person's notifications. */
+  function clearAll() {
+    setGoneHere("all");
+    start(async () => {
+      await dismissNotificationsAction(null);
+    });
+  }
+
   const label = unread ? `Notifications, ${unread} unread` : "Notifications";
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
+  const badge = unread ? (
+    <span
+      aria-hidden
+      className={cn(
+        "flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-accent px-1 text-[10px] leading-none font-extrabold text-accent-foreground",
+        variant === "bar" || collapsed ? "absolute -top-0.5 -right-0.5" : "ml-auto",
+      )}
+    >
+      {unread > 9 ? "9+" : unread}
+    </span>
+  ) : null;
+
+  const trigger =
+    variant === "rail" ? (
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label={label}
+          className={cn(
+            "relative flex w-full items-center gap-2.5 rounded-full border border-rail-border text-[13.5px] font-semibold text-sidebar-foreground transition-colors hover:bg-hover-surface hover:text-foreground",
+            collapsed ? "justify-center px-0 py-2.5" : "px-3.5 py-2.5",
+          )}
+        >
+          <Bell className="size-4 shrink-0" aria-hidden />
+          {!collapsed ? <span className="truncate">Notifications</span> : null}
+          {badge}
+        </button>
+      </PopoverTrigger>
+    ) : (
       <PopoverTrigger asChild>
         <Button
           variant="ghost"
           size="icon"
           aria-label={label}
-          className="relative text-chrome-foreground hover:bg-hover-surface hover:text-hover-surface-foreground"
+          className={cn("relative text-chrome-foreground hover:bg-hover-surface hover:text-hover-surface-foreground", className)}
         >
           <Bell />
-          {unread ? (
-            <span
-              aria-hidden
-              className="absolute -top-0.5 -right-0.5 flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-accent px-1 text-[10px] leading-none font-extrabold text-accent-foreground"
-            >
-              {unread > 9 ? "9+" : unread}
-            </span>
-          ) : null}
+          {badge}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-[min(22rem,calc(100vw-1.5rem))] p-0">
-        <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
-          <h2 className="text-sm font-bold text-foreground">Notifications</h2>
-          {unread ? (
-            <button type="button" onClick={readAll} className="text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
-              Mark all as read
-            </button>
-          ) : null}
-        </div>
-        {data.items.length ? (
-          <ul className="max-h-[min(26rem,70vh)] overflow-y-auto py-1" aria-label="Notifications">
-            {data.items.map((n) => (
-              <li key={n.id}>
-                <button
-                  type="button"
-                  onClick={() => openOne(n)}
-                  className="flex w-full items-start gap-3 px-4 py-2.5 text-left transition-colors hover:bg-hover-surface"
-                >
-                  <span aria-hidden className={cn("mt-1.5 size-2 shrink-0 rounded-full", isRead(n) ? "bg-transparent" : "bg-accent")} />
-                  <span className="min-w-0 flex-1">
-                    <span className={cn("block text-sm text-foreground", isRead(n) ? "font-medium" : "font-bold")}>
-                      {n.title}
-                      {isRead(n) ? null : <span className="sr-only"> (unread)</span>}
-                    </span>
-                    {n.body ? <span className="mt-0.5 block truncate text-xs text-muted-foreground">{n.body}</span> : null}
-                    <span className="mt-0.5 block text-[11px] text-subtle-foreground">{timeAgo(n.createdAt)}</span>
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="px-4 py-6 text-center text-sm text-muted-foreground">Nothing yet. You will see new submissions here.</p>
-        )}
+    );
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      {variant === "rail" && collapsed ? (
+        <Tooltip content="Notifications" side="right">
+          {trigger}
+        </Tooltip>
+      ) : (
+        trigger
+      )}
+      <PopoverContent
+        align={variant === "rail" ? "start" : "end"}
+        side={variant === "rail" ? panelSide : "bottom"}
+        className="w-[min(22rem,calc(100vw-1.5rem))] p-0"
+      >
+        <NotificationsPanel
+          rows={items.map((n) => ({ id: n.id, title: n.title, body: n.body, meta: timeAgo(n.createdAt), read: isRead(n) }))}
+          unread={unread}
+          onOpen={(id) => {
+            const n = items.find((item) => item.id === id);
+            if (n) openOne(n);
+          }}
+          onDismiss={dismissOne}
+          onClearAll={clearAll}
+          onMarkAllRead={readAll}
+        />
       </PopoverContent>
     </Popover>
   );

@@ -1,11 +1,13 @@
 import {
+  isMonthWeek,
   WEEK_LAST_SIX_MONTHS,
   WEEK_LAST_THREE_MONTHS,
   WEEK_MONTH,
   WEEK_YEAR_TO_DATE,
 } from "./filters";
 import type { ReviewGoalContext } from "./goal";
-import type { MonthlyProgress } from "./monthly-progress";
+import { monthlyProgressStart, monthsBetween, type MonthlyProgress } from "./monthly-progress";
+import { googleReviewsToday } from "./timezone";
 import type { LocationRollup } from "./types";
 
 /**
@@ -24,30 +26,76 @@ import type { LocationRollup } from "./types";
  *   L6         = the last six full months, against target × 6
  *   YTD        = Jan 1 to today, against target × the months so far this year
  *
- * L3 / L6 / YTD are the Month by month table's own totals (`monthly-progress.ts`),
- * never recounted here. A closed window has no pace: a salon has met it or it
+ * ONE MONTH (Pau, 23 Nov 2026: "pls add the per month for both like September
+ * october november"). Each full month the Month by month table shows can be
+ * picked on its own, `yyyy-mm` in the URL, against the monthly target. The
+ * current month is "This month to date".
+ *
+ * L3 / L6 / YTD and single months are the Month by month table's own figures
+ * (`monthly-progress.ts`), never recounted here. A closed window has no pace: a salon has met it or it
  * has not, so those periods are "Goal met" or "Below goal".
  *
  * Pure: no database. It reshapes the rollups so the board's ranking, bar and
  * summary read the chosen figure through the same functions as the month.
  */
 
-export type LeaderboardPeriod = "month" | "l3" | "l6" | "ytd";
+/** A rolling window, or one full calendar month as `yyyy-mm`. */
+export type LeaderboardPeriod = "month" | "l3" | "l6" | "ytd" | `${number}-${number}`;
 
-export const LEADERBOARD_PERIODS: readonly { key: LeaderboardPeriod; week: string; label: string }[] = [
+type RollingPeriod = "month" | "l3" | "l6" | "ytd";
+
+export const LEADERBOARD_PERIODS: readonly { key: RollingPeriod; week: string; label: string }[] = [
   { key: "month", week: WEEK_MONTH, label: "This month to date" },
   { key: "l3", week: WEEK_LAST_THREE_MONTHS, label: "L3 · last 3 full months" },
   { key: "l6", week: WEEK_LAST_SIX_MONTHS, label: "L6 · last 6 full months" },
   { key: "ytd", week: WEEK_YEAR_TO_DATE, label: "YTD · year to date" },
 ];
 
-/** The board's period for a `week` URL value. Anything that is not L3, L6 or YTD is the month. */
-export function leaderboardPeriodOf(week: string): LeaderboardPeriod {
+/** True when the period is one full calendar month. */
+export function isSingleMonthPeriod(period: LeaderboardPeriod): period is `${number}-${number}` {
+  return isMonthWeek(period);
+}
+
+/**
+ * The full months the Period control offers, newest first: every month the
+ * Month by month table shows except the current one (that is This month to
+ * date).
+ */
+export function leaderboardMonths(today: string = googleReviewsToday()): string[] {
+  return monthsBetween(monthlyProgressStart(today), today).slice(0, -1).reverse();
+}
+
+const LONG_MONTH = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
+
+/** "October 2026" for `2026-10`. */
+export function formatLongMonth(month: string): string {
+  return LONG_MONTH.format(new Date(`${month}-01T00:00:00Z`));
+}
+
+/**
+ * The board's period for a `week` URL value. A `yyyy-mm` is that month (the
+ * current month is This month to date); a weekly link or anything else is This
+ * month. A month the Month by month table does not hold is reported by the view.
+ */
+export function leaderboardPeriodOf(
+  week: string,
+  today: string = googleReviewsToday(),
+): LeaderboardPeriod {
+  if (isMonthWeek(week)) {
+    return week === today.slice(0, 7) ? "month" : (week as LeaderboardPeriod);
+  }
   return LEADERBOARD_PERIODS.find((entry) => entry.week === week)?.key ?? "month";
 }
 
 export function leaderboardPeriodWeek(period: LeaderboardPeriod): string {
+  if (isSingleMonthPeriod(period)) return period;
   return LEADERBOARD_PERIODS.find((entry) => entry.key === period)!.week;
+}
+
+/** "L3 · last 3 full months", or "October 2026" for one month. */
+export function leaderboardPeriodLabel(period: LeaderboardPeriod): string {
+  if (isSingleMonthPeriod(period)) return formatLongMonth(period);
+  return LEADERBOARD_PERIODS.find((entry) => entry.key === period)!.label;
 }
 
 export interface LeaderboardPeriodView {
@@ -60,8 +108,13 @@ export interface LeaderboardPeriodView {
   months: number;
   /** True while the period has a pace mark and an "On pace" / "Behind pace" status. */
   paced: boolean;
-  /** `yyyy-mm` of the first and last month covered, for the caption; null for this month. */
+  /** `yyyy-mm` of every month covered, for the caption; empty for this month. */
   monthKeys: string[];
+  /**
+   * One month only: true when some salon's figure is the reviews Google dates
+   * to that month, because the salon had not started counting for all of it.
+   */
+  beforeCounting: boolean;
 }
 
 /**
@@ -76,9 +129,29 @@ export function leaderboardPeriodView(
   monthly: MonthlyProgress | null,
 ): LeaderboardPeriodView | null {
   if (period === "month") {
-    return { period, locations, goal, months: 1, paced: true, monthKeys: [] };
+    return { period, locations, goal, months: 1, paced: true, monthKeys: [], beforeCounting: false };
   }
   if (!monthly) return null;
+
+  if (isSingleMonthPeriod(period)) {
+    const index = monthly.months.indexOf(period);
+    if (index < 0 || period === monthly.currentMonth) return null;
+    const byCode = new Map(monthly.rows.map((row) => [row.storeCode, row]));
+    return {
+      period,
+      locations: locations.map((location) => ({
+        ...location,
+        qualifyingMonthToDate: byCode.get(location.storeCode)?.months[index] ?? 0,
+      })),
+      goal: { ...goal, paceTarget: 0 },
+      months: 1,
+      paced: false,
+      monthKeys: [period],
+      beforeCounting: locations.some(
+        (location) => byCode.get(location.storeCode)?.beforeCounting[index] === true,
+      ),
+    };
+  }
 
   const monthKeys =
     period === "l3" ? monthly.l3Months : period === "l6" ? monthly.l6Months : monthly.ytdMonths;
@@ -93,5 +166,6 @@ export function leaderboardPeriodView(
     months: monthKeys.length,
     paced: false,
     monthKeys,
+    beforeCounting: false,
   };
 }

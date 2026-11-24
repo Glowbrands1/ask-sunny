@@ -11,7 +11,8 @@ import { formatBusinessTime } from "@/lib/business-date";
  *   HrApprovalTabs  "All forms" and "Pending HR approval (N)", shown to HR only;
  *                   with N > 0 a red button that shakes every few seconds (Pau,
  *                   via QA, 23 Nov 2026: "its so small pending approval, make it
- *                   red button and animated shaking if theres a pending")
+ *                   red button and animated shaking if theres a pending"); and
+ *                   "Bubbles approvals ↗" for those who also get the app switcher
  *   HrQueueList     HR's tab: "Needs your decision" — waiting forms oldest first
  *                   (overdue marked), then sent-back forms the manager replied to
  *                   ("Manager replied to changes") — exactly the rows N counts;
@@ -58,7 +59,23 @@ function hrHref(id: string): string {
   return `/forms/hr-approval/${id}`;
 }
 
-export function HrApprovalTabs({ active, pending, overdue }: { active: "all" | "hr"; pending: number; overdue: number }) {
+export function HrApprovalTabs({
+  active,
+  pending,
+  overdue,
+  bubblesApprovalsHref,
+}: {
+  active: "all" | "hr";
+  /** Null: this reader is not HR, so no "Pending HR approval" tab. */
+  pending: number | null;
+  overdue: number;
+  /**
+   * "Bubbles approvals ↗" (Pau, 23 Nov 2026): Ask Bubbles' Forms Register on its Pending HR approval view. Given only
+   * to people who already get the app switcher (`pageShowsAppSwitcher`), so only those with access to both apps. A
+   * plain link: no data crosses, Ask Bubbles checks its own login, and there is no count on it.
+   */
+  bubblesApprovalsHref?: string | null;
+}) {
   const tab = (selected: boolean) =>
     `inline-flex items-center gap-1.5 rounded-full border px-4 py-2 text-sm font-medium ${
       selected ? "border-foreground bg-foreground text-background" : "border-border text-muted-foreground hover:text-foreground"
@@ -68,7 +85,7 @@ export function HrApprovalTabs({ active, pending, overdue }: { active: "all" | "
    * needing HR, a real button in the danger colour, shaking briefly every few seconds (`.hr-pending-shake`, off under
    * prefers-reduced-motion); with nothing, the ordinary tab.
    */
-  const urgent = pending > 0;
+  const urgent = pending !== null && pending > 0;
   const pendingClass = urgent
     ? "hr-pending-shake inline-flex items-center gap-2 rounded-[var(--radius-md)] border border-status-failed bg-status-failed px-4 py-2 text-sm font-semibold text-white shadow-sm hover:opacity-90"
     : tab(active === "hr");
@@ -77,16 +94,23 @@ export function HrApprovalTabs({ active, pending, overdue }: { active: "all" | "
       <Link href="/forms/monitoring" className={tab(active === "all")} aria-current={active === "all" ? "page" : undefined}>
         All forms
       </Link>
-      <Link
-        href="/forms/monitoring?view=hr"
-        className={pendingClass}
-        aria-current={active === "hr" ? "page" : undefined}
-        data-testid="hr-pending-tab"
-        data-urgent={urgent ? "true" : "false"}
-      >
-        Pending HR approval ({pending})
-        {overdue > 0 ? <span className={urgent ? "font-semibold" : "font-semibold text-status-attention"}>· {overdue} overdue</span> : null}
-      </Link>
+      {pending !== null ? (
+        <Link
+          href="/forms/monitoring?view=hr"
+          className={pendingClass}
+          aria-current={active === "hr" ? "page" : undefined}
+          data-testid="hr-pending-tab"
+          data-urgent={urgent ? "true" : "false"}
+        >
+          Pending HR approval ({pending})
+          {overdue > 0 ? <span className={urgent ? "font-semibold" : "font-semibold text-status-attention"}>· {overdue} overdue</span> : null}
+        </Link>
+      ) : null}
+      {bubblesApprovalsHref ? (
+        <a href={bubblesApprovalsHref} className={tab(false)} aria-label="Bubbles approvals (opens Ask Bubbles)">
+          Bubbles approvals ↗
+        </a>
+      ) : null}
     </nav>
   );
 }

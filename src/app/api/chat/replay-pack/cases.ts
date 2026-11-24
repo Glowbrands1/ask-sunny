@@ -157,6 +157,8 @@ export interface ReplayContext {
   draftTools(): string[];
   /** The draft route's POST for this form, as a redraft sends it (`keepManagerValues`); the route's response. */
   redraft(instanceId: string, notes: string): Promise<Record<string, unknown>>;
+  /** The card's Save, through the real PATCH route as the current identity (owner, 24 Nov 2026: editing a form waiting for HR). */
+  saveOnCard?(instanceId: string, values: Record<string, string>): Promise<Record<string, unknown>>;
   /** The manager types on the form and saves (filled by the manager). */
   typeOnForm(instanceId: string, values: Record<string, string>): void;
   /** Tick a form's checkbox groups (form_instance_values.checked), as a form on file holds them: its warning level, its boxes. */

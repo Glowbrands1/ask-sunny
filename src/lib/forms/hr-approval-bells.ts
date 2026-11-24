@@ -13,6 +13,10 @@ export const HR_REQUEST_KIND = "form_hr_approval_request";
 export const HR_DECISION_KIND = "form_hr_approval_decision";
 export const HR_COMMENT_KIND = "form_hr_approval_comment";
 export const HR_REMINDER_KIND = "form_hr_approval_reminder";
+/** The sender's own receipt: "You sent a form for HR approval" (owner, 24 Nov 2026). */
+export const HR_SENT_KIND = "form_hr_approval_sent";
+/** HR's: the manager changed a form while it waits for them, so HR reads the updated version (owner, 24 Nov 2026). */
+export const HR_UPDATED_KIND = "form_hr_approval_updated";
 
 export function formHref(instanceId: string): string {
   return `/forms/hr-approval/${instanceId}`;
@@ -27,6 +31,28 @@ export async function ringBells(
     await createNotifications(rows.filter((row) => row.recipientEmail.length > 0));
   } catch (error) {
     console.error("[hr-approval] could not ring the bell", error instanceof Error ? error.message : error);
+  }
+}
+
+/**
+ * Of these recipients, those with no UNREAD item of this kind for this form yet. A card saves as the manager types, so
+ * "the form was updated" rings once until it is read, never once per save.
+ */
+export async function withoutUnread(kind: string, href: string, emails: readonly string[]): Promise<string[]> {
+  if (emails.length === 0) return [];
+  try {
+    const { data, error } = await getSupabaseAdmin()
+      .from("app_notifications")
+      .select("recipient_email")
+      .eq("kind", kind)
+      .eq("href", href)
+      .is("read_at", null);
+    if (error) throw new Error(error.message);
+    const unread = new Set(((data ?? []) as { recipient_email: string }[]).map((row) => row.recipient_email));
+    return emails.filter((email) => !unread.has(email));
+  } catch (error) {
+    console.error("[hr-approval] could not read the unread bells", error instanceof Error ? error.message : error);
+    return [...emails];
   }
 }
 
