@@ -5092,4 +5092,25 @@ export function typedEmployeeEveryCardEnabled(): boolean {
  */
 export function adminCardAsksSalonEnabled(): boolean {
   return envFlag("ADMIN_CARD_ASKS_SALON_ENABLED");
+ * LOOP_CARD_CITES_CONDUCT_LINE (QA's live test, 24 Nov 2026; default off; same flag in both apps): "Draft a corrective
+ * action form for a till shortage for Test Employee" carded "Standards of Conduct …, JBA Policy Manual p.12", the
+ * heading's page, while the saved draft cites the Register / Bank shortages line on its own page. On: a loop card citing
+ * the Standards of Conduct for an incident the manual lists on its own line (a shortage, theft, insubordination,
+ * disrespect, absence from the work area) reads "Standards of Conduct — <the line>, JBA Policy Manual p.<the line's
+ * page>" (`forms/specific-policy-topics.ts` conductLineCitation). Off, as before.
+ */
+export function loopCardCitesConductLineEnabled(): boolean {
+  return envFlag("LOOP_CARD_CITES_CONDUCT_LINE_ENABLED");
+}
+
+/**
+ * SOURCES_ON_TOPIC (QA's live test, 24 Nov 2026; default off; same flag in both apps): "What are the top coaching
+ * priorities in a Daily Stats report?" showed one source card, the Confidential Information Policy p.22, on an answer
+ * written from the coaching framework. On, for a question the Daily Stats gate opens: a coaching-priorities question
+ * shows the Daily Stats Interpretation Framework's card when the answer had it, and cards none of whose words is the
+ * question's are dropped when they would be the only ones (`ai/on-topic-sources.ts`), on the chat path and the agent
+ * loop alike. Off, as before.
+ */
+export function sourcesOnTopicEnabled(): boolean {
+  return envFlag("SOURCES_ON_TOPIC_ENABLED");
 }

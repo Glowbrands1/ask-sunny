@@ -448,7 +448,7 @@ export async function readStats(
   context: DataToolContext,
   input: { report?: unknown; salon?: unknown; period?: unknown; question?: unknown },
   deps: DataToolDeps = DEFAULT_DATA_TOOL_DEPS,
-  effects?: Pick<ToolEffects, "sources">,
+  effects?: Pick<ToolEffects, "sources" | "frameworkSources">,
 ): Promise<ToolResult> {
   const report = (text(input.report) ?? "").toLowerCase();
   const source = report === "comp" ? "Comp report" : report === "sales totals" ? "Sales Totals report" : report === "daily stats" ? "Daily Stats" : "Reports";
@@ -480,6 +480,8 @@ export async function readStats(
        * when the reply cites its marker or names the document.
        */
       const markers = effects ? [...new Set(guide.grounding.rows.map((row) => addSource(effects as ToolEffects, rowToCitation(row))))] : [];
+      /* SOURCES_ON_TOPIC (QA, 24 Nov 2026): run.ts shows the framework's card on a coaching-priorities answer (`on-topic-sources.ts`). */
+      if (effects) (effects.frameworkSources ??= []).push(...guide.grounding.rows.map(rowToCitation));
       focusGuide = {
         ...untrusted(guide.grounding.rows.map((row) => row.content).join("\n\n").slice(0, FOCUS_GUIDE_MAX), guide.grounding.documentTitle),
         ...(markers.length > 0 ? { cite: markers.join(" ") } : {}),
