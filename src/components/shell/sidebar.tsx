@@ -1,5 +1,6 @@
 "use client";
 
+import { Fragment } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { CalendarCheck, ChevronsLeft, Lock } from "lucide-react";
@@ -7,9 +8,9 @@ import { CalendarCheck, ChevronsLeft, Lock } from "lucide-react";
 import { BrandMark, SunMark } from "@/components/brand-mark";
 import { Tooltip } from "@/components/ui/overlays";
 import { useSession } from "@/lib/session/session-context";
-import { cn } from "@/lib/utils/cn";
 import { NotificationBell } from "@/features/notifications/notification-bell";
 import type { BellData } from "@/lib/notifications/types";
+import { cn } from "@/lib/utils/cn";
 import { AppSwitcher } from "./app-switcher";
 import { NAV_SECTIONS, isActivePath } from "./navigation";
 import { UserMenu } from "./user-menu";
@@ -41,9 +42,9 @@ export function SidebarNav({
    */
   meetingTabs?: { href: string; label: string }[];
   /**
-   * The signed-in person's notifications, read on the server by the (app) layout. Desktop rail only: a
-   * "Notifications" row at the top (Pau, 23 Nov 2026: "i dont want a bell, i need a bar"). On a phone the top bar
-   * shows the bell (app-shell.tsx), so the drawer does not repeat it.
+   * The signed-in person's notifications (the layout's `bellForLayout`): a labelled "Notifications" bar in the rail
+   * (Pau, 23 Nov 2026: "i dont want a bell, i need a bar"), directly under Overview, on desktop and in the phone drawer
+   * ("a notification bar instead below the overview"). The top bar has no bell. Null: no bar.
    */
   bell?: BellData | null;
 }) {
@@ -90,6 +91,23 @@ export function SidebarNav({
 
   const isCollapsed = variant === "desktop" && collapsed;
 
+  /*
+   * NOTIFICATIONS, DIRECTLY UNDER OVERVIEW (Pau, 23 Nov 2026, of the top-bar bell: "can we remove this and add a
+   * notification bar instead below the overview"; confirmed with a screenshot: in the Home group, above Assistant).
+   * On desktop and in the phone drawer alike; the top bar no longer has a bell. Someone whose rail has no Overview still
+   * gets it, as the rail's first item, so nobody who had the bell loses it.
+   */
+  const bellUnderOverview = sections.some((section) => section.items.some((item) => item.href === "/"));
+  const bellItem = bell ? (
+    <NotificationBell
+      data={bell}
+      variant="rail"
+      collapsed={isCollapsed}
+      onNavigate={onNavigate}
+      panelSide={variant === "drawer" ? "bottom" : "right"}
+    />
+  ) : null;
+
   return (
     <div className="flex h-full flex-col bg-sidebar">
       {/*
@@ -120,7 +138,7 @@ export function SidebarNav({
         aria-label="Main"
         className="scroll-slim flex-1 overflow-y-auto px-3 py-4"
       >
-        {bell && variant === "desktop" ? <NotificationBell data={bell} variant="rail" collapsed={isCollapsed} /> : null}
+        {bell && !bellUnderOverview ? <div className="mb-4">{bellItem}</div> : null}
         {sections.map((section) => (
           <div key={section.id} className="mb-5 last:mb-0">
             {!isCollapsed ? (
@@ -222,15 +240,18 @@ export function SidebarNav({
                 );
 
                 return (
-                  <li key={item.href}>
-                    {isCollapsed ? (
-                      <Tooltip content={item.label} side="right">
-                        {link}
-                      </Tooltip>
-                    ) : (
-                      link
-                    )}
-                  </li>
+                  <Fragment key={item.href}>
+                    <li>
+                      {isCollapsed ? (
+                        <Tooltip content={item.label} side="right">
+                          {link}
+                        </Tooltip>
+                      ) : (
+                        link
+                      )}
+                    </li>
+                    {bell && bellUnderOverview && item.href === "/" ? <li>{bellItem}</li> : null}
+                  </Fragment>
                 );
               })}
             </ul>

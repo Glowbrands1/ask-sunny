@@ -28,6 +28,8 @@ import {
 import { pageFormsAccess } from "@/lib/forms/page-scope";
 import type { Permission } from "@/types";
 import { HrApprovalTabs, HrQueueList, MyFormsWithHr } from "@/features/forms/hr-approval-lists";
+import { pageShowsAppSwitcher } from "@/lib/auth/app-switcher";
+import { bubblesHrApprovalsUrl } from "@/lib/config/app-switcher";
 import { hrQueueSummary, listHrQueue, listMyFormsWithHr, type HrQueueRow, type MyHrFormRow } from "@/lib/forms/hr-approval";
 
 export const metadata: Metadata = { title: "Form Monitoring" };
@@ -95,6 +97,12 @@ export default async function FormMonitoringPage({
    */
   const isHr = access.actor.hrApprover === true;
   const hrView = isHr && requestedView === "hr";
+  /*
+   * "Bubbles approvals ↗" (Pau, 23 Nov 2026): only for people who already get the app switcher, so only those with
+   * access to both apps. A plain link to Ask Bubbles' own Pending HR approval view; no data crosses and Ask Bubbles
+   * checks its own login.
+   */
+  const bubblesApprovalsHref = (await pageShowsAppSwitcher().catch(() => false)) ? bubblesHrApprovalsUrl() : null;
   let hrQueue: HrQueueRow[] = [];
   let hrSummary: { pending: number; overdue: number } | null = null;
   let myWithHr: MyHrFormRow[] = [];
@@ -186,7 +194,14 @@ export default async function FormMonitoringPage({
 
         <FormsAccessNotice permission="view_form_monitoring" />
 
-        {hrSummary ? <HrApprovalTabs active={hrView ? "hr" : "all"} pending={hrSummary.pending} overdue={hrSummary.overdue} /> : null}
+        {hrSummary || bubblesApprovalsHref ? (
+          <HrApprovalTabs
+            active={hrView ? "hr" : "all"}
+            pending={hrSummary ? hrSummary.pending : null}
+            overdue={hrSummary ? hrSummary.overdue : 0}
+            bubblesApprovalsHref={bubblesApprovalsHref}
+          />
+        ) : null}
         {!hrView ? <MyFormsWithHr rows={myWithHr} /> : null}
 
         {hrView ? (

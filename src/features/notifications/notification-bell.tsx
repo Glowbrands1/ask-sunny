@@ -14,19 +14,19 @@ import { markNotificationsReadAction } from "./actions";
 /**
  * THE BELL: the signed-in person's notifications, newest first, with a count of
  * the unread ones. Opening one marks it read and goes to it. First used for AI
- * Training submissions (Pau, 20 Nov 2026).
+ * Training submissions (Pau, 20 Nov 2026), then the HR form approval.
  *
- * WHERE IT SITS (Pau, 23 Nov 2026: "i dont want a bell, i need a bar", with the
- * sibling app's rail as the picture): a "Notifications" row at the top of the
- * rail on desktop (`rail`), and the bell in the top bar on phones (`bar`), where
- * the rail is a drawer. Port of the sibling app's rail variant, in this app's
- * rail styling.
+ * WHERE IT SITS (Pau, 23 Nov 2026): first "can we remove this and add a notification bar instead below the overview",
+ * then, with the sibling app's rail as the picture, "i dont want a bell, i need a bar". So it is a labelled
+ * "Notifications" bar in the rail (`rail`), directly under Overview, on desktop and in the phone drawer alike, and the
+ * top bar has no bell. Same people, same panel, same count. (`bar`, the top-bar button, is kept for any other caller.)
  */
 export function NotificationBell({
   data,
   variant = "bar",
   collapsed = false,
   onNavigate,
+  panelSide = "right",
   className,
 }: {
   data: BellData;
@@ -35,6 +35,8 @@ export function NotificationBell({
   collapsed?: boolean;
   /** Called after opening a notification (closes the drawer on a phone). */
   onNavigate?: () => void;
+  /** Rail only: where the panel opens. The phone drawer is too narrow to open it to the side, so it opens below. */
+  panelSide?: "right" | "bottom";
   /** Extra classes for the top-bar button (its colour on the band). */
   className?: string;
 }) {
@@ -87,7 +89,7 @@ export function NotificationBell({
           type="button"
           aria-label={label}
           className={cn(
-            "relative mb-4 flex w-full items-center gap-2.5 rounded-full border border-rail-border text-[13.5px] font-semibold text-sidebar-foreground transition-colors hover:bg-hover-surface hover:text-foreground",
+            "relative flex w-full items-center gap-2.5 rounded-full border border-rail-border text-[13.5px] font-semibold text-sidebar-foreground transition-colors hover:bg-hover-surface hover:text-foreground",
             collapsed ? "justify-center px-0 py-2.5" : "px-3.5 py-2.5",
           )}
         >
@@ -121,7 +123,7 @@ export function NotificationBell({
       )}
       <PopoverContent
         align={variant === "rail" ? "start" : "end"}
-        side={variant === "rail" ? "right" : "bottom"}
+        side={variant === "rail" ? panelSide : "bottom"}
         className="w-[min(22rem,calc(100vw-1.5rem))] p-0"
       >
         <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
