@@ -107,6 +107,21 @@ export async function markNotificationsRead(email: string, ids: string[] | null)
 }
 
 /**
+ * Marks the caller's own notifications UNREAD again (Pau, 24 Nov 2026: "have option to unread pls so notification stays
+ * there"): the given ids only, there is no "all". A read one goes back to unread, bold and counted, and stays in the
+ * list until they read, remove or clear it. Only the caller's own rows, like marking read. A pinned one (pinned.ts)
+ * is already unread and is left alone.
+ */
+export async function markNotificationsUnread(email: string, ids: string[]): Promise<void> {
+  if (!ids.length) return;
+  const to = normalise(email);
+  const targets = await unpinned(to, ids, false);
+  if (!targets.length) return;
+  const { error } = await getSupabaseAdmin().from("app_notifications").update({ read_at: null }).eq("recipient_email", to).in("id", targets);
+  if (error) throw new Error(`Could not mark notifications unread: ${error.message}`);
+}
+
+/**
  * Removes the caller's OWN notifications from their bell (Pau, 23 Nov 2026: "delete notification all or clicking x by
  * removing 1"): the given ids, or all of them. Each row is one recipient's own copy (`recipient_email`), so deleting it
  * hides it for that person only; the recipient filter is always applied, so an id that belongs to someone else matches

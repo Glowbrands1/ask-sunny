@@ -10,7 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger, Tooltip } from "@/components/u
 import type { AppNotification, BellData } from "@/lib/notifications/types";
 import { cn } from "@/lib/utils/cn";
 
-import { dismissNotificationsAction, markNotificationsReadAction } from "./actions";
+import { dismissNotificationsAction, markNotificationsReadAction, markNotificationsUnreadAction } from "./actions";
 import { NotificationsPanel } from "./notifications-panel";
 
 /**
@@ -48,20 +48,29 @@ export function NotificationBell({
   const [readHere, setReadHere] = useState<Set<string> | "all">(new Set());
   // Removed locally at once (× or Clear all), so the list and the badge change before the server answers.
   const [goneHere, setGoneHere] = useState<Set<string> | "all">(new Set());
+  // Put back to unread here at once (the envelope on a read row), so the row and the badge change before the server answers.
+  const [unreadHere, setUnreadHere] = useState<Set<string>>(new Set());
   const [, start] = useTransition();
   // A pinned one (HR's "waiting for your approval" while the form still waits) is never read or removed from here: it
   // stays for every approver until HR approves, rejects or sends the form back (owner, 24 Nov 2026).
-  const isRead = (n: AppNotification) => !n.pinned && (!!n.readAt || readHere === "all" || readHere.has(n.id));
+  const isRead = (n: AppNotification) => !n.pinned && !unreadHere.has(n.id) && (!!n.readAt || readHere === "all" || readHere.has(n.id));
   const isGone = (n: AppNotification) => !n.pinned && (goneHere === "all" || goneHere.has(n.id));
   const items = data.items.filter((n) => !isGone(n));
-  // Unread that this panel read or removed come off the server's count straight away; pinned ones stay counted.
+  // Unread that this panel read or removed come off the server's count straight away, and ones it put back to unread
+  // go on; pinned ones stay counted.
   const unread =
     readHere === "all" || goneHere === "all"
-      ? data.items.filter((n) => n.pinned).length
-      : Math.max(0, data.unread - data.items.filter((n) => !n.pinned && !n.readAt && (readHere.has(n.id) || goneHere.has(n.id))).length);
+      ? data.items.filter((n) => n.pinned).length + items.filter((n) => !n.pinned && !isRead(n)).length
+      : Math.max(
+          0,
+          data.unread -
+            data.items.filter((n) => !n.pinned && !n.readAt && (readHere.has(n.id) || goneHere.has(n.id))).length +
+            data.items.filter((n) => !n.pinned && !!n.readAt && unreadHere.has(n.id) && !isGone(n)).length,
+        );
 
   function openOne(n: AppNotification) {
     if (!n.pinned && !isRead(n)) {
+      setUnreadHere((prev) => withoutId(prev, n.id));
       setReadHere((prev) => (prev === "all" ? prev : new Set(prev).add(n.id)));
       start(async () => {
         await markNotificationsReadAction([n.id]);
@@ -75,9 +84,21 @@ export function NotificationBell({
   }
 
   function readAll() {
+    setUnreadHere(new Set());
     setReadHere("all");
     start(async () => {
       await markNotificationsReadAction(null);
+    });
+  }
+
+  /** The envelope on a read row: puts it back to unread so it stays bold and counted; never opens it. */
+  function unreadOne(id: string) {
+    const n = data.items.find((item) => item.id === id);
+    if (!n || n.pinned) return;
+    setUnreadHere((prev) => new Set(prev).add(id));
+    setReadHere((prev) => (prev === "all" ? prev : withoutId(prev, id)));
+    start(async () => {
+      await markNotificationsUnreadAction([id]);
     });
   }
 
@@ -178,6 +199,7 @@ export function NotificationBell({
           onDismiss={dismissOne}
           onClearAll={clearAll}
           onMarkAllRead={readAll}
+          onMarkUnread={unreadOne}
           footer={
             waitingHr ? (
               <Link
@@ -196,6 +218,12 @@ export function NotificationBell({
       </PopoverContent>
     </Popover>
   );
+}
+
+function withoutId(set: Set<string>, id: string): Set<string> {
+  const next = new Set(set);
+  next.delete(id);
+  return next;
 }
 
 /** "just now", "5 min ago", "3 h ago", "2 d ago", then the date. */
