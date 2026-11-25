@@ -317,6 +317,10 @@ const FLIPPED_AFTER_FIXTURE: readonly string[] = [
   // "Create a coaching form.", now gets one example answer after the who-question; the fixture predates it, so it is
   // compared with it off.
   "STARTER_FOLLOW_UP_EXAMPLE_ENABLED",
+  // Changed on purpose (25 Nov 2026, Pau: "turn it on and merge"): on in production. The script's Corrective Action is
+  // finalized with lines still blank, which is now refused, and its empty history box is written N/A; the fixture
+  // predates it, so it is compared with it off.
+  "ALL_FIELDS_REQUIRED_ENABLED",
 ];
 const PRODUCTION = [...PRODUCTION_FLAGS.on, ...PRODUCTION_FLAGS.assumedOn].filter((name) => !FLIPPED_AFTER_FIXTURE.includes(name));
 /*
