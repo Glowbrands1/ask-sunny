@@ -94,6 +94,8 @@ const state = vi.hoisted(() => ({
   manualExtraInPlace: false,
   /** FULL_MANUAL_KEEPS_RETRIEVAL: what the knowledge search returns (`knowledgeHas`), the normalizer's label, the full manual. */
   knowledgeRows: [] as Record<string, unknown>[],
+  /** SOURCES_ON_TOPIC (24 Nov 2026): a knowledge role's own document (`roleDocumentHas`), in place of the stand-in one. */
+  roleGrounding: {} as Record<string, unknown>,
   /** POLICY_CARRY_RETRIEVAL (#248 rebuilt, 12 Nov 2026): every knowledge search's query, in order (`searches`). */
   knowledgeQueries: [] as string[],
   normalizerIntent: null as string | null,
@@ -500,6 +502,7 @@ vi.mock("@/lib/knowledge/providers/supabase", () => ({
       return state.knowledgeRows;
     }
     async fetchRoleGrounding(role: { id: string }) {
+      if (state.roleGrounding[role.id]) return state.roleGrounding[role.id];
       return {
         ok: true,
         grounding: {
@@ -969,6 +972,7 @@ beforeEach(async () => {
   state.manualExtra = [];
   state.manualExtraInPlace = false;
   state.knowledgeRows = [];
+  state.roleGrounding = {};
   state.knowledgeQueries = [];
   state.normalizerIntent = null;
   state.fullManualLoads = false;
@@ -1157,6 +1161,9 @@ function context(): ReplayContext {
     },
     knowledgeHas: (rows) => {
       state.knowledgeRows = [...rows];
+    },
+    roleDocumentHas: (roleId, grounding) => {
+      state.roleGrounding = { ...state.roleGrounding, [roleId]: grounding };
     },
     searches: () => [...state.knowledgeQueries],
     normalizerReads: (intent) => {

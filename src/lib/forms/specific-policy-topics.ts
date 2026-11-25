@@ -117,6 +117,12 @@ const SEXUAL_WORDS = new RegExp(
   ].join("|"),
 );
 
+/*
+ * The cash register's till, as managers spell it ("till", "til"; the owner, 24 Nov 2026), never the time word: "til
+ * tomorrow", "till next week", "off till monday", "until close" (a word boundary keeps "until" out) are not a till.
+ */
+const TILL = String.raw`till?(?!\s+(?:tomorrow|today|tonight|next|this|that|then|now|later|after|before|close|closing|open|opening|noon|midnight|morning|afternoon|evening|night|lunch|break|monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun|the\s+(?:end|next|day|morning|evening|weekend)|\d))`;
+
 /**
  * THE TABLE, IN PRECEDENCE ORDER. An account that says more than one thing is
  * read as the first rule it matches: harassment before anything it might also
@@ -150,10 +156,12 @@ const TOPICS: readonly TopicRule[] = [
   {
     id: "cash",
     words: [
-      /\b(?:cash|money|drawer|till|register|bank|deposits?)\s+(?:\S+\s+){0,3}?(?:short(?:age|ages)?|over\s*\/?\s*short|missing|off|discrepanc\w*|did ?n[o']?t\s+balance|not\s+balanc\w*|out\s+of\s+balance)\b/,
-      /\b(?:short(?:age|ages)?|shorts?)\s+(?:\S+\s+){0,2}?(?:in|on|from)\s+(?:\S+\s+){0,2}?(?:the\s+)?(?:drawer|till|register|bank|deposit|cash)\b/,
+      new RegExp(String.raw`\b(?:cash|money|drawer|${TILL}|register|bank|deposits?)\s+(?:\S+\s+){0,3}?(?:short(?:age|ages)?|over\s*\/?\s*short|missing|off|discrepanc\w*|did ?n[o']?t\s+balance|not\s+balanc\w*|out\s+of\s+balance)\b`),
+      /* The owner (24 Nov 2026): "missing till", "missing from the til", "missing money from the register"; never "missing shift" or "missing inventory". */
+      new RegExp(String.raw`\bmissing\s+(?:(?:money|cash|funds|\$\s?\d[\d.,]*)\s+)?(?:(?:from|in|out\s+of)\s+)?(?:the\s+|her\s+|his\s+|their\s+|a\s+)?(?:cash\s+)?(?:${TILL}|drawer|register)\b`),
+      /\b(?:short(?:age|ages)?|shorts?)\s+(?:\S+\s+){0,2}?(?:in|on|from)\s+(?:\S+\s+){0,2}?(?:the\s+)?(?:drawer|till?|register|bank|deposit|cash)\b/,
       /\bcash\s*[- ]?handl\w*|\bhandl\w*\s+(?:\S+\s+){0,2}?cash\b|\bmishandl\w*\s+(?:\S+\s+){0,2}?(?:cash|money)\b/,
-      /\b(?:drawer|till|register)\s+(?:was\s+|is\s+|came\s+up\s+|ran\s+)?(?:\S+\s+)?short\b|\bshort\s+(?:on\s+|in\s+)?(?:the\s+)?(?:drawer|till|register|cash)\b/,
+      new RegExp(String.raw`\b(?:drawer|${TILL}|register)\s+(?:was\s+|is\s+|came\s+up\s+|ran\s+)?(?:\S+\s+)?short\b|\bshort\s+(?:on\s+|in\s+)?(?:the\s+)?(?:drawer|till?|register|cash)\b`),
     ],
     cite: { kind: "conduct_line", anchor: /Register\s*\/\s*Bank\s+shortages/i },
   },
@@ -505,6 +513,29 @@ export function withoutPrimedTopic<T extends Record<string, string | undefined>>
 /** The draft prompt's line for an "other" write-in when the flag is on: no example topic to copy. */
 export const OTHER_WRITE_IN_INSTRUCTION =
   'When no listed option fits, tick "other" AND name the topic in the matching write-in field, in a few words of the manager\'s own — only what they described.';
+
+/**
+ * LOOP_CARD_CITES_CONDUCT_LINE (QA's live test, 24 Nov 2026: "Draft a corrective action form for a till shortage for
+ * Test Employee" carded "Standards of Conduct …, JBA Policy Manual p.12"): the Standards of Conduct line a conduct
+ * incident is cited under, as the loop card names it — the manual's own words for the line, up to its first dash,
+ * comma, semicolon or full stop ("Register / Bank shortages", "Insubordination", "Theft") — and the PRINTED page of the
+ * chunk that carries it, the same line and page the saved draft cites (`withConductLinePage`). Null where the words name
+ * no listed line, the manual lacks it, or the flag (POLICY_SPECIFIC_TOPICS) is off.
+ */
+export function conductLineCitation(text: string, chunks: readonly ManualChunk[]): { readonly heading: string; readonly line: string; readonly page: number; readonly chunkIndex: number; readonly wording: string } | null {
+  if (!policySpecificTopicsEnabled() || chunks.length === 0) return null;
+  const topic = specificTopic(text);
+  if (!topic || topic.cite.kind !== "conduct_line") return null;
+  const section = conductLineSection(chunks, topic.cite.anchor);
+  if (!section) return null;
+  const chunk = chunks.find((entry) => entry.chunkIndex === section.chunkIndex);
+  const found = chunk ? topic.cite.anchor.exec(chunk.content) : null;
+  if (!chunk || !found) return null;
+  const wording = conductLineWording(chunks, topic.cite.anchor) ?? found[0];
+  const named = wording.split(/\s+[-–—]\s*|\s*[-–—]\s+|[,;.]/)[0]!.replace(/\s+/g, " ").trim();
+  const line = named.length >= 3 && named.length <= 70 ? named : found[0].replace(/\s+/g, " ").trim();
+  return { heading: section.heading, line, page: section.page, chunkIndex: section.chunkIndex, wording };
+}
 
 /**
  * MODEL_POLICY_DEFERS_TO_TOPIC_ENABLED (QA, round-7c live test, 9 Nov 2026): the headings the incident the manager's words

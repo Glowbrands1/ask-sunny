@@ -354,8 +354,13 @@ describe("the server pages apply the same rule", () => {
     ]) {
       const source = readFileSync(file, "utf8");
       expect(source, file).toMatch(/pageCan\("create_exit_form"\)/);
-      expect(source, file).toMatch(/withoutUnreadable\(/);
+      // Changed on purpose (QA, 24 Nov 2026): the rail and the Overview count the follow-up queue, which applies
+      // withoutUnreadable itself with the page's own create_exit_form answer (asserted below).
+      expect(source, file).toMatch(/withoutUnreadable\(|readFollowUpQueue\(access, \{ readsExit/);
     }
+    const queue = readFileSync("src/lib/forms/follow-up-queue.ts", "utf8");
+    expect(queue).toMatch(/withoutUnreadable\(/);
+    expect(queue).toMatch(/permission === "create_exit_form" && options\.readsExit/);
   });
 
   it("withoutUnreadable keeps exit rows only for a reader holding create_exit_form", async () => {

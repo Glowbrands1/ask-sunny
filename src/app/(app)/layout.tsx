@@ -2,12 +2,9 @@ import type { ReactNode } from "react";
 
 import { AppShell } from "@/components/shell/app-shell";
 import { businessToday } from "@/lib/business-date";
-import { attentionSummary } from "@/lib/forms/follow-up";
 import { pageShowsAppSwitcher, pageShowsLeadershipHub } from "@/lib/auth/app-switcher";
 import { pageCan, pageIdentity } from "@/lib/auth/page";
-import { actorMaySeeInstance, withoutUnreadable } from "@/lib/forms/instance-scope";
-import { listOutstandingFollowUps } from "@/lib/forms/instances";
-import { privateAwareLimit } from "@/lib/forms/private-creators";
+import { readFollowUpQueue } from "@/lib/forms/follow-up-queue";
 import { pageFormsAccess } from "@/lib/forms/page-scope";
 import { l10TabsForLayout } from "@/features/l10/data.server";
 import { bellFor } from "@/lib/notifications/bell-for";
@@ -40,13 +37,8 @@ async function overdueCount(): Promise<number> {
     // The badge counts only forms this reader may open; see `withoutUnreadable`.
     const readsExit = await pageCan("create_exit_form");
     const access = await pageFormsAccess(await pageIdentity());
-    if (access.noSalon) return 0;
-    const outstanding = withoutUnreadable(
-      // PRIVATE_CREATOR_FORMS: over-read, then trim to the page of 50; off, 50 itself.
-      await listOutstandingFollowUps(privateAwareLimit(50), access.locationIds, access.ownCreatedBy),
-      (permission) => permission === "create_exit_form" && readsExit,
-    ).filter((instance) => actorMaySeeInstance(access.actor, instance)).slice(0, 50);
-    return attentionSummary(outstanding, today).overdue;
+    // THE ONE QUEUE (QA, 24 Nov 2026): the same forms, uncapped, the Overview, the banner and the pills count.
+    return (await readFollowUpQueue(access, { readsExit, today })).attention.overdue;
   } catch {
     return 0;
   }

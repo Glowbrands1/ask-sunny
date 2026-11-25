@@ -39,6 +39,10 @@ import { rulesBookText } from "./rules-book";
  * the Business data rules one line for it (only the tracker's named people). Neither names the app, place, staff
  * system or form key; nothing else changed.
  *
+ * Re-taken on purpose on 24 Nov 2026 (QA's live test: the overdue counts disagreed): the tool list gained
+ * read_follow_ups, the Business data rules one line for it, and the readable-pages line names the Overview
+ * (read_follow_ups). Each reads the app's own place word and forms page name from the config; nothing else changed.
+ *
  * Re-taken on purpose on 20 Nov 2026 (f048b, QA's live 23a): one Card replies line was added for propose_form's
  * follow_up_on_create (say the follow-up date Create sets; never deny a follow-up the form will have). It reads the same
  * under every config; nothing else changed.

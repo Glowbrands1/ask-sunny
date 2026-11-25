@@ -8,6 +8,17 @@ import { listHrApprovers } from "./hr-approval-approvers";
 import { hrQueueSummary } from "./hr-approval";
 import { hrApprovalEnabled, reminderDueAt } from "./hr-approval-rules";
 
+/**
+ * The reminder's second line. It is about HR APPROVALS, and says so (QA, 24 Nov 2026: the bell's "None is overdue
+ * yet." read as "no follow-ups are overdue" while the Overview said 19 follow-ups were): an HR approval is overdue
+ * once it has waited more than one business day, which is not a follow-up date.
+ */
+export function hrReminderBody(overdue: number): string {
+  return overdue > 0
+    ? `${overdue} ${overdue === 1 ? "has" : "have"} waited more than a business day for HR approval.`
+    : "No HR approval is overdue yet.";
+}
+
 export type ReminderOutcome =
   | { status: "disabled" }
   | { status: "not_due"; localDate: string }
@@ -57,10 +68,7 @@ export async function runHrReminders(now: Date = new Date()): Promise<ReminderOu
         recipientEmail: approver.email,
         kind: HR_REMINDER_KIND,
         title: `${summary.pending} form${summary.pending === 1 ? " is" : "s are"} waiting for your approval`,
-        body:
-          summary.overdue > 0
-            ? `${summary.overdue} ${summary.overdue === 1 ? "has" : "have"} waited more than a business day.`
-            : "None is overdue yet.",
+        body: hrReminderBody(summary.overdue),
         href: HR_PENDING_TAB_HREF,
       },
     ]);

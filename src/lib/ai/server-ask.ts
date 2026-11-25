@@ -126,6 +126,7 @@ import {
 import { assembleGrounding } from "./grounding-assembly";
 import { classifyEmployeePerformanceIntent } from "./employee-performance-gate";
 import { isDailyStatsQuestion } from "./daily-stats-gate";
+import { onTopicCards } from "./on-topic-sources";
 import { classifyPerformanceManagementIntent } from "./performance-management-gate";
 import {
   buildPolicyManualNote,
@@ -2117,12 +2118,25 @@ async function answerQuestionUntraced(
   const spoken = checked?.content ?? answer;
   const markers = extractUsedMarkers(spoken, grounding.map((chunk) => chunk.marker));
   // EXCERPT_EMPTY_CARD_DROP_ENABLED: no empty card, none labelled with the sibling company (`empty-card-drop.ts`).
+  /*
+   * SOURCES_ON_TOPIC_ENABLED (QA, 24 Nov 2026: "What are the top coaching priorities in a Daily Stats report?" showed only
+   * the Confidential Information Policy p.22): a Daily Stats question's cards are on its topic, and a coaching-priorities
+   * one shows the framework it was answered with (`on-topic-sources.ts`). Off, the marked rows as before.
+   */
+  const frameworkRow = dailyStats ? (dailyStats.rows.find((row) => /priorit/i.test(row.content)) ?? dailyStats.rows[0]) : undefined;
   const retrievedCitations: SourceCitation[] = shownCitations(
     markers
       .map((marker) => used[marker - 1])
       .filter((row): row is MatchedChunkRow => Boolean(row))
       .map(rowToCitation),
   );
+  /* Every card the answer shows: the full manual's page cards (a policy-shaped turn) and the marked excerpts alike. */
+  const answerCitations = onTopicCards({
+    question: request.question,
+    cards: checked ? [...checked.citations, ...(keepsRetrieval ? retrievedCitations : [])] : retrievedCitations,
+    framework: frameworkRow && dailyStatsIncluded ? [rowToCitation(frameworkRow)] : [],
+    frameworkIds: new Set([dailyStats?.documentId, performanceManagement?.documentId, role?.documentId].filter((id): id is string => typeof id === "string")),
+  });
 
   /*
    * ==========================================================================
@@ -2165,7 +2179,7 @@ async function answerQuestionUntraced(
   return {
     content,
     formSelection: suggested?.selection,
-    citations: checked ? [...checked.citations, ...(keepsRetrieval ? retrievedCitations : [])] : retrievedCitations,
+    citations: answerCitations,
     /*
      * Coverage is decided by what retrieval returned, not by reading the
      * answer: the server knows whether any chunk cleared the relevance
