@@ -1287,6 +1287,12 @@ describe("new flags default off and wrappers are inert", () => {
           // shows on any finalized form and opens the same server PDF as Download PDF. And the sibling app's approvals
           // as a tab next to Pending HR approval (owner, 23 Nov 2026: "i dont want the sunny approval in a different page
           // and link, just a tab pls"): shown only to an HR approver with SIBLING_HR_SECRET set, so off, never.
+          // BLANK FIELDS OUTLINED ON THE FORM (Pau, 25 Nov 2026, both apps: "add a pop up that there are missing fields
+          // and highlight it in both apps"): ResponsiveForm's `missing` prop outlines the fields Finalize refused as blank
+          // and marks them Required; the pop-up is in inline-form.tsx (above). Only with a refusal for blank fields
+          // (ALL_FIELDS_REQUIRED_ENABLED or REQUIRED_FIELDS_AT_FINALIZE_ENABLED); otherwise `missing` is empty and every
+          // field renders as before.
+          ":(exclude)src/features/forms/document/responsive-form.tsx",
           ":(exclude)src/features/forms/hr-approval-panel.tsx",
           ":(exclude)src/features/forms/hr-approval-lists.tsx",
           ":(exclude)src/features/forms/hr-approval-screen.tsx",
