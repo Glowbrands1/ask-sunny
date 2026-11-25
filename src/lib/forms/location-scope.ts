@@ -1,6 +1,7 @@
 import "server-only";
 
 import { PRODUCTION_SALONS } from "@/data/salons";
+import { authorizedSalonNumbers } from "@/lib/reporting/scope/authorized-salons";
 import type { AccessScope } from "@/types";
 
 import { placeMentions } from "./place-from-cue";
@@ -18,27 +19,27 @@ import { ambiguousSalonNumbers, rosterSalonName } from "./salon-mention";
  * the salons the person filing it actually covers.
  *
  * ============================================================================
- * WHY DISTRICT AND REGIONAL ACTORS FAIL CLOSED
+ * DISTRICT AND REGIONAL ACTORS: THROUGH THE ROSTER, AND CLOSED OFF IT
  * ============================================================================
  *
  * A salon-scoped manager's authorized set is knowable from authenticated data
  * alone: their primary area plus the areas they also cover ARE salon ids.
  *
- * A district manager's `primaryAreaId` is a DISTRICT id, and nothing in this
- * system maps a district to its salons — there is no salon roster table, and
- * `PRODUCTION_SALONS` is the roster, not a per-record authority. So for a district or
- * regional actor the question "is this salon in your district?" currently has no
- * truthful answer.
+ * A district manager's `primaryAreaId` is a DISTRICT id. This used to refuse
+ * every salon for them, on the reading that nothing mapped a district to its
+ * salons. Something does: `PRODUCTION_SALONS` puts each of the fifteen salons
+ * in its district and region, taken from reporting's own labels, and Reporting
+ * already resolves a district scope through it (`authorizedSalonNumbers`).
+ * Pau, 25 Nov 2026: "are Dms able to see the forms that their managers are
+ * submitting?" ... "i need this in sunny please". So a district scope now
+ * authorizes the salons of that district on the roster, a region scope the
+ * salons of that region, plus any single salon an admin added under "also
+ * covers" — the same answer Reporting gives, from the same function.
  *
- * The honest options were to accept it and record that it was unverified, or to
- * refuse. THIS REFUSES. An accepted-but-unverified salon on an HR record reads
- * exactly like a verified one to everybody who opens it later, and the record
- * outlives the caveat. A refusal is visible today and fixable by connecting a
- * roster; a wrong salon on a disciplinary document is neither.
- *
- * THE COST IS REAL AND IS NOT HIDDEN: until a roster exists, a district or
- * regional manager cannot create a form that names a salon. They can still ask
- * Sunny anything, and a salon-scoped manager is unaffected.
+ * IT STILL FAILS CLOSED: a district or region the roster does not contain
+ * names no salon, and is refused, never widened to "all". And a stored
+ * `global` scope is untouched here (see `forms-visibility.ts` for why it does
+ * not mean "every salon" when READING forms).
  *
  * ============================================================================
  * DEMO MODE IS NOT A SECURITY CONTROL
@@ -50,8 +51,16 @@ import { ambiguousSalonNumbers, rosterSalonName } from "./salon-mention";
  * screens already carry the standing notice that says so.
  */
 
-/** Salon ids an authenticated scope proves membership of. */
+/**
+ * Salon ids an authenticated scope proves membership of. A salon scope: its
+ * own ids, primary first. A district or region scope: the roster's salons in
+ * it (sorted), through Reporting's own resolver. Global: none — global is "not
+ * restricted", not a list, and every caller handles it before asking.
+ */
 export function authorizedSalonIds(scope: AccessScope): string[] {
+  if (scope.level === "district" || scope.level === "region") {
+    return (authorizedSalonNumbers(scope) ?? []).map((number) => `loc-${number}`);
+  }
   if (scope.level !== "salon") return [];
   const ids = [scope.primaryAreaId, ...scope.alsoCoversAreaIds].filter(
     (id): id is string => typeof id === "string" && id.length > 0,
@@ -95,7 +104,7 @@ export function authorizeLocation(
     return { kind: "authorized", locationId: requested };
   }
 
-  if (scope.level === "salon") {
+  if (scope.level === "salon" || scope.level === "district" || scope.level === "region") {
     const allowed = authorizedSalonIds(scope);
     if (allowed.includes(requested)) return { kind: "authorized", locationId: requested };
     return {
@@ -107,11 +116,10 @@ export function authorizeLocation(
     };
   }
 
-  // district | region — see the note above.
+  // Unreachable for the levels above; anything else names no salon.
   return {
     kind: "refused",
-    reason:
-      "Ask Sunny cannot yet verify which salons are in your district, so it will not file a form against one. This needs the salon roster to be connected.",
+    reason: "That salon is not one you are assigned to. A form can only be filed against a salon on your own assignment.",
   };
 }
 
@@ -184,7 +192,8 @@ export function proposeLocation(
     };
   }
 
-  if (scope.level === "salon") {
+  // A district or region scope proposes from the roster's salons in it, exactly as a multi-salon manager.
+  if (scope.level === "salon" || scope.level === "district" || scope.level === "region") {
     const allowed = authorizedSalonIds(scope);
     const named = answeredSalonIds
       ? fromAnsweredSalons(allowed, answeredSalonIds)
@@ -266,8 +275,7 @@ export function proposeLocation(
 
   return {
     resolution: "unavailable",
-    reason:
-      "Ask Sunny can't verify the salon for your district yet. Choose a verified salon once the location roster is connected.",
+    reason: "Ask Sunny can't verify a salon for your account, so no location is filled in.",
   };
 }
 

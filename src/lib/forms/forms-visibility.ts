@@ -18,14 +18,17 @@ import type { AccessScope, Role } from "@/types";
  * on ordinary district and regional manager accounts, not only administrators,
  * so it cannot mean "may read every salon's disciplinary records".
  *
- * THE RULE, by role and role alone — the stored scope level is not consulted
- * for a non-salon scope:
+ * THE RULE — a stored `global` scope is not consulted:
  *
  *   all salons   an administrator role, or an account with an unrevoked row in
  *                `forms_all_store_access` (admin-managed, keyed to the account
  *                id; Delphine and DJ). Independent of Woven verification.
  *   their salons everyone else, whatever their role: the salons on a `salon`
- *                scope, PLUS every location Woven assigns them — the primary
+ *                scope; the roster's salons of a `district` or `region` scope
+ *                (`PRODUCTION_SALONS`, as Reporting reads it — Pau, 25 Nov
+ *                2026: "are Dms able to see the forms that their managers are
+ *                submitting?"), set per account in User Management; PLUS
+ *                every location Woven assigns them — the primary
  *                and each active additional or unexpired temporary location
  *                that maps to a salon. A manager covering several locations
  *                reads all of them (20 Oct 2026); one covering one reads one.
@@ -137,12 +140,14 @@ export async function resolveFormsVisibility(identity: VisibilityIdentity): Prom
 
   /*
    * A `salon` scope IS a store assignment, so its salons are honoured as
-   * assigned. Every other level (global, district, region) names no salon. In
-   * both cases Woven's locations for the account are added: the primary, and
-   * each further location they are assigned to.
+   * assigned. A `district` or `region` scope is one too, through the roster:
+   * the salons of that district or region (an area the roster does not know
+   * names none). `global` names no salon — every account carries it. In every
+   * case Woven's locations for the account are added: the primary, and each
+   * further location they are assigned to.
    */
   const { scope } = identity;
-  const assigned = scope?.level === "salon" ? authorizedSalonIds(scope) : [];
+  const assigned = scope && scope.level !== "global" ? authorizedSalonIds(scope) : [];
   const woven = await wovenEmployee(identity.subject);
   const affiliated = woven?.employeeId ? await wovenAffiliatedSalons(woven.employeeId) : [];
   const salons = [
