@@ -314,6 +314,11 @@ async function script(): Promise<{ replies: unknown[]; bodies: string[] }> {
 }
 
 /*
+ * Re-recorded on purpose on 25 Nov 2026 (the owner's speed request, CHAT_PARALLEL_REWRITE_ENABLED on in production): every
+ * reply is unchanged and the 11 earlier bodies are all still there, byte for byte; the production run adds 3 Haiku
+ * bodies, the normalizer and the heading pick started early on turns that end before they are used (a form turn) or
+ * whose extraction changed the question. The flags-off run is unchanged.
+ *
  * Re-recorded on purpose on 20 Nov 2026 (QA item 25): DEAD_END_SAYS_WHERE_ENABLED is on in production with its pull
  * request, so the production run's two answering bodies carry its where-to-go lines in the reports section. The
  * flags-off run is unchanged, and no body carries the glossary.
