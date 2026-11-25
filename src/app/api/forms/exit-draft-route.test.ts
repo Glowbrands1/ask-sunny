@@ -33,8 +33,25 @@ const state = vi.hoisted(() => ({
     values: Record<string, string>;
     checked: Record<string, string[]>;
     keys: ReadonlySet<string> | undefined;
+    source?: string;
   }[],
+  /** WOVEN_EXIT_ADDRESS_ENABLED: what the Woven read returns, and who it was asked about. */
+  woven: { enabled: false, address: null as string | null, asked: [] as { employeeName: unknown; scope: unknown }[] },
+  /** The form's saved lines, when a test needs some. */
+  loadedValues: null as { fieldKey: string; value: string; checked: string[]; provenance: Record<string, unknown> }[] | null,
 }));
+
+vi.mock("@/lib/forms/exit-woven-address", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/forms/exit-woven-address")>();
+  return {
+    ...actual,
+    wovenExitAddressEnabled: () => state.woven.enabled,
+    wovenExitAddress: async (input: { employeeName: unknown; scope: unknown }) => {
+      state.woven.asked.push(input);
+      return state.woven.address;
+    },
+  };
+});
 
 vi.mock("@/lib/api/respond", () => ({
   assertLiveMode: () => {},
@@ -66,6 +83,7 @@ vi.mock("@/lib/forms/instance-scope", () => ({
           ...state.instance,
         },
         version: { document: parseFormDocument(seed.document), variants: seed.variants },
+        ...(state.loadedValues ? { values: state.loadedValues } : {}),
       },
     };
   },
@@ -107,8 +125,9 @@ vi.mock("@/lib/forms/instances", async () =>
     stated: { values: Record<string, string>; checked: Record<string, string[]> },
     _actor: string,
     keys?: ReadonlySet<string>,
+    source?: string,
   ) => {
-    state.stated.push({ values: stated.values, checked: stated.checked, keys });
+    state.stated.push({ values: stated.values, checked: stated.checked, keys, ...(source ? { source } : {}) });
     return [...Object.keys(stated.values), ...Object.keys(stated.checked)];
   },
   applyAssistantDraft: async (
@@ -168,6 +187,8 @@ beforeEach(() => {
   state.persisted = [];
   state.stated = [];
   state.instance = {};
+  state.woven = { enabled: false, address: null, asked: [] };
+  state.loadedValues = null;
 });
 
 afterEach(() => {
@@ -482,5 +503,89 @@ describe("HR feedback 30 Sep — the Delphine exit form", () => {
     const payload = await post(DELPHINE_NOTES);
     expect(stored().values.details).toBe(written);
     expect(payload.exitHeaderRestated).toEqual([]);
+  });
+});
+
+/*
+ * Port from Ask Bubbles. Pau, 25 Nov 2026: "can we auto add the permanent address in exit form? from woven?" With WOVEN_EXIT_ADDRESS_ENABLED,
+ * an exit form whose Permanent Address the manager did not type is filled from the employee's Woven record, saved with
+ * Woven as its source and said in the notice. The address the manager typed always wins. The address is invented.
+ */
+describe("the Permanent Address from Woven", () => {
+  const WOVEN_ADDRESS = "412 Invented Ln, Faketown, NE 68000";
+
+  it("fills an empty Permanent Address from Woven, marked as Woven's, and says to confirm it", async () => {
+    state.woven = { enabled: true, address: WOVEN_ADDRESS, asked: [] };
+    state.toolInput = { values: { details: "Sarah gave two weeks notice on 9/1 and worked through her last day, 9/15." } };
+    const payload = await post(NOTES);
+
+    expect(state.woven.asked).toHaveLength(1);
+    expect(state.woven.asked[0]!.employeeName).toBe("Sarah Jones");
+    const fromWoven = state.stated.find((entry) => entry.values.permanent_address === WOVEN_ADDRESS);
+    expect(fromWoven, "the Woven address was not written").toBeDefined();
+    expect(fromWoven!.source).toBe("woven");
+    expect([...(fromWoven!.keys ?? [])]).toEqual(["permanent_address"]);
+    expect(payload.wovenFilled).toEqual(["permanent_address"]);
+    expect(String(payload.notice)).toMatch(/Permanent Address was filled in from Woven\. Confirm/);
+    // Never shown to the model.
+    expect(prompt()).not.toMatch(/Invented Ln/);
+  });
+
+  it("FORM_EDIT_SINGLE_WRITER_ENABLED (production): the same line, through the one writer, still marked as Woven's", async () => {
+    const previous = process.env.FORM_EDIT_SINGLE_WRITER_ENABLED;
+    process.env.FORM_EDIT_SINGLE_WRITER_ENABLED = "true";
+    try {
+      state.woven = { enabled: true, address: WOVEN_ADDRESS, asked: [] };
+      state.toolInput = { values: { details: "Sarah gave two weeks notice on 9/1 and worked through her last day, 9/15." } };
+      const payload = await post(NOTES);
+      const fromWoven = state.stated.find((entry) => entry.values.permanent_address === WOVEN_ADDRESS);
+      expect(fromWoven, "the Woven address was not written").toBeDefined();
+      expect(fromWoven!.source).toBe("woven");
+      expect(payload.wovenFilled).toEqual(["permanent_address"]);
+    } finally {
+      if (previous === undefined) delete process.env.FORM_EDIT_SINGLE_WRITER_ENABLED;
+      else process.env.FORM_EDIT_SINGLE_WRITER_ENABLED = previous;
+    }
+  });
+
+  it("the address the manager typed wins: Woven is not asked", async () => {
+    const previous = process.env.EXIT_INTAKE_FIX_ENABLED;
+    process.env.EXIT_INTAKE_FIX_ENABLED = "true";
+    try {
+      state.woven = { enabled: true, address: WOVEN_ADDRESS, asked: [] };
+      state.toolInput = { values: { details: "Sarah did not call in." } };
+      await post(
+        "create an exit form for Sarah Jones, permanent address 12 Invented Rd, Lawrence, KS 66044. She did not call in for her last two shifts. Last day worked 10-20-26",
+      );
+      expect(state.woven.asked).toEqual([]);
+      expect(state.stated.some((entry) => entry.values.permanent_address === WOVEN_ADDRESS)).toBe(false);
+    } finally {
+      if (previous === undefined) delete process.env.EXIT_INTAKE_FIX_ENABLED;
+      else process.env.EXIT_INTAKE_FIX_ENABLED = previous;
+    }
+  });
+
+  it("a line already filled is kept: Woven is not asked", async () => {
+    state.woven = { enabled: true, address: WOVEN_ADDRESS, asked: [] };
+    state.loadedValues = [{ fieldKey: "permanent_address", value: "1 Already Filled St, Faketown", checked: [], provenance: {} }];
+    state.toolInput = { values: { details: "Sarah resigned." } };
+    await post(NOTES);
+    expect(state.woven.asked).toEqual([]);
+    expect(state.stated.some((entry) => entry.values.permanent_address === WOVEN_ADDRESS)).toBe(false);
+  });
+
+  it("off, or nothing found in Woven: the line stays blank and nothing is said", async () => {
+    state.toolInput = { values: { details: "Sarah gave two weeks notice on 9/1 and worked through her last day, 9/15." } };
+    const off = await post(NOTES);
+    expect(state.woven.asked).toEqual([]);
+    expect(off.wovenFilled).toBeUndefined();
+    expect(String(off.notice ?? "")).not.toMatch(/Woven/);
+
+    state.woven = { enabled: true, address: null, asked: [] };
+    state.stated = [];
+    const none = await post(NOTES);
+    expect(state.woven.asked).toHaveLength(1);
+    expect(state.stated.some((entry) => "permanent_address" in entry.values)).toBe(false);
+    expect(none.wovenFilled).toBeUndefined();
   });
 });

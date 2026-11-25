@@ -791,6 +791,8 @@ export async function applyStatedFacts(
    * the Corrective Action Form's payroll-deduct answer passes its own one key.
    */
   allowedKeys?: ReadonlySet<string>,
+  /** Saved as the facts' provenance: the manager's statement, or Woven (the exit form's Permanent Address, `exit-woven-address.ts`). */
+  source: "manager_statement" | "woven" = "manager_statement",
 ): Promise<string[]> {
   const loaded = await loadInstance(instanceId);
   if (!loaded || !editableDraftNow(loaded.instance)) return [];
@@ -805,7 +807,7 @@ export async function applyStatedFacts(
   const keys = [...Object.keys(selected.values), ...Object.keys(selected.checked)];
   if (keys.length === 0) return [];
 
-  const provenance = Object.fromEntries(keys.map((key) => [key, { source: "manager_statement" }]));
+  const provenance = Object.fromEntries(keys.map((key) => [key, { source }]));
   await writeValues(instanceId, selected, "system", provenance);
   await recordEvent(instanceId, "drafted", actor, { statedFacts: keys });
   return keys;
