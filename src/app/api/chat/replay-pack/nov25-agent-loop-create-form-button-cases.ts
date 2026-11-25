@@ -22,7 +22,7 @@ import { evidenceFrom, lastResult, loopStandIn, type LoopDecision, type LoopView
  */
 
 const FIX = ["CREATE_FORM_BUTTON_PICKS_FORM_ENABLED"];
-const STATUS = { open: "CREATE_FORM_BUTTON_PICKS_FORM_ENABLED is off in production (default off; QA flips it)" } as const;
+const STATUS = "fixed" as const; // CREATE_FORM_BUTTON_PICKS_FORM_ENABLED is on in production (25 Nov 2026)
 const REPORT = "Pau (25 Nov 2026): a manager pressed \"Create a form from this conversation\" three times; Sunny kept telling them to press Create draft themselves, then said no new card was made because a draft was already open";
 const BUTTON = CREATE_FORM_FROM_CONVERSATION;
 const LIVE_REPLY = "To create it, press **Create draft** on the card — I can't create the draft from a chat message.";
