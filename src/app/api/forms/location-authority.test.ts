@@ -205,7 +205,10 @@ describe("28. a salon the caller is not assigned to is refused", () => {
   });
 });
 
-describe("29. a district manager is refused, not silently accepted", () => {
+// Changed on purpose (Pau, 25 Nov 2026: "i need this in sunny please"): a district or region on the roster now files
+// against its salons (`dm-district-forms-visibility.test.ts`). These ids are not on the roster, so they still refuse;
+// only the refusal's wording changed.
+describe("29. a district manager off the roster is refused, not silently accepted", () => {
   it.each(["district", "region"] as const)("%s", async (level) => {
     const { route, created } = await load({
       role: "district_manager",
@@ -217,7 +220,7 @@ describe("29. a district manager is refused, not silently accepted", () => {
 
     expect(response.status).toBe(403);
     expect(created).toHaveLength(0);
-    expect(((await response.json()) as { error: string }).error).toMatch(/cannot yet verify/i);
+    expect(((await response.json()) as { error: string }).error).toMatch(/not one you are assigned to/i);
   });
 });
 
