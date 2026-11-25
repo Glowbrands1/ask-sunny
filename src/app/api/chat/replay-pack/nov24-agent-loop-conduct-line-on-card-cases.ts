@@ -17,7 +17,8 @@ import { evidenceFrom, headingWith, lastResult, loopStandIn, type LoopDecision }
  */
 
 const FIX = ["LOOP_CARD_CITES_CONDUCT_LINE_ENABLED"];
-const STATUS = { open: "LOOP_CARD_CITES_CONDUCT_LINE_ENABLED is off in production (default off; QA flips it)" } as const;
+/* Fixed in production: the owner turned LOOP_CARD_CITES_CONDUCT_LINE_ENABLED on in Vercel (25 Nov 2026). */
+const STATUS = "fixed" as const;
 const REPORT = "QA's live test (24 Nov 2026): \"Draft a corrective action form for a till shortage for Test Employee\" carded \"Standards of Conduct …, JBA Policy Manual p.12\", not the Register / Bank shortages line";
 const SAID = "Draft a corrective action form for a till shortage for Test Employee";
 const TEST_EMPLOYEE: DirectoryRow = { id: "e-test-employee", firstName: "Test", lastName: "Employee", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" };
