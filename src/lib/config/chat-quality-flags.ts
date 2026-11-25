@@ -322,6 +322,18 @@ export function requiredFieldsAtFinalizeEnabled(): boolean {
 }
 
 /**
+ * ALL_FIELDS_REQUIRED_ENABLED (Pau, 25 Nov 2026; default off; same flag in both apps; QA audits, then flips it): "update
+ * all forms so that they cannot submit for approval if all field are not filled out". On: Finalize and "Finalize and
+ * send for approval" refuse a form with anything its creator fills still blank (`required-fields.ts`
+ * blankBeforeSubmission; signatures, hand-filled and employee lines are done in person and never asked for), and a
+ * blank Corrective Action history box is written "N/A" instead of refused. Off, only fields a version marks `required`
+ * are checked, and only with REQUIRED_FIELDS_AT_FINALIZE_ENABLED on.
+ */
+export function allFieldsRequiredEnabled(): boolean {
+  return envFlag("ALL_FIELDS_REQUIRED_ENABLED");
+}
+
+/**
  * PAYROLL_AMOUNT_SAME_MESSAGE_ENABLED (the sibling app's live chat, 5 Nov 2026; same flag in both apps; default
  * off). "…the register was off $20. which will be payroll deducted from <name>'s check. … payroll deduct applies"
  * still asked "**Payroll deduction amount**?". On: an amount followed by "which / that / this / it … (payroll)
