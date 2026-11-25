@@ -6028,7 +6028,12 @@ export async function proposeForm(
    * code no longer writes or appends any of it.
    */
   const conductHeading = appConfig().policyGuards.headings.conduct;
-  const underPerformance = Boolean(policyHeading && conductHeading && policyHeading.toLowerCase().includes(conductHeading.toLowerCase()) && (/\bunder[- ]?perform(?:ance|ing)\b|must see behaviou?rs?|\bperform[a-z]*\b/i.test(managerWords) || accountMetric().test(managerWords)));
+  /*
+   * QA's live test (25 Nov 2026): "Draft a coaching form for a performance concern for a made-up employee named Test
+   * Employee" carded "Under Performance isn't on the CA form…" on a Coaching Form. That line explains the Corrective
+   * Action Form's missing Under Performance box, so the fact is a Corrective Action's only.
+   */
+  const underPerformance = template.key === appConfig().formKeys.corrective && Boolean(policyHeading && conductHeading && policyHeading.toLowerCase().includes(conductHeading.toLowerCase()) && (/\bunder[- ]?perform(?:ance|ing)\b|must see behaviou?rs?|\bperform[a-z]*\b/i.test(managerWords) || accountMetric().test(managerWords)));
   accountMetric().lastIndex = 0;
   const corrective = template.key === appConfig().formKeys.corrective;
   /*
