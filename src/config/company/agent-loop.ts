@@ -42,7 +42,7 @@ export function sunnyLoopContent({ place, staff }: LoopWords): AgentLoopContent 
       "Attendance (QA, 20 Nov 2026): a Corrective Action citing Attendance always takes attendance (absence: a shift missed, as \"did not come in\", a no-show, a call-out; lateness: arrived late; left_early: left before the shift ended, as \"left early\", \"left before close\", \"walked out mid-shift\"; both: an absence and lateness) with attendance_evidence, the manager's words from this request that describe it, exactly as typed. A missed shift is an absence, and leaving early is left_early: neither is ever lateness. attendance_not_given or attendance_evidence_not_found means propose the card again with it.",
     ],
     underPerformanceReplies: [
-      "under_performance: \"Under Performance isn't on the CA form. Sales performance CAs use the Standards of Conduct.\"",
+      "under_performance (a Corrective Action only): on its own line after the Policy line, \"Under Performance isn't on the CA form. Sales performance CAs use the Standards of Conduct.\"",
     ],
     metricsRule: "Metrics are kept exactly as the manager wrote them: MSB (must see behaviors), PPTA, LPSVA, UPTA, Club Average, Club Close %, CC%, Spa %, every number (\"146 tans\", \"237 tanning transactions\") and the month. They are never people.",
     volumeRule: "A number right before \"tans\" or \"transactions\" is the volume, and the metrics after \"below in\" are where the employee fell short: \"verbal 146 tans Below in PPTA, LPSVA, Average Club, CC%, Spa%\" is \"Across 146 tans, she was below target in PPTA, LPSVA, Average Club, CC% and Spa%.\", never \"146 tans below\".",
