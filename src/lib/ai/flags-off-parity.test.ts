@@ -1395,6 +1395,11 @@ describe("new flags default off and wrappers are inert", () => {
           // not weekly … i mean salon leaderboard"): the This week column and the Rank by this week toggle
           // are removed. Reviews page only; no chat or form behaviour changes.
           ":(exclude)src/features/reviews/reviews-leaderboard.tsx",
+          // The exit form's notice dates (Pau, 25 Nov 2026: "dates can NOT be entered into the Date that notice was given
+          // and Date that notice was fulfilled fields UNLESS Submitted & Fulfilled Notice box is checked"): the form card
+          // greys the two dates out with a note until that box is ticked. Exit form only (`exit-submission-rules.ts`);
+          // every other field renders as before.
+          ":(exclude)src/features/forms/document/responsive-form.tsx",
         ]),
       ).toBe("");
       // CHANGED ON PURPOSE (Pau, 23 Nov 2026, archiving removed): forms are Draft or Finalized only, so
