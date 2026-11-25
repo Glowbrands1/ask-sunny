@@ -2045,3 +2045,68 @@ describe("a reopened Corrective Action cites the JBA Policy Manual without askin
     expect(screen.queryByRole("button", { name: /^Confirm / })).toBeNull();
   });
 });
+
+/*
+ * BLANK FIELDS AT FINALIZE, in Pau's words (25 Nov 2026): "pls add a note as to why dont just auto reject it, add a pop
+ * up that there are missing fields and highlight it in both apps". The server refuses (422, required_fields_blank)
+ * and names the blank fields; the card opens a pop-up saying why and which, outlines each on the form, and the outline
+ * goes as soon as the field is filled.
+ */
+describe('"add a pop up that there are missing fields and highlight it"', () => {
+  function refusingServer() {
+    fakeFetch((url, init) => {
+      if (url === "/api/forms/instances/inst-42" && init.method === "POST") {
+        return {
+          ok: false,
+          payload: {
+            error: 'Fill in every field before finalizing or sending this form for approval (signatures are signed in person). Still blank: "Type Of Coaching".',
+            code: "required_fields_blank",
+            fields: ["coaching_type"],
+            missing: [{ key: "coaching_type", label: "Type Of Coaching" }],
+          },
+        };
+      }
+      return { payload: loadedInstance() };
+    });
+  }
+
+  it("opens a pop-up that says why and lists the blank fields, instead of an error line", async () => {
+    refusingServer();
+    const { container } = mounted();
+    await screen.findByDisplayValue("Arrived late on three shifts this week.");
+
+    fireEvent.click(screen.getByRole("button", { name: /finalize/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /yes, finalize/i }));
+
+    const dialog = await screen.findByTestId("missing-fields-dialog");
+    expect(dialog.textContent).toMatch(/can't be finalized yet/);
+    expect(dialog.textContent).toMatch(/so HR receives a complete record/);
+    expect(dialog.textContent).toMatch(/signed by hand, in person/);
+    expect(within(dialog).getByText("Type Of Coaching")).toBeTruthy();
+    // Not the raw refusal as an error line.
+    expect(container.textContent).not.toContain("Still blank: \"Type Of Coaching\"");
+  });
+
+  it("outlines the blank field on the form until it is filled", async () => {
+    refusingServer();
+    const { container } = mounted();
+    await screen.findByDisplayValue("Arrived late on three shifts this week.");
+
+    fireEvent.click(screen.getByRole("button", { name: /finalize/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /yes, finalize/i }));
+    await screen.findByTestId("missing-fields-dialog");
+    fireEvent.click(screen.getByRole("button", { name: /show me the blank fields/i }));
+    await waitFor(() => expect(screen.queryByTestId("missing-fields-dialog")).toBeNull());
+
+    const outlined = container.querySelector<HTMLElement>('[data-missing-field="coaching_type"]');
+    expect(outlined).toBeTruthy();
+    expect(outlined!.textContent).toMatch(/Required/);
+    expect(screen.getByTestId("missing-fields-reminder").textContent).toMatch(/1 field is still blank/);
+    // The details line was filled, so it is not outlined.
+    expect(container.querySelector('[data-missing-field="coaching_details"]')).toBeNull();
+
+    fireEvent.click(within(outlined!).getByText("Under Performance"));
+    await waitFor(() => expect(container.querySelector('[data-missing-field="coaching_type"]')).toBeNull());
+    expect(screen.queryByTestId("missing-fields-reminder")).toBeNull();
+  });
+});

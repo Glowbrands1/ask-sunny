@@ -30,6 +30,9 @@ until then.
 
 Finalize, and "Finalize and send for approval", are refused while anything the form's creator fills is blank, and the
 refusal names what is blank (the first eight, then "and N more"). The form stays a draft the manager can fix.
+On the form card it is a pop-up, not an error line (Pau, 25 Nov 2026): it says why (HR receives a complete record;
+signatures are signed by hand, in person), lists the blank fields, and "Show me the blank fields" closes it onto the
+first one. Each blank field is outlined in red and marked Required until it is filled.
 
 | Part of a form | Counts as filled when |
 | --- | --- |

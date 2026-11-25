@@ -80,6 +80,7 @@ export function ResponsiveForm({
   onValue,
   onToggle,
   className,
+  missing,
 }: {
   document: FormDocument;
   variant: FormVariant | null;
@@ -89,6 +90,11 @@ export function ResponsiveForm({
   onValue?: (key: string, value: string) => void;
   onToggle?: (key: string, option: string) => void;
   className?: string;
+  /**
+   * Keys of the fields Finalize / send for approval refused as blank (ALL_FIELDS_REQUIRED_ENABLED; Pau, 25 Nov 2026:
+   * "add a pop up that there are missing fields and highlight it"). Each is outlined and marked Required.
+   */
+  missing?: ReadonlySet<string>;
 }) {
   const visible = React.useMemo(
     () => doc.blocks.filter((block) => blockAppliesToVariant(block, variant?.key ?? null)),
@@ -107,6 +113,7 @@ export function ResponsiveForm({
           readOnly={readOnly}
           onValue={onValue}
           onToggle={onToggle}
+          missing={missing ?? NONE_MISSING}
         />
       ))}
     </div>
@@ -121,6 +128,7 @@ function BlockField({
   readOnly,
   onValue,
   onToggle,
+  missing,
 }: {
   block: FormBlock;
   variant: FormVariant | null;
@@ -129,6 +137,7 @@ function BlockField({
   readOnly: boolean;
   onValue?: (key: string, value: string) => void;
   onToggle?: (key: string, option: string) => void;
+  missing: ReadonlySet<string>;
 }) {
   const text = (value: string) => interpolate(value, variant);
 
@@ -190,6 +199,7 @@ function BlockField({
           value={values.values[block.field.key] ?? ""}
           readOnly={readOnly}
           onValue={onValue}
+          missing={missing.has(block.field.key)}
         />
       );
 
@@ -221,6 +231,7 @@ function BlockField({
                   ? NOTICE_DATE_LOCKED_NOTE
                   : undefined
               }
+              missing={missing.has(field.key)}
             />
           ))}
         </div>
@@ -229,8 +240,9 @@ function BlockField({
     case "checkbox_group": {
       const mayTick = !readOnly && canPersonEdit(block.responsibility);
       const selected = values.checked[block.key] ?? [];
+      const blank = missing.has(block.key);
       return (
-        <fieldset className="min-w-0 space-y-2">
+        <fieldset className={cn("min-w-0 space-y-2", blank && MISSING_OUTLINE)} {...missingAttributes(block.key, blank)}>
           {block.label ? (
             <legend className="text-[13px] font-medium text-foreground">
               {text(block.label)}
@@ -255,6 +267,7 @@ function BlockField({
               </label>
             ))}
           </div>
+          {blank ? <MissingNote /> : null}
           {mayTick ? null : <ResponsibilityNote responsibility={block.responsibility} />}
         </fieldset>
       );
@@ -292,8 +305,9 @@ function BlockField({
         onToggle?.(own, optionKey);
       };
 
+      const blank = missing.has(block.successKey);
       return (
-        <fieldset className="min-w-0 space-y-2">
+        <fieldset className={cn("min-w-0 space-y-2", blank && MISSING_OUTLINE)} {...missingAttributes(block.successKey, blank)}>
           {block.label ? (
             <legend className="text-[13px] font-medium text-foreground">
               {text(block.label)}
@@ -326,6 +340,7 @@ function BlockField({
               </div>
             ))}
           </div>
+          {blank ? <MissingNote text="Mark every row one way or the other." /> : null}
           {mayTick ? null : <ResponsibilityNote responsibility={block.responsibility} />}
         </fieldset>
       );
@@ -343,7 +358,11 @@ function BlockField({
             <p className="text-[13px] font-medium text-foreground">{text(block.label)}</p>
           ) : null}
           {block.rows.map((row) => (
-            <div key={row.key} className="min-w-0 space-y-1">
+            <div
+              key={row.key}
+              className={cn("min-w-0 space-y-1", missing.has(row.key) && MISSING_OUTLINE)}
+              {...missingAttributes(row.key, missing.has(row.key))}
+            >
               <p className="text-[13px] font-semibold text-foreground">{text(row.category)}</p>
               <p className="text-xs text-subtle-foreground">{text(row.objective)}</p>
               <Label htmlFor={`plan-${row.key}`} className="sr-only">
@@ -358,8 +377,10 @@ function BlockField({
                 value={values.values[row.key] ?? ""}
                 readOnly={!mayType}
                 disabled={!mayType}
+                aria-invalid={missing.has(row.key) || undefined}
                 onChange={(event) => onValue?.(row.key, event.target.value)}
               />
+              {missing.has(row.key) ? <MissingNote /> : null}
             </div>
           ))}
           {mayType ? null : <ResponsibilityNote responsibility={block.responsibility} />}
@@ -430,8 +451,9 @@ function BlockField({
     case "numbered_list": {
       const mayType = !readOnly && canPersonEdit(block.responsibility);
       const lines = numberedListLines(values.values[block.key], block.count);
+      const blank = missing.has(block.key);
       return (
-        <div className="min-w-0 space-y-2">
+        <div className={cn("min-w-0 space-y-2", blank && MISSING_OUTLINE)} {...missingAttributes(block.key, blank)}>
           <p className="text-[13px] font-medium text-foreground">{text(block.label)}</p>
           {block.help ? (
             <p className="text-xs text-subtle-foreground">{text(block.help)}</p>
@@ -464,6 +486,7 @@ function BlockField({
               </div>
             ))}
           </div>
+          {blank ? <MissingNote text="Fill in every numbered line." /> : null}
           {mayType ? null : <ResponsibilityNote responsibility={block.responsibility} />}
         </div>
       );
@@ -498,6 +521,7 @@ function FieldControl({
   readOnly,
   onValue,
   lockedNote,
+  missing = false,
 }: {
   field: FormField;
   variant: FormVariant | null;
@@ -507,13 +531,14 @@ function FieldControl({
   onValue?: (key: string, value: string) => void;
   /** Why this line cannot be typed in yet; shown instead of the input's value. */
   lockedNote?: string;
+  missing?: boolean;
 }) {
   const mayType = !readOnly && !lockedNote && canPersonEdit(field.responsibility);
   const label = interpolate(field.label, variant);
   const id = `form-field-${field.key}`;
 
   return (
-    <div className="min-w-0 space-y-1.5">
+    <div className={cn("min-w-0 space-y-1.5", missing && MISSING_OUTLINE)} {...missingAttributes(field.key, missing)}>
       <Label htmlFor={id}>{label}</Label>
       {field.input === "long_text" ? (
         <Textarea
@@ -521,6 +546,7 @@ function FieldControl({
           id={id}
           className="min-w-0"
           rows={Math.max(4, field.minLines ?? 0)}
+          aria-invalid={missing || undefined}
           value={value}
           readOnly={!mayType}
           disabled={!mayType}
@@ -538,6 +564,7 @@ function FieldControl({
            * one stays a date picker, which stores ISO whatever it displays.
            */
           type={field.input === "date" && (mayType || style?.dateFormat !== "us") ? "date" : "text"}
+          aria-invalid={missing || undefined}
           value={field.input === "date" && !mayType ? displayDate(value, style) : value}
           readOnly={!mayType}
           disabled={!mayType}
@@ -547,6 +574,7 @@ function FieldControl({
       {field.help ? (
         <p className="text-xs leading-snug text-subtle-foreground">{field.help}</p>
       ) : null}
+      {missing ? <MissingNote /> : null}
       {lockedNote && !readOnly ? (
         <p className="text-xs leading-snug text-muted-foreground">{lockedNote}</p>
       ) : mayType ? null : (
@@ -554,6 +582,22 @@ function FieldControl({
       )}
     </div>
   );
+}
+
+/* ------------------------------------------------- blank at Finalize --- */
+
+const NONE_MISSING: ReadonlySet<string> = new Set();
+
+/** The outline on a field Finalize / send for approval refused as blank. */
+const MISSING_OUTLINE = "rounded-[var(--radius-sm)] outline outline-2 outline-offset-4 outline-status-failed";
+
+/** `data-missing-field` is what the pop-up's "Show me" scrolls to. */
+function missingAttributes(key: string, missing: boolean): Record<string, string> {
+  return missing ? { "data-missing-field": key } : {};
+}
+
+function MissingNote({ text = "Required — fill this in before finalizing or sending for approval." }: { text?: string }) {
+  return <p className="text-xs font-medium text-status-failed">{text}</p>;
 }
 
 /** Why a control is not editable, in the words the rest of Forms uses. */
