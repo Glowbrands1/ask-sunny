@@ -1,6 +1,7 @@
 import { weekdayOf } from "@/lib/business-date";
 
 import { appConfig, type AppConfig } from "./app-config";
+import { createFormButtonLine, type CreateFormButtonScreen } from "./create-form-button";
 import { rulesBookText } from "./rules-book";
 
 /**
@@ -62,6 +63,8 @@ export function agentLoopSystem(input: {
   readonly cardOpenForm?: string | null;
   /** Fix batch item 6: the last reply's propose_form asked who this form is for (the server's record); its name. */
   readonly answeringWhoQuestion?: string | null;
+  /** CREATE_FORM_BUTTON_PICKS_FORM: this turn is the rail's "Create a form from this conversation", and what is on screen. */
+  readonly createFormButton?: CreateFormButtonScreen | null;
 }): string {
   const config = appConfig();
   const place = config.locationWord;
@@ -89,6 +92,7 @@ export function agentLoopSystem(input: {
     input.answeringWhoQuestion
       ? `answering_who_question: your last reply asked who the ${input.answeringWhoQuestion} is for, and this message answers it. Look the name up with find_staff (person_evidence: the manager's words) before anything else; a first name alone is a name, never an acronym, a topic or a product.`
       : "",
+    input.createFormButton ? createFormButtonLine(input.createFormButton, config.formsPageName) : "",
   ];
   return lines.filter(Boolean).join("\n\n");
 }
