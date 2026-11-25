@@ -144,6 +144,11 @@ describe("what applies only after another answer", () => {
     expect(blankBeforeSubmission(exit.document, null, fulfilled).map((part) => part.key)).toEqual(["notice_given_date", "notice_fulfilled_date"]);
   });
 
+  it('Exit form: "Additional Details" is optional (Pau: "Should it be optional? - yes")', () => {
+    const exit = TEMPLATE_SEEDS.find((entry) => blocksForVariant(entry.document, null).some((block) => block.kind === "checkbox_group" && block.key === "resignation_notice"))!;
+    expect(blankBeforeSubmission(exit.document, null, without(everythingFilled(exit, null), "details"))).toEqual([]);
+  });
+
   it("an EPP's Re-Evaluation section waits for the re-evaluation", () => {
     const epp = seed("sdit-epp");
     const variant = variantOf(epp);

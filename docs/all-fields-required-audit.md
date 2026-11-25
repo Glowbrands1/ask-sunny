@@ -52,15 +52,15 @@ blocks: when it is still blank at Finalize or send for approval — no step the 
 draft found — the app writes **N/A** into it (recorded as the app's, `no_prior_actions_found`). A history already in
 the box is never touched. If a step is added later (for example after HR sends it back), the N/A line is dropped.
 
-## Decisions for QA / Pau to confirm before flipping the flag
+## Decisions (Pau, 25 Nov 2026)
 
-- **Exit form "Additional Details"** is required. Say if it should be optional.
-- **Interview "Update In Careerplug"** (one box, "Yes") is required, so the interviewer confirms it was done.
-- **Interview "Qualities to observe"** are not required (a candidate may show none). Say if at least one tick should be.
-- **EPP figures:** where an EPP has its own figure lines (PPTA, LPSVA, UPTA, …), those lines are required and the
-  "figures, as provided" box beside them is not. An EPP with only one productivity box requires that box. An EPP
-  cannot be sent without the figures.
-- **Expectation checklists** need every row marked. The form used to allow "not evaluated yet" rows.
+- **Exit form "Additional Details"** is optional ("Should it be optional? - yes").
+- **Interview "Update In Careerplug"** is required (one box, "Yes": the interviewer confirms it was done). Confirmed.
+- **Expectation checklists** need every row marked; a row can no longer be left as "not evaluated yet". Confirmed.
+- **EPP figures:** an EPP cannot be sent without the productivity figures. Where an EPP has its own figure lines
+  (PPTA, LPSVA, UPTA, …), those lines are required and the "figures, as provided" box beside them is not; an EPP with
+  only one productivity box requires that box. Confirmed.
+- **Interview "Qualities to observe"** are not required (a candidate may show none).
 - **Coaching forms** (Coaching, Follow-Up Coaching) finalize without HR; they are held to the same rule at Finalize.
 
 ## QA checklist (flag on, preview)
@@ -204,9 +204,10 @@ Each form lists what must be filled and what is not asked for, and why. Regenera
 
 ### Resignation/Exit Form (`stc-exit`)
 
-**Must be filled (18):** Name; Date; Job Title; Location; Permanent Address; Last Day Worked; Resignation Details; All store items were returned; Salon key was returned; Is Payroll Deduction applicable? *; *Do they forfeit their bonus?; *Are they to be dropped to minimum wage?; Written notice attached?; Is this employee eligible for rehire?; Resignation Date; How Employee Resigned; Reason for Resignation; Additional Details
+**Must be filled (17):** Name; Date; Job Title; Location; Permanent Address; Last Day Worked; Resignation Details; All store items were returned; Salon key was returned; Is Payroll Deduction applicable? *; *Do they forfeit their bonus?; *Are they to be dropped to minimum wage?; Written notice attached?; Is this employee eligible for rehire?; Resignation Date; How Employee Resigned; Reason for Resignation
 
 **Not required:**
+- Additional Details — optional on the exit form (Pau, 25 Nov 2026)
 - Resignation Details — no tick is an answer: resignation_type is asked for instead
 - Date that notice was given — asked only when resignation_notice is submitted_fulfilled_notice
 - Date that notice was fulfilled — asked only when resignation_notice is submitted_fulfilled_notice

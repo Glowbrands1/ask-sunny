@@ -116,6 +116,8 @@ export const NOT_REQUIRED: Readonly<Record<string, string>> = {
   qualities_observed: "no tick is an answer: none of these qualities were seen",
   walkthrough_qualities_observed: "no tick is an answer: none of these qualities were seen",
   walkthrough_observed: "the column is ✔ / X: an unticked line is the X",
+  // Exit form (Pau, 25 Nov 2026: "Exit form 'Additional Details' is required. Should it be optional? - yes").
+  details: 'optional on the exit form (Pau, 25 Nov 2026): "Additional Details"',
   // EPPs: the draft-details appendix, "not part of the official form pages"; blank when no manual section applies.
   policy_references: "the appendix's policy line is left blank when no section of the manual applies",
 };
