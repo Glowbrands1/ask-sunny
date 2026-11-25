@@ -34,11 +34,14 @@ export function formsHeaders(role: Role, name: string): HeadersInit {
  */
 export class FormsFetchError extends Error {
   readonly code: string | null;
+  /** The blank fields a `required_fields_blank` refusal names, each with the label the form prints. */
+  readonly missing: readonly { key: string; label: string }[];
 
-  constructor(message: string, code: string | null) {
+  constructor(message: string, code: string | null, missing: readonly { key: string; label: string }[] = []) {
     super(message);
     this.name = "FormsFetchError";
     this.code = code;
+    this.missing = missing;
   }
 }
 
@@ -59,11 +62,18 @@ export async function formsFetch<T>(
     error?: string;
     code?: string;
     problems?: string[];
+    missing?: unknown;
   };
   if (!response.ok) {
     throw new FormsFetchError(
       payload.problems?.join(" ") ?? payload.error ?? "That did not work.",
       typeof payload.code === "string" ? payload.code : null,
+      Array.isArray(payload.missing)
+        ? payload.missing.flatMap((entry: unknown) => {
+            const part = entry as { key?: unknown; label?: unknown };
+            return typeof part?.key === "string" && typeof part?.label === "string" ? [{ key: part.key, label: part.label }] : [];
+          })
+        : [],
     );
   }
   return payload;

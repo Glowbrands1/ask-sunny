@@ -265,7 +265,11 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       return NextResponse.json({ error: error.message, code: error.code }, { status: 400 });
     }
     if (error instanceof RequiredFieldsBlankError) {
-      return NextResponse.json({ error: error.message, code: REQUIRED_FIELDS_BLANK, fields: error.fields.map((field) => field.key) }, { status: 422 });
+      // `missing` names each blank field so the form can open its pop-up and highlight them (Pau, 25 Nov 2026).
+      return NextResponse.json(
+        { error: error.message, code: REQUIRED_FIELDS_BLANK, fields: error.fields.map((field) => field.key), missing: error.fields },
+        { status: 422 },
+      );
     }
     if (error instanceof UnverifiedPolicyError) {
       return NextResponse.json(
