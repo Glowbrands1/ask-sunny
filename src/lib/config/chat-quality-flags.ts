@@ -4251,7 +4251,10 @@ export function chatParallelLoadsEnabled(): boolean {
  * question, the early call is dropped and the normalizer runs again, one extra Haiku call that the turn's spend
  * counts (it was paid for); with CHAT_STAGE_TIMINGS that step is named "query_normalize_rerun". And a turn that
  * extraction answers with a clarifying question ("which salon?") returns before the normalizer: its early call was made
- * and not used (one Haiku call; its rejection, if any, is held). Off, as before.
+ * and not used (one Haiku call; its rejection, if any, is held). Second half (owner, 25 Nov 2026): the search rewrite's
+ * heading pick (`manualHeadingQuery`, a Haiku call reading only the question, the turns before it and the headings)
+ * also starts as the turn arrives, with the same rule: used only for the same turn and scope, else run again where it
+ * ran ("query_rewrite_rerun"). The same inputs, so the same query. Off, as before.
  */
 export function chatParallelRewriteEnabled(): boolean {
   return envFlag("CHAT_PARALLEL_REWRITE_ENABLED");

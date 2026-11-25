@@ -150,7 +150,7 @@ import { applyIntentExtraction } from "./intent-extraction";
 import { isQuestionNotForm } from "./question-not-form";
 import { promoteSeparateForm } from "./second-form";
 import { fewShotBlock } from "./few-shot-examples";
-import { rewriteToManualTerms } from "./query-rewrite-claude";
+import { manualHeadingQuery, rewriteToManualTerms } from "./query-rewrite-claude";
 import { guardReply } from "./self-check-run";
 import { finishChatTrace, openChatTrace, redactTraceText } from "./chat-trace";
 import { groundingWithoutCachedManual } from "./prompt-cache";
@@ -599,6 +599,19 @@ async function answerQuestionUntraced(
   const earlyHeard =
     chatParallelRewriteEnabled() && queryRewriteEnabled() && intentExtractionEnabled() && !askedQuestion
       ? startedFor(request, (turn) => normalizeForChat({ question: turn.question, history: turn.history }))
+      : null;
+  /*
+   * CHAT_PARALLEL_REWRITE_ENABLED, second half (owner, 25 Nov 2026: Quick and Detailed took 12–20 s, about 1–2.7 s of it
+   * the search rewrite's heading pick, run after the normalizer): the pick (`manualHeadingQuery`, a Haiku call that reads
+   * only the question, the turns before it and the manual's headings) starts now, alongside intent extraction and the
+   * normalizer. Used only for the same turn and salon scope (`sameTurn`); otherwise it runs again where it always ran.
+   * Not started on a turn the rewrite skips (a slot-only answer, a carried policy topic). A turn that returns before the
+   * rewrite (a form card) leaves the early pick unused: one Haiku call, like the normalizer's.
+   */
+  const earlyScope = request.scopeId;
+  const earlyHeading =
+    chatParallelRewriteEnabled() && queryRewriteEnabled() && !(slotOnlyRetrievalTopic(request.question, request.history) ?? carriedPolicyTopic(request.question, request.history))
+      ? startedFor(request, (turn) => manualHeadingQuery({ question: turn.question, history: turn.history, scopeId: turn.scopeId }))
       : null;
   if (intentExtractionEnabled() && !askedQuestion) {
     markStage("intent_extraction");
@@ -1483,14 +1496,17 @@ async function answerQuestionUntraced(
    * `slot-only-turn.ts`); the rewrite would read the turn's own words again.
    */
   const slotTopic = slotOnlyRetrievalTopic(request.question, request.history) ?? carriedTopic;
-  markStage("query_rewrite");
+  const earlyPick = earlyHeading && earlyScope === request.scopeId ? earlyHeading : null;
+  markStage(earlyHeading && (!earlyPick || earlyPick.reruns(request)) ? "query_rewrite_rerun" : "query_rewrite");
   const rewritten = queryRewriteEnabled() && !slotTopic
-    ? await rewriteToManualTerms({
-        question: request.question,
-        history: request.history,
-        fallback: glossed,
-        scopeId: request.scopeId,
-      })
+    ? earlyPick
+      ? ((await earlyPick.take(request)) ?? glossed)
+      : await rewriteToManualTerms({
+          question: request.question,
+          history: request.history,
+          fallback: glossed,
+          scopeId: request.scopeId,
+        })
     : followedUp;
   /*
    * FOLLOWUP_NEW_TOPIC_RETRIEVAL_ENABLED: a follow-up that names documents of
