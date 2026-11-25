@@ -50,6 +50,7 @@ import { AskSunnyAboutReport } from "@/features/reports/ask-sunny-about-report";
 import { REPORTS } from "@/features/reports/reports-routes";
 import { REPORT_FAMILIES_BY_ID } from "@/lib/reporting/read/report-families";
 import { SPA_CONVERSION_FORMULA } from "@/lib/reporting/read/bed-spa/spa-conversion";
+import { spaHeadlinePeriods } from "@/lib/reporting/read/bed-spa/headline-periods";
 import { ReportInterpretationPanel } from "@/features/reports/interpretation-panel";
 import { interpretSpaEngagement } from "@/lib/reporting/read/bed-spa/interpretation";
 import { emptyCombinedColumns } from "@/lib/reporting/read/bed-spa/combined";
@@ -365,6 +366,13 @@ export default async function SpaEngagementPage({
    */
   const emptyColumns = emptyCombinedColumns(combined.rows);
 
+  /*
+   * EACH HEADLINE CARD NAMES ITS PERIOD (QA, 24 Nov 2026: "3,504 sessions through Sep 17" beside August conversion
+   * figures). Conversion keeps the shared period above, as intended; the row says so when it differs from this
+   * report's own. See `headline-periods.ts`.
+   */
+  const headline = spaHeadlinePeriods(data.period, bedData?.period ?? null);
+
   const sortField = filters.sort ?? "rank";
   const direction = filters.direction ?? (sortField === "salon" || sortField === "rank" ? "asc" : "desc");
   const sorted = [...summaries].sort((a, b) => {
@@ -504,11 +512,17 @@ export default async function SpaEngagementPage({
           rather than showing a dash. It joins two deliveries and they do not
           always cover the same window; see `spa-conversion.ts`.
         */}
+        {headline.notice ? (
+          <Notice tone="neutral" title="Two periods in this row">
+            {headline.notice}
+          </Notice>
+        ) : null}
         <KpiCardRow
           cards={[
             {
               id: "conversion",
               label: "Spa Conversion Rate",
+              period: headline.conversion ?? undefined,
               value: combined.totals.conversion.available
                 ? formatRate(combined.totals.conversion.rate)
                 : null,
@@ -520,18 +534,23 @@ export default async function SpaEngagementPage({
             {
               id: "sessions",
               label: "Spa Sessions",
+              period: headline.engagement,
               value: totals.spaSessions === null ? null : formatCount(totals.spaSessions),
-              helper: `Across ${formatCount(totals.salonCount)} salons for this period. The numerator of the rate beside it.`,
+              helper: headline.mixed
+                ? `Across ${formatCount(totals.salonCount)} salons for ${headline.engagement}. Not the period of the rate beside it, which is ${headline.conversion}.`
+                : `Across ${formatCount(totals.salonCount)} salons for this period. The numerator of the rate beside it.`,
             },
             {
               id: "unique-pct",
               label: "Unique Spa Tanner %",
+              period: headline.engagement,
               value: formatRate(totals.uniqueSpaTannerPercent),
               helper: `${SPA_ENGAGEMENT_MEASURES_BY_CODE.unique_spa_tanner_pct.formula} — REACH: how much of the customer base touches the spa at all.`,
             },
             {
               id: "per-unique",
               label: "Spa Per Unique %",
+              period: headline.engagement,
               value: formatRate(totals.spaPerUniquePercent),
               /*
                * THE FORMULA IS ON THE CARD. Two metrics on this page have

@@ -46,7 +46,8 @@ import { isIsoCalendarDate } from "./form-date-answer";
 import { refreshedActionPlan } from "./ca-action-plan";
 import { blankRequiredFields, requiredFieldsMessage } from "./required-fields";
 import { getCurrentVersion, getVersion, type TemplateVersionRow } from "./repository";
-import { HELD_FOR_HR, asHrApprovalState, editableDraft, heldForHr, withoutHeldForHr, type HrApprovalState } from "./hr-approval-rules";
+import { HELD_FOR_HR, asHrApprovalState, heldForHr, withoutHeldForHr, type HrApprovalState } from "./hr-approval-rules";
+import { editableDraftNow, inHrEditScope } from "./hr-edit-scope";
 import { hrHoldLive, releaseStaleHold } from "./hr-approval-approvers";
 
 /** The form's own Date line — the same day as `form_instances.form_date`. */
@@ -727,7 +728,7 @@ async function writeValues(
    * HR's edit of a form waiting for them goes through the one function the value guard lets past the hold
    * (migration 20261123001000); every other writer is refused there while the form is pending.
    */
-  const { error } = options.viaHrApproval
+  const { error } = options.viaHrApproval || inHrEditScope(instanceId)
     ? await supabase.rpc("form_hr_approval_write_values", {
         p_instance_id: instanceId,
         p_rows: rows.map(({ field_key, value, checked, filled_by, provenance: rowProvenance }) => ({
@@ -792,7 +793,7 @@ export async function applyStatedFacts(
   allowedKeys?: ReadonlySet<string>,
 ): Promise<string[]> {
   const loaded = await loadInstance(instanceId);
-  if (!loaded || !editableDraft(loaded.instance)) return [];
+  if (!loaded || !editableDraftNow(loaded.instance)) return [];
 
   const selected = selectStatedFacts({
     document: parseFormDocument(loaded.version.document),
@@ -844,7 +845,8 @@ export async function saveInstanceValues(
   if (loaded.instance.status !== "draft") {
     throw new Error("This form is finalized. Create a revision to change it.");
   }
-  const hrEdit = options.pastHrHold === true && heldForHr(loaded.instance.hrApprovalState);
+  // The card's checked edit (`pastHrHold`), or the chat's, inside its scope for this form (`hr-edit-scope.ts`).
+  const hrEdit = (options.pastHrHold === true || inHrEditScope(instanceId)) && heldForHr(loaded.instance.hrApprovalState);
   if (heldForHr(loaded.instance.hrApprovalState) && !hrEdit) {
     // Held only while the hold is live; otherwise (flag off, no approver left) the form goes back to a plain draft.
     if (await hrHoldLive()) throw new HeldForHrError();
@@ -902,6 +904,17 @@ export async function saveInstanceValues(
    * HR read: the form's general history is served to every reader once it is approved, and naming HR there would tell
    * them it went through HR (owner, 23 Nov 2026).
    */
+  /*
+   * A SENT-BACK FORM THE MANAGER EDITS IS THEIR REPLY (owner, 24 Nov 2026: "yeh" to editing alone counting): recorded
+   * in the approval history, and HR is told, whichever path saved it. Only a real change counts.
+   */
+  if (
+    loaded.instance.hrApprovalState === "changes_requested" &&
+    options.hrHistoryOnly !== true &&
+    (Object.keys(changedValues).length > 0 || Object.keys(changedChecked).length > 0)
+  ) {
+    await (await import("./hr-approval")).recordSentBackEdit(loaded.instance, actor);
+  }
   if (!hrEdit && options.hrHistoryOnly !== true) {
     await recordEvent(instanceId, "edited", actor, {
       fields: Object.keys(changedValues).length,
@@ -1576,16 +1589,31 @@ export class InstanceProtectedError extends Error {}
 /**
  * Deletes a form outright, values and events with it.
  *
- * ONLY A FORM THAT WAS NEVER FINALIZED. A finalized form is a signed HR
- * document; destroying one silently is the thing this function exists to
- * refuse. There is no archive (Pau, 23 Nov 2026): a finalized form stays on file.
+ * A DRAFT, for anybody the caller's route has authorized. A FINALIZED form only
+ * when the caller passes `allowFinalized`, and only the live finalized form: the
+ * route passes it for an administrator (Pau, 24 Nov 2026: "why can't delete? in
+ * bubbles" on a finalized Corrective Action; answer: administrators can). Nothing
+ * else passes it: not the chat, not the agent loop, not the bulk delete, not the
+ * demo sweep, so they still refuse a finalized form.
  *
- * The values and events go by CASCADE rather than by three deletes here — the
- * foreign keys declare it, so there is no ordering to get wrong and no window
- * in which values outlive their form. A revision pointing at this row has its
- * `revises_instance_id` set to null by the same declaration.
+ * A form that was REPLACED by a newer version (`revised`) is never deleted, even
+ * by an administrator: it is the older half of a chain that still points at the
+ * form that replaced it. Deleting the newer version is allowed, and puts the
+ * older one back to `finalized` (`restorePredecessor`) so the chain is not left
+ * pointing at nothing.
+ *
+ * A deleted finalized form is not silent: the BEFORE DELETE trigger writes the
+ * deletion record (who, role, how, when, and a snapshot of the form and its
+ * values) into `form_instance_deletions`, which nobody can change. The values go
+ * by CASCADE; the guard that freezes a finalized form's values does not stop it,
+ * because the form is already gone when the cascade runs (checked on Postgres 16).
+ * A revision pointing at this row has its `revises_instance_id` set to null.
  */
-export async function deleteInstance(id: string, by?: DeletionActor): Promise<InstanceRow> {
+export async function deleteInstance(
+  id: string,
+  by?: DeletionActor,
+  options: { allowFinalized?: boolean } = {},
+): Promise<InstanceRow> {
   const supabase = getSupabaseAdmin();
 
   const { data: row, error: readError } = await supabase
@@ -1597,16 +1625,55 @@ export async function deleteInstance(id: string, by?: DeletionActor): Promise<In
   if (!row) throw new Error("That form no longer exists.");
 
   const instance = mapInstance(row);
-  if (instance.status !== "draft") {
+  if (instance.status === "revised") {
     throw new InstanceProtectedError(
-      `This form is ${instance.status}, so it cannot be deleted. Finalized forms are kept on file.`,
+      "This form was replaced by a newer version, so it cannot be deleted. Finalized forms are kept on file. Delete the newer version instead, if that is what you mean.",
+    );
+  }
+  if (instance.status !== "draft" && !options.allowFinalized) {
+    throw new InstanceProtectedError(
+      `This form is ${instance.status}, so it cannot be deleted. Finalized forms are kept on file; only an administrator can delete one.`,
     );
   }
 
   await stampDeletion([id], by);
   const { error } = await supabase.from("form_instances").delete().eq("id", id);
   if (error) throw new Error(`Could not delete that form: ${error.message}`);
+  if (instance.status === "finalized") await restorePredecessor(instance);
   return instance;
+}
+
+/**
+ * A finalized revision was deleted: the form it replaced is the live one again.
+ *
+ * Only an original that is `revised` AND whose latest `revised` / `reevaluated`
+ * event names the deleted revision is moved back, and only to `finalized` (the
+ * values were never writable in between). A failure here is logged, not thrown:
+ * the delete the administrator confirmed has happened, and the older form is
+ * still on file, still readable and still frozen.
+ */
+async function restorePredecessor(deleted: InstanceRow): Promise<void> {
+  const originalId = deleted.revisesInstanceId;
+  if (!originalId) return;
+  try {
+    const original = await loadInstance(originalId);
+    if (!original || original.instance.status !== "revised") return;
+    const replacedBy = [...original.events]
+      .reverse()
+      .find((event) => event.kind === "revised" || event.kind === "reevaluated")?.detail?.revisionId;
+    if (replacedBy !== deleted.id) return;
+    const { error } = await getSupabaseAdmin()
+      .from("form_instances")
+      .update({ status: "finalized" })
+      .eq("id", originalId)
+      .eq("status", "revised");
+    if (error) throw new Error(error.message);
+  } catch (error) {
+    console.error("forms: the earlier version could not be put back to finalized after its revision was deleted", {
+      originalId,
+      reason: error instanceof Error ? error.message : "unknown",
+    });
+  }
 }
 
 /**
@@ -1921,6 +1988,57 @@ export async function listOutstandingFollowUps(
     .filter((row) => needsFollowUp(row))
     .sort((a, b) => (a.followUpDate ?? "").localeCompare(b.followUpDate ?? ""))
     .slice(0, limit);
+}
+
+/** One page of the uncapped read: PostgREST's own maximum page. */
+const OUTSTANDING_PAGE = 1000;
+
+/**
+ * EVERY OUTSTANDING FOLLOW-UP, NO CAP (QA, 24 Nov 2026: the Overview, the rail and the banner said 19 overdue while
+ * Form Monitoring's Overdue pill said 8, and the counts were taken from reads capped at 50 and 200). Read page by page
+ * until a page comes back short, with the same scope and the same predicate as `listOutstandingFollowUps`, so the one
+ * count every screen shows (`readFollowUpQueue`) is of every such form, never of the first page of them.
+ */
+export async function listAllOutstandingFollowUps(
+  locationIds: readonly string[] | null = null,
+  ownCreatedBy: string | null = null,
+): Promise<InstanceRow[]> {
+  const supabase = getSupabaseAdmin();
+  const outstanding = () =>
+    supabase
+      .from("form_instance_overview")
+      .select("*")
+      .not("follow_up_date", "is", null)
+      .is("followed_up_at", null)
+      .order("follow_up_date", { ascending: true })
+      .order("id", { ascending: true });
+  type Read = { data: unknown[] | null; error: { message: string } | null };
+  /** `narrow` adds the scope to a fresh query; every page is read through it. */
+  const readAll = async (narrow: (query: ReturnType<typeof outstanding>) => unknown): Promise<unknown[]> => {
+    const rows: unknown[] = [];
+    for (let from = 0; ; from += OUTSTANDING_PAGE) {
+      const query = narrow(outstanding()) as { range: (from: number, to: number) => PromiseLike<Read> };
+      const { data, error } = await query.range(from, from + OUTSTANDING_PAGE - 1);
+      if (error) throw new Error(`Could not read outstanding follow-ups: ${error.message}`);
+      rows.push(...(data ?? []));
+      if ((data ?? []).length < OUTSTANDING_PAGE) return rows;
+    }
+  };
+  const reads = [readAll((query) => (locationIds === null ? query : query.in("location_id", [...locationIds])))];
+  if (locationIds !== null && ownCreatedBy) {
+    reads.push(readAll((query) => query.not("location_id", "is", null).eq("created_by", ownCreatedBy)));
+  }
+  const byId = new Map<string, InstanceRow>();
+  for (const rows of await Promise.all(reads)) {
+    for (const row of rows) {
+      const mapped = mapInstance(row as Record<string, unknown>);
+      byId.set(mapped.id, mapped);
+    }
+  }
+  // One version of a form carries its follow-up (`followUpState`), as in `listOutstandingFollowUps`.
+  return [...byId.values()]
+    .filter((row) => needsFollowUp(row))
+    .sort((a, b) => (a.followUpDate ?? "").localeCompare(b.followUpDate ?? ""));
 }
 
 /**

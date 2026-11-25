@@ -23,7 +23,10 @@ import type { Permission } from "@/types";
 const push = vi.fn();
 const markRead = vi.fn<(ids: string[] | null) => Promise<{ ok: boolean }>>(async () => ({ ok: true }));
 vi.mock("next/navigation", () => ({ usePathname: () => "/", useRouter: () => ({ push }) }));
-vi.mock("@/features/notifications/actions", () => ({ markNotificationsReadAction: (ids: string[] | null) => markRead(ids) }));
+vi.mock("@/features/notifications/actions", () => ({
+  markNotificationsReadAction: (ids: string[] | null) => markRead(ids),
+  dismissNotificationsAction: async () => ({ ok: true }),
+}));
 vi.mock("./user-menu", () => ({ UserMenu: () => <div data-testid="profile-card" /> }));
 
 const mocked = vi.hoisted(() => ({ value: null as unknown }));
@@ -172,4 +175,88 @@ describe("Notifications in the rail (Pau, 23 Nov 2026)", () => {
     expect(screen.queryByRole("button", { name: /Notifications/ })).toBeNull();
   });
 
+});
+
+/*
+ * Pau, 24 Nov 2026, on Form Monitoring showing "Pending HR approval (2)" while the bar had no badge: "for form
+ * monitoring can u please not remove the notification in the bar on the left side if there are still pending inside".
+ * Reading or removing the notification does not decide the form, so the badge stays until the forms are decided.
+ */
+describe("\"can u please not remove the notification in the bar on the left side if there are still pending inside\" (Pau, 24 Nov 2026)", () => {
+  const readButWaiting: BellData = {
+    unread: 0,
+    waitingHr: 2,
+    items: [{ ...bell.items[0]!, readAt: new Date().toISOString() }],
+  };
+
+  it("keeps the badge on the bar when every notification is read but 2 forms still wait for HR", () => {
+    renderRail({ bell: readButWaiting });
+    const bar = screen.getByRole("button", { name: "Notifications, 2 forms waiting for your approval" });
+    expect(bar.textContent).toContain("2");
+  });
+
+  it("keeps it after the approver removes every notification (Clear all), and links to the pending tab", async () => {
+    renderRail({ bell: readButWaiting });
+    fireEvent.click(screen.getByRole("button", { name: /^Notifications/ }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Clear all" }));
+    });
+    expect(screen.getByRole("button", { name: "Notifications, 2 forms waiting for your approval" }).textContent).toContain("2");
+    expect(screen.getByRole("link", { name: /2 forms still need your decision/ }).getAttribute("href")).toBe("/forms/monitoring?view=hr");
+  });
+
+  it("keeps it after Mark all as read, and shows the larger of unread and waiting", async () => {
+    renderRail({ bell: { ...bell, waitingHr: 1 } });
+    fireEvent.click(screen.getByRole("button", { name: "Notifications, 2 unread, 1 form waiting for your approval" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Mark all as read" }));
+    });
+    expect(screen.getByRole("button", { name: "Notifications, 1 form waiting for your approval" }).textContent).toContain("1");
+  });
+
+  it("drops the badge once nothing is unread and nothing is waiting", () => {
+    renderRail({ bell: { ...readButWaiting, waitingHr: 0 } });
+    const bar = screen.getByRole("button", { name: "Notifications" });
+    expect(bar.querySelector("span[aria-hidden].rounded-full")).toBeNull();
+  });
+
+  it("the layout reads the count through the same hrQueueSummary as the Pending HR approval tab", () => {
+    const layout = readFileSync(join(__dirname, "../../app/(app)/layout.tsx"), "utf8");
+    expect(layout).toMatch(/hrQueueSummary\(actor\)/);
+    /*
+     * Changed on purpose (#1317, "i need a bell for all users/managers"): the bar's data is built by `bellFor`, which
+     * every signed-in person now gets. The layout hands it this count (`waitingForHr`), and `bellFor` puts it on the
+     * bar as `waitingHr`, so the count is followed through both files instead of looked for in the layout alone.
+     */
+    // Changed on purpose (24 Nov 2026, Pau: "fix"): bellFor now also takes the sibling app's count, so the call spans lines.
+    expect(layout).toMatch(/bellFor\(\s*identity,\s*\(\) => waitingForHr\(identity\),\s*\(\) => waitingForHrInSibling\(identity\),?\s*\)/);
+    const bellFor = readFileSync(join(__dirname, "../../lib/notifications/bell-for.ts"), "utf8");
+    expect(bellFor).toMatch(/waitingHr: waiting/);
+  });
+});
+
+/*
+ * Pau, 24 Nov 2026, told the bar counted only this app's forms and not the other app's approvals tab: "fix". The
+ * badge adds the forms waiting in the other app, and the panel links to that tab.
+ */
+describe("the other app's waiting forms on the bar (Pau, 24 Nov 2026: \"fix\")", () => {
+  const read: BellData = { unread: 0, items: [{ ...bell.items[0]!, readAt: new Date().toISOString() }] };
+
+  it("keeps the badge when only the other app has forms waiting, and links to its tab", () => {
+    renderRail({ bell: { ...read, waitingSiblingHr: { app: "Other App", count: 2 } } });
+    const bar = screen.getByRole("button", { name: "Notifications, 2 forms waiting for your approval" });
+    expect(bar.textContent).toContain("2");
+    fireEvent.click(bar);
+    expect(screen.getByRole("link", { name: /2 in Other App need your decision/ }).getAttribute("href")).toBe("/forms/monitoring?view=hr&app=sibling");
+    expect(screen.queryByRole("link", { name: /forms? still needs? your decision/ })).toBeNull();
+  });
+
+  it("adds both apps' forms, with a link to each tab", () => {
+    renderRail({ bell: { ...read, waitingHr: 2, waitingSiblingHr: { app: "Other App", count: 1 } } });
+    const bar = screen.getByRole("button", { name: "Notifications, 3 forms waiting for your approval" });
+    expect(bar.textContent).toContain("3");
+    fireEvent.click(bar);
+    expect(screen.getByRole("link", { name: /2 forms still need your decision/ }).getAttribute("href")).toBe("/forms/monitoring?view=hr");
+    expect(screen.getByRole("link", { name: /1 in Other App needs your decision/ }).getAttribute("href")).toBe("/forms/monitoring?view=hr&app=sibling");
+  });
 });

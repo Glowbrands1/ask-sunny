@@ -31,4 +31,16 @@ describe("replyNameFor", () => {
   it("a one-word name stays as typed", () => {
     expect(replyNameFor("Wrenna", [CALDER], [])).toBe("Wrenna");
   });
+
+  /* QA, 24 Nov 2026: "Here's the Corrective Action Form for **Test**" for "… for Test Employee" (TYPED_EMPLOYEE_EVERY_CARD_ENABLED). */
+  it("\"Test Employee\", a stand-in name nobody on the roster has, is called by its whole name with the flag on", () => {
+    vi.stubEnv("TYPED_EMPLOYEE_EVERY_CARD_ENABLED", "true");
+    try {
+      expect(replyNameFor("Test Employee", [PIKE, CALDER], [])).toBe("Test Employee");
+      expect(replyNameFor("Odalys Fenwick", [PIKE, CALDER], [])).toBe("Odalys");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    expect(replyNameFor("Test Employee", [PIKE, CALDER], [])).toBe("Test");
+  });
 });

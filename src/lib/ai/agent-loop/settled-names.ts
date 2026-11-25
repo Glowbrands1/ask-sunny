@@ -1,3 +1,4 @@
+import { appConfig } from "./app-config";
 import { personKey, readLoopRecords } from "./card-record";
 
 /**
@@ -23,6 +24,8 @@ export interface LoopCardSettlement {
   readonly messageId: string | null;
   readonly questionKey: string | null;
   readonly isSettledName: (name: string) => boolean;
+  /** Port of Ask Bubbles #1123 (Pau's review, 24 Nov 2026 PHT): the incident date this card's same-incident check cleared (its server record), or null. */
+  readonly sameIncidentChecked: string | null;
 }
 
 export async function loopCardSettlement(input: {
@@ -39,7 +42,7 @@ export async function loopCardSettlement(input: {
   if (card.employeeKey) {
     for (const asked of records.nameQuestions) if (asked.offeredKeys.includes(card.employeeKey)) keys.add(asked.typedKey);
   }
-  return { messageId: card.messageId, questionKey: card.questionKey ?? null, isSettledName: (name: string) => keys.has(personKey(name)) };
+  return { messageId: card.messageId, questionKey: card.questionKey ?? null, isSettledName: (name: string) => keys.has(personKey(name)), sameIncidentChecked: card.sameIncidentChecked ?? null };
 }
 
 /**
@@ -56,4 +59,9 @@ export function turnsAfterCard<T extends { readonly id?: string; readonly role: 
   if (at < 0) return conversation;
   const reply = conversation.findIndex((turn, index) => index > at && turn.role === "assistant");
   return conversation.slice(reply > at ? reply + 1 : at + 1);
+}
+
+/** Port of Ask Bubbles #1123 (Pau's review, 24 Nov 2026 PHT): the form kinds Create's same-incident check reads (the Corrective Action and the Coaching Form), by this app's keys. */
+export function sameIncidentKinds(): ReadonlySet<string> {
+  return new Set([appConfig().formKeys.corrective, appConfig().formKeys.coaching]);
 }

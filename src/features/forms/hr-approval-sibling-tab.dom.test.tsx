@@ -2,7 +2,7 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { HrApprovalTabs, SiblingHrQueueList } from "./hr-approval-lists";
+import { HrApprovalTabs, HrApprovedList, SiblingHrQueueList } from "./hr-approval-lists";
 
 /**
  * Owner, 23 Nov 2026: "just make a 1 tab for sunny 1 tab for bubbles", then, of a link to the sibling's own page: "i
@@ -17,7 +17,8 @@ describe("the sibling app's approvals are a tab, not a link away", () => {
   it("sits next to Pending HR approval, with the name the sibling answered with and its count, on this page", () => {
     render(<HrApprovalTabs active="sibling" pending={2} overdue={0} sibling={{ name: "Sibling App", pending: 1 }} />);
     const links = screen.getAllByRole("link");
-    expect(links.map((link) => link.textContent)).toEqual(["All forms", "Pending HR approval (2)", "Sibling App approvals (1)"]);
+    // Changed on purpose (owner, 24 Nov 2026): the row also has HR's Approved tab, last.
+    expect(links.map((link) => link.textContent)).toEqual(["All forms", "Pending HR approval (2)", "Sibling App approvals (1)", "Approved"]);
     const sibling = screen.getByTestId("sibling-approvals-tab");
     // In this app, in this tab: no other address, no new window.
     expect(sibling.getAttribute("href")).toBe("/forms/monitoring?view=hr&app=sibling");
@@ -63,5 +64,48 @@ describe("the sibling app's forms", () => {
     cleanup();
     render(<SiblingHrQueueList queue={{ status: "error" }} />);
     expect(screen.getByTestId("sibling-hr-queue-error")).toBeTruthy();
+  });
+});
+
+/*
+ * Owner, 24 Nov 2026: "a separate tab (not a link) for HR to see which forms she approved already for both sunnyt and
+ * bubble". Invented names.
+ */
+describe("HR's Approved tab, for both apps", () => {
+  it("is a tab on this page, not a link away", () => {
+    render(<HrApprovalTabs active="approved" pending={0} overdue={0} sibling={{ name: "Sibling App", pending: 0 }} />);
+    const tab = screen.getByTestId("hr-approved-tab");
+    expect(tab.textContent).toBe("Approved");
+    expect(tab.getAttribute("href")).toBe("/forms/monitoring?view=hr&app=approved");
+    expect(tab.getAttribute("target")).toBeNull();
+    expect(tab.getAttribute("aria-current")).toBe("page");
+  });
+
+  it("lists this app's approved forms and the sibling app's, each opening in its own app, with who approved it", () => {
+    render(
+      <HrApprovedList
+        appName="This App"
+        rows={[{ line: "Corrective Action Form for Juniper Calloway at Invented Place", from: "Thistle", approvedAt: "2026-11-24T15:00:00Z", approvedBy: "You", href: "/forms/hr-approval/0b6f1c1e-2a8d-4c55-9a10-5f3b6c7d8e9f" }]}
+        sibling={{ status: "ok", app: "Sibling App", approver: true, approved: [{ line: "Exit Form for Marlowe Fenwick", from: "Ines", approvedAt: null, approvedBy: "Wren", href: "https://sibling.test/forms/hr-approval/1b6f1c1e-2a8d-4c55-9a10-5f3b6c7d8e9f" }] }}
+      />,
+    );
+    const here = screen.getByTestId("hr-approved-this-app");
+    expect(here.textContent).toContain("This App (1)");
+    expect(here.textContent).toContain("Corrective Action Form for Juniper Calloway at Invented Place");
+    expect(here.textContent).toContain("by You");
+    expect(here.querySelector("a")!.getAttribute("href")).toBe("/forms/hr-approval/0b6f1c1e-2a8d-4c55-9a10-5f3b6c7d8e9f");
+    const there = screen.getByTestId("hr-approved-sibling");
+    expect(there.textContent).toContain("Sibling App (1)");
+    expect(there.textContent).toContain("by Wren");
+    expect(there.querySelector("a")!.getAttribute("href")).toBe("https://sibling.test/forms/hr-approval/1b6f1c1e-2a8d-4c55-9a10-5f3b6c7d8e9f");
+  });
+
+  it("without the shared secret, only this app's list; the sibling unreadable says so", () => {
+    render(<HrApprovedList appName="This App" rows={[]} sibling={{ status: "off" }} />);
+    expect(screen.queryByTestId("hr-approved-sibling")).toBeNull();
+    expect(screen.getByTestId("hr-approved-this-app").textContent).toContain("No approved forms yet.");
+    cleanup();
+    render(<HrApprovedList appName="This App" rows={[]} sibling={{ status: "error" }} />);
+    expect(screen.getByTestId("hr-approved-sibling-error")).toBeTruthy();
   });
 });

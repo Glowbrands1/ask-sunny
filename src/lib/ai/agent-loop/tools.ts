@@ -1,7 +1,9 @@
 import { editDistance as closeEditDistance } from "@/lib/forms/close-spelling";
 import { whichFormChoice, whichFormEntry, type WhichFormEntry, type WhichFormRecord } from "./which-form";
 import "server-only";
+import type { FormsActor } from "@/lib/forms/access";
 import { heldForHr, WAITING_FOR_HR_CHAT_REPLY } from "@/lib/forms/hr-approval-rules";
+import { inHrEditScope } from "@/lib/forms/hr-edit-scope";
 
 import { keptPlanSteps } from "@/lib/forms/stated-plan-steps";
 import { withReadersLineBox } from "@/lib/forms/readers-line-headings";
@@ -14,9 +16,11 @@ import { businessToday, formatBusinessTime } from "@/lib/business-date";
 import { appConfig } from "./app-config";
 import { isoDate, monthDayToIso, readDates, sameDate, withoutDates, type ReadDate } from "./dates";
 import { candidateNameWords, chatFormsActor, formDateRangeFromInput, formKindFromText, ofKind } from "@/lib/forms/chat-form-records";
+import { formsOnFileSameDay, sameDayOnFileQuestion, type SameDayOnFile } from "@/lib/forms/same-incident";
 import { CURRENT_MESSAGE_ID, holdsPhrase, identifiedTurns, readEvidence, verifyEvidence, withoutMessageIdTags, type IdentifiedTurn } from "./evidence";
 import { personNamedInRequest, requestStart } from "./person-in-request";
 import { keptFormDate } from "./kept-form-date";
+import { formDateGiven } from "@/lib/forms/incident-dates";
 import { answeredNameQuestions, answerNamesSomeoneElse, everKeptOrUsedTyped, isConfirmedSpelling, latestTurnAnswersFor, latestTurnConfirms, latestTurnKeepsOrUsesTyped, latestTurnKeepsTyped, spellingKeysConfirmedFor, spellingKeysConfirmedForName, type NameQuestionView } from "./confirmed-spelling";
 import { AFFIRMATIVE, displayName, editDistance, matchEmployeeName, nameConfirmationQuestion, possessiveRead, readNameConfirmation, rosterSpellingOf, type RosterEmployee } from "@/lib/forms/employee-match";
 import { offRosterTyped } from "@/lib/forms/roster-only-names";
@@ -33,6 +37,7 @@ import { applyAssistantRevision, deleteInstance, listInstances } from "@/lib/for
 import { countFormsOnFile } from "@/lib/forms/forms-on-file-counts";
 import {
   cardPersonThisRequestEnabled,
+  formDateIsTodayEnabled,
   statedPlanStepsEnabled,
   currentManualScopeEnabled,
   formEditPlainWordsEnabled,
@@ -42,7 +47,12 @@ import {
   hybridSearchEnabled,
   manualSectionDedupeEnabled,
   retrievalRecallEnabled,
+  priorFormsUpToTodayEnabled,
+  typedEmployeeEveryCardEnabled,
+  adminCardAsksSalonEnabled,
+  loopCardCitesConductLineEnabled,
 } from "@/lib/config/chat-quality-flags";
+import { typedEmployeeName } from "@/lib/forms/typed-employee-name";
 import type { AskResponse } from "@/lib/ai/types";
 import { findManualSection, manualSectionHeadings, withSectionsInForce, type ManualChunk } from "@/lib/forms/official-policy-manual";
 import { sectionWording } from "@/lib/forms/policy-citation";
@@ -63,14 +73,16 @@ import { manualScopeFetchLimit, scopeToCurrentManual } from "@/lib/knowledge/cur
 import { matchHybridKnowledge } from "@/lib/knowledge/hybrid-match";
 import { matchRecallKnowledge } from "@/lib/knowledge/recall-match";
 import { rowToCitation, type MatchedChunkRow } from "@/lib/knowledge/mappers";
-import { topicHeadings } from "@/lib/forms/specific-policy-topics";
+import { conductLineCitation, topicHeadings } from "@/lib/forms/specific-policy-topics";
 import { formatManualCitation } from "@/lib/ai/policy-citation-fields";
 import { redactSensitiveDefaults } from "@/lib/ai/sensitive-defaults";
 import { expandPolicyQuery } from "@/lib/knowledge/policy-retrieval";
 import type { SourceCitation } from "@/types";
 import { followUpChangeAsked, followUpForCard, followUpLine, statedFollowUpDate } from "@/lib/forms/follow-up-default";
 import type { AccessScope, ChatFormProposal, ChatMessage, Role } from "@/types";
-import { accountKey, personKey, replyTurns, type CardRecord, type ExitOfferRecord, type NameQuestionRecord, type PersonAskedRecord, type TurnRecord } from "@/lib/ai/agent-loop/card-record";
+import { adviceNotForm } from "@/lib/ai/agent-loop/advice-not-form";
+import { formAskedOutsideLibrary, formsYouCanCreate } from "@/lib/ai/agent-loop/form-not-in-library";
+import { accountKey, personKey, replyTurns, type CardRecord, type ExitOfferRecord, type NameQuestionRecord, type PersonAskedRecord, type SameIncidentRecord, type TurnRecord } from "@/lib/ai/agent-loop/card-record";
 
 /**
  * ============================================================================
@@ -140,6 +152,8 @@ export interface ToolContext {
   /** QA (16 Nov 2026; c158, c208): every card this chat's loop made, and every "who is it for?" it asked, oldest first. */
   readonly cardRecords?: readonly CardRecord[];
   readonly personAskedRecords?: readonly PersonAskedRecord[];
+  /** Port of Ask Bubbles #1123 (Pau's review, 23 Nov 2026): every "open that one, or is this a separate incident?" this chat's loop asked (`card-record.ts`). */
+  readonly sameIncidentRecords?: readonly SameIncidentRecord[];
   /** QA's code audit, coach_team C: the last reply asked the open Coaching draft's "create all?" (the server's record). */
   readonly teamConfirmAsked?: boolean;
   /** QA (#1055's follow-up): the exit-form offer the last reply's tools made (its record), or null. Never read from the reply. */
@@ -1116,6 +1130,10 @@ export interface ToolEffects {
   nameLines?: Record<string, string>;
   /** Fix batch item 6: propose_form asked who this form is for (no person yet), for the record. */
   personAsked?: { templateKey: string };
+  /** Port of Ask Bubbles #1123: propose_form asked whether this person's form on file for this date is meant (no card made). */
+  sameIncidentAsked?: { templateKey: string; employeeKey: string; date: string };
+  /** The incident date this turn's card cleared the same-incident check for (`same-incident.ts`), for Create's last check. */
+  proposalSameIncidentChecked?: string | null;
   /** coach_team asked "create all?" for this open Coaching draft this turn, for the record. */
   teamConfirm?: { sourceInstanceId: string };
   /** QA's Bubbles re-run (22 Nov 2026, A11): the forms this turn's find_past_forms listed with which_form_question. */
@@ -1152,6 +1170,8 @@ export interface ToolEffects {
    * Only the ones the reply cites become source cards (run.ts, QA's live-app item 12), as today's grounded path does.
    */
   sources?: SourceCitation[];
+  /** SOURCES_ON_TOPIC (QA, 24 Nov 2026): the Daily Stats framework's cards this turn's tools read (read_stats, search_knowledge), for run.ts. */
+  frameworkSources?: SourceCitation[];
   /** Kept for callers that set cards directly; run.ts shows `sources` the reply cites. */
   citations?: SourceCitation[];
   /** A new draft revising a finalized form, opened on the manager's screen (`editable-draft.ts`). */
@@ -2506,7 +2526,15 @@ export async function readPolicy(context: ToolContext, input: { heading?: unknow
    * QA's live-app item 9 (B1, B5, B7: the manual quoted with a page and no source card): the section read is a source
    * card, as a search_knowledge passage is (`rowToCitation`, `shownCitations`).
    */
-  const chunk = manual.chunks.find((row) => row.chunkIndex === section.chunkIndex);
+  /*
+   * LOOP_CARD_CITES_CONDUCT_LINE (QA, 24 Nov 2026): the Standards of Conduct read for an incident the manual lists on its
+   * own line ("a till shortage") is the line's: its source card is the chunk that carries the line, at its printed page,
+   * and the result names the line (`listed_line`), so the reply and the card cite the page the saved draft does.
+   */
+  const listed = loopCardCitesConductLineEnabled() ? conductLineCitation(withoutMessageIdTags(context.question ?? ""), manual.chunks) : null;
+  const line = listed && headingKey(listed.heading) === headingKey(section.heading) ? listed : null;
+  const listedLine = line ? { listed_line: { line: line.line, page: line.page, wording: line.wording } } : {};
+  const chunk = manual.chunks.find((row) => row.chunkIndex === (line ? line.chunkIndex : section.chunkIndex));
   if (effects && manual.document && chunk?.chunkId && chunk.locator) {
     const row: MatchedChunkRow = {
       chunk_id: chunk.chunkId,
@@ -2514,7 +2542,7 @@ export async function readPolicy(context: ToolContext, input: { heading?: unknow
       document_title: manual.document.title,
       category: manual.document.category,
       /* Board f109: the card names the section read (its heading and printed page), never the chunk's stored label. */
-      locator: /^Page \d+ — /.test(chunk.locator) ? `Page ${section.page} — ${section.heading}` : chunk.locator,
+      locator: /^Page \d+ — /.test(chunk.locator) ? `Page ${line ? line.page : section.page} — ${section.heading}` : chunk.locator,
       page: chunk.page,
       section: section.heading,
       content: chunk.content,
@@ -2522,10 +2550,10 @@ export async function readPolicy(context: ToolContext, input: { heading?: unknow
     };
     const marker = addSource(effects, rowToCitation(row));
     const wording = sectionWording(manual.chunks, section);
-    return { document: "JBA Policy Manual", heading: section.heading, page: section.page, source: marker, wording, ...(await readingNotes(wording)) };
+    return { document: "JBA Policy Manual", heading: section.heading, page: section.page, ...listedLine, source: marker, wording, ...(await readingNotes(wording)) };
   }
   const wording = sectionWording(manual.chunks, section);
-  return { document: "JBA Policy Manual", heading: section.heading, page: section.page, wording, ...(await readingNotes(wording)) };
+  return { document: "JBA Policy Manual", heading: section.heading, page: section.page, ...listedLine, wording, ...(await readingNotes(wording)) };
 }
 
 /**
@@ -3121,6 +3149,92 @@ async function finalizedPriorsOnFile(context: ToolContext, person: RosterEmploye
   }));
 }
 
+/* Port of Ask Bubbles #1123 (Pau's review, 24 Nov 2026 PHT, via QA): this person's form of this kind on file for one date (`same-incident.ts`), by roster id as find_past_forms reads them. The open form being edited is not another one. */
+async function sameDayFormsOnFile(context: ToolContext, person: RosterEmployee, roster: readonly RosterEmployee[], templateKey: string, formDate: string): Promise<SameDayOnFile[]> {
+  const actor = await chatFormsActor(context.actor).catch(() => undefined);
+  if (!actor) return [];
+  const names = fullNamesOf(person);
+  return formsOnFileSameDay(actor, {
+    nameWords: [...new Set(names.flatMap(candidateNameWords))],
+    isPerson: (employeeName) => names.some((full) => samePerson(full, employeeName)) || sameRosterPerson(employeeName, displayName(person), roster),
+    templateKey,
+    formDate,
+    except: [context.openFormId],
+  });
+}
+
+/**
+ * ============================================================================
+ * THIS MANAGER'S FORMS FOR THIS PERSON THAT ARE WITH HR (owner, 24 Nov 2026)
+ * ============================================================================
+ *
+ * The owner: "should be able to create new form same person not block them, if they created 1 again for the same person,
+ * it should open the one they sent to hr so they can edit it if same problem, if not same problem they can still get
+ * notified they created a ca form prior fro X offense and policy and be able to edit it". A form waiting for HR, or sent
+ * back, is not on file (`finalizedPriorsOnFile` leaves it out), so a second request for the same person said nothing about
+ * it and made a second form. These are the forms this manager created or sent (`isCreatorOrSender`), never anybody
+ * else's, each with its offense and policy read from the form.
+ */
+export interface FormWithHr {
+  instanceId: string;
+  form: string;
+  templateKey: string;
+  date: string | null;
+  state: "pending" | "changes_requested";
+  offense: string | null;
+  policy: string | null;
+}
+
+async function ownFormsWithHr(context: ToolContext, names: readonly string[]): Promise<FormWithHr[]> {
+  const actor = await chatFormsActor(context.actor).catch(() => undefined);
+  if (!actor || names.length === 0) return [];
+  const { isCreatorOrSender } = await import("@/lib/forms/hr-approval-rules");
+  const nameWords = [...new Set(names.flatMap(candidateNameWords))];
+  const listed = visibleInstances(actor, await listInstances(200, { ...instanceListFilterFor(actor), employeeNameWords: nameWords }).catch(() => []));
+  const rows = listed
+    .filter((row) => row.status === "draft" && (row.hrApprovalState === "pending" || row.hrApprovalState === "changes_requested"))
+    .filter((row) => isCreatorOrSender({ id: context.actor.subject }, row) && names.some((full) => samePerson(full, row.employeeName)))
+    .slice(0, 5);
+  const { policyNamesFromViolated } = await import("@/lib/forms/ca-action-plan");
+  return Promise.all(rows.map(async (row) => {
+    const values = await authorizeInstance(context.request, row.id, "view").then(({ loaded }) => loaded.values).catch(() => []);
+    const valueOf = (key: string) => values.find((value) => value.fieldKey === key)?.value?.trim() || null;
+    // The account's first sentence, without the form's own "Observed:" heading, on one line.
+    const account = (valueOf("observation") ?? valueOf("coaching_details") ?? valueOf("additional_details") ?? "")
+      .replace(/^\s*(?:observed|observation(?: of offense)?|details)\s*:\s*/i, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    const firstSentence = account ? (/^.*?[.!?](?=\s|$)/.exec(account)?.[0] ?? account).slice(0, 160) : null;
+    // The policy by its heading, never the manual's title and page.
+    const policies = policyNamesFromViolated(valueOf("policy_violated")).filter((name) => !/policy manual/i.test(name));
+    return {
+      instanceId: row.id,
+      form: row.templateName,
+      templateKey: row.templateKey,
+      date: row.formDate ?? null,
+      state: row.hrApprovalState as "pending" | "changes_requested",
+      offense: firstSentence,
+      policy: policies.length > 0 ? policies.join(", ") : null,
+    };
+  }));
+}
+
+/** "You already sent HR a Corrective Action Form for <P> dated 11/20/2026 (Attendance: <offense>). It's still waiting for HR; you can open it to change it." */
+export function formsWithHrLine(name: string, forms: readonly FormWithHr[]): string {
+  const usDay = (iso: string | null) => {
+    const found = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso ?? "");
+    return found ? `${found[2]}/${found[3]}/${found[1]}` : null;
+  };
+  return forms
+    .map((form) => {
+      const what = [form.policy, form.offense].filter(Boolean).join(": ");
+      const dated = usDay(form.date) ? ` dated ${usDay(form.date)}` : "";
+      const where = form.state === "pending" ? "It's still waiting for HR" : "HR sent it back for changes";
+      return `You already sent HR a ${form.form} for ${name}${dated}${what ? ` (${what})` : ""}. ${where}; you can open it to change it.`;
+    })
+    .join(" ");
+}
+
 /** The prior actions line for forms on file: "Corrective Action Form, Verbal Warning — 10/20/2026; Coaching Form — 09/12/2026". */
 export function priorsOnFileLine(priors: readonly PriorOnFile[]): string {
   const usDay = (iso: string | null) => {
@@ -3334,6 +3448,24 @@ async function exitFormsOnFile(context: ToolContext, name: string, exitKey: stri
     .map((row) => ({ status: row.status, date: mdy(row.formDate), salon: row.locationName }));
 }
 
+/**
+ * ADMIN_CARD_ASKS_SALON_ENABLED (QA, 24 Nov 2026): the salons this person's forms on file are at, as Form Monitoring
+ * lists them for this login (any form, not a revised one), each once.
+ */
+async function formsOnFileSalons(context: ToolContext, name: string): Promise<{ id: string; name: string }[]> {
+  const actor = await chatFormsActor(context.actor).catch(() => null);
+  if (!actor) return [];
+  const nameWords = candidateNameWords(name);
+  if (nameWords.length === 0) return [];
+  const rows = visibleInstances(actor, await listInstances(200, { ...instanceListFilterFor(actor), employeeNameWords: nameWords }).catch(() => []));
+  const found = new Map<string, string>();
+  for (const row of rows) {
+    if (row.status === "revised" || !row.locationId || !samePerson(row.employeeName, name)) continue;
+    if (!found.has(row.locationId)) found.set(row.locationId, rosterSalonName(row.locationId) ?? row.locationName ?? row.locationId);
+  }
+  return [...found].map(([id, label]) => ({ id, name: label }));
+}
+
 async function exitCardTicks(isExit: boolean, termination: boolean, requestWords: string, today: string, exitHow: string | null = null): Promise<{ exit_ticks?: string[]; exit_unset?: string[]; keys?: string[] }> {
   /*
    * QA's live L6 (22 Nov 2026): a termination's reply said "Filed as" twice: exit_termination already gives its tick
@@ -3395,6 +3527,12 @@ export function replyNameFor(name: string, roster: readonly RosterEmployee[], me
   const full = name.replace(/\s+/g, " ").trim();
   const words = full.split(" ");
   if (words.length < 2) return full;
+  /*
+   * TYPED_EMPLOYEE_EVERY_CARD_ENABLED (QA, 24 Nov 2026; the owner: "Test Employee" is a valid name managers type on
+   * purpose): "Here's the Corrective Action Form for **Test**" and "Test had a till shortage." A stand-in name nobody on
+   * the roster has, "<First> Employee", is called by its whole name, never its first word alone.
+   */
+  if (!ownId && words.length === 2 && /^employee$/i.test(words[1]!) && typedEmployeeEveryCardEnabled()) return full;
   const first = words[0]!.toLowerCase();
   const firstOf = (other: string) => other.trim().split(/\s+/)[0]!.toLowerCase();
   const onRoster = roster.filter((row) => row.id !== ownId).flatMap(fullNamesOf).filter((other) => !samePerson(other, full));
@@ -3826,6 +3964,7 @@ export async function proposeForm(
     person_evidence?: unknown;
     exit_evidence?: unknown;
     new_form_evidence?: unknown;
+    separate_incident_evidence?: unknown;
     same_card_evidence?: unknown;
     form_change_evidence?: unknown;
     request_evidence?: unknown;
@@ -3888,6 +4027,18 @@ export async function proposeForm(
   if ((await import("@/lib/forms/staff-picker")).isBareWholeStaff(context.question) || (await import("@/lib/forms/staff-picker")).asksForWholeStaff(context.question)) {
     return { reason_code: "whole_staff", error: "This form was asked for a whole staff. A form is for one person at a time: call list_staff and say what it returns." };
   }
+  /*
+   * QA (24 Nov 2026, live on the loop, Standard mode, twice): "Coach a leader on running better follow-up conversations"
+   * was answered only "Who is this Coaching Form for?". A turn whose words ask for advice and for no form (the old
+   * path's question reader, plus an advice imperative about nobody in particular: `advice-not-form.ts`) is answered: no
+   * card, and never the who-question. A form asked for in any words ("Create a coaching form.", "coaching form for
+   * <name>", "write up <name>") is no advice and goes on as before.
+   */
+  if (!effects.proposal && !context.cardOnScreen && !context.openFormId && adviceNotForm(context.question, context.history)) {
+    return {
+      reason_code: "advice_not_form", error: "The manager asked for advice, not a form: answer it now in your reply (practical steps, a short checklist, a sample script or role-play where it helps, citing the manual where a policy applies). Propose no card and never ask who a form is for. You may offer the form in one closing line; propose it only when the manager asks for it.",
+    };
+  }
   const key = typeof input.template_key === "string" ? input.template_key.trim() : "";
   const templates = await creatableTemplates(context.actor.role).catch(() => null);
   if (!templates) return { reason_code: "read_failed", error: "The forms library could not be read just now." };
@@ -3912,18 +4063,24 @@ export async function proposeForm(
      */
     const titleWord = titleWordOf(templates.map((row) => row.name));
     const readsAsTitle = Boolean(titleWord) && new RegExp(`\\b${titleWord}s?\\b`, "i").test(asked);
-    if (asked && readsAsTitle && !quoteNamesForm(asked, template)) {
-      const other = templates.find((row) => row.key !== template.key && quoteNamesForm(asked, row));
+    /*
+     * QA (24 Nov 2026, live): "Draft a vacation request form", and the same without the word "form" ("draft a PTO
+     * request"). The manager's own words are read too (`formAskedOutsideLibrary`: a create verb and a named document
+     * that no library form answers to), so the check never waits on the model's quote holding the title word.
+     */
+    const outside = !quoteNamesForm(context.question, template) ? formAskedOutsideLibrary(context.question, templates, quoteNamesForm) : null;
+    if ((asked && readsAsTitle && !quoteNamesForm(asked, template)) || outside) {
+      const other = asked && readsAsTitle ? templates.find((row) => row.key !== template.key && quoteNamesForm(asked, row)) : undefined;
       if (other) {
         return { reason_code: "form_asked_is_another", template_key: other.key, error: `The manager asked for the ${other.name} ("${asked}"), not the ${template.name}. Propose the ${other.name} (template_key "${other.key}").` };
       }
-      const named = formAskedName(asked);
+      const named = formAskedName(asked && readsAsTitle && !quoteNamesForm(asked, template) ? asked : outside ?? asked);
       if (input.instead_of_asked !== true) {
         const names = templates.map((row) => row.name);
         return {
           asked,
           templates: templates.map((row) => ({ key: row.key, name: row.name })),
-          ask_exactly: `${named ? `There's no ${named} in the forms library` : "That form isn't in the forms library"}. The forms you can create are ${names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}` : names[0]}. Which one do you want?`,
+          ask_exactly: `${named ? `There's no ${named} in the forms library` : "That form isn't in the forms library"}. ${formsYouCanCreate(names).replace(/\.$/, "")}. Which one do you want?`,
           reason_code: "form_not_in_library", error: "No form in the library answers to the form the manager asked for. End the reply with ask_exactly, exactly, and propose no card; never make another form's card in its place. Propose another form with instead_of_asked true only when the manager chooses it.",
         };
       }
@@ -3950,7 +4107,21 @@ export async function proposeForm(
     /* R14: "Test Employee", the exact full name the manager typed, is a name; its last word is not a title to strip. */
     const typedAsPassed = titleless !== rawTyped && words(titleless).length === 1 && typedFullNameOf(titleless, requestTurnsText(context, read.roster))?.toLowerCase() === rawTyped.toLowerCase() ? rawTyped : titleless;
     /* C3 (port of Ask Bubbles #1054): "<First> <Last>" for the manager's "<Last>, <First>" is read in the manager's own order. */
-    const typed = asManagerCommaWrote(typedAsPassed, requestTurnsText(context, read.roster));
+    const typedByModel = asManagerCommaWrote(typedAsPassed, requestTurnsText(context, read.roster));
+    /*
+     * TYPED_EMPLOYEE_EVERY_CARD_ENABLED (QA, 24 Nov 2026, live as an Admin): "Draft a coaching form for … a made-up
+     * employee named Test Employee" got a card for "Employee" (the rules book calls "employee" a placeholder, so the
+     * model dropped "Test" or split the name). When the manager typed "<First> Employee" as the person in this request
+     * (`typed-employee-name.ts`) and the model passed no id and only a part of it, or nothing, the card's name is that
+     * full name, deterministically, on every card type.
+     */
+    const typed = (() => {
+      if (!typedEmployeeEveryCardEnabled() || id) return typedByModel;
+      const full = typedEmployeeName(requestTurnsText(context, read.roster));
+      if (!full) return typedByModel;
+      const passed = typedByModel.replace(/\s+/g, " ").trim().toLowerCase().replace(/^(?:the|an?|my)\s+/, "");
+      return ["", "employee", full.split(" ")[0]!.toLowerCase(), full.toLowerCase()].includes(passed) ? full : typedByModel;
+    })();
     /*
      * HARD GUARD, A "NO" NEVER SEATS THE NAME (NEAR_MISS_QUESTION_RULES, parity gap #45): when the manager answered
      * "no" to this chat's own "Did you mean **<A>**?" or "Is this for **<A>**?", <A> is not put on the card.
@@ -4536,6 +4707,8 @@ export async function proposeForm(
   const requestStarts = new Set([
     ...(context.cardRecords ?? []).filter(isThisCard).map((record) => record.messageId),
     ...(context.personAskedRecords ?? []).filter((record) => record.templateKey === template.key).map((record) => record.messageId),
+    /* Port of Ask Bubbles #1123: this person's same-incident question for this form starts the request, as the card's record does. */
+    ...(context.sameIncidentRecords ?? []).filter((record) => record.templateKey === template.key && Boolean(employee.id) && record.employeeKey === personKey(employee.id!)).map((record) => record.messageId),
     ...whoAskedTurns,
     ...nameAskedTurns,
   ].filter((id): id is string => Boolean(id)));
@@ -4727,8 +4900,20 @@ export async function proposeForm(
    * line, no longer an override). "Other" carries the model's short topic.
    */
   /* c259 (QA2, 21 Nov 2026, option (a)): a heading with no Type of Offense box of its own names the box it is saved under. */
-  let policyLine: string | null = policyHeading ? withReadersLineBox(formatManualCitation(policyHeading, page), policyHeading) : null;
-  if (policyLine && secondHeading && manual) policyLine = `${policyLine}; ${withReadersLineBox(formatManualCitation(secondHeading, findManualSection(manual.chunks, [secondHeading])?.page ?? null), secondHeading)}`;
+  /*
+   * LOOP_CARD_CITES_CONDUCT_LINE (QA's live test, 24 Nov 2026: "Draft a corrective action form for a till shortage for Test
+   * Employee" carded the Standards of Conduct at the heading's p.12): a Standards of Conduct heading cited for an incident
+   * the manual lists on its own line names that line and cites its printed page, as the saved draft does
+   * (`withConductLinePage`): "Standards of Conduct — Register / Bank shortages, JBA Policy Manual p.13". Create reads the
+   * heading back from before the dash (`cardPolicyHeading`), and the saved Policy Violated is this line.
+   */
+  const conductLine = policyHeading && manual && loopCardCitesConductLineEnabled() ? conductLineCitation(`${requestWords}\n${whatHappened}`, manual.chunks) : null;
+  const cardCitation = (heading: string, headingPage: number | null) =>
+    conductLine && headingKey(conductLine.heading) === headingKey(heading)
+      ? `${heading} — ${conductLine.line}, JBA Policy Manual p.${conductLine.page}`
+      : withReadersLineBox(formatManualCitation(heading, headingPage), heading);
+  let policyLine: string | null = policyHeading ? cardCitation(policyHeading, page) : null;
+  if (policyLine && secondHeading && manual) policyLine = `${policyLine}; ${cardCitation(secondHeading, findManualSection(manual.chunks, [secondHeading])?.page ?? null)}`;
   /* Batch G (G7a, the tester's exit sweep): an exit cites no policy; it is not an incident. */
   if (template.key === appConfig().formKeys.exit) policyLine = null;
   /*
@@ -4917,7 +5102,15 @@ export async function proposeForm(
   const ownCard = [context.cardOnScreen, context.earlierCard].find((record) => Boolean(record?.incidentDate) && (employee.id ? record!.employeeKey === personKey(employee.id) : !record!.employeeKey && record!.nameKey === personKey(employee.name)));
   const dateKept = keptFormDate({ accountForm: ACCOUNT_FORMS.has(template.key), date, asksNewForm, latestDates, datesGiven, today, ownCardDate: ownCard?.incidentDate });
   if (dateKept) date = dateKept;
-  const datesAsked = datesGiven.length > 1 && !date ? datesGiven : [];
+  /*
+   * FORM_DATE_IS_TODAY_ENABLED (Pau, 24 Nov 2026; port from Ask Bubbles): an incident form is dated the day it is
+   * written, or the date the manager gave the form itself (`formDateGiven`); the incident's date stays in the account,
+   * and "Which date goes on the form?" is never asked. Its forms on file are those dated on or before the form, so a
+   * Corrective Action finalized after the incident is offered as history. Off, null and as before.
+   */
+  const formDatedToday = ACCOUNT_FORMS.has(template.key) && formDateIsTodayEnabled();
+  const givenFormDate = formDatedToday ? formDateGiven(requestWords, template.key, today) : null;
+  const datesAsked = !formDatedToday && datesGiven.length > 1 && !date ? datesGiven : [];
   /* Batch C (code-check #32): a date after today is a fact with today's date; the rules book says to ask. */
   /* Batch G (G6): only an incident form's date is never after today; an exit's last day or effective date may be. */
   const incidentForm = ACCOUNT_FORMS.has(template.key);
@@ -5108,7 +5301,7 @@ export async function proposeForm(
    */
   const rosterPerson = caOnlyFields && employee.id && read.kind === "read" ? read.roster.find((row) => row.id === employee.id) ?? null : null;
   const onFileBefore = date ?? (effects.proposal && effects.proposal.employeeName === employee.name ? effects.proposal.formDate ?? null : null) ?? ownCard?.incidentDate ?? null;
-  const priorsOnFile = rosterPerson ? await finalizedPriorsOnFile(context, rosterPerson, read.kind === "read" ? read.roster : [], today, onFileBefore) : [];
+  const priorsOnFile = rosterPerson ? await finalizedPriorsOnFile(context, rosterPerson, read.kind === "read" ? read.roster : [], today, priorFormsUpToTodayEnabled() ? null : formDatedToday ? givenFormDate ?? today : onFileBefore) : [];
   const onFileLine = priorsOnFile.length > 0 ? priorsOnFileLine(priorsOnFile) : null;
   /*
    * A PRIOR ACTION IS THE MANAGER'S OWN (QA, 23 Nov 2026, Pau's review of a finalized form; port of Ask Bubbles #1089).
@@ -5518,7 +5711,7 @@ export async function proposeForm(
   const card: ChatFormProposal = {
     ...proposal,
     sourceMessageIds: requestIds,
-    formDate: exitTermination ? exitTermination.date : datesAsked.length > 0 || futureDate ? null : date ?? (fromAnotherRequest(proposal.formDate) || isPriorDate(proposal.formDate) ? null : proposal.formDate) ?? null,
+    formDate: exitTermination ? exitTermination.date : formDatedToday ? givenFormDate : datesAsked.length > 0 || futureDate ? null : date ?? (fromAnotherRequest(proposal.formDate) || isPriorDate(proposal.formDate) ? null : proposal.formDate) ?? null,
     fromAgentLoop: true as const,
     /* QA item 17 (20 Nov 2026): an exit card the model decided is a termination (locked on the word) tells Create, as the CA's does. */
     ...(level ? { warningLevel: level } : loopTermination || exitTermination ? { loopTermination: true as const } : {}),
@@ -5570,21 +5763,57 @@ export async function proposeForm(
    * and Create saved none. That one Woven salon is the card's salon (salon_from_woven); with several or none the card
    * stays as it was (no new question for an admin).
    */
-  if (!card.locationId && card.employeeName && employee.id && context.actor.scope?.level === "global" && !globalAsk.globalNonAdminNeedsSalon(context.actor.role, context.actor.scope)) {
+  /*
+   * ADMIN_CARD_ASKS_SALON_ENABLED (QA, 24 Nov 2026, live as an Admin): an admin's card never asked which salon, and for a
+   * person Woven lists at one salon it took that salon though her form on file in Form Monitoring is at another. An
+   * admin's card is asked the salon once as a global non-admin's is (the card stays ready); a Woven salon that differs
+   * from this person's forms on file is not taken: the card asks which, naming both.
+   */
+  const adminAsks = adminCardAsksSalonEnabled() && context.actor.role === "admin" && context.actor.scope?.level === "global";
+  let wovenAndForms: { woven: string; forms_on_file: string[]; ask_exactly: string } | null = null;
+  /* The Woven salon, unless this person's forms on file are at another: then the which-salon question naming both. */
+  const wovenDiffersFromForms = async (wovenId: string): Promise<typeof wovenAndForms> => {
+    if (!adminAsks || !card.employeeName) return null;
+    const elsewhere = (await formsOnFileSalons(context, employee.name)).filter((salon) => salon.id !== wovenId);
+    if (elsewhere.length === 0) return null;
+    const woven = rosterSalonName(wovenId) ?? wovenId;
+    const first = (replyNameFor(card.employeeName, read.kind === "read" ? read.roster : [], extractEmployeeNames(managerTurns(context)), employee.id ?? null).split(" ")[0]) || card.employeeName;
+    const onFile = elsewhere.map((salon) => `**${salon.name}**`);
+    const list = onFile.length === 1 ? onFile[0]! : `${onFile.slice(0, -1).join(", ")} and ${onFile[onFile.length - 1]!}`;
+    return {
+      woven,
+      forms_on_file: elsewhere.map((salon) => salon.name),
+      ask_exactly: `Which ${locationWord()} is this about? ${staffSystem()} lists ${first} at **${woven}**, and ${first}'s forms on file in ${appConfig().formsPageName} are at ${list}. The card is ready — choose the ${locationWord()} before you create the draft, so it is not filed with no ${locationWord()}.`,
+    };
+  };
+  /* The card's salon came from the person's Woven salons (the proposal builder's one employee salon), not the manager's words. */
+  if (adminAsks && card.locationId && employee.id && !typedSalon && turnSalonIds.length === 0 && !globalAsk.salonIdNamedIn(requestWords) && employee.salonIds.includes(card.locationId)) {
+    wovenAndForms = await wovenDiffersFromForms(card.locationId);
+    if (wovenAndForms) {
+      Object.assign(card, { locationId: null, locationName: null, locationResolution: "needs_selection" });
+      salonFromWoven = null;
+    }
+  }
+  if (!wovenAndForms && !card.locationId && card.employeeName && employee.id && context.actor.scope?.level === "global" && !globalAsk.globalNonAdminNeedsSalon(context.actor.role, context.actor.scope)) {
     const theirs = await wovenSalonsOf(context.actor.scope, employee.id, read.kind === "read" ? read.roster : [], appConfig().locations().map((salon) => salon.id));
-    if (theirs.length === 1) {
+    wovenAndForms = theirs.length === 1 ? await wovenDiffersFromForms(theirs[0]!) : null;
+    if (wovenAndForms) {
+      /* Not taken: asked below, naming both. */
+    } else if (theirs.length === 1) {
       Object.assign(card, { locationId: theirs[0], locationName: rosterSalonName(theirs[0]!) ?? card.locationName, locationResolution: "resolved", authorizedLocationIds: [theirs[0]], status: card.status === "needs_location" ? "ready" : card.status });
       salonFromWoven = rosterSalonName(theirs[0]!) ?? theirs[0]!;
     }
   }
-  if ((await import("@/lib/config/chat-quality-flags")).globalSalonAskEnabled() && globalAsk.globalNonAdminNeedsSalon(context.actor.role, context.actor.scope) && !card.locationId && card.employeeName) {
+  if (((await import("@/lib/config/chat-quality-flags")).globalSalonAskEnabled() && globalAsk.globalNonAdminNeedsSalon(context.actor.role, context.actor.scope) || adminAsks) && !card.locationId && card.employeeName) {
     const named = globalAsk.salonIdNamedIn(requestWords);
     if (named) {
       Object.assign(card, { locationId: named, locationName: rosterSalonName(named) ?? card.locationName, locationResolution: "resolved", authorizedLocationIds: [named], status: card.status === "needs_location" ? "ready" : card.status });
-    } else if (card.locationResolution === "not_applicable" || card.locationResolution === "needs_selection") {
+      wovenAndForms = null;
+    } else if (card.locationResolution === "not_applicable" || card.locationResolution === "needs_selection" || (adminAsks && card.locationResolution !== "resolved")) {
       Object.assign(card, { locationId: null, locationResolution: "needs_selection", authorizedLocationIds: appConfig().locations().map((salon) => salon.id), status: "ready", supportsInlineDraft: true });
       const askedBefore = context.history.some((turn) => turn.role === "assistant" && new RegExp(`which ${locationWord()} is this about`, "i").test(String(turn.content ?? "")));
-      whichSalon = !askedBefore;
+      whichSalon = !askedBefore && !wovenAndForms;
+      if (askedBefore) wovenAndForms = null;
     }
   }
   /*
@@ -5670,6 +5899,28 @@ export async function proposeForm(
   /* The policy Create sends is the card's (`cardPolicyFor`), never read back from the model's reply (code-check #40). */
   card.policyLine = policyLine;
   /*
+   * THE SAME FORM IS ALREADY WITH HR (owner, 24 Nov 2026, `ownFormsWithHr`). The same kind of form for the same person on
+   * the same date (an exit: any one, a person leaves once) is the same problem: that form is opened for the manager to
+   * change, never a second one made, unless the manager asked for another (`asksNewForm`). Any other form of theirs with
+   * HR for this person is said in one line (`with_hr`), and the card goes on.
+   */
+  const withHr = await ownFormsWithHr(context, [card.employeeName ?? employee.name, ...(employee.id && read.kind === "read" ? fullNamesOf(read.roster.find((row) => row.id === employee.id) ?? { firstName: "", lastName: "", preferredFirstName: null }).filter((full) => full.trim() !== "") : [])].filter((name): name is string => Boolean(name && name.trim())));
+  const sameWithHr = withHr.find((form) => form.templateKey === template.key && (exitForm || (card.formDate !== null && card.formDate !== undefined && form.date === card.formDate)));
+  if (sameWithHr && !asksNewForm) {
+    // Opened as open_form opens a draft: this manager's own form, so no forms-on-file ask is needed to show it to them.
+    effects.formOpened = { instanceId: sameWithHr.instanceId, templateName: sameWithHr.form, revisesInstanceId: null };
+    return {
+      opened: true,
+      same_form_with_hr: true,
+      form: sameWithHr.form,
+      employee: card.employeeName ?? employee.name,
+      status: "draft",
+      say_exactly: `${formsWithHrLine(card.employeeName ?? employee.name, [sameWithHr]).replace(/; you can open it to change it\.$/, ".")} I've opened it so you can change it; HR sees your changes.`,
+      note: "This is the same form the manager already sent to HR, now open on their screen to edit (edit_form changes it; HR sees the changes). No new card was made: propose one only if the manager asks for another form.",
+    };
+  }
+  const otherWithHr = withHr.filter((form) => form !== sameWithHr);
+  /*
    * EARLIER CARD (PR 2; replaces run.ts's bold-name match and EARLIER_CARD_STAYS line): the latest earlier card in this
    * chat, by the server's record, was another person's. Compared by roster id (by name only when either has none). It
    * stays creatable (`earlierCardKept`), and the model is told so as the earlier_card fact.
@@ -5699,6 +5950,39 @@ export async function proposeForm(
     effects.replyMustAsk = effects.nameNotConfirmed.ask;
     return { reason_code: "close_spelling_not_confirmed", error: `This turn already asked the manager whether they meant ${employee.name}; the card waits for their answer in a later turn. Do not propose it again now. End your reply with ask_exactly, exactly.`, ask_exactly: effects.nameNotConfirmed.ask };
   }
+  /*
+   * PORT OF ASK BUBBLES #1123 (Pau's review, 23 Nov 2026, via QA: an employee had two finalized Corrective Actions for one
+   * incident date and a third draft, and the AI never said one already existed). A Corrective Action or Coaching card for
+   * a person and incident date that already has that form on file (draft, including one waiting for HR, or finalized) is
+   * not made until the manager answers: the reply says so plainly and asks whether to open it or whether this is a
+   * separate incident. The manager's own words that it is a separate incident (separate_incident_evidence, a quote of this
+   * request) build the card; a card already on screen for this person, form and date was asked about before. Never a word
+   * list: the forms on file and the date decide. (Bubbles also checks a dateless copy against the form read_form read;
+   * Sunny's read_form keeps no such record, so Create's last gate below covers that card.)
+   */
+  const sameDayKinds = new Set([appConfig().formKeys.corrective, appConfig().formKeys.coaching]);
+  const onScreenSameDay = sameCardOnScreen(context.cardOnScreen, template.key, employee) && (context.cardOnScreen?.incidentDate ?? null) === card.formDate;
+  const separateStated = answerEvidence(context, input.separate_incident_evidence, "request", evidencePerson, { requestTurnIds }).ok;
+  const sameDayPerson = employee.id && read.kind === "read" ? read.roster.find((row) => row.id === employee.id) ?? null : null;
+  const sameDayDate = card.formDate ?? null;
+  if (sameDayKinds.has(template.key) && sameDayDate && sameDayPerson && !onScreenSameDay && !separateStated) {
+    const onFile = await sameDayFormsOnFile(context, sameDayPerson, read.kind === "read" ? read.roster : [], template.key, sameDayDate);
+    if (onFile.length > 0) {
+      const ask = sameDayOnFileQuestion(replyNameFor(card.employeeName ?? employee.name, read.kind === "read" ? read.roster : [], extractEmployeeNames(managerTurns(context)), employee.id ?? null), card.templateName ?? template.name, onFile);
+      effects.replyMustAsk = ask;
+      effects.sameIncidentAsked = { templateKey: template.key, employeeKey: personKey(employee.id!), date: sameDayDate };
+      return {
+        same_incident_on_file: onFile.map((form) => ({ instance_id: form.id, form: form.form, status: form.status, form_date: form.formDate, finalized_at: form.finalizedAt })),
+        reason_code: "same_incident_on_file", error: `${employee.name} already has ${onFile.length === 1 ? "this form" : "these forms"} on file for ${sameDayDate}. The card was not made and Create is held. Say so and end your reply with ask_exactly, exactly. If the manager then wants that form, open it (open_form with its instance_id); if they say this is a separate incident, propose the card again with separate_incident_evidence (their words).`,
+        ask_exactly: ask,
+      };
+    }
+  }
+  /*
+   * The date the manager said is a separate incident (this turn's words, or the same card on screen that carried it), for
+   * Create's last check: Create asks again for any other date, as a form may have been filed since this card was made.
+   */
+  effects.proposalSameIncidentChecked = sameDayKinds.has(template.key) && card.formDate && (separateStated || (onScreenSameDay && context.cardOnScreen?.sameIncidentChecked === card.formDate)) ? card.formDate : null;
   const refused = anotherCard(card.employeeName);
   if (refused) {
     const next = (card.employeeName ?? "").split(/\s+/)[0] || "the next person";
@@ -5884,6 +6168,8 @@ export async function proposeForm(
     /* QA item 22: the finalized forms on file for this person; the card's level is never chosen from them. */
     /* The forms on file are offered, never added (QA, 23 Nov 2026; port of Ask Bubbles #1089): ask_exactly ends the reply. */
     ...(priorsOnFile.length > 0 ? { prior_on_file: { forms: priorsOnFile, line: onFileLine, on_card: false, ...(onFileOffer ? { ask_exactly: onFileOffer } : {}) } } : {}),
+    /* The owner (24 Nov 2026): a form of theirs for this person already with HR is said, with its offense and policy. */
+    ...(otherWithHr.length > 0 ? { with_hr: { forms: otherWithHr.map(({ instanceId, form, date, state, offense, policy }) => ({ instance_id: instanceId, form, date, state, offense, policy })), say_exactly: formsWithHrLine(card.employeeName ?? employee.name, otherWithHr) } } : {}),
     ...(corrective && payroll === "yes" && !amount && statedAmount ? { payroll_amount_said: `$${statedAmount}` } : {}),
     ...(cleaning && !careAndCleaning ? { cleaning_duty: cleaning } : {}),
     ...(awaiting ? { policy_named_by_manager: policyNamedByManager } : {}),
@@ -5950,6 +6236,7 @@ export async function proposeForm(
     ...(jobTitleTyped ? { job_title_from_your_words: card.employeeRole } : {}),
     ...(jobTitleInstructed ? { job_title_as_you_said: card.employeeRole } : {}),
     ...(whichSalon ? { which_salon: true } : {}),
+    ...(wovenAndForms ? { which_salon_woven_and_forms: wovenAndForms } : {}),
     ...(terminationStated ? { termination_stated: { approval: stated.TERMINATION_APPROVAL_LINE, plan_closing: stated.TERMINATION_PLAN_SENTENCE } } : {}),
     /*
      * Batch G2 (item 3, QA's live run part 2: the hedge line was missing on 5 of 7): the manager's words name a
@@ -6224,6 +6511,42 @@ export async function editForm(
     const refused = await formOnFileRefusal(context, id, input.forms_on_file_evidence);
     if (refused) return refused;
   }
+  /*
+   * WAITING FOR HR. One waiting for HR may be changed by its creator, anyone who sent it, and HR, as on the card
+   * (`mayEditWhileWithHr`; owner, 24 Nov 2026, asked "Should I let chat edits work there too, like edits on the form?":
+   * "sure"). Their edit runs inside the scope that lets the writers past the hold for this one form (`hr-edit-scope.ts`),
+   * and is recorded in the approval history with HR told, as the card's Save does (`recordHrEdit`). Anybody else is
+   * refused with the reason, instead of each field's bare "not_draft". After the privacy gates above, so it never tells
+   * somebody the form exists.
+   */
+  {
+    const { heldForHr } = await import("@/lib/forms/hr-approval-rules");
+    const instances = await import("@/lib/forms/instances");
+    const held = await instances.loadInstance(id).catch(() => null);
+    const scoped = await import("@/lib/forms/hr-edit-scope");
+    if (
+      held &&
+      held.instance.status === "draft" &&
+      heldForHr(held.instance.hrApprovalState) &&
+      !scoped.inHrEditScope(id) &&
+      (await (await import("@/lib/forms/hr-approval-approvers")).hrHoldLive())
+    ) {
+      const approvals = await import("@/lib/forms/hr-approval");
+      const hrApprover = await (await import("@/lib/forms/hr-approval-approvers")).resolveHrApprover(context.actor.subject);
+      const formsActor = { id: context.actor.subject, role: context.actor.role, verified: context.actor.verified, scope: context.actor.scope, visibility: context.actor.scope, hrApprover } as unknown as FormsActor;
+      if (!approvals.mayEditWhileWithHr(formsActor, held.instance)) {
+        const heldReason = "This form is waiting for HR approval, so only the manager who made it, whoever sent it, and HR can change it until HR decides. Nothing was written. Tell the manager it is with HR.";
+        return { reason_code: "held_for_hr", error: heldReason };
+      }
+      const valuesBefore = JSON.stringify(held.values.map((row) => [row.fieldKey, row.value, row.checked]));
+      const result = await scoped.withHrEditScope(id, () => editForm(context, effects, input));
+      const after = await instances.loadInstance(id).catch(() => null);
+      if (after && JSON.stringify(after.values.map((row) => [row.fieldKey, row.value, row.checked])) !== valuesBefore) {
+        await approvals.recordHrEdit(id, formsActor);
+      }
+      return result;
+    }
+  }
   const values: Record<string, string> = {};
   if (input.values && typeof input.values === "object") {
     for (const [field, value] of Object.entries(input.values as Record<string, unknown>)) {
@@ -6490,7 +6813,8 @@ export async function editForm(
      * here, before anything is written, with the words the card uses: it is waiting for HR approval, and it is changed on
      * the form itself, where HR sees the update. Never a generic save failure.
      */
-    if (loaded.instance.status === "draft" && heldForHr(loaded.instance.hrApprovalState ?? null)) {
+    // The creator's, a sender's or HR's checked chat edit (`withHrEditScope`, owner, 24 Nov 2026: the chat edits it) goes on.
+    if (loaded.instance.status === "draft" && heldForHr(loaded.instance.hrApprovalState ?? null) && !inHrEditScope(loaded.instance.id)) {
       const note = "Tell the manager exactly this: the form is waiting for HR approval, so it was not changed from chat; they can change it on the form itself and HR sees the updated version. Never call it a save error.";
       return { reason_code: "waiting_for_hr_approval", error: WAITING_FOR_HR_CHAT_REPLY, nothing_written: true, note };
     }
@@ -7009,6 +7333,23 @@ export async function searchKnowledge(context: ToolContext, effects: ToolEffects
   }
   if (scopeManual) rows = scopeToCurrentManual(rows, { limit, dedupeBySection: manualSectionDedupeEnabled() });
   rows = rows.slice(0, limit);
+  /*
+   * SOURCES_ON_TOPIC (QA's live test, 24 Nov 2026: "What are the top coaching priorities in a Daily Stats report?" was
+   * answered with the Confidential Information Policy as its only source): a Daily Stats coaching-priorities question's
+   * search also reads the Daily Stats Interpretation Framework, first, as read_stats does for a focus question. A missing
+   * or unhealthy framework adds nothing.
+   */
+  const { sourcesOnTopicEnabled } = await import("@/lib/config/chat-quality-flags");
+  const { asksDailyStatsCoaching } = await import("@/lib/ai/on-topic-sources");
+  if (sourcesOnTopicEnabled() && asksDailyStatsCoaching(context.question) && !rows.some((row) => (effects.frameworkSources ?? []).some((card) => card.documentId === row.document_id))) {
+    const { DAILY_STATS_INTERPRETATION_FRAMEWORK } = await import("@/lib/knowledge/document-roles");
+    const guide = await new SupabaseKnowledgeProvider().fetchRoleGrounding(DAILY_STATS_INTERPRETATION_FRAMEWORK, context.scopeId).catch(() => null);
+    if (guide?.ok && guide.grounding.rows.length > 0) {
+      const framework = guide.grounding.rows.slice(0, 4);
+      (effects.frameworkSources ??= []).push(...framework.map(rowToCitation));
+      rows = [...framework, ...rows.filter((row) => row.document_id !== guide.grounding.documentId)];
+    }
+  }
   const markers = rows.map((row) => addSource(effects, rowToCitation(row)));
   if (rows.length === 0) return { results: [], note: "Nothing in the company knowledge base matches. Say so; never answer from memory." };
   return {

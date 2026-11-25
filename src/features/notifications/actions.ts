@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { pageIdentity } from "@/lib/auth/page";
-import { dismissNotifications, markNotificationsRead } from "@/lib/notifications/repository";
+import { dismissNotifications, markNotificationsRead, markNotificationsUnread } from "@/lib/notifications/repository";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -20,6 +20,24 @@ export async function markNotificationsReadAction(ids: string[] | null): Promise
     await markNotificationsRead(identity.email, list);
   } catch (error) {
     console.error("[notifications] could not mark read:", error);
+    return { ok: false };
+  }
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+/**
+ * Marks the SIGNED-IN person's own notifications unread again, so they stay bold and counted (Pau, 24 Nov 2026). Only the
+ * given ids; as with marking read, the recipient is the caller's email, never taken from the browser.
+ */
+export async function markNotificationsUnreadAction(ids: string[]): Promise<{ ok: boolean }> {
+  const identity = await pageIdentity();
+  if (!identity?.email) return { ok: false };
+  const list = (Array.isArray(ids) ? ids : []).filter((id) => typeof id === "string" && UUID.test(id)).slice(0, 100);
+  try {
+    await markNotificationsUnread(identity.email, list);
+  } catch (error) {
+    console.error("[notifications] could not mark unread:", error);
     return { ok: false };
   }
   revalidatePath("/", "layout");

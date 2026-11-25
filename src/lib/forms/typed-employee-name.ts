@@ -1,6 +1,7 @@
 import { NOT_A_NAME, NOT_A_TYPED_NAME } from "./name-words";
 import { isNotAName } from "./not-a-name";
 import { isFormVocabulary } from "./template-intent";
+import { typedEmployeeEveryCardEnabled } from "@/lib/config/chat-quality-flags";
 
 /**
  * ============================================================================
@@ -46,6 +47,12 @@ const POSITIONS: readonly RegExp[] = [
   new RegExp(`(?:^|\\n)\\s*${FIRST}\\s+${EMPLOYEE}(?=\\s*(?:,|\\bat\\b|[.!]?\\s*$))`, "g"),
 ];
 
+/**
+ * TYPED_EMPLOYEE_EVERY_CARD_ENABLED (QA, 24 Nov 2026): "… for a made-up employee named Test Employee" names the person
+ * after "named" / "called".
+ */
+const NAMED_POSITION = new RegExp(`\\b(?:named|called)\\s+${FIRST}\\s+${EMPLOYEE}`, "g");
+
 function namesSomebody(first: string): boolean {
   const key = first.toLowerCase();
   if (NOT_A_NAME.has(key) || NOT_A_TYPED_NAME.has(key) || DESCRIBING.has(key)) return false;
@@ -56,7 +63,7 @@ function namesSomebody(first: string): boolean {
 /** "Test Employee" when the manager typed it as the employee's name, else null. */
 export function typedEmployeeName(text: string): string | null {
   if (!text || !text.includes("Employee")) return null;
-  for (const position of POSITIONS) {
+  for (const position of typedEmployeeEveryCardEnabled() ? [...POSITIONS, NAMED_POSITION] : POSITIONS) {
     for (const match of text.matchAll(position)) {
       const first = match[1]!;
       if (namesSomebody(first)) return `${first} Employee`;

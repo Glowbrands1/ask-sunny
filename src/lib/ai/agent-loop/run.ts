@@ -10,7 +10,7 @@ import { withFullOffRosterName } from "./off-roster-line";
 import { speaksOfTheManager, withoutManagerReasoning } from "./reasoning-leak";
 import { salonsNamedNotSaid, withoutSalonGuess } from "./salon-guess";
 import type { WhichFormSlot } from "./which-form";
-import { cardTurns, personKey, readLoopRecords, replyTurns, type CardRecord, type CardSlot, type ExitOfferSlot, type NameQuestionSlot, type PersonAskedSlot, type TeamConfirmSlot } from "./card-record";
+import { cardTurns, personKey, readLoopRecords, replyTurns, type CardRecord, type CardSlot, type ExitOfferSlot, type NameQuestionSlot, type PersonAskedSlot, type SameIncidentSlot, type TeamConfirmSlot } from "./card-record";
 import { CLAUDE_EFFORT, CLAUDE_MAX_TOKENS, CLAUDE_MODEL } from "@/lib/config/models";
 import { MissingConfigurationError, requireEnv } from "@/lib/config/server-env";
 import { mainAnswerTimeoutMs, streamGapTimeoutMs } from "@/lib/config/ai-timeouts";
@@ -38,6 +38,8 @@ import { replyWithShortName } from "@/lib/forms/short-name";
 import { agentLoopRules, agentLoopSystem } from "./prompt";
 import { generatedId, identifiedTurns, messageIdTag, withoutMessageIdTags } from "./evidence";
 import { agentLoopStepLimit } from "./switch";
+import { adviceNotForm, onlyAsksWho } from "./advice-not-form";
+import { formAskedOutsideLibrary, saysNoSuchForm, withLibraryForms } from "./form-not-in-library";
 import { progressStatus } from "./progress";
 import {
   appHelp,
@@ -62,6 +64,7 @@ import {
   readPolicy,
   salonLabel,
   templateChoices,
+  quoteNamesForm,
   accountWordKind,
   type ToolContext,
   type ToolEffects,
@@ -106,6 +109,7 @@ export const TOOL_SETTLE_MS = 5_000;
 import { pagesToolLine } from "@/config/ai-readable-pages";
 import { LOOP_FAILED_REPLY, STEP_LIMIT_REPLY } from "./replies";
 import { fieldLabel, readableValue } from "./saved-diff";
+import { onTopicCards } from "@/lib/ai/on-topic-sources";
 
 /*
  * QA's f074 (20 Nov 2026): the MODEL's reply says a form or card was made ("I made the coaching form", "I've created the
@@ -589,6 +593,7 @@ function buildAgentLoopTools(config: AppConfig, planSteps = false) {
         },
         form_asked_evidence: evidence("Optional. Only when the manager typed a form's name or title (\"the coaching form\"), whether or not the library has it: their words naming it. Leave it out for a request that describes what to do without a form's title. propose_form checks a title against the form you chose."),
         instead_of_asked: { type: "boolean", description: "True only when the form the manager named is not in the library and this form is the one you offer in its place (the manager agreed, or you say so). The card then says so; never swap silently." },
+        separate_incident_evidence: evidence("Only after the app said this person already has this form on file for this date (same_incident_on_file) and the manager says this is a separate incident: the manager message of this request and those words."),
         new_form_evidence: evidence("Only when this message asks for another or a new form (a second form for the person on the open draft, or a new request after an earlier card): its words."),
         form_change_evidence: evidence("Only when this message asks for the card on screen to be a different form for the same incident (\"make it a CA instead\", or the manager's yes to your offer of the other form): its words."),
         policy: { type: "string", description: "Always on a Corrective Action, Coaching or Follow-Up Coaching card (Pau, 17 Nov 2026), the heading that fits THIS card's own account, never one copied from another form's card. The one JBA Policy Manual heading that fits what happened, exactly. \"Other — <short topic>\" only for Must See Behaviors, a cleaning or sanitation duty left undone, or an incident no section covers; or both, \"<heading>; Other — <topic>\" (a cleaning duty beside another offense), as the rules book says." },
@@ -800,7 +805,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   /* PR 6: the turn's one read of the policy manual starts first, beside the chat's record read (`turnManual`). */
   const turn: TurnReads = {};
   turn.manual = manualFor(input.scopeId, turn);
-  const { cards: records, nameQuestions, personAsked, exitOffers, teamConfirms, whichForms, turns: turnRecords } = await readLoopRecords(input.conversationId, input.actor.subject, input.history.filter((turn) => turn.role === "user" && typeof turn.id === "string").map((turn) => turn.id), {
+  const { cards: records, nameQuestions, personAsked, sameIncidents, exitOffers, teamConfirms, whichForms, turns: turnRecords } = await readLoopRecords(input.conversationId, input.actor.subject, input.history.filter((turn) => turn.role === "user" && typeof turn.id === "string").map((turn) => turn.id), {
     /* Port of Ask Bubbles #1079 (duplicate tab): only this tab's own records (`card-record.ts`, `ThisTab`). */
     messageIds: input.history.filter((turn) => turn.role === "user" && typeof turn.id === "string").map((turn) => turn.id!),
     questionKeys: input.history.filter((turn) => turn.role === "user").map((turn) => personKey(String(turn.content ?? ""))),
@@ -834,6 +839,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     /* QA (16 Nov 2026; c158, c208): every card and "who is it for?" this chat's loop gave, for where THIS request started. */
     cardRecords: records,
     personAskedRecords: personAsked,
+    sameIncidentRecords: sameIncidents,
     whichFormAsked,
     teamConfirmAsked: Boolean(input.openFormId && teamAsked && teamAsked.sourceKey === personKey(input.openFormId)),
     /* #1055's follow-up: the exit-form offer the last reply's tools made (its record, never the reply's text). */
@@ -1577,6 +1583,30 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
             if (guessed(text).length > 0) text = [withoutSalonGuess(text, guessed(text)), `Which ${appConfig().locationWord} is this for?`].filter(Boolean).join("\n\n");
           }
         }
+        /*
+         * QA (24 Nov 2026, live, Standard mode, twice): "Coach a leader on running better follow-up conversations" got only
+         * "Who is this Coaching Form for?". propose_form refuses a card for such a turn (advice_not_form); a reply that
+         * still only asks who a form is for, on a turn that asked for advice and no form (`adviceNotForm`, the manager's
+         * words), goes back once to be answered.
+         */
+        if (stoppedAt === "reply" && !effects.proposal && onlyAsksWho(text) && adviceNotForm(input.question, input.history)) {
+          const again = await handBack("[app check] The manager asked for advice, not a form, and your reply only asks who a form is for. Answer the question itself now: practical steps, a short checklist, a sample script or role-play where it helps, citing the manual where a policy applies. Never ask who a form is for; you may offer the form in one closing line.");
+          if (again && !onlyAsksWho(again)) text = again;
+        }
+        /*
+         * QA (24 Nov 2026, live): "Draft a vacation request form" was answered "There's no \"Vacation Request Form\" in the
+         * forms library — …" with no word of the forms that exist. #1282's list came only from propose_form with a quote
+         * holding the word "form". With no card this turn and the manager's words asking for a named document no library form
+         * answers to (`formAskedOutsideLibrary`, read from the template names), the reply ends with the library's forms, in
+         * one short line, unless it names them already. A document that is not a form or a request ("write a thank-you
+         * letter") gets the line only when the reply itself says there is no such form.
+         */
+        if (stoppedAt === "reply" && !effects.proposal && !effects.formOpened && !effects.formUpdate && templates.length > 0) {
+          const outside = formAskedOutsideLibrary(input.question, templates, quoteNamesForm);
+          if (outside && (/\b(?:forms?|requests?)$/i.test(outside) || saysNoSuchForm(text))) {
+            text = withLibraryForms(text, outside, templates.map((row) => row.name));
+          }
+        }
       }
     });
   } catch (error) {
@@ -1665,13 +1695,15 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   /* Port of Ask Bubbles #1098 (its QA's u22 live records): a reply with this turn's card that names no form opens with the card's own opening. */
   if (effects.proposal && text) text = withCardOpening(text, effects.proposal.templateName, replyNames.size === 1 ? [...replyNames][0]! : effects.proposal.employeeName);
   const cardSlot: CardSlot | null = effects.proposal
-    ? { proposalId: effects.proposal.proposalId, employeeKey: effects.proposalEmployeeId ? personKey(effects.proposalEmployeeId) : null, nameKey: effects.proposal.employeeName ? personKey(effects.proposal.employeeName) : null, templateKey: effects.proposal.templateKey, templateName: effects.proposal.templateName ?? null, ...(effects.proposalAsked?.length ? { asked: effects.proposalAsked } : {}), ...(effects.proposalLevel ? { level: effects.proposalLevel } : {}), ...(effects.proposalPayroll ? { payroll: effects.proposalPayroll } : {}), ...(effects.proposalPayroll === "yes" && effects.proposalPayrollAmount ? { payrollAmount: effects.proposalPayrollAmount } : {}), ...(effects.proposal.policyLine ? { policyLine: effects.proposal.policyLine } : {}), ...(effects.proposalAccountKey ? { accountKey: effects.proposalAccountKey } : {}), ...(effects.proposalExitType ? { exitType: effects.proposalExitType } : {}), ...(effects.proposal.formDate ? { incidentDate: effects.proposal.formDate } : {}), ...(effects.proposalOnFileOffered?.length ? { onFileOffered: effects.proposalOnFileOffered } : {}), ...(effects.proposal.subject === "team" && effects.proposal.status === "needs_location" ? { teamNeedsLocation: true } : {}), ...(effects.proposal.subject === "team" && !effects.proposal.locationId ? { teamNoSalon: true } : {}), ...(effects.proposal.locationId ? { salonId: effects.proposal.locationId } : {}) }
+    ? { proposalId: effects.proposal.proposalId, employeeKey: effects.proposalEmployeeId ? personKey(effects.proposalEmployeeId) : null, nameKey: effects.proposal.employeeName ? personKey(effects.proposal.employeeName) : null, templateKey: effects.proposal.templateKey, templateName: effects.proposal.templateName ?? null, ...(effects.proposalAsked?.length ? { asked: effects.proposalAsked } : {}), ...(effects.proposalLevel ? { level: effects.proposalLevel } : {}), ...(effects.proposalPayroll ? { payroll: effects.proposalPayroll } : {}), ...(effects.proposalPayroll === "yes" && effects.proposalPayrollAmount ? { payrollAmount: effects.proposalPayrollAmount } : {}), ...(effects.proposal.policyLine ? { policyLine: effects.proposal.policyLine } : {}), ...(effects.proposalAccountKey ? { accountKey: effects.proposalAccountKey } : {}), ...(effects.proposalExitType ? { exitType: effects.proposalExitType } : {}), ...(effects.proposal.formDate ? { incidentDate: effects.proposal.formDate } : {}), ...(effects.proposalOnFileOffered?.length ? { onFileOffered: effects.proposalOnFileOffered } : {}), ...(effects.proposal.subject === "team" && effects.proposal.status === "needs_location" ? { teamNeedsLocation: true } : {}), ...(effects.proposal.subject === "team" && !effects.proposal.locationId ? { teamNoSalon: true } : {}), ...(effects.proposal.locationId ? { salonId: effects.proposal.locationId } : {}), ...(effects.proposalSameIncidentChecked ? { sameIncidentChecked: effects.proposalSameIncidentChecked } : {}) }
     : null;
   /* Fix batch items 4 and 3: this turn's "Did you mean", for the next turn's name question record (one-way keys only). */
   const nameQuestionSlot: NameQuestionSlot | null = effects.nameQuestion && stoppedAt === "reply"
     ? { offeredKeys: effects.nameQuestion.offeredIds.map(personKey), typedKey: personKey(effects.nameQuestion.typed), ...(effects.nameQuestion.offeredNames?.length ? { offeredNameKeys: effects.nameQuestion.offeredNames.map(personKey) } : {}), ...(effects.nameQuestion.asksFullName ? { asksFullName: true } : {}), ...(effects.nameQuestion.templateKey ? { templateKey: effects.nameQuestion.templateKey } : {}) }
     : null;
   /* Fix batch item 6: propose_form asked who the form is for, for the next turn's person asked record (no names). */
+  /* Port of Ask Bubbles #1123 (Pau's review, 23 Nov 2026): this turn asked whether the same incident on file is meant (no card), for the next turn's request start. */
+  const sameIncidentSlot: SameIncidentSlot | null = effects.sameIncidentAsked && stoppedAt === "reply" && !effects.proposal ? effects.sameIncidentAsked : null;
   const personAskedSlot: PersonAskedSlot | null = effects.personAsked && stoppedAt === "reply" && !effects.proposal ? { templateKey: effects.personAsked.templateKey } : null;
   const teamConfirmSlot: TeamConfirmSlot | null = effects.teamConfirm && stoppedAt === "reply" ? { sourceKey: personKey(effects.teamConfirm.sourceInstanceId) } : null;
   const whichFormSlot: WhichFormSlot | null = effects.whichFormAsked && effects.whichFormAsked.length > 1 && stoppedAt === "reply" && !effects.formOpened && !effects.proposal ? { forms: effects.whichFormAsked } : null;
@@ -1683,7 +1715,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     trace.firstTokenMs = firstTokenMs;
     trace.slots = {
       ...(trace.slots ?? {}),
-      agent_loop: { question_key: personKey(input.question), ...(cardSlot ? { card: cardSlot } : {}), ...(nameQuestionSlot ? { name_question: nameQuestionSlot } : {}), ...(personAskedSlot ? { person_asked: personAskedSlot } : {}), ...(exitOfferSlot ? { exit_offer: exitOfferSlot } : {}), ...(teamConfirmSlot ? { team_confirm: teamConfirmSlot } : {}), ...(whichFormSlot ? { which_form: whichFormSlot } : {}), steps, model_steps: modelSteps, model_calls: modelCalls, ...(turn.manualRead ? { manual_read: turn.manualRead } : {}), step_limit: limit, steps_used: stepNumber - 1 + hiddenCalls, ...(toolModelCalls > 0 ? { tool_model_calls: toolModelCalls } : {}), stopped: stoppedAt, ms: latencyMs, first_token_ms: firstTokenMs, ...(selfReview ? { self_review: selfReview } : {}), ...(draftReview ? { draft_review: draftReview } : {}), ...(levelReview ? { level_review: levelReview } : {}), ...(honestyReview ? { honesty_review: honestyReview } : {}), ...(replyUnwrapped ? { reply_unwrapped: true } : {}), ...(retriesBlocked > 0 ? { stop_retrying: retriesBlocked } : {}), ...(repeatsReused > 0 ? { repeat_calls_reused: repeatsReused } : {}), ...(pronounsReplaced > 0 ? { pronouns_replaced: pronounsReplaced } : {}), ...(fullNamesShortened > 0 ? { full_names_shortened: fullNamesShortened } : {}) },
+      agent_loop: { question_key: personKey(input.question), ...(cardSlot ? { card: cardSlot } : {}), ...(nameQuestionSlot ? { name_question: nameQuestionSlot } : {}), ...(personAskedSlot ? { person_asked: personAskedSlot } : {}), ...(sameIncidentSlot ? { same_incident: sameIncidentSlot } : {}), ...(exitOfferSlot ? { exit_offer: exitOfferSlot } : {}), ...(teamConfirmSlot ? { team_confirm: teamConfirmSlot } : {}), ...(whichFormSlot ? { which_form: whichFormSlot } : {}), steps, model_steps: modelSteps, model_calls: modelCalls, ...(turn.manualRead ? { manual_read: turn.manualRead } : {}), step_limit: limit, steps_used: stepNumber - 1 + hiddenCalls, ...(toolModelCalls > 0 ? { tool_model_calls: toolModelCalls } : {}), stopped: stoppedAt, ms: latencyMs, first_token_ms: firstTokenMs, ...(selfReview ? { self_review: selfReview } : {}), ...(draftReview ? { draft_review: draftReview } : {}), ...(levelReview ? { level_review: levelReview } : {}), ...(honestyReview ? { honesty_review: honestyReview } : {}), ...(replyUnwrapped ? { reply_unwrapped: true } : {}), ...(retriesBlocked > 0 ? { stop_retrying: retriesBlocked } : {}), ...(repeatsReused > 0 ? { repeat_calls_reused: repeatsReused } : {}), ...(pronounsReplaced > 0 ? { pronouns_replaced: pronounsReplaced } : {}), ...(fullNamesShortened > 0 ? { full_names_shortened: fullNamesShortened } : {}) },
       ...(queries.length > 0 ? { agent_loop_queries: queries } : {}),
     };
   }
@@ -1746,9 +1778,15 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
    */
   const sources = effects.sources ?? [];
   const used = extractUsedMarkers(content, sources.map((_, index) => index + 1));
-  const cited = used.length > 0
+  const marked = used.length > 0
     ? used.map((marker) => sources[marker - 1]!)
     : sources.filter((source, index, all) => content.toLowerCase().includes(source.documentTitle.toLowerCase()) && all.findIndex((row) => row.documentId === source.documentId) === index);
+  /*
+   * SOURCES_ON_TOPIC (QA's live test, 24 Nov 2026): a Daily Stats question's cards are on its topic, and a coaching-
+   * priorities answer shows the framework its tools read (`on-topic-sources.ts`). Off, the marked sources as before.
+   */
+  const framework = effects.frameworkSources ?? [];
+  const cited = onTopicCards({ question: input.question, cards: marked, framework: framework.find((card) => /priorit/i.test(card.excerpt)) ? [framework.find((card) => /priorit/i.test(card.excerpt))!] : framework.slice(0, 1), frameworkIds: new Set(framework.map((card) => card.documentId)) });
   content = content.replace(/\s?\[S\d{1,2}\]/g, "");
   /* A question code decided (effects.replyMustAsk) ends the reply even when the model left it out (QA, the live re-run of #1067). */
   /* Never twice: the reply already asks for a change in its own words (QA: "change" and a question mark in one sentence). */

@@ -17,20 +17,14 @@ import {
   ReviewsBlockSkeleton,
 } from "@/features/dashboard/reviews-block";
 import { businessToday } from "@/lib/business-date";
-import { attentionSummary, followUpState } from "@/lib/forms/follow-up";
-import { listOutstandingFollowUps } from "@/lib/forms/instances";
-import { privateAwareLimit } from "@/lib/forms/private-creators";
-import { actorMaySeeInstance, withoutUnreadable } from "@/lib/forms/instance-scope";
+import { followUpState } from "@/lib/forms/follow-up";
+import { readFollowUpQueue } from "@/lib/forms/follow-up-queue";
 import { pageFormsAccess } from "@/lib/forms/page-scope";
 import { pageCan, requirePagePermission } from "@/lib/auth/page";
 import { asdNoFormMonitoringEnabled } from "@/lib/permissions";
 import {
   scopeAreaLabel,
 } from "@/lib/reporting/scope/authorized-salons";
-import {
-  configuredExcludedNames,
-  isProductionRecord,
-} from "@/lib/forms/production-records";
 import { HrOverviewCard } from "@/features/forms/hr-approval-lists";
 import { hrQueueSummary } from "@/lib/forms/hr-approval";
 
@@ -104,44 +98,22 @@ export default async function OverviewPage() {
     const locationIds = access.locationIds;
     // Exit forms only for readers who may create them — see `withoutUnreadable`.
     const readsExit = await pageCan("create_exit_form");
-    const outstanding = access.noSalon
-      ? []
-      : withoutUnreadable(
-          // PRIVATE_CREATOR_FORMS: over-read, then trim to the page of 50; off, 50 itself.
-          await listOutstandingFollowUps(privateAwareLimit(50), locationIds, access.ownCreatedBy),
-          (permission) => permission === "create_exit_form" && readsExit,
-        ).filter((instance) => actorMaySeeInstance(access.actor, instance)).slice(0, 50);
-
     /*
-     * NON-PRODUCTION RECORDS ARE HELD BACK FROM THE SUMMARY, NOT DELETED.
-     *
-     * The review found "Jordan Vance (test)", "suzy sunshine", "Ace Test" and a
-     * salon called Maple Crossing in this queue. They are live rows created by
-     * testing against the deployment, so nothing in a release removes them;
-     * what this does is keep a record filed against a salon the business does
-     * not operate — or one an administrator has explicitly excluded — off a
-     * manager's morning summary. Every one of them is still in Form Monitoring,
-     * where an administrator can review and archive it. See
-     * `lib/forms/production-records.ts`.
+     * THE ONE QUEUE (QA, 24 Nov 2026: the Overview, the rail and the banner said 19 overdue, Form Monitoring's
+     * Overdue pill 8). `readFollowUpQueue` is what all of them count: every outstanding follow-up this reader may
+     * open, read without a cap, with NON-PRODUCTION RECORDS HELD BACK, NOT DELETED. The review found "Jordan Vance
+     * (test)", "suzy sunshine", "Ace Test" and a salon called Maple Crossing in this queue; they are still in Form
+     * Monitoring, where an administrator can review and archive them. See `lib/forms/production-records.ts`.
      */
-    const excludedNames = configuredExcludedNames();
-    const production = outstanding.filter((instance) =>
-      isProductionRecord(
-        {
-          employeeName: instance.employeeName,
-          locationName: instance.locationName,
-          locationId: instance.locationId,
-        },
-        { excludedNames },
-      ),
-    );
+    const queue = await readFollowUpQueue(access, { readsExit, today });
+    const production = queue.forms;
 
     const items: OverviewFollowUp[] = production.map((instance) => ({
       id: instance.id,
       employeeName: instance.employeeName,
       templateName: instance.templateName,
       locationName: instance.locationName,
-      // `listOutstandingFollowUps` selects on `follow_up_date is not null`, so
+      // The queue selects on `follow_up_date is not null`, so
       // this is never null in practice; the fallback keeps the type honest
       // rather than asserting.
       followUpDate: instance.followUpDate ?? today,
@@ -154,11 +126,11 @@ export default async function OverviewPage() {
        * while listing `production` is precisely how a card comes to state a
        * total its own list does not add up to.
        */
-      attention: attentionSummary(production, today),
+      attention: queue.attention,
       items,
       today,
       failure: null,
-      excluded: outstanding.length - production.length,
+      excluded: queue.excluded,
       scopeLabel:
         locationIds === null
           ? null

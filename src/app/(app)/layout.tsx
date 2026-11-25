@@ -2,18 +2,15 @@ import type { ReactNode } from "react";
 
 import { AppShell } from "@/components/shell/app-shell";
 import { businessToday } from "@/lib/business-date";
-import { attentionSummary } from "@/lib/forms/follow-up";
 import { pageShowsAppSwitcher, pageShowsLeadershipHub } from "@/lib/auth/app-switcher";
 import { pageCan, pageIdentity } from "@/lib/auth/page";
-import { actorMaySeeInstance, withoutUnreadable } from "@/lib/forms/instance-scope";
-import { listOutstandingFollowUps } from "@/lib/forms/instances";
-import { privateAwareLimit } from "@/lib/forms/private-creators";
+import { readFollowUpQueue } from "@/lib/forms/follow-up-queue";
 import { pageFormsAccess } from "@/lib/forms/page-scope";
 import { l10TabsForLayout } from "@/features/l10/data.server";
-import { aiTrainingNotifyEmails } from "@/lib/ai-training/notify";
-import { listNotifications } from "@/lib/notifications/repository";
+import { bellFor } from "@/lib/notifications/bell-for";
 import type { BellData } from "@/lib/notifications/types";
-import { resolveHrApprover } from "@/lib/forms/hr-approval-approvers";
+import { hrQueueSummary } from "@/lib/forms/hr-approval";
+import { siblingHrWaiting } from "@/lib/partner/sibling-hr-waiting";
 
 /**
  * COUNTS, NOT HUES — the rail's overdue badge.
@@ -40,35 +37,51 @@ async function overdueCount(): Promise<number> {
     // The badge counts only forms this reader may open; see `withoutUnreadable`.
     const readsExit = await pageCan("create_exit_form");
     const access = await pageFormsAccess(await pageIdentity());
-    if (access.noSalon) return 0;
-    const outstanding = withoutUnreadable(
-      // PRIVATE_CREATOR_FORMS: over-read, then trim to the page of 50; off, 50 itself.
-      await listOutstandingFollowUps(privateAwareLimit(50), access.locationIds, access.ownCreatedBy),
-      (permission) => permission === "create_exit_form" && readsExit,
-    ).filter((instance) => actorMaySeeInstance(access.actor, instance)).slice(0, 50);
-    return attentionSummary(outstanding, today).overdue;
+    // THE ONE QUEUE (QA, 24 Nov 2026): the same forms, uncapped, the Overview, the banner and the pills count.
+    return (await readFollowUpQueue(access, { readsExit, today })).attention.overdue;
   } catch {
     return 0;
   }
 }
 
-/**
- * THE BELL — the signed-in person's own notifications (`app_notifications`).
- *
- * Shown to whoever has any, and to the people on `AI_TRAINING_NOTIFY_EMAILS`
- * and HR's form approvers (`form_hr_approvers`) even before their first one, so the bell is there to check. Everybody else
- * gets no bell rather than one that is always empty. Like the overdue badge, a
- * failed read hides it instead of taking down every page.
- */
+/** THE BELL: everyone signed in has one (`bellFor`); an HR approver's also counts the forms still waiting for them. */
 async function bellForLayout(): Promise<BellData | null> {
+  const identity = await pageIdentity();
+  return bellFor(
+    identity,
+    () => waitingForHr(identity),
+    () => waitingForHrInSibling(identity),
+  );
+}
+
+/**
+ * THE SIBLING APP'S WAITING FORMS (Pau, 24 Nov 2026: "fix", of the bar counting only this app's forms): for a verified
+ * HR approver here, the count on the sibling's approvals tab, asked with their verified email exactly as that tab asks
+ * (`siblingHrWaiting`, kept a minute). Null for anybody else, or when the sibling is off or does not answer.
+ */
+async function waitingForHrInSibling(identity: Awaited<ReturnType<typeof pageIdentity>>): Promise<{ app: string; count: number } | null> {
+  if (!identity?.verified || !identity.email) return null;
   try {
-    const identity = await pageIdentity();
-    const email = identity?.email?.trim().toLowerCase();
-    if (!email) return null;
-    const data = await listNotifications(email);
-    if (data.items.length || aiTrainingNotifyEmails().includes(email)) return data;
-    // HR APPROVAL: the approver has a bell before their first request arrives, so it is there to check.
-    return identity?.verified && (await resolveHrApprover(identity.subject)) ? data : null;
+    const { actor } = await pageFormsAccess(identity);
+    if (actor.hrApprover !== true || !actor.verified) return null;
+    return await siblingHrWaiting(identity.email);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * HR APPROVAL, STILL WAITING (Pau, 24 Nov 2026: "can u please not remove the notification in the bar on the left side
+ * if there are still pending inside"). The same count as Form Monitoring's "Pending HR approval (n)" tab, read through
+ * the same `hrQueueSummary`, so the bar and the tab cannot disagree. Null: not a verified HR approver (or the read
+ * failed, which only drops the count, never the bell).
+ */
+async function waitingForHr(identity: Awaited<ReturnType<typeof pageIdentity>>): Promise<number | null> {
+  if (!identity?.verified) return null;
+  try {
+    const { actor } = await pageFormsAccess(identity);
+    if (actor.hrApprover !== true) return null;
+    return (await hrQueueSummary(actor))?.pending ?? 0;
   } catch {
     return null;
   }

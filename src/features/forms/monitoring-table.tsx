@@ -41,6 +41,7 @@ import {
   type FollowUpFilter,
   type FollowUpState,
 } from "@/lib/forms/follow-up";
+import { canAccessAdminConsole } from "@/lib/permissions";
 import { useSession } from "@/lib/session/session-context";
 import { cn } from "@/lib/utils/cn";
 import { formatDate } from "@/lib/utils/date";
@@ -93,6 +94,8 @@ export interface MonitoredForm {
    * server when it was created, not a guess from the employee's name.
    */
   isDemo: boolean;
+  /** HR approved it, shown only to its creator, its senders and HR (the page decides, `mayReadHrDecision`). */
+  hrApproved?: boolean;
   updatedAt: string;
 }
 
@@ -151,9 +154,11 @@ export function MonitoringTable({
   followUp,
   today,
   attention,
+  outstanding,
+  outstandingExcluded = 0,
+  listLimit = null,
   demo,
   showCount = MONITORING_PAGE_SIZE,
-  hasMore = false,
 }: {
   forms: MonitoredForm[];
   notice: string | null;
@@ -176,14 +181,23 @@ export function MonitoringTable({
    */
   attention: AttentionSummary;
   /**
+   * THE FOLLOW-UP QUEUE, every outstanding follow-up this reader may open, uncapped and with test records left out:
+   * the same forms the banner, the Overview and the rail badge count (`readFollowUpQueue`). The Open and Overdue
+   * pills count it, and their lists show it, so a pill can never say fewer than the banner above it (QA, 24 Nov
+   * 2026: "19 overdue" in the banner, "Overdue 8" on the pill).
+   */
+  outstanding?: MonitoredForm[];  // Absent (a caller with no queue): the loaded rows, as before.
+  /** Outstanding follow-ups on test records, left out of those counts (they stay in the All list). */
+  outstandingExcluded?: number;
+  /** Set when the list stopped at its page of rows: All, Drafted and Followed up count only the newest this many. */
+  listLimit?: number | null;
+  /**
    * What a demo sweep would do, counted on the SERVER — not
    * from the rows on screen, which are filtered and could give a wrong number.
    */
   demo: { deletable: number; protected: number };
-  /** How many forms the server was asked for (`?show=`), a whole number of pages. */
+  /** How many forms the server was asked for (`?show=`), a whole number of pages. "Load more" adds one. */
   showCount?: number;
-  /** True when the server holds more forms than it sent: shows "Load more". */
-  hasMore?: boolean;
 }) {
   const [templateName, setTemplateName] = React.useState<string>("all");
   const [downloading, setDownloading] = React.useState<string | null>(null);
@@ -223,6 +237,14 @@ export function MonitoringTable({
    */
   const mayManage = demoMode || can("manage_form_records");
   const mayTrack = demoMode || can("create_coaching_form");
+  /*
+   * A FINALIZED FORM'S DELETE is for administrators only (Pau, 24 Nov 2026: "why cant delete? in bubbles" on a finalized
+   * Corrective Action). Everyone else with `manage_form_records` deletes drafts, as before. The server decides again
+   * (`DELETE /api/forms/instances/{id}` answers 409 to anyone else); this only decides whether the menu offers it.
+   */
+  const mayDeleteFinalized = mayManage && canAccessAdminConsole(role);
+  const mayDelete = (form: MonitoredForm) =>
+    mayManage && (form.status === "draft" || (form.status === "finalized" && mayDeleteFinalized));
 
   const call = React.useCallback(
     <T,>(url: string, init: RequestInit = {}) => formsFetch<T>(url, role, user.name, init),
@@ -335,7 +357,9 @@ export function MonitoringTable({
     }
   }
 
-  const templateNames = [...new Set(forms.map((form) => form.templateName))].sort();
+  const templateNames = [
+    ...new Set([...forms, ...(outstanding ?? [])].map((form) => form.templateName)),
+  ].sort();
 
   /*
    * The pills count the SHELF, before the pill filter is applied — otherwise
@@ -345,8 +369,21 @@ export function MonitoringTable({
   const inScope = forms.filter(
     (form) => templateName === "all" || form.templateName === templateName,
   );
-  const counts = followUpCounts(inScope, today);
-  const shown = inScope.filter((form) => matchesFollowUpFilter(form, followUp, today));
+  /*
+   * OPEN AND OVERDUE COUNT THE WHOLE QUEUE, not the loaded rows (QA, 24 Nov 2026): the rows are the newest page of
+   * forms, and an old overdue follow-up is exactly the one that falls off it. Their lists show the queue too, so the
+   * pill and the rows under it agree. The other pills count the loaded rows, and say so when the list stopped.
+   */
+  const queueInScope = (outstanding ?? forms).filter(
+    (form) => templateName === "all" || form.templateName === templateName,
+  );
+  const loadedCounts = followUpCounts(inScope, today);
+  const queueCounts = followUpCounts(queueInScope, today);
+  const counts = { ...loadedCounts, open: queueCounts.open, overdue: queueCounts.overdue };
+  const fromQueue = followUp === "open" || followUp === "overdue";
+  const shown = (fromQueue ? queueInScope : inScope).filter((form) =>
+    matchesFollowUpFilter(form, followUp, today),
+  );
 
   /**
    * Both filters live in the URL, so a view survives a refresh and can be
@@ -536,6 +573,22 @@ export function MonitoringTable({
             })}
           </div>
 
+          {/*
+            WHAT THE PILLS COUNT, SAID WHEN IT MATTERS (QA, 24 Nov 2026). Open and Overdue are every follow-up; the
+            others are the loaded rows, which is only the newest page when the list stopped.
+          */}
+          {listLimit !== null || (fromQueue && outstandingExcluded > 0) ? (
+            <p className="text-[12px] text-muted-foreground" data-testid="monitoring-count-scope">
+              {listLimit !== null
+                ? `Showing the newest ${listLimit} forms. Open and Overdue count every form; All, Drafted and Followed up count these ${listLimit}.`
+                : null}
+              {listLimit !== null && fromQueue && outstandingExcluded > 0 ? " " : null}
+              {fromQueue && outstandingExcluded > 0
+                ? `${outstandingExcluded} test record${outstandingExcluded === 1 ? " is" : "s are"} not counted here, as on the Overview; ${outstandingExcluded === 1 ? "it is" : "they are"} listed under All.`
+                : null}
+            </p>
+          ) : null}
+
           <div className="flex flex-wrap items-center gap-3">
             <Select
               aria-label="Form"
@@ -552,7 +605,6 @@ export function MonitoringTable({
             </Select>
             <p className="ml-auto text-[12px] text-muted-foreground">
               {shown.length} form{shown.length === 1 ? "" : "s"}
-              {hasMore ? ` · newest ${forms.length} loaded` : ""}
             </p>
             {/*
               * The sweep only appears when there is something for it to do, and
@@ -697,6 +749,11 @@ export function MonitoringTable({
                           </span>
                           <span className="block text-[11px] text-subtle-foreground">
                             v{form.templateVersion} · {DOC_STATUS_LABEL[form.status]}
+                            {form.hrApproved ? (
+                              <span className="font-semibold text-status-ready" data-testid="hr-approved-note">
+                                {" · Approved by HR"}
+                              </span>
+                            ) : null}
                             {form.source === "ask_sunny" ? " · Ask Sunny" : ""}
                           </span>
                         </td>
@@ -812,7 +869,7 @@ export function MonitoringTable({
                               {downloading === form.id ? "Preparing…" : "PDF"}
                             </button>
 
-                            {(mayManage && form.status === "draft") || (form.followedUpAt && mayTrack) ? (
+                            {mayDelete(form) || (form.followedUpAt && mayTrack) ? (
                               <DropdownMenu>
                                 <DropdownMenuTrigger
                                   aria-label={`More actions for ${form.employeeName}`}
@@ -827,15 +884,17 @@ export function MonitoringTable({
                                       Reopen follow-up
                                     </DropdownMenuItem>
                                   ) : null}
-                                  {mayManage && form.status === "draft" ? (
+                                  {mayDelete(form) ? (
                                     <>
                                       {form.followedUpAt && mayTrack ? (
                                         <DropdownMenuSeparator />
                                       ) : null}
                                       {/*
-                                        * A DRAFT can be deleted. A finalized form is a signed HR
-                                        * document: it stays on file and the menu offers nothing for
-                                        * it. There is no archive (Pau, 23 Nov 2026).
+                                        * A DRAFT can be deleted by anyone who manages form records.
+                                        * A FINALIZED form is a signed HR document: only an
+                                        * administrator is offered Delete, and the dialog says so.
+                                        * A form replaced by a newer version offers nothing. There is
+                                        * no archive (Pau, 23 Nov 2026).
                                         */}
                                       <DropdownMenuItem
                                         tone="danger"
@@ -863,10 +922,11 @@ export function MonitoringTable({
 
       {/*
         * LOAD MORE. The server sends one page of forms at a time; this asks it
-        * for the next one. Shown whenever the server says it holds more, even
-        * when a pill has filtered this page to nothing — older forms may match.
+        * for the next one. Shown whenever the list stopped at its page
+        * (`listLimit`), even when a pill has filtered it to nothing — older
+        * forms may match.
         */}
-      {hasMore && nextShowCount(showCount) !== null ? (
+      {listLimit !== null && nextShowCount(showCount) !== null ? (
         <div className="flex justify-center">
           <Button variant="secondary" onClick={() => go({ show: nextShowCount(showCount) ?? showCount })}>
             Load more forms
@@ -890,7 +950,11 @@ export function MonitoringTable({
         {confirming ? (
           <DialogContent
             title="Delete this form?"
-            description="This removes the form instance and its draft data."
+            description={
+              confirming.form.status === "draft"
+                ? "This removes the form instance and its draft data."
+                : "This permanently removes a finalized form: a signed HR document, with everything on it."
+            }
           >
             <dl className="space-y-3 text-[13px]">
               <div>
@@ -909,6 +973,13 @@ export function MonitoringTable({
                 <dd className="mt-0.5 text-foreground capitalize">{confirming.form.status}</dd>
               </div>
             </dl>
+
+            {confirming.form.status === "finalized" ? (
+              <p className="text-[13px] text-muted-foreground" data-testid="delete-finalized-warning">
+                Finalized forms are normally kept on file. As an administrator you can delete this one. It cannot be
+                undone, and the deletion is recorded with your name and the time.
+              </p>
+            ) : null}
 
             <DialogActions>
               <Button variant="ghost" onClick={() => setConfirming(null)}>

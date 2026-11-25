@@ -54,7 +54,11 @@ export function qualifiesForOwnerMenu(row: PreviewRow, excluded: ReadonlySet<str
   return isOwnerRole(row.effective_role) || (row.app_user_status === "active" && isOwnerRole(row.app_user_role));
 }
 
-export async function leadershipOwnerNames(): Promise<string[]> {
+/**
+ * The owner names, and whether they loaded. A failed read is said on the meeting page ("Couldn't load the owner names")
+ * instead of looking like nobody to list (24 Nov 2026). No one qualifying is not a failure.
+ */
+export async function loadLeadershipOwnerNames(): Promise<{ ok: boolean; names: string[] }> {
   try {
     const db = getSupabaseAdmin();
     const roles = OWNER_MENU_ROLES.join(",");
@@ -63,19 +67,19 @@ export async function leadershipOwnerNames(): Promise<string[]> {
       .select("employee_id, email_address, employment_status, effective_role, app_user_role, app_user_status")
       .or(`effective_role.in.(${roles}),app_user_role.in.(${roles})`)
       .limit(500);
-    if (preview.error || !preview.data) return [];
+    if (preview.error || !preview.data) return { ok: false, names: [] };
     const excluded = excludedOwnerEmails();
     const ids = (preview.data as PreviewRow[])
       .filter((r) => qualifiesForOwnerMenu(r, excluded))
       .map((r) => r.employee_id)
       .filter((id): id is string => typeof id === "string" && id.length > 0);
-    if (ids.length === 0) return [];
+    if (ids.length === 0) return { ok: true, names: [] };
     const directory = await db
       .from("employee_access_directory")
       .select("id, first_name, last_name, preferred_first_name, termination_date")
       .in("id", ids)
       .limit(500);
-    if (directory.error || !directory.data) return [];
+    if (directory.error || !directory.data) return { ok: false, names: [] };
     const names = (directory.data as Record<string, unknown>[])
       .filter((row) => row.termination_date === null || row.termination_date === undefined)
       .map((row) =>
@@ -86,8 +90,12 @@ export async function leadershipOwnerNames(): Promise<string[]> {
         }),
       )
       .filter((name) => name !== "(no name in Woven)");
-    return [...new Set(names)].sort((a, b) => a.localeCompare(b));
+    return { ok: true, names: [...new Set(names)].sort((a, b) => a.localeCompare(b)) };
   } catch {
-    return [];
+    return { ok: false, names: [] };
   }
+}
+
+export async function leadershipOwnerNames(): Promise<string[]> {
+  return (await loadLeadershipOwnerNames()).names;
 }

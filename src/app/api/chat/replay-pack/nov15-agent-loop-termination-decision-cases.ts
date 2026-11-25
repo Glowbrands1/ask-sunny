@@ -31,6 +31,15 @@ async function card(t: ReplayContext, words: string, termination: boolean) {
   vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
   t.directory([...STAFF]);
   t.as("salon_director", KEARNEY);
+  /*
+   * CHANGED ON PURPOSE (port of Ask Bubbles #1123, 24 Nov 2026): a CA card for Remy on 11/12 is now asked about ("open
+   * that one, or is this a separate incident?") when Remy already has a CA for 11/12 on file. A case that calls this
+   * helper more than once files one CA per call, each standing for its own chat; the forms of the earlier calls are moved
+   * to 11/11 first, so each call starts as before. No case here checks an earlier call's form date.
+   */
+  for (const row of t.forms() as Record<string, unknown>[]) {
+    if (row.employee_name === "Remy Calder" && row.form_date === "2026-11-12") row.form_date = "2026-11-11";
+  }
   const model = loopStandIn((view): LoopDecision => {
     const result = lastResult(view, "propose_form") as { facts?: { termination_stated?: { approval: string; plan_closing: string }; termination_mentioned_not_stated?: boolean } } | null;
     if (!lastResult(view, "find_staff")) return { tool: "find_staff", input: { name: "remy calder" } };

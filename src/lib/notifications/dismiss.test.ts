@@ -16,7 +16,7 @@ vi.mock("@/lib/auth/page", () => ({ pageIdentity: async () => (identity.email ? 
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 
 const { dismissNotifications, listNotifications } = await import("./repository");
-const { dismissNotificationsAction } = await import("@/features/notifications/actions");
+const { dismissNotificationsAction, markNotificationsUnreadAction } = await import("@/features/notifications/actions");
 
 const ID = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const note = (id: string, to: string, read = false) => ({ id, recipient_email: to, kind: "form_hr_approval_request", title: `For ${to}`, body: "", href: "/forms/monitoring?view=hr", created_at: "2026-11-23T10:00:00Z", read_at: read ? "2026-11-23T11:00:00Z" : null });
@@ -71,5 +71,32 @@ describe("removing the caller's own notifications", () => {
   it("ids that are not notification ids are dropped before the delete", async () => {
     expect(await dismissNotificationsAction(["not-an-id", "*"])).toEqual({ ok: true });
     expect(ids()).toHaveLength(4);
+  });
+});
+
+/* Pau (24 Nov 2026): "have option to unread pls so notification stays there". Marking unread puts the caller's own read
+ * rows back to unread, and only theirs. */
+describe("marking the caller's own notifications unread", () => {
+  const readAt = (id: string) => store.app_notifications.find((row) => row.id === id)?.read_at;
+
+  it("a read one goes back to unread and is counted again", async () => {
+    expect(await unreadOf(WREN)).toBe(2);
+    expect(await markNotificationsUnreadAction([ID(3)])).toEqual({ ok: true });
+    expect(readAt(ID(3))).toBeNull();
+    expect(await unreadOf(WREN)).toBe(3);
+    expect(ids()).toHaveLength(4);
+  });
+
+  it("someone else's notification, asked for by its id, is never touched", async () => {
+    store.app_notifications.push(note(ID(5), OSKAR, true));
+    expect(await markNotificationsUnreadAction([ID(5)])).toEqual({ ok: true });
+    expect(readAt(ID(5))).toBe("2026-11-23T11:00:00Z");
+  });
+
+  it("signed out, or ids that are not notification ids: nothing changes", async () => {
+    expect(await markNotificationsUnreadAction(["not-an-id", "*"])).toEqual({ ok: true });
+    identity.email = null;
+    expect(await markNotificationsUnreadAction([ID(3)])).toEqual({ ok: false });
+    expect(readAt(ID(3))).toBe("2026-11-23T11:00:00Z");
   });
 });

@@ -5,14 +5,15 @@ import { Notice } from "@/components/ui/feedback";
 import { PageHeader, PageShell } from "@/components/ui/layout";
 import { SYNTHETIC_DATA_NOTICE, formsIdentityIsUnverified } from "@/lib/forms/access";
 import { businessToday } from "@/lib/business-date";
-import { attentionSummary, parseFollowUpFilter } from "@/lib/forms/follow-up";
+import { parseFollowUpFilter } from "@/lib/forms/follow-up";
+import { readFollowUpQueue } from "@/lib/forms/follow-up-queue";
 import {
   findDemoInstances,
   isDemoInstance,
   listInstances,
-  listOutstandingFollowUps,
+  type InstanceRow,
 } from "@/lib/forms/instances";
-import { privateAwareLimit } from "@/lib/forms/private-creators";
+import { privateAwareLimit, privateCreatorsActive } from "@/lib/forms/private-creators";
 import { parseShowCount } from "@/lib/forms/monitoring-page-size";
 import {
   MonitoringTable,
@@ -26,12 +27,16 @@ import {
 } from "@/lib/forms/instance-scope";
 import { pageFormsAccess } from "@/lib/forms/page-scope";
 import type { Permission } from "@/types";
-import { HrApprovalTabs, HrQueueList, MyFormsWithHr, SiblingHrQueueList } from "@/features/forms/hr-approval-lists";
+import { HrApprovalTabs, HrApprovedList, HrQueueList, MyFormsWithHr, SiblingHrQueueList } from "@/features/forms/hr-approval-lists";
 import { fetchSiblingHrQueue, type SiblingHrQueue } from "@/lib/partner/sibling-hr-queue";
-import { hrQueueSummary, listHrQueue, listMyFormsWithHr, type HrQueueRow, type MyHrFormRow } from "@/lib/forms/hr-approval";
+import { hrQueueSummary, listHrApproved, listHrQueue, listMyFormsWithHr, type HrApprovedRow, type HrQueueRow, type MyHrFormRow } from "@/lib/forms/hr-approval";
+import { mayReadHrDecision } from "@/lib/forms/hr-approval-rules";
+import { ACTIVE_BRAND } from "@/lib/brand";
 
 export const metadata: Metadata = { title: "Form Monitoring" };
 export const dynamic = "force-dynamic";
+
+/** The list's page of rows: the newest this many forms. */
 
 /**
  * FORM MONITORING, read from the database rather than from this browser.
@@ -55,8 +60,8 @@ export default async function FormMonitoringPage({
   const identity = await requirePagePermission("view_form_monitoring");
 
   const { view: requestedView, followup: requestedFollowUp, app: requestedApp, show: requestedShow } = await searchParams;
-  // How many forms to load; "Load more" adds a page. See `monitoring-page-size.ts`.
-  const showCount = parseShowCount(requestedShow);
+  // How many forms to load: one page, and "Load more" adds a page. See `monitoring-page-size.ts`.
+  const listLimit = parseShowCount(requestedShow);
   /*
    * The follow-up filter comes from the URL so a view survives a refresh and can be
    * linked to, and it is narrowed here rather than trusted — an unknown
@@ -73,7 +78,11 @@ export default async function FormMonitoringPage({
   const today = businessToday();
 
   let forms: MonitoredForm[] = [];
-  let hasMore = false;
+  /* The follow-up queue every screen counts (`readFollowUpQueue`): the banner, and the Open and Overdue pills and lists. */
+  let outstanding: MonitoredForm[] = [];
+  let outstandingExcluded = 0;
+  /** Whether the list read stopped at its page of rows, so the other pills count only those. */
+  let listCapped = false;
   let attention = { overdue: 0, dueThisWeek: 0, needsAttention: 0 };
   let demo = { deletable: 0, protected: 0 };
   let failure: string | null = null;
@@ -107,13 +116,17 @@ export default async function FormMonitoringPage({
    */
   let sibling: SiblingHrQueue = { status: "off" };
   const siblingView = hrView && requestedApp === "sibling";
+  // HR's Approved tab, this app's and the sibling's (owner, 24 Nov 2026), on `?view=hr&app=approved`.
+  const approvedView = hrView && requestedApp === "approved";
+  let hrApproved: HrApprovedRow[] = [];
   try {
     if (isHr) {
       const email = access.actor.verified && identity?.verified === true && identity.email ? identity.email : null;
-      [hrSummary, hrQueue, sibling] = await Promise.all([
+      [hrSummary, hrQueue, sibling, hrApproved] = await Promise.all([
         hrQueueSummary(access.actor),
-        hrView ? listHrQueue(access.actor) : Promise.resolve<HrQueueRow[]>([]),
+        hrView && !approvedView ? listHrQueue(access.actor) : Promise.resolve<HrQueueRow[]>([]),
         email ? fetchSiblingHrQueue(email) : Promise.resolve<SiblingHrQueue>({ status: "off" }),
+        approvedView ? listHrApproved(access.actor) : Promise.resolve<HrApprovedRow[]>([]),
       ]);
     }
     myWithHr = await listMyFormsWithHr(access.actor);
@@ -130,15 +143,14 @@ export default async function FormMonitoringPage({
      */
     const readsExit = await pageCan("create_exit_form");
     const holds = (permission: Permission) => (permission === "create_exit_form" ? readsExit : false);
-    // One row past the page is read so the page knows whether "Load more" has anything to load.
-    const readable = withoutUnreadable(
-      // PRIVATE_CREATOR_FORMS: over-read, then trim to the page; off, the page plus one.
-      await listInstances(privateAwareLimit(showCount + 1), instanceListFilterFor(access.actor)),
-      holds,
-    ).filter(mayRead);
-    hasMore = readable.length > showCount;
-    const instances = readable.slice(0, showCount);
-    forms = instances.map((instance) => ({
+    // PRIVATE_CREATOR_FORMS: over-read, then trim to the page of 200; one row more than the page either way, so the
+    // page can say when it stopped (QA, 24 Nov 2026: a count of loaded rows must say that is what it is).
+    const requested = privateCreatorsActive() ? privateAwareLimit(listLimit + 1) : listLimit + 1;
+    const read = await listInstances(requested, instanceListFilterFor(access.actor));
+    const instances = withoutUnreadable(read, holds).filter(mayRead);
+    listCapped = read.length >= requested || instances.length > listLimit;
+    instances.splice(listLimit);
+    const toMonitored = (instance: InstanceRow): MonitoredForm => ({
       id: instance.id,
       templateName: instance.templateName,
       templateShortName: instance.templateShortName,
@@ -163,18 +175,26 @@ export default async function FormMonitoringPage({
        * called "… (test)" is not demo data and is not marked as such here.
        */
       isDemo: isDemoInstance(instance),
+      /*
+       * "Approved by HR" for the form's creator, its senders and HR (owner, 24 Nov 2026: "the manager will be able to see
+       * that in form monitoring with a note "approved""). Nobody else is told it went through HR (`mayReadHrDecision`).
+       */
+      hrApproved: instance.hrApprovalState === "approved" && mayReadHrDecision(access.actor, instance),
       updatedAt: instance.updatedAt,
-    }));
+    });
+    forms = instances.map(toMonitored);
 
     /*
-     * The banner counts OUTSTANDING WORK ACROSS EVERY FORM, from the same
-     * query the Overview uses — not from `forms`, which is capped. A
-     * manager looking at Followed up still needs to be told what is overdue.
+     * THE BANNER AND THE OPEN AND OVERDUE PILLS COUNT ONE QUEUE (QA, 24 Nov 2026: the banner said 19 overdue, the
+     * Overdue pill 8 and Open 6, because the pills counted the 200 newest rows and the banner the first 50
+     * follow-ups). `readFollowUpQueue` is every outstanding follow-up this reader may open, uncapped, test records
+     * left out, the same forms the Overview and the rail badge count. A manager looking at Followed up still needs to
+     * be told what is overdue.
      */
-    attention = attentionSummary(
-      withoutUnreadable(await listOutstandingFollowUps(privateAwareLimit(50), access.locationIds, access.ownCreatedBy), holds).filter(mayRead).slice(0, 50),
-      today,
-    );
+    const queue = await readFollowUpQueue(access, { readsExit, today });
+    attention = queue.attention;
+    outstanding = queue.forms.map(toMonitored);
+    outstandingExcluded = queue.excluded;
 
     /*
      * Counted on the server, so the sweep button can state a
@@ -203,7 +223,7 @@ export default async function FormMonitoringPage({
 
         {hrSummary ? (
           <HrApprovalTabs
-            active={siblingView ? "sibling" : hrView ? "hr" : "all"}
+            active={approvedView ? "approved" : siblingView ? "sibling" : hrView ? "hr" : "all"}
             pending={hrSummary.pending}
             overdue={hrSummary.overdue}
             sibling={
@@ -221,7 +241,13 @@ export default async function FormMonitoringPage({
         ) : null}
         {!hrView ? <MyFormsWithHr rows={myWithHr} /> : null}
 
-        {hrView && siblingView && sibling.status !== "off" ? (
+        {approvedView ? (
+          <HrApprovedList
+            appName={ACTIVE_BRAND.productName}
+            rows={hrApproved.map((row) => ({ line: row.line, from: row.createdByName, approvedAt: row.approvedAt, approvedBy: row.approvedByName, href: `/forms/hr-approval/${row.id}` }))}
+            sibling={sibling}
+          />
+        ) : hrView && siblingView && sibling.status !== "off" ? (
           <SiblingHrQueueList queue={sibling} />
         ) : hrView ? (
           <HrQueueList rows={hrQueue} />
@@ -240,9 +266,11 @@ export default async function FormMonitoringPage({
             followUp={followUp}
             today={today}
             attention={attention}
+            outstanding={outstanding}
+            outstandingExcluded={outstandingExcluded}
+            listLimit={listCapped ? listLimit : null}
+            showCount={listLimit}
             demo={demo}
-            showCount={showCount}
-            hasMore={hasMore}
           />
         )}
       </PageShell>

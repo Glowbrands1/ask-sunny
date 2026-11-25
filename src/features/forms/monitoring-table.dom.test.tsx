@@ -111,8 +111,10 @@ function table(
     followUp?: "all" | "drafted" | "open" | "overdue" | "followed_up";
     attention?: { overdue: number; dueThisWeek: number; needsAttention: number };
     demo?: { deletable: number; protected: number };
+    outstanding?: MonitoredForm[];
+    outstandingExcluded?: number;
+    listLimit?: number | null;
     showCount?: number;
-    hasMore?: boolean;
   } = {},
 ) {
   return render(
@@ -123,8 +125,10 @@ function table(
       today={TODAY}
       attention={options.attention ?? NO_ATTENTION}
       demo={options.demo ?? { deletable: 0, protected: 0 }}
+      outstanding={options.outstanding}
+      outstandingExcluded={options.outstandingExcluded}
+      listLimit={options.listLimit}
       showCount={options.showCount}
-      hasMore={options.hasMore}
     />,
   );
 }
@@ -188,6 +192,57 @@ describe("the follow-up pills", () => {
   it("says nothing is in an empty state rather than showing 'no forms yet'", () => {
     table([form({ employeeName: "Only Draft", status: "draft" })], { followUp: "overdue" });
     expect(screen.getByText("Nothing is overdue.")).toBeTruthy();
+  });
+});
+
+/*
+ * QA, 24 Nov 2026 (Ask Sunny, live): "The overdue counts disagree. The Overview, the sidebar and the Form Monitoring
+ * banner say 19 overdue. Form Monitoring's Overdue filter says 8 and Open says 6." The pills counted the 200 loaded
+ * rows; the banner counted the follow-up queue. Now Open and Overdue count, and list, the queue the banner counts.
+ */
+describe("QA 24 Nov: the Overdue and Open pills count the same queue as the banner", () => {
+  const QA = "The Overview, the sidebar and the Form Monitoring banner say 19 overdue. Form Monitoring's Overdue filter says 8 and Open says 6.";
+  const late = (i: number) => form({ id: `late-${i}`, employeeName: `Late Person ${i}`, followUpDate: "2026-08-2" + (i % 9) });
+  const upcoming = (i: number) => form({ id: `open-${i}`, employeeName: `Open Person ${i}`, followUpDate: "2026-09-1" + (i % 9) });
+  /* The queue: 19 overdue and 9 open. The newest 200 rows hold only 8 of the overdue and 6 of the open. */
+  const queue = [...Array.from({ length: 19 }, (_, i) => late(i)), ...Array.from({ length: 9 }, (_, i) => upcoming(i))];
+  const loaded = [...queue.slice(0, 8), ...queue.slice(19, 25), form({ id: "d1", employeeName: "Drafted One", status: "draft" })];
+  const banner = { overdue: 19, dueThisWeek: 0, needsAttention: 19 };
+
+  function pill(label: string) {
+    return screen.getByRole("button", { name: new RegExp(`^${label}\\s*\\d+$`) });
+  }
+
+  it(`${QA} — the Overdue pill says 19, as the banner does, and Open counts every open follow-up`, () => {
+    table(loaded, { attention: banner, outstanding: queue, listLimit: 200 });
+    expect(screen.getAllByText(/19 overdue/).length).toBeGreaterThan(0);
+    expect(pill("Overdue").textContent).toBe("Overdue19");
+    expect(pill("Open").textContent).toBe("Open9");
+  });
+
+  it("the Overdue list shows all 19, not the 8 that were loaded", () => {
+    table(loaded, { followUp: "overdue", attention: banner, outstanding: queue, listLimit: 200 });
+    expect(screen.getAllByRole("row")).toHaveLength(1 + 19);
+    expect(screen.getByText("Late Person 18")).toBeTruthy();
+  });
+
+  it("says when the other pills count only the loaded page of rows", () => {
+    table(loaded, { attention: banner, outstanding: queue, listLimit: 200 });
+    expect(screen.getByTestId("monitoring-count-scope").textContent).toBe(
+      "Showing the newest 200 forms. Open and Overdue count every form; All, Drafted and Followed up count these 200.",
+    );
+  });
+
+  it("says nothing about a page when every form was loaded", () => {
+    table(loaded, { attention: banner, outstanding: queue, listLimit: null });
+    expect(screen.queryByTestId("monitoring-count-scope")).toBeNull();
+  });
+
+  it("names the test records the Overview also leaves out, on the Overdue list", () => {
+    table(loaded, { followUp: "overdue", attention: banner, outstanding: queue, outstandingExcluded: 2, listLimit: null });
+    expect(screen.getByTestId("monitoring-count-scope").textContent).toBe(
+      "2 test records are not counted here, as on the Overview; they are listed under All.",
+    );
   });
 });
 
@@ -425,7 +480,9 @@ describe("delete still works as it did, and there is no archive", () => {
     expect(menu.queryByRole("menuitem", { name: /archive/i })).toBeNull();
   });
 
-  it("offers nothing to remove on a finalized form: no menu at all", () => {
+  it("offers nothing to remove on a finalized form to someone who is not an administrator: no menu at all", () => {
+    // 24 Nov 2026: only an administrator may delete a finalized form (see "an administrator may delete a finalized form").
+    mockSession.value = { role: "district_manager", user: { name: "QA" }, can: () => true, demoMode: false };
     table([form({ employeeName: "Filed One" })]);
     expect(rowFor("Filed One").ui.queryByRole("button", { name: /more actions/i })).toBeNull();
   });
@@ -596,10 +653,64 @@ describe("the row menu \"…\" opens with something in it", () => {
     expect(await screen.findByRole("menuitem", { name: /delete/i })).toBeTruthy();
   });
 
-  it("an admin gets no \"…\" on a finalized form: it is kept on file, not archived or deleted", () => {
+  it("an admin gets no \"…\" on a form that was replaced by a newer version: it is the older half of a chain", () => {
     admin();
+    table([form({ employeeName: "Filed One", status: "revised" })]);
+    expect(rowFor("Filed One").ui.queryByRole("button", { name: "More actions for Filed One" })).toBeNull();
+  });
+
+  it("a manager who may delete drafts but is not an administrator gets no \"…\" on a finalized form", () => {
+    mockSession.value = { role: "regional_manager", user: { name: "QA" }, can: () => true, demoMode: false };
     table([form({ employeeName: "Filed One" })]);
     expect(rowFor("Filed One").ui.queryByRole("button", { name: "More actions for Filed One" })).toBeNull();
+  });
+
+  /*
+   * Pau, 24 Nov 2026, with a screenshot of Ask Bubbles' Forms Register: "why cant delete? in bubbles — fix and merge". The row was
+   * a finalized Corrective Action (the employee's name is invented here: Garnet Fairbrook), "v4 · finalized", and had no "…" because only drafts could be deleted. Decision (Pau,
+   * asked in the session): administrators may delete a finalized form; nobody else.
+   */
+  it("why cant delete? in bubbles: an administrator gets Delete on a finalized Corrective Action, after a warning", async () => {
+    admin();
+    table([
+      form({
+        employeeName: "Garnet Fairbrook",
+        templateName: "Corrective Action",
+        templateShortName: "Corrective Action",
+        templateVersion: 4,
+        status: "finalized",
+      }),
+    ]);
+    await userEvent.click(rowFor("Garnet Fairbrook").ui.getByRole("button", { name: "More actions for Garnet Fairbrook" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: /^delete$/i }));
+
+    const dialog = within(await screen.findByRole("dialog"));
+    expect(dialog.getByText("Garnet Fairbrook")).toBeTruthy();
+    expect(dialog.getByText("finalized")).toBeTruthy();
+    expect(dialog.getByTestId("delete-finalized-warning").textContent).toMatch(/cannot be undone/i);
+    expect(dialog.getByTestId("delete-finalized-warning").textContent).toMatch(/recorded with your name/i);
+    // Nothing is sent until the administrator confirms.
+    expect(calls.list).toHaveLength(0);
+
+    await userEvent.click(dialog.getByRole("button", { name: /^delete$/i }));
+    await waitFor(() => expect(calls.list).toHaveLength(1));
+    expect(calls.list[0]).toMatchObject({ url: "/api/forms/instances/form-1", method: "DELETE" });
+  });
+
+  it("a draft's dialog is unchanged: no finalized warning", async () => {
+    admin();
+    table([form({ employeeName: "Draft One", status: "draft", finalizedAt: null })]);
+    await userEvent.click(rowFor("Draft One").ui.getByRole("button", { name: "More actions for Draft One" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: /^delete$/i }));
+    const dialog = within(await screen.findByRole("dialog"));
+    expect(dialog.queryByTestId("delete-finalized-warning")).toBeNull();
+  });
+
+  it("a finalized form is still not ticked for the bulk delete, even by an administrator", () => {
+    admin();
+    table([form({ employeeName: "Filed One" }), form({ id: "d", employeeName: "Draft One", status: "draft", finalizedAt: null })]);
+    expect(rowFor("Filed One").ui.queryByRole("checkbox")).toBeNull();
+    expect(rowFor("Draft One").ui.getByRole("checkbox")).toBeTruthy();
   });
 
   it("the ... is not showing when clicked: a role that cannot manage gets no empty \"…\" on a draft", () => {
@@ -621,6 +732,20 @@ describe("the row menu \"…\" opens with something in it", () => {
     await userEvent.click(rowFor("Done One").ui.getByRole("button", { name: "More actions for Done One" }));
     const items = await screen.findAllByRole("menuitem");
     expect(items.map((item) => item.textContent)).toEqual(["Reopen follow-up"]);
+  });
+});
+
+/*
+ * Owner, 24 Nov 2026: "the manager will be able to see that in form monitoring with a note "approved"". The page sets
+ * `hrApproved` only for the form's creator, its senders and HR (`mayReadHrDecision`); the row says it.
+ */
+describe("a form HR approved", () => {
+  it("reads \"Approved by HR\" in its row; a form without it says nothing about HR", () => {
+    table([form({ id: "approved-1", hrApproved: true }), form({ id: "plain-1", employeeName: "Rowan Pike (test)" })]);
+    const notes = screen.getAllByTestId("hr-approved-note");
+    expect(notes).toHaveLength(1);
+    expect(notes[0]!.textContent).toBe(" · Approved by HR");
+    expect(notes[0]!.closest("tr")!.textContent).toContain("Jordan Vance (test)");
   });
 });
 
@@ -734,25 +859,25 @@ describe("can u just create a multi click button and delete inside both apps so 
 });
 
 /*
- * Reported 18 Nov 2026: "doesnt show in my form registry". The page loaded the newest 200
- * forms and stopped, so older forms (overdue follow-ups among them) could not
- * be found here.
+ * Reported 18 Nov 2026: test forms listed as overdue on the Overview could not
+ * be found in Form Monitoring ("doesnt show in my form registry"). The page
+ * loaded the newest 200 forms and stopped; those forms had ~500 newer ones.
  */
 describe("Load more", () => {
-  it("is offered when the server holds more forms, and asks for the next page in the URL", async () => {
-    table([form()], { hasMore: true });
+  it("is offered when the list stopped at its page, and asks for the next page in the URL", async () => {
+    table([form()], { listLimit: 200 });
     await userEvent.click(screen.getByRole("button", { name: "Load more forms" }));
     expect(navigated.pushes.at(-1)).toBe("/forms/monitoring?show=400");
   });
 
-  it("keeps the follow-up filter and adds a page to what is already loaded", async () => {
-    table([form()], { hasMore: true, showCount: 400, followUp: "overdue" });
+  it("adds a page to what is already loaded", async () => {
+    table([form()], { listLimit: 400, showCount: 400 });
     await userEvent.click(screen.getByRole("button", { name: "Load more forms" }));
-    expect(navigated.pushes.at(-1)).toBe("/forms/monitoring?followup=overdue&show=600");
+    expect(navigated.pushes.at(-1)).toBe("/forms/monitoring?show=600");
   });
 
   it("is not offered when every form is already loaded", () => {
-    table([form()], { hasMore: false });
+    table([form()], { listLimit: null });
     expect(screen.queryByRole("button", { name: "Load more forms" })).toBeNull();
   });
 });

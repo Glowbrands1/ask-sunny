@@ -47,3 +47,22 @@ describe("typedEmployeeName", () => {
     expect(typedEmployeeName("create a CA for Test Employee at Kearney")).toBe("Test Employee");
   });
 });
+
+/** QA, 24 Nov 2026 (live as an Admin): "… a made-up employee named Test Employee" (TYPED_EMPLOYEE_EVERY_CARD_ENABLED). */
+describe("typedEmployeeName, \"named <First> Employee\"", () => {
+  const QA = "Draft a coaching form for a performance concern for a made-up employee named Test Employee";
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("reads QA's wording with the flag on", () => {
+    vi.stubEnv("TYPED_EMPLOYEE_EVERY_CARD_ENABLED", "true");
+    expect(typedEmployeeName(QA)).toBe("Test Employee");
+    expect(typedEmployeeName("a CA for a new hire called Test Employee")).toBe("Test Employee");
+    expect(typedEmployeeName("a CA for an employee named Jordan Hale")).toBeNull();
+  });
+
+  it("flag off: as before", () => {
+    expect(typedEmployeeName(QA)).toBeNull();
+  });
+});

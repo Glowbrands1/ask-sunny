@@ -27,6 +27,18 @@ export interface NewNotification {
 export interface BellData {
   items: AppNotification[];
   unread: number;
+  /**
+   * HR approvers only: how many forms in this app still need their decision (Form Monitoring's "Pending HR approval"
+   * count). Pau, 24 Nov 2026: "can u please not remove the notification in the bar on the left side if there are still
+   * pending inside". Reading or removing a notification does not decide the form, so the bar's badge stays while this is
+   * above zero. Absent or 0 for everybody else.
+   */
+  waitingHr?: number;
+  /**
+   * HR approvers only: the forms still needing their decision in the SIBLING app (its approvals tab on Form Monitoring),
+   * with the sibling's own name. Pau, 24 Nov 2026: "fix", of the bar counting only this app's forms. Added to the badge.
+   */
+  waitingSiblingHr?: { app: string; count: number };
 }
 
 /** Only an in-app path ("/x", not "//host" or "https:") is kept as a link. */

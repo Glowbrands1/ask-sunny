@@ -36,7 +36,7 @@ export interface HrApprovalPanelView {
   overdue: boolean;
   canDecide: boolean;
   canEdit: boolean;
-  /** HR, on a form sent back that its manager has replied to since: Approve sits beside Add note. */
+  /** HR, on a form they sent back (replied to or not: owner, 24 Nov 2026): Approve sits beside Add note. */
   canApproveSentBack?: boolean;
   /** Pending, but HR approval is off or nobody can approve: the creator may finalize it themselves. */
   released?: boolean;
@@ -214,8 +214,8 @@ export function HrApprovalPanel({
           </p>
         ) : view.canApproveSentBack ? (
           <p className="text-xs text-subtle-foreground">
-            The manager replied. Approving finalizes the form as it is now; sending it back again needs a note. The manager
-            is told in their bell either way.
+            You sent this back for changes. You can approve it as it is now, whether or not the manager has replied; sending
+            it back again needs a note. The manager is told in their bell either way.
           </p>
         ) : null}
       </div>

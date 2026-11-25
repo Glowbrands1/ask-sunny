@@ -5047,3 +5047,73 @@ export function formsOnFileCountsEnabled(): boolean {
 export function cardPersonThisRequestEnabled(): boolean {
   return envFlag("CARD_PERSON_THIS_REQUEST_ENABLED");
 }
+
+/**
+ * FORM_DATE_IS_TODAY (port from Ask Bubbles; Pau, 24 Nov 2026; default off; same flag in both apps): a form's Date is
+ * the day it is written, never the incident's date, which stays in the account. A date the manager gives the form,
+ * and the day a Coaching Form's coaching was held, still date it. See `forms/incident-dates.ts` decideFormDate and the
+ * agent loop's propose_form (`ai/agent-loop/tools.ts`). Off, as before.
+ */
+export function formDateIsTodayEnabled(): boolean {
+  return envFlag("FORM_DATE_IS_TODAY_ENABLED");
+}
+
+/**
+ * PRIOR_FORMS_UP_TO_TODAY (Pau, 24 Nov 2026; default off; same flag in both apps; port from Ask Bubbles): "it needs to
+ * add all past forms". The forms on file listed for "List previously received coaching and/or corrective action with
+ * date signed" (the draft) and offered by the agent loop are every finalized Coaching and Corrective Action up to today,
+ * not only those dated before this form's date. The form keeps its Date (the incident's day), so the same-incident check
+ * and "which date?" are unchanged. Off, as before.
+ */
+export function priorFormsUpToTodayEnabled(): boolean {
+  return envFlag("PRIOR_FORMS_UP_TO_TODAY_ENABLED");
+}
+
+/**
+ * TYPED_EMPLOYEE_EVERY_CARD (QA, 24 Nov 2026, live as an Admin; default off; same flag in both apps): "Draft a coaching
+ * form for a performance concern for a made-up employee named Test Employee" drafted the Observation "… named the
+ * employee Employee" and asked who the form was for, also after the answer "Test Employee"; "Draft a corrective action
+ * form for a till shortage for Test Employee" put **Test** on the loop's card. The full name the manager typed as the
+ * person ("<First> Employee", `forms/typed-employee-name.ts`) is the card's name on every card type, on both paths:
+ * "named <First> Employee" is read as typed, the roster step keeps it as typed (never "the employee"), and the agent
+ * loop's propose_form puts it on the card when the model passed only one of its words or none. Off, as before.
+ */
+export function typedEmployeeEveryCardEnabled(): boolean {
+  return envFlag("TYPED_EMPLOYEE_EVERY_CARD_ENABLED");
+}
+
+/**
+ * ADMIN_CARD_ASKS_SALON (QA, 24 Nov 2026, live as an Admin; default off; same flag in both apps): an admin's card never
+ * asked which salon (it said the account covers every salon and left Salon "Not recorded"), and for a person Woven lists
+ * at one salon it silently took that salon though her form on file in Form Monitoring is at another. With the flag on,
+ * an admin's loop card with no salon asks once, as a global non-admin's does (the card stays ready); and a salon taken
+ * from Woven while this person's forms on file are at another salon is not taken: the card asks which, naming both.
+ * Salons named in the request still win; non-admins are unchanged. Off, as before.
+ */
+export function adminCardAsksSalonEnabled(): boolean {
+  return envFlag("ADMIN_CARD_ASKS_SALON_ENABLED");
+}
+
+/**
+ * LOOP_CARD_CITES_CONDUCT_LINE (QA's live test, 24 Nov 2026; default off; same flag in both apps): "Draft a corrective
+ * action form for a till shortage for Test Employee" carded "Standards of Conduct …, JBA Policy Manual p.12", the
+ * heading's page, while the saved draft cites the Register / Bank shortages line on its own page. On: a loop card citing
+ * the Standards of Conduct for an incident the manual lists on its own line (a shortage, theft, insubordination,
+ * disrespect, absence from the work area) reads "Standards of Conduct — <the line>, JBA Policy Manual p.<the line's
+ * page>" (`forms/specific-policy-topics.ts` conductLineCitation). Off, as before.
+ */
+export function loopCardCitesConductLineEnabled(): boolean {
+  return envFlag("LOOP_CARD_CITES_CONDUCT_LINE_ENABLED");
+}
+
+/**
+ * SOURCES_ON_TOPIC (QA's live test, 24 Nov 2026; default off; same flag in both apps): "What are the top coaching
+ * priorities in a Daily Stats report?" showed one source card, the Confidential Information Policy p.22, on an answer
+ * written from the coaching framework. On, for a question the Daily Stats gate opens: a coaching-priorities question
+ * shows the Daily Stats Interpretation Framework's card when the answer had it, and cards none of whose words is the
+ * question's are dropped when they would be the only ones (`ai/on-topic-sources.ts`), on the chat path and the agent
+ * loop alike. Off, as before.
+ */
+export function sourcesOnTopicEnabled(): boolean {
+  return envFlag("SOURCES_ON_TOPIC_ENABLED");
+}
