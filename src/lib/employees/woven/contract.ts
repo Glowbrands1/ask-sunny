@@ -144,6 +144,10 @@ export const PAGE_TOTAL_KEYS = [] as const satisfies readonly string[];
  * POSEmployeeID, ExternalZenotiID, TerminationReason, TerminatedAllowRehire,
  * RateOfPay*, Address, emergency contacts, Gender, Ethnicity, MaritalStatus,
  * Notes, PTO, images and two-factor settings. None is read, so none can be kept.
+ *
+ * THE ONE EXCEPTION IS NOT THE SYNC: the exit form's Permanent Address (Pau, 25 Nov 2026) reads ONE employee's
+ * `Address` from their details, live, while their exit form is drafted, behind WOVEN_EXIT_ADDRESS_ENABLED
+ * (`lib/forms/exit-woven-address.ts`). It goes onto that form only; the directory still never holds an address.
  */
 export const FIELD = {
   employeeId: ["EmployeeID"],
