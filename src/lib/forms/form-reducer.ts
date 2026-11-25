@@ -2,7 +2,7 @@ import { formEditSaidReplacementEnabled, priorActionsNoSignedEnabled } from "@/l
 
 import type { InstanceValueRow } from "./instances";
 import { offeredOffenseKey } from "./offense-keys";
-import { priorLineDate } from "./prior-actions";
+import { isNoHistoryLine, priorLineDate } from "./prior-actions";
 
 /**
  * ============================================================================
@@ -798,7 +798,8 @@ export function uniteLines(existing: FieldValue, added: FieldValue, none?: strin
     if (at < 0) out.push(line);
     else if (line.length > out[at]!.length) out[at] = line;
   }
-  const real = none === undefined ? out : out.filter((line) => fold(line) !== fold(none));
+  // A list with a "none" line: "N/A" (ALL_FIELDS_REQUIRED_ENABLED) is one too, dropped once a real line is there.
+  const real = none === undefined ? out : out.filter((line) => fold(line) !== fold(none) && !isNoHistoryLine(line));
   return (real.length > 0 ? real : out).join("\n");
 }
 

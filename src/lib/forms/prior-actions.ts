@@ -61,6 +61,19 @@ export const LEGACY_PREVIOUS_ACTION_DATE_KEY = "previous_action_date";
 /** What the line says when there is no history — a real answer, not a blank. */
 export const NO_PRIOR_ACTION = "None — first occurrence";
 
+/**
+ * What the history box says when nothing is listed at all — no step the manager stated and no form on file (Pau, 25 Nov
+ * 2026: "for the box with previous coaching/ca, if none found add N/A"). Written at Finalize / send for approval with
+ * ALL_FIELDS_REQUIRED_ENABLED on (`instances.ts` fillNoPriorActionsFound), so the box is never blank on an approved form.
+ */
+export const NO_PRIOR_ACTIONS_FOUND = "N/A";
+
+/** "None — first occurrence" or "N/A": a line that says there is no history, dropped once a real step is listed. */
+export function isNoHistoryLine(line: string): boolean {
+  const folded = line.trim().toLowerCase();
+  return folded === NO_PRIOR_ACTION.toLowerCase() || /^n\s*\/?\s*a\.?$/.test(folded) || /^none\b/.test(folded);
+}
+
 /** `YYYY-MM-DD` as the business writes a date by hand. */
 export function signedDate(iso: string): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso.trim());
@@ -545,7 +558,7 @@ export function groundPriorActions(input: {
 
   const lines = [...kept, ...added];
   // A history and "None" cannot both be true; a dated step wins.
-  const history = lines.filter((line) => !/^none\b/i.test(line));
+  const history = lines.filter((line) => !isNoHistoryLine(line));
   const final = history.length > 0 ? history : lines;
 
   if (final.length === 0 && statesFirstOccurrence(input.notes)) {

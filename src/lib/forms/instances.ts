@@ -35,16 +35,17 @@ import { needsFollowUp } from "./follow-up";
 import {
   LEGACY_PREVIOUS_ACTION_DATE_KEY,
   LEGACY_PREVIOUS_ACTION_KEY,
+  NO_PRIOR_ACTIONS_FOUND,
   PRIOR_ACTIONS_KEY,
   legacyPriorActions,
 } from "./prior-actions";
 import { applyRequiredClosings } from "./required-closing";
 import { offeredOffenseKeys } from "./offense-keys";
-import { caSalesPolicyEnabled, requiredFieldsAtFinalizeEnabled } from "@/lib/config/chat-quality-flags";
+import { caSalesPolicyEnabled, allFieldsRequiredEnabled, requiredFieldsAtFinalizeEnabled } from "@/lib/config/chat-quality-flags";
 import { collapseToTwoSentences } from "./action-plan-sentences";
 import { isIsoCalendarDate } from "./form-date-answer";
 import { refreshedActionPlan } from "./ca-action-plan";
-import { blankRequiredFields, requiredFieldsMessage } from "./required-fields";
+import { blankBeforeSubmission, blankBeforeSubmissionMessage, blankRequiredFields, requiredFieldsMessage } from "./required-fields";
 import { getCurrentVersion, getVersion, type TemplateVersionRow } from "./repository";
 import { HELD_FOR_HR, asHrApprovalState, heldForHr, withoutHeldForHr, type HrApprovalState } from "./hr-approval-rules";
 import { editableDraftNow, inHrEditScope } from "./hr-edit-scope";
@@ -1120,8 +1121,8 @@ export class HeldForHrError extends Error {
 export class RequiredFieldsBlankError extends Error {
   readonly fields: { key: string; label: string }[];
 
-  constructor(fields: { key: string; label: string }[]) {
-    super(requiredFieldsMessage(fields));
+  constructor(fields: { key: string; label: string }[], message: string = requiredFieldsMessage(fields)) {
+    super(message);
     this.name = "RequiredFieldsBlankError";
     this.fields = fields;
   }
@@ -1152,6 +1153,17 @@ export function finalizePreflight(
   options: FinalizeOptions = {},
 ): { unverified: string[]; blankPolicy: string[] } {
   // A required field left blank is refused while the record is still a draft the manager can fix.
+  /*
+   * ALL_FIELDS_REQUIRED_ENABLED (Pau, 25 Nov 2026): every field the creator fills, not only the ones a version marks
+   * `required`; the Re-Evaluation section only on a re-evaluation. See `required-fields.ts` blankBeforeSubmission.
+   */
+  if (allFieldsRequiredEnabled()) {
+    const blank = blankBeforeSubmission(parseFormDocument(before.version.document), before.instance.variantKey, before.values, {
+      reEvaluation: before.events.some((event) => event.kind === "created" && event.detail?.kind === "reevaluated"),
+      variant: variantsOf(before.version).find((entry) => entry.key === before.instance.variantKey) ?? null,
+    });
+    if (blank.length > 0) throw new RequiredFieldsBlankError(blank, blankBeforeSubmissionMessage(blank));
+  }
   const blankRequired = !requiredFieldsAtFinalizeEnabled() ? [] : blankRequiredFields(parseFormDocument(before.version.document), before.instance.variantKey, before.values);
   if (blankRequired.length > 0) throw new RequiredFieldsBlankError(blankRequired);
 
@@ -1171,6 +1183,26 @@ export function finalizePreflight(
         .message);
   }
   return { unverified, blankPolicy };
+}
+
+/**
+ * "FOR THE BOX WITH PREVIOUS COACHING/CA, IF NONE FOUND ADD N/A" (Pau, 25 Nov 2026; ALL_FIELDS_REQUIRED_ENABLED). At
+ * Finalize and at "Finalize and send for approval", a Corrective Action whose history box is still blank — no step the
+ * manager stated, no form on file the draft found — is written "N/A" by the app, with provenance saying so, rather than
+ * refused. Anything already in the box is left exactly as it is. Returns the form as it now stands.
+ */
+export async function fillNoPriorActionsFound(before: LoadedInstance, actor: string): Promise<LoadedInstance> {
+  if (!allFieldsRequiredEnabled() || !editableDraftNow(before.instance)) return before;
+  const onForm = fieldsForVariant(parseFormDocument(before.version.document), before.instance.variantKey).some(
+    (field) => field.key === PRIOR_ACTIONS_KEY,
+  );
+  if (!onForm) return before;
+  if ((before.values.find((row) => row.fieldKey === PRIOR_ACTIONS_KEY)?.value ?? "").trim() !== "") return before;
+  await writeValues(before.instance.id, { values: { [PRIOR_ACTIONS_KEY]: NO_PRIOR_ACTIONS_FOUND }, checked: {} }, "system", {
+    [PRIOR_ACTIONS_KEY]: { source: "no_prior_actions_found" },
+  });
+  await recordEvent(before.instance.id, "drafted", actor, { noPriorActionsFound: [PRIOR_ACTIONS_KEY] });
+  return (await loadInstance(before.instance.id)) ?? before;
 }
 
 export async function finalizeInstance(
@@ -1200,7 +1232,8 @@ export async function finalizeInstance(
   if (heldForHr(before.instance.hrApprovalState) && options.fromHrApproval !== true && (await hrHoldLive())) {
     throw new HeldForHrError();
   }
-  const { unverified, blankPolicy } = finalizePreflight(before, options);
+  const checked = options.fromHrApproval === true ? before : await fillNoPriorActionsFound(before, actor);
+  const { unverified, blankPolicy } = finalizePreflight(checked, options);
 
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
