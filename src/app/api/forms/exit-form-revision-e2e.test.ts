@@ -296,11 +296,15 @@ describe("a finalized exit form, edited as a new draft", () => {
     expect(draft).not.toBe(original);
     expect(response!.formOpened!.revisesInstanceId).toBe(original);
     expect(response!.content).toContain("was finalized, so I opened a new draft of it");
-    expect(response!.content).toContain("Date that notice was given");
+    /*
+     * CHANGED ON PURPOSE (Pau, 25 Nov 2026): the notice dates are entered only with "Submitted & Fulfilled Notice"
+     * ticked. This form says she quit by text, so the box is not ticked and the date is not written — nor claimed.
+     */
+    expect(response!.content).not.toMatch(/Date that notice was given[^\n]*9\/27|September 27/);
 
-    // The draft: every answer carried, the change made, the follow-up kept.
+    // The draft: every answer carried, the locked date left blank, the follow-up kept.
     expect(statusOf(draft)).toBe("draft");
-    expect(await valueOf(draft, "notice_given_date")).toBe("2026-09-27");
+    expect(await valueOf(draft, "notice_given_date")).toBeNull();
     expect(await valueOf(draft, "last_day_worked")).toBe(await valueOf(original, "last_day_worked"));
     expect((await review(draft)).instance.followUpDate).toBe("2026-10-05");
 

@@ -211,9 +211,10 @@ describe("the Coaching Form matches 01. Coaching Form.docx", () => {
      *                       salon key question, and the yes/no answers
      *                       printed as HR's statements.
      */
-    const reissued = new Set(["coaching", "policy-review", "follow-up-coaching", "tsd-epp", "stc-exit"]);
+    const reissued = new Set(["coaching", "policy-review", "follow-up-coaching", "tsd-epp"]);
     for (const seed of TEMPLATE_SEEDS) {
-      if (seed.key === "dpoa" || seed.key === "sdit-epp") continue;
+      // stc-exit is at 3 (changed on purpose, Pau, 25 Nov 2026: the written-notice wording and Permanent Address line).
+      if (seed.key === "dpoa" || seed.key === "sdit-epp" || seed.key === "stc-exit") continue;
       expect(seed.revision, seed.key).toBe(reissued.has(seed.key) ? 2 : 1);
     }
     /*

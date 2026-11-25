@@ -128,11 +128,11 @@ describe("installing an empty library", () => {
       active: true,
       display_order: 15,
     });
-    // A fresh library installs the current reading: revision 2, HR's Details lines.
+    // A fresh library installs the current reading: revision 3 (changed on purpose, Pau, 25 Nov 2026).
     expect(currentVersionOf("stc-exit")).toMatchObject({
       version: 1,
       status: "published",
-      seed_revision: 2,
+      seed_revision: 3,
     });
     expect(versionsOf("stc-exit")).toHaveLength(1);
   });
@@ -395,7 +395,8 @@ describe("the Resignation/Exit Form's revision 2 (HR's Details lines)", () => {
     const result = await ensureTemplateLibrary("system");
 
     expect(result.revised).toEqual(["stc-exit"]);
-    expect(currentVersionOf("stc-exit")).toMatchObject({ version: 2, status: "published", seed_revision: 2 });
+    // The current reading is revision 3 (changed on purpose, Pau, 25 Nov 2026).
+    expect(currentVersionOf("stc-exit")).toMatchObject({ version: 2, status: "published", seed_revision: 3 });
     expect(currentVersionOf("stc-exit")?.document).toEqual(exitSeed.document);
     expect(versionsOf("stc-exit").find((row) => row.id === originalId)).toMatchObject({
       status: "archived",

@@ -32,7 +32,7 @@ touched.
 | Resignation Date, How Employee Resigned, Reason for Resignation (revision 2) | `manager` | Filled only from the manager's own words by `lib/forms/exit-details.ts` (through `applyStatedFacts`, empty fields only), or by hand. The model is never shown them |
 | Store items, **salon key** (revision 2), payroll deduction, bonus, minimum wage, rehire yes/no questions | `manager` | Same: ticked only from what the manager said ("she still has the key", "not eligible for rehire"), recorded as `system` with provenance `manager_statement`. `enforceResponsibilities` still drops anything the model returns for them |
 | Additional Details (was "Details") | `ai` | Drafted by the model under exit-specific rules, then `guardExitDetails` drops any sentence that answers a yes/no question, claims a signature, claims a termination step was done, calls it a termination, or carries a date the manager did not give — unless the manager said it |
-| Permanent Address, Written notice attached? | `manager` | Never filled by Ask Sunny; `enforceResponsibilities` drops any attempt |
+| Permanent Address, Written notice attached? (since revision 3: "Is written notice uploaded to the employee file?") | `manager` | Never filled by Ask Sunny; `enforceResponsibilities` drops any attempt |
 | Three signature lines | signature | No key; nothing can write into them |
 | Steps to Finish Termination | text | Printed instructions only. Creating or finalizing the form removes nobody from MyGlow, changes no payroll and touches no other system |
 

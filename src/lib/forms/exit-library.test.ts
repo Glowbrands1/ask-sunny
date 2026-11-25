@@ -67,6 +67,9 @@ function printed(blocks: readonly FormBlock[]): string[] {
  * WHAT HR ADDED IN REVISION 2 (Delphine Ashworth, 28 Sep 2026), and nothing else.
  * Every other printed string must still be the Word document's own.
  */
+/** Lines the owner reworded from the Word file (Pau, 25 Nov 2026: "Written notice attached?" → this). */
+const OWNER_REWORDED = new Set<string>(["Is written notice uploaded to the employee file?"]);
+
 const HR_ADDED = new Set<string>([
   ...Object.values(EXIT_DETAIL_LABEL),
   "Salon key was returned",
@@ -94,7 +97,8 @@ describe("the Resignation/Exit Form is the STC Exit document", () => {
       layoutFamily: "exit",
       requiredPermission: "create_exit_form",
       variants: [],
-      revision: 2,
+      // 3 (changed on purpose, Pau, 25 Nov 2026): written-notice wording, full-width Permanent Address, notice-date help.
+      revision: 3,
     });
     expect(FORM_CATEGORIES.map((category) => category.key)).toContain("separation");
     const orders = TEMPLATE_SEEDS.map((entry) => entry.displayOrder);
@@ -107,7 +111,7 @@ describe("the Resignation/Exit Form is the STC Exit document", () => {
       text.replace(/[’']/g, "'").replace(/\s+/g, " ").replace(/:\s*$/, "").trim();
     const flat = strip(source);
     for (const text of printed(document.blocks).filter(Boolean)) {
-      if (HR_ADDED.has(text)) continue;
+      if (HR_ADDED.has(text) || OWNER_REWORDED.has(text)) continue;
       expect(flat, text).toContain(strip(text));
     }
   });
@@ -161,7 +165,8 @@ describe("the Resignation/Exit Form is the STC Exit document", () => {
       "Is Payroll Deduction applicable? *",
       "*Do they forfeit their bonus?",
       "*Are they to be dropped to minimum wage?",
-      "Written notice attached?",
+      // Reworded on purpose (Pau, 25 Nov 2026); the Word source still says "Written notice attached?".
+      "Is written notice uploaded to the employee file?",
       "Is this employee eligible for rehire?",
       "Details",
       "Acknowledgement of Receipt",

@@ -334,6 +334,16 @@ export function allFieldsRequiredEnabled(): boolean {
 }
 
 /**
+ * EXIT_ALL_FIELDS_REQUIRED_ENABLED (Pau, 25 Nov 2026; default off; same flag in both apps): "On the Exit Form, can the
+ * parameters be set so that every field must be completed or the form will not submit to HR?" On: the exit form is
+ * held to `blankBeforeSubmission` at Finalize and "Finalize and send for approval" even while ALL_FIELDS_REQUIRED_ENABLED
+ * is off (with it on, every form already is), so it also refuses an exit form with no Resignation Details box ticked.
+ */
+export function exitAllFieldsRequiredEnabled(): boolean {
+  return envFlag("EXIT_ALL_FIELDS_REQUIRED_ENABLED");
+}
+
+/**
  * PAYROLL_AMOUNT_SAME_MESSAGE_ENABLED (the sibling app's live chat, 5 Nov 2026; same flag in both apps; default
  * off). "…the register was off $20. which will be payroll deducted from <name>'s check. … payroll deduct applies"
  * still asked "**Payroll deduction amount**?". On: an amount followed by "which / that / this / it … (payroll)
