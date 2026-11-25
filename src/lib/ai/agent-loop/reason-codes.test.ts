@@ -81,6 +81,8 @@ const KNOWN = new Set([
   // Added on purpose (port of Ask Bubbles #1111, board f099 on the loop): the form the manager asked for by its title is
   // another library form, or no form in the library; never a silent swap.
   "form_asked_is_another", "form_not_in_library",
+  // Added on purpose (QA, 24 Nov 2026, live): a turn that asks for advice and no form gets no card and no who-question.
+  "advice_not_form",
   // Added on purpose (owner, 24 Nov 2026, chat edits of a form waiting for HR): anybody but its creator, its senders and
   // HR is refused with the reason (edit_form).
   "held_for_hr",

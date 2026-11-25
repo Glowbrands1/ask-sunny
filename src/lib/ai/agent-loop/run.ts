@@ -38,6 +38,8 @@ import { replyWithShortName } from "@/lib/forms/short-name";
 import { agentLoopRules, agentLoopSystem } from "./prompt";
 import { generatedId, identifiedTurns, messageIdTag, withoutMessageIdTags } from "./evidence";
 import { agentLoopStepLimit } from "./switch";
+import { adviceNotForm, onlyAsksWho } from "./advice-not-form";
+import { formAskedOutsideLibrary, saysNoSuchForm, withLibraryForms } from "./form-not-in-library";
 import { progressStatus } from "./progress";
 import {
   appHelp,
@@ -62,6 +64,7 @@ import {
   readPolicy,
   salonLabel,
   templateChoices,
+  quoteNamesForm,
   accountWordKind,
   type ToolContext,
   type ToolEffects,
@@ -1578,6 +1581,30 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
             const again = await handBack(`[app check] Your reply names ${guessed(text).join(", ")}, but the manager named no such ${appConfig().locationWord} and the card has none. Never guess a ${appConfig().locationWord} from another word (an abbreviation, a program, a product). Ask which ${appConfig().locationWord} it is for, plainly. Then write your reply to the manager again.`);
             if (again) text = again;
             if (guessed(text).length > 0) text = [withoutSalonGuess(text, guessed(text)), `Which ${appConfig().locationWord} is this for?`].filter(Boolean).join("\n\n");
+          }
+        }
+        /*
+         * QA (24 Nov 2026, live, Standard mode, twice): "Coach a leader on running better follow-up conversations" got only
+         * "Who is this Coaching Form for?". propose_form refuses a card for such a turn (advice_not_form); a reply that
+         * still only asks who a form is for, on a turn that asked for advice and no form (`adviceNotForm`, the manager's
+         * words), goes back once to be answered.
+         */
+        if (stoppedAt === "reply" && !effects.proposal && onlyAsksWho(text) && adviceNotForm(input.question, input.history)) {
+          const again = await handBack("[app check] The manager asked for advice, not a form, and your reply only asks who a form is for. Answer the question itself now: practical steps, a short checklist, a sample script or role-play where it helps, citing the manual where a policy applies. Never ask who a form is for; you may offer the form in one closing line.");
+          if (again && !onlyAsksWho(again)) text = again;
+        }
+        /*
+         * QA (24 Nov 2026, live): "Draft a vacation request form" was answered "There's no \"Vacation Request Form\" in the
+         * forms library — …" with no word of the forms that exist. #1282's list came only from propose_form with a quote
+         * holding the word "form". With no card this turn and the manager's words asking for a named document no library form
+         * answers to (`formAskedOutsideLibrary`, read from the template names), the reply ends with the library's forms, in
+         * one short line, unless it names them already. A document that is not a form or a request ("write a thank-you
+         * letter") gets the line only when the reply itself says there is no such form.
+         */
+        if (stoppedAt === "reply" && !effects.proposal && !effects.formOpened && !effects.formUpdate && templates.length > 0) {
+          const outside = formAskedOutsideLibrary(input.question, templates, quoteNamesForm);
+          if (outside && (/\b(?:forms?|requests?)$/i.test(outside) || saysNoSuchForm(text))) {
+            text = withLibraryForms(text, outside, templates.map((row) => row.name));
           }
         }
       }

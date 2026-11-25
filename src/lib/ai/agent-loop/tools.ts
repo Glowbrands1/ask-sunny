@@ -80,6 +80,8 @@ import { expandPolicyQuery } from "@/lib/knowledge/policy-retrieval";
 import type { SourceCitation } from "@/types";
 import { followUpChangeAsked, followUpForCard, followUpLine, statedFollowUpDate } from "@/lib/forms/follow-up-default";
 import type { AccessScope, ChatFormProposal, ChatMessage, Role } from "@/types";
+import { adviceNotForm } from "@/lib/ai/agent-loop/advice-not-form";
+import { formAskedOutsideLibrary, formsYouCanCreate } from "@/lib/ai/agent-loop/form-not-in-library";
 import { accountKey, personKey, replyTurns, type CardRecord, type ExitOfferRecord, type NameQuestionRecord, type PersonAskedRecord, type SameIncidentRecord, type TurnRecord } from "@/lib/ai/agent-loop/card-record";
 
 /**
@@ -4025,6 +4027,18 @@ export async function proposeForm(
   if ((await import("@/lib/forms/staff-picker")).isBareWholeStaff(context.question) || (await import("@/lib/forms/staff-picker")).asksForWholeStaff(context.question)) {
     return { reason_code: "whole_staff", error: "This form was asked for a whole staff. A form is for one person at a time: call list_staff and say what it returns." };
   }
+  /*
+   * QA (24 Nov 2026, live on the loop, Standard mode, twice): "Coach a leader on running better follow-up conversations"
+   * was answered only "Who is this Coaching Form for?". A turn whose words ask for advice and for no form (the old
+   * path's question reader, plus an advice imperative about nobody in particular: `advice-not-form.ts`) is answered: no
+   * card, and never the who-question. A form asked for in any words ("Create a coaching form.", "coaching form for
+   * <name>", "write up <name>") is no advice and goes on as before.
+   */
+  if (!effects.proposal && !context.cardOnScreen && !context.openFormId && adviceNotForm(context.question, context.history)) {
+    return {
+      reason_code: "advice_not_form", error: "The manager asked for advice, not a form: answer it now in your reply (practical steps, a short checklist, a sample script or role-play where it helps, citing the manual where a policy applies). Propose no card and never ask who a form is for. You may offer the form in one closing line; propose it only when the manager asks for it.",
+    };
+  }
   const key = typeof input.template_key === "string" ? input.template_key.trim() : "";
   const templates = await creatableTemplates(context.actor.role).catch(() => null);
   if (!templates) return { reason_code: "read_failed", error: "The forms library could not be read just now." };
@@ -4049,18 +4063,24 @@ export async function proposeForm(
      */
     const titleWord = titleWordOf(templates.map((row) => row.name));
     const readsAsTitle = Boolean(titleWord) && new RegExp(`\\b${titleWord}s?\\b`, "i").test(asked);
-    if (asked && readsAsTitle && !quoteNamesForm(asked, template)) {
-      const other = templates.find((row) => row.key !== template.key && quoteNamesForm(asked, row));
+    /*
+     * QA (24 Nov 2026, live): "Draft a vacation request form", and the same without the word "form" ("draft a PTO
+     * request"). The manager's own words are read too (`formAskedOutsideLibrary`: a create verb and a named document
+     * that no library form answers to), so the check never waits on the model's quote holding the title word.
+     */
+    const outside = !quoteNamesForm(context.question, template) ? formAskedOutsideLibrary(context.question, templates, quoteNamesForm) : null;
+    if ((asked && readsAsTitle && !quoteNamesForm(asked, template)) || outside) {
+      const other = asked && readsAsTitle ? templates.find((row) => row.key !== template.key && quoteNamesForm(asked, row)) : undefined;
       if (other) {
         return { reason_code: "form_asked_is_another", template_key: other.key, error: `The manager asked for the ${other.name} ("${asked}"), not the ${template.name}. Propose the ${other.name} (template_key "${other.key}").` };
       }
-      const named = formAskedName(asked);
+      const named = formAskedName(asked && readsAsTitle && !quoteNamesForm(asked, template) ? asked : outside ?? asked);
       if (input.instead_of_asked !== true) {
         const names = templates.map((row) => row.name);
         return {
           asked,
           templates: templates.map((row) => ({ key: row.key, name: row.name })),
-          ask_exactly: `${named ? `There's no ${named} in the forms library` : "That form isn't in the forms library"}. The forms you can create are ${names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}` : names[0]}. Which one do you want?`,
+          ask_exactly: `${named ? `There's no ${named} in the forms library` : "That form isn't in the forms library"}. ${formsYouCanCreate(names).replace(/\.$/, "")}. Which one do you want?`,
           reason_code: "form_not_in_library", error: "No form in the library answers to the form the manager asked for. End the reply with ask_exactly, exactly, and propose no card; never make another form's card in its place. Propose another form with instead_of_asked true only when the manager chooses it.",
         };
       }
