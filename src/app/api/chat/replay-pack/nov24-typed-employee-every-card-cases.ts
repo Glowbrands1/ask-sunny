@@ -20,7 +20,8 @@ import { lastResult, loopStandIn, type LoopDecision, type LoopView } from "./loo
  */
 const FLAG = "TYPED_EMPLOYEE_EVERY_CARD_ENABLED";
 const REPORT = `QA, 24 Nov 2026 (live, Admin): "… a made-up employee named Test Employee" became "named the employee Employee"; "for Test Employee" became "**Test**"`;
-const OPEN = { open: "TYPED_EMPLOYEE_EVERY_CARD_ENABLED is off in production (QA flips it)" };
+/* Fixed in production: the owner turned TYPED_EMPLOYEE_EVERY_CARD_ENABLED on in Vercel (25 Nov 2026). */
+const OPEN = "fixed" as const;
 const ADMIN = { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] };
 const COACHING = "Draft a coaching form for a performance concern for a made-up employee named Test Employee";
 const CA = "Draft a corrective action form for a till shortage for Test Employee";
