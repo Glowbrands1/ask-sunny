@@ -39,6 +39,7 @@ import { agentLoopRules, agentLoopSystem } from "./prompt";
 import { generatedId, identifiedTurns, messageIdTag, withoutMessageIdTags } from "./evidence";
 import { agentLoopStepLimit } from "./switch";
 import { adviceNotForm, onlyAsksWho } from "./advice-not-form";
+import { createFormButtonNoCardNote, isCreateFormButtonTurn } from "./create-form-button";
 import { formAskedOutsideLibrary, saysNoSuchForm, withLibraryForms } from "./form-not-in-library";
 import { progressStatus } from "./progress";
 import {
@@ -1060,6 +1061,8 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
 
   /* PR 6: the turn's one read of the policy manual, shared with read_policy and propose_form (`turnManual`). */
   const [templates, manual] = await Promise.all([templateChoices(input.actor.role), turnManual(context)]);
+  /* CREATE_FORM_BUTTON_PICKS_FORM (Pau, 25 Nov 2026): the rail's button, by the app's own sentence (`create-form-button.ts`). */
+  const buttonPressed = isCreateFormButtonTurn(input.question);
   const dynamic = agentLoopSystem({
     cardOpen: cardOpenAtStart,
     cardOpenForm: cardOnScreen?.templateName ?? null,
@@ -1071,6 +1074,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     headings: manual?.headings ?? [],
     openFormId: input.openFormId,
     answeringWhoQuestion: whoAsked ? (templates.find((row) => row.key === whoAsked.templateKey)?.name ?? "form") : null,
+    createFormButton: buttonPressed ? (input.openFormId ? { kind: "draft_open" } : cardOnScreen ? { kind: "card_open", form: cardOnScreen.templateName ?? null } : { kind: "nothing" }) : null,
   });
 
   const { jsonSchema, streamText, tool } = await import("ai");
@@ -1601,6 +1605,14 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
          * one short line, unless it names them already. A document that is not a form or a request ("write a thank-you
          * letter") gets the line only when the reply itself says there is no such form.
          */
+        /*
+         * CREATE_FORM_BUTTON_PICKS_FORM (Pau, 25 Nov 2026): the button pressed with a card on screen and no card under this
+         * reply ("press Create draft" with nothing to press, three times in the live chat) goes back once to propose it.
+         */
+        if (buttonPressed && stoppedAt === "reply" && cardOpenAtStart && !input.openFormId && !effects.proposal && !effects.formOpened && !effects.replyMustAsk) {
+          const again = await handBack(createFormButtonNoCardNote(cardOnScreen?.templateName ?? null));
+          if (again) text = again;
+        }
         if (stoppedAt === "reply" && !effects.proposal && !effects.formOpened && !effects.formUpdate && templates.length > 0) {
           const outside = formAskedOutsideLibrary(input.question, templates, quoteNamesForm);
           if (outside && (/\b(?:forms?|requests?)$/i.test(outside) || saysNoSuchForm(text))) {

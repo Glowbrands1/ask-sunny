@@ -5117,3 +5117,16 @@ export function loopCardCitesConductLineEnabled(): boolean {
 export function sourcesOnTopicEnabled(): boolean {
   return envFlag("SOURCES_ON_TOPIC_ENABLED");
 }
+
+/**
+ * CREATE_FORM_BUTTON_PICKS_FORM (Pau, 25 Nov 2026; default off; same flag in both apps): on an employee's transfer, a
+ * manager pressed "Create a form from this conversation" three times; the agent loop told them to press Create draft
+ * themselves with no card under its reply, then said no new card was made because a draft was already open, and the
+ * manager could not tell whether a card was there. On: the button's turn tells the loop it was pressed and what is on
+ * screen, the model picks the form the conversation needs and makes its card, a card on screen is proposed again so it is
+ * under the reply (handed back once when it is not), and an open draft is named (`agent-loop/create-form-button.ts`).
+ * Off, as before.
+ */
+export function createFormButtonPicksFormEnabled(): boolean {
+  return envFlag("CREATE_FORM_BUTTON_PICKS_FORM_ENABLED");
+}
