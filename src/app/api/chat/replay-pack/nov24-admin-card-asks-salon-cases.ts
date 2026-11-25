@@ -19,7 +19,8 @@ import { lastResult, loopStandIn, type LoopDecision, type LoopView } from "./loo
  */
 const FLAG = "ADMIN_CARD_ASKS_SALON_ENABLED";
 const REPORT = `QA, 24 Nov 2026 (live, Admin): "Draft a coaching form for <first name>" filed the Woven salon though her form on file is at another; an admin's card never asked which salon`;
-const OPEN = { open: "ADMIN_CARD_ASKS_SALON_ENABLED is off in production (QA flips it)" };
+/* Fixed in production: the owner turned ADMIN_CARD_ASKS_SALON_ENABLED on in Vercel (25 Nov 2026). */
+const OPEN = "fixed" as const;
 const ADMIN = { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] };
 const OVERLAND_PARK = "loc-0476";
 const LAWRENCE = "loc-0468";
