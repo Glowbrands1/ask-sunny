@@ -41,10 +41,20 @@ import {
 } from "./prior-actions";
 import { applyRequiredClosings } from "./required-closing";
 import { offeredOffenseKeys } from "./offense-keys";
-import { caSalesPolicyEnabled, allFieldsRequiredEnabled, requiredFieldsAtFinalizeEnabled } from "@/lib/config/chat-quality-flags";
+import { caSalesPolicyEnabled, allFieldsRequiredEnabled, exitAllFieldsRequiredEnabled, requiredFieldsAtFinalizeEnabled } from "@/lib/config/chat-quality-flags";
 import { collapseToTwoSentences } from "./action-plan-sentences";
 import { isIsoCalendarDate } from "./form-date-answer";
 import { refreshedActionPlan } from "./ca-action-plan";
+import {
+  exitSubmissionProblems,
+  isNoticeDateField,
+  NOTICE_DATE_GATE,
+  NOTICE_DATE_LOCKED_NOTE,
+  noticeDatesLocked,
+  noticeDatesToClear,
+  isExitDocument,
+  PERMANENT_ADDRESS_INCOMPLETE_MESSAGE,
+} from "./exit-submission-rules";
 import { blankBeforeSubmission, blankBeforeSubmissionMessage, blankRequiredFields, requiredFieldsMessage } from "./required-fields";
 import { getCurrentVersion, getVersion, type TemplateVersionRow } from "./repository";
 import { HELD_FOR_HR, asHrApprovalState, heldForHr, withoutHeldForHr, type HrApprovalState } from "./hr-approval-rules";
@@ -724,6 +734,8 @@ async function writeValues(
     })),
   ];
   if (rows.length === 0) return;
+  const touchesNoticeDates =
+    Object.keys(accepted.values).some(isNoticeDateField) || Object.prototype.hasOwnProperty.call(accepted.checked, NOTICE_DATE_GATE.group);
 
   /*
    * HR's edit of a form waiting for them goes through the one function the value guard lets past the hold
@@ -755,6 +767,27 @@ async function writeValues(
   if (isIsoCalendarDate(date)) {
     const { error: dateError } = await supabase.from("form_instances").update({ form_date: date }).eq("id", instanceId);
     if (dateError) throw new Error(`Could not save the form's date: ${dateError.message}`);
+  }
+
+  /*
+   * THE NOTICE DATES ONLY STAND WITH "SUBMITTED & FULFILLED NOTICE" TICKED (Pau, 25 Nov 2026; `exit-submission-rules.ts`).
+   * Whoever wrote — the card, the chat, a draft, HR — a write that leaves the box unticked clears both dates, so the
+   * form can never say notice was not fulfilled and still carry a notice date.
+   */
+  if (touchesNoticeDates) {
+    const { data, error: readError } = await supabase
+      .from("form_instance_values")
+      .select("field_key, value, checked")
+      .eq("instance_id", instanceId)
+      .in("field_key", [NOTICE_DATE_GATE.group, ...NOTICE_DATE_GATE.fields]);
+    if (readError) throw new Error(`Could not save the form: ${readError.message}`);
+    const stored = (data ?? []) as { field_key: string; value: string | null; checked: string[] | null }[];
+    const ticks = stored.find((row) => row.field_key === NOTICE_DATE_GATE.group)?.checked ?? [];
+    const dates = Object.fromEntries(stored.map((row) => [row.field_key, row.value]));
+    const clear = noticeDatesToClear(ticks, dates);
+    if (clear.length > 0) {
+      await writeValues(instanceId, { values: Object.fromEntries(clear.map((key) => [key, ""])), checked: {} }, filledBy, {}, options);
+    }
   }
 }
 
@@ -858,6 +891,23 @@ export async function saveInstanceValues(
 
   const document = parseFormDocument(loaded.version.document);
   const result = enforcePersonEdit(document, loaded.instance.variantKey, submitted);
+  /*
+   * A NOTICE DATE TYPED WHILE "SUBMITTED & FULFILLED NOTICE" IS UNTICKED IS REFUSED, and said so (Pau, 25 Nov 2026).
+   * The box as it will stand after this save: what was sent, else what is stored.
+   */
+  if (isExitDocument(document, loaded.instance.variantKey)) {
+    const ticks =
+      result.checked[NOTICE_DATE_GATE.group] ??
+      loaded.values.find((row) => row.fieldKey === NOTICE_DATE_GATE.group)?.checked ??
+      [];
+    if (noticeDatesLocked(ticks)) {
+      for (const key of NOTICE_DATE_GATE.fields) {
+        if ((result.values[key] ?? "").trim() === "") continue;
+        delete result.values[key];
+        result.rejected.push({ key, reason: NOTICE_DATE_LOCKED_NOTE });
+      }
+    }
+  }
   /*
    * A CLOSING THE VERSION REQUIRES IS RE-ATTACHED TO THE MANAGER'S EDIT TOO.
    * Deleting it in the textarea, or typing after it, does not take it off the
@@ -1159,12 +1209,22 @@ export function finalizePreflight(
    * ALL_FIELDS_REQUIRED_ENABLED (Pau, 25 Nov 2026): every field the creator fills, not only the ones a version marks
    * `required`; the Re-Evaluation section only on a re-evaluation. See `required-fields.ts` blankBeforeSubmission.
    */
-  if (allFieldsRequiredEnabled()) {
+  /*
+   * EXIT_ALL_FIELDS_REQUIRED_ENABLED holds the exit form to it on its own (Pau, 25 Nov 2026: "every field must be
+   * completed or the form will not submit to HR"). With either flag, its Permanent Address must also be a full mailing
+   * address with the ZIP (`exit-submission-rules.ts`).
+   */
+  const exitForm = isExitDocument(parseFormDocument(before.version.document), before.instance.variantKey);
+  if (allFieldsRequiredEnabled() || (exitForm && exitAllFieldsRequiredEnabled())) {
     const blank = blankBeforeSubmission(parseFormDocument(before.version.document), before.instance.variantKey, before.values, {
       reEvaluation: before.events.some((event) => event.kind === "created" && event.detail?.kind === "reevaluated"),
       variant: variantsOf(before.version).find((entry) => entry.key === before.instance.variantKey) ?? null,
     });
     if (blank.length > 0) throw new RequiredFieldsBlankError(blank, blankBeforeSubmissionMessage(blank));
+  }
+  if (exitForm && (allFieldsRequiredEnabled() || exitAllFieldsRequiredEnabled())) {
+    const incomplete = exitSubmissionProblems(parseFormDocument(before.version.document), before.instance.variantKey, before.values);
+    if (incomplete.length > 0) throw new RequiredFieldsBlankError(incomplete, PERMANENT_ADDRESS_INCOMPLETE_MESSAGE);
   }
   const blankRequired = !requiredFieldsAtFinalizeEnabled() ? [] : blankRequiredFields(parseFormDocument(before.version.document), before.instance.variantKey, before.values);
   if (blankRequired.length > 0) throw new RequiredFieldsBlankError(blankRequired);

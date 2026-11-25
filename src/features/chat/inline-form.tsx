@@ -1,5 +1,6 @@
 "use client";
 
+import { NOTICE_DATE_GATE, noticeDatesToClear } from "@/lib/forms/exit-submission-rules";
 import * as React from "react";
 import Link from "next/link";
 import { AlertTriangle, Check, Download, ExternalLink, Loader2, PencilLine, Plus, Printer } from "lucide-react";
@@ -846,7 +847,16 @@ export function InlineForm({
               : single
                 ? [option]
                 : [...current, option];
-            change({ ...edits, checked: { ...edits.checked, [key]: next } });
+            /*
+             * Unticking "Submitted & Fulfilled Notice" clears the two notice
+             * dates: they are only entered with it ticked (Pau, 25 Nov 2026;
+             * `exit-submission-rules.ts`, which the save route applies too).
+             */
+            const cleared =
+              key === NOTICE_DATE_GATE.group
+                ? Object.fromEntries(noticeDatesToClear(next, edits.values).map((date) => [date, ""]))
+                : {};
+            change({ ...edits, values: { ...edits.values, ...cleared }, checked: { ...edits.checked, [key]: next } });
           }}
         />
       </div>

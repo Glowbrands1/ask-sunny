@@ -758,6 +758,24 @@ export function readExitFacts(rawText: string, today: string): ExitFacts {
   }
 
   /*
+   * A NOTICE GIVEN AND FULFILLED ON STATED DATES IS SUBMITTED & FULFILLED NOTICE (Pau, 25 Nov 2026): the two notice
+   * dates are entered only with that box ticked (`exit-submission-rules.ts`), so "Gave notice 9/25/26 – fulfilled
+   * 10/9/26" ticks it rather than losing both dates. Never over another way of leaving, or a contradiction.
+   */
+  if (
+    !fulfilled &&
+    noticeGiven &&
+    noticeFulfilled &&
+    !notFulfilled &&
+    !voluntary &&
+    !involuntary &&
+    !reading.noCallNoShow &&
+    !ambiguities.some((entry) => entry.kind === "separation_conflict")
+  ) {
+    fulfilled = true;
+  }
+
+  /*
    * THE FULFILLED DATE IS THE LAST DAY WORKED when no last day was given and
    * the notice was not said to be cut short. A last day stated two ways is
    * still an ambiguity, and stays blank.
@@ -825,6 +843,8 @@ export function exitFactValues(facts: ExitFacts): {
 } {
   const values: Record<string, string> = {};
   for (const role of Object.keys(ROLE_FIELD) as FormDateRole[]) {
+    // The notice dates are entered only with "Submitted & Fulfilled Notice" ticked (Pau, 25 Nov 2026).
+    if (role !== "lastDayWorked" && !noticeDatesApply(facts)) continue;
     const iso = facts[role];
     if (iso) values[ROLE_FIELD[role]] = iso;
   }
@@ -832,6 +852,14 @@ export function exitFactValues(facts: ExitFacts): {
   if (facts.noticeOptions.length > 0) checked[EXIT_NOTICE_GROUP] = facts.noticeOptions;
   if (facts.typeOptions.length > 0) checked[EXIT_TYPE_GROUP] = facts.typeOptions;
   return { values, checked };
+}
+
+/**
+ * Whether the two notice dates go on the form: only when "Submitted & Fulfilled
+ * Notice" is ticked (Pau, 25 Nov 2026; `exit-submission-rules.ts`).
+ */
+export function noticeDatesApply(facts: Pick<ExitFacts, "noticeOptions">): boolean {
+  return facts.noticeOptions.includes(EXIT_OPTION.submittedFulfilledNotice);
 }
 
 /** Whether the manager's words established anything at all about the departure. */

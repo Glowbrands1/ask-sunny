@@ -207,7 +207,9 @@ Each form lists what must be filled and what is not asked for, and why. Regenera
 
 ### Resignation/Exit Form (`stc-exit`)
 
-**Must be filled (17):** Name; Date; Job Title; Location; Permanent Address; Last Day Worked; Resignation Details; All store items were returned; Salon key was returned; Is Payroll Deduction applicable? *; *Do they forfeit their bonus?; *Are they to be dropped to minimum wage?; Written notice attached?; Is this employee eligible for rehire?; Resignation Date; How Employee Resigned; Reason for Resignation
+**Must be filled (17):** Name; Date; Job Title; Location; Permanent Address; Last Day Worked; Resignation Details; All store items were returned; Salon key was returned; Is Payroll Deduction applicable? *; *Do they forfeit their bonus?; *Are they to be dropped to minimum wage?; Is written notice uploaded to the employee file?; Is this employee eligible for rehire?; Resignation Date; How Employee Resigned; Reason for Resignation
+
+**25 Nov 2026 (Pau):** the exit form is held to this list with ALL_FIELDS_REQUIRED_ENABLED (on in production) or EXIT_ALL_FIELDS_REQUIRED_ENABLED ("every field must be completed or the form will not submit to HR"); at least one Resignation Details box must be ticked; the notice dates can only be entered with Submitted & Fulfilled Notice ticked; and Permanent Address must be a complete mailing address with city, state and ZIP (`src/lib/forms/exit-submission-rules.ts`).
 
 **Not required:**
 - Additional Details — optional on the exit form (Pau, 25 Nov 2026)

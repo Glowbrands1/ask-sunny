@@ -570,7 +570,7 @@ describe("the rest of the library is where it was", () => {
       "follow-up-coaching": 2,
       "sdit-epp": 3,
       "tsd-epp": 2,
-      "stc-exit": 2,
+      "stc-exit": 3, // CHANGED ON PURPOSE, revision 3 (Pau, 25 Nov 2026): written-notice wording, full-width Permanent Address, notice-date help.
     };
     for (const entry of TEMPLATE_SEEDS) {
       expect(entry.revision, entry.key).toBe(expected[entry.key] ?? 1);

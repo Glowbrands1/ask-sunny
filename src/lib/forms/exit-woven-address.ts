@@ -62,6 +62,7 @@ export function exitEmployeeDirectoryId(
   if (allowed && allowed.size === 0) return null;
 
   const found = new Set<string>();
+  const active = new Set<string>();
   for (const row of rows) {
     const last = row.lastName?.trim() ?? "";
     if (!last) continue;
@@ -70,9 +71,17 @@ export function exitEmployeeDirectoryId(
       .map((first) => first?.trim() ?? "")
       .filter((first) => first.length > 0)
       .map((first) => normalizeTypedName(`${first} ${last}`));
-    if (names.includes(wanted)) found.add(row.id);
+    if (names.includes(wanted)) {
+      found.add(row.id);
+      if (row.employmentStatus !== "terminated") active.add(row.id);
+    }
   }
-  return found.size === 1 ? [...found][0]! : null;
+  if (found.size === 1) return [...found][0]!;
+  /*
+   * A REHIRE IS TWO WOVEN ROWS WITH ONE NAME (Pau, 25 Nov 2026: "i have access to that in woven why didn't my address
+   * populate"): the old, terminated row and the current one. Exactly one still employed is that person.
+   */
+  return active.size === 1 ? [...active][0]! : null;
 }
 
 /* ----------------------------------------------------------- the address -- */
@@ -109,18 +118,64 @@ const ZIP = ["Zip", "ZipCode", "PostalCode", "Postal", "Zip5"] as const;
  */
 export function wovenAddressLine(details: unknown): string | null {
   if (!isRecord(details)) return null;
-  for (const key of ADDRESS_OBJECT) {
-    const found = Object.keys(details).find((candidate) => candidate.toLowerCase() === key.toLowerCase());
-    const address = found ? details[found] : null;
-    if (!isRecord(address)) continue;
-    const street = pick(address, STREET);
-    const city = pick(address, CITY);
-    if (!street || !city || !/\d/.test(street)) continue;
-    const stateZip = [pick(address, STATE), pick(address, ZIP)].filter(Boolean).join(" ");
-    const line = [street, pick(address, STREET_2), city, stateZip].filter(Boolean).join(", ");
-    return line.length <= 200 ? line : null;
+  // A body wrapped in one envelope ({ Employee: {...} } / { data: {...} }) is read through it.
+  for (const wrapper of ["Employee", "EmployeeDetails", "Data", "Result"]) {
+    const found = Object.keys(details).find((candidate) => candidate.toLowerCase() === wrapper.toLowerCase());
+    if (found && isRecord(details[found])) {
+      const inner = wovenAddressLine(details[found]);
+      if (inner) return inner;
+    }
+  }
+  for (const record of addressRecords(details)) {
+    const line = addressLineOf(record);
+    if (line) return line;
   }
   return null;
+}
+
+/** Every place a details body may keep the home address: an object, a list of them, or flat on the employee itself. */
+function addressRecords(details: Record<string, unknown>): Record<string, unknown>[] {
+  const records: Record<string, unknown>[] = [];
+  for (const key of [...ADDRESS_OBJECT, "Addresses"]) {
+    const found = Object.keys(details).find((candidate) => candidate.toLowerCase() === key.toLowerCase());
+    const value = found ? details[found] : null;
+    if (isRecord(value)) records.push(value);
+    else if (Array.isArray(value)) records.push(...value.filter(isRecord));
+  }
+  /*
+   * FLAT ON THE EMPLOYEE: `Address` as the street line, with City, State and Zip beside it. `LocationAddress` (the
+   * salon's) is never one of these keys.
+   */
+  const flat = Object.keys(details).find((candidate) => candidate.toLowerCase() === "address");
+  if (flat && typeof details[flat] === "string") records.push({ ...details, Address1: details[flat] });
+  else records.push(details);
+  return records;
+}
+
+function addressLineOf(address: Record<string, unknown>): string | null {
+  const street = pick(address, STREET);
+  const city = pick(address, CITY);
+  if (!street || !city || !/\d/.test(street)) return null;
+  const stateZip = [pick(address, STATE), pick(address, ZIP)].filter(Boolean).join(" ");
+  const line = [street, pick(address, STREET_2), city, stateZip].filter(Boolean).join(", ");
+  return line.length <= 200 ? line : null;
+}
+
+/**
+ * The property NAMES (never values) of the address-shaped parts of a details body, for the log when no address could
+ * be read, so the reader can be fixed without anyone's address leaving Woven.
+ */
+export function wovenAddressShape(details: unknown): string {
+  if (!isRecord(details)) return typeof details;
+  const top = Object.keys(details).filter((key) => /address|city|state|zip|postal|employee|data|result/i.test(key));
+  const nested = top
+    .filter((key) => isRecord(details[key]) || Array.isArray(details[key]))
+    .map((key) => {
+      const value = details[key];
+      const inner = Array.isArray(value) ? (isRecord(value[0]) ? value[0] : {}) : (value as Record<string, unknown>);
+      return `${key}{${Object.keys(inner).slice(0, 30).join(",")}}`;
+    });
+  return [top.join(","), ...nested].filter(Boolean).join(" ");
 }
 
 /* -------------------------------------------------------------- the read -- */
@@ -182,20 +237,30 @@ export async function wovenExitAddress(
   deps?: WovenExitAddressDeps,
 ): Promise<string | null> {
   if (!deps && !wovenExitAddressEnabled()) return null;
+  /*
+   * WHY IT CAME BACK EMPTY IS LOGGED, AS A REASON CODE (Pau, 25 Nov 2026: "why didn't my address populate in form?").
+   * Never a name, an id or an address: only which step stopped, and for an unreadable body its property names.
+   */
+  const why = (reason: string) => {
+    console.info(`exit-woven-address: no address (${reason})`);
+    return null;
+  };
   try {
-    return await withinBudget(
+    const result = await withinBudget(
       (async () => {
         const live = deps ?? (await liveDeps());
-        if (!live) return null;
+        if (!live) return why("no Woven credentials");
         const directoryId = exitEmployeeDirectoryId(await live.readDirectory(), input.employeeName, input.scope);
-        if (!directoryId) return null;
+        if (!directoryId) return why("not exactly one Woven person by that full name at the manager's salons");
         const wovenId = await live.wovenIdOf(directoryId);
-        if (!wovenId) return null;
-        return wovenAddressLine(await live.readDetails(wovenId));
+        if (!wovenId) return why("directory row has no Woven id");
+        const details = await live.readDetails(wovenId);
+        return wovenAddressLine(details) ?? why(`no street and city in the details body; shape: ${wovenAddressShape(details)}`);
       })(),
       WOVEN_EXIT_ADDRESS_BUDGET_MS,
     );
-  } catch {
-    return null;
+    return result === null ? null : result;
+  } catch (error) {
+    return why(`error: ${error instanceof Error ? error.name : "unknown"}`);
   }
 }

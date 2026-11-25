@@ -1,5 +1,11 @@
 "use client";
 
+import {
+  isNoticeDateField,
+  NOTICE_DATE_GATE,
+  NOTICE_DATE_LOCKED_NOTE,
+  noticeDatesLocked,
+} from "@/lib/forms/exit-submission-rules";
 import * as React from "react";
 
 import { Checkbox } from "@/components/ui/controls";
@@ -215,6 +221,16 @@ function BlockField({
               value={values.values[field.key] ?? ""}
               readOnly={readOnly}
               onValue={onValue}
+              /*
+               * THE EXIT FORM'S NOTICE DATES ARE LOCKED until "Submitted &
+               * Fulfilled Notice" is ticked (Pau, 25 Nov 2026;
+               * `exit-submission-rules.ts`). The save route refuses them too.
+               */
+              lockedNote={
+                isNoticeDateField(field.key) && noticeDatesLocked(values.checked[NOTICE_DATE_GATE.group])
+                  ? NOTICE_DATE_LOCKED_NOTE
+                  : undefined
+              }
               missing={missing.has(field.key)}
             />
           ))}
@@ -504,6 +520,7 @@ function FieldControl({
   value,
   readOnly,
   onValue,
+  lockedNote,
   missing = false,
 }: {
   field: FormField;
@@ -512,9 +529,11 @@ function FieldControl({
   value: string;
   readOnly: boolean;
   onValue?: (key: string, value: string) => void;
+  /** Why this line cannot be typed in yet; shown instead of the input's value. */
+  lockedNote?: string;
   missing?: boolean;
 }) {
-  const mayType = !readOnly && canPersonEdit(field.responsibility);
+  const mayType = !readOnly && !lockedNote && canPersonEdit(field.responsibility);
   const label = interpolate(field.label, variant);
   const id = `form-field-${field.key}`;
 
@@ -556,7 +575,11 @@ function FieldControl({
         <p className="text-xs leading-snug text-subtle-foreground">{field.help}</p>
       ) : null}
       {missing ? <MissingNote /> : null}
-      {mayType ? null : <ResponsibilityNote responsibility={field.responsibility} />}
+      {lockedNote && !readOnly ? (
+        <p className="text-xs leading-snug text-muted-foreground">{lockedNote}</p>
+      ) : mayType ? null : (
+        <ResponsibilityNote responsibility={field.responsibility} />
+      )}
     </div>
   );
 }

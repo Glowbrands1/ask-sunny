@@ -324,7 +324,8 @@ describe("a mostly blank draft", () => {
     expect(byKey.written_notice_attached).toBeUndefined();
 
     const text = await download(result.reference.instanceId, "exit-blank");
-    expect(text).toContain("Written notice attached?");
+    // Reworded on purpose (Pau, 25 Nov 2026).
+    expect(text).toContain("Is written notice uploaded to the employee file?");
     expect(text).toContain("Steps to Finish Termination");
   });
 });
@@ -376,10 +377,10 @@ describe("the Details section HR asked for", () => {
     expect(content).toMatch(/- \*\*Salon Key Returned:\*\* Salon key was not returned\. Employee will be payroll deducted \$25 for the salon key\./);
     expect(content).not.toMatch(/Before you create it/);
 
-    // A new Exit Form is pinned to revision 2 of the template.
+    // A new Exit Form is pinned to the current revision (3 since Pau's 25 Nov 2026 changes; 2 brought HR's lines).
     const created = store.form_instances!.find((row) => row.id === result.reference.instanceId)!;
     const pinned = store.form_template_versions.find((row) => row.id === created.template_version_id)!;
-    expect(pinned.seed_revision).toBe(2);
+    expect(pinned.seed_revision).toBe(3);
     expect(JSON.stringify(pinned.document)).toContain("answer_statements");
 
     const { values } = await review(result.reference.instanceId);
