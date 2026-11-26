@@ -148,4 +148,34 @@ describe("receiveSync", () => {
     const { deps: d } = deps({ importRows });
     expect(await receiveSync(request(body), d)).toEqual({ status: 500, body: { error: "the change could not be saved there" } });
   });
+
+  describe("telling everyone here about a lesson published from the other app", () => {
+    it("announces a lesson published here for the first time, from the publishing editor", async () => {
+      const announce = vi.fn(async () => undefined);
+      const publishedBefore = vi.fn(async () => new Set<string>());
+      const { deps: d } = deps({ announce, publishedBefore });
+      expect((await receiveSync(request(body), d)).status).toBe(200);
+      expect(publishedBefore).toHaveBeenCalledWith([L]);
+      expect(announce).toHaveBeenCalledWith([L], "ana.editor@example.com");
+    });
+
+    it("does not announce a lesson that was already published here", async () => {
+      const announce = vi.fn(async () => undefined);
+      const { deps: d } = deps({ announce, publishedBefore: vi.fn(async () => new Set([L])) });
+      await receiveSync(request(body), d);
+      expect(announce).not.toHaveBeenCalled();
+    });
+
+    it("does not announce a draft, a refused change, or when it cannot tell what was published before", async () => {
+      const announce = vi.fn(async () => undefined);
+      const draft = { ...body, lessons: [{ ...body.lessons[0], status: "draft", published_at: null }] };
+      await receiveSync(request(draft), deps({ announce, publishedBefore: vi.fn(async () => new Set<string>()) }).deps);
+      await receiveSync(request(body, "x".repeat(40)), deps({ announce, publishedBefore: vi.fn(async () => new Set<string>()) }).deps);
+      const failingRead = vi.fn(async () => {
+        throw new Error("down");
+      });
+      expect((await receiveSync(request(body), deps({ announce, publishedBefore: failingRead }).deps)).status).toBe(200);
+      expect(announce).not.toHaveBeenCalled();
+    });
+  });
 });

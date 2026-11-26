@@ -23,6 +23,7 @@ import {
 import type { LessonStatus, SubmissionStatus } from "@/lib/ai-training/types";
 import { authorizeRequest } from "@/lib/auth/server";
 import type { AuthenticatedIdentity } from "@/lib/auth/types";
+import { announceNewLessons } from "@/lib/ai-training/announce.server";
 import { canEditAiTraining } from "@/lib/ai-training/editors";
 import { aiTrainingNotifyEmails, submissionNotifications } from "@/lib/ai-training/notify";
 import { createNotifications } from "@/lib/notifications/repository";
@@ -224,14 +225,18 @@ export async function saveLessonAction(input: {
       weekNumber: week ? Number(week) : null,
       status: input.status,
     };
+    const lessonId = input.id ? id(input.id, "lesson") : null;
+    // Published here before? Then saving it again does not tell everyone again (announce.ts).
+    const publishedBefore = lessonId ? !!(await getLessonById(lessonId))?.publishedAt : false;
     let saved: string;
     try {
-      saved = await saveLesson(input.id ? id(input.id, "lesson") : null, lessonInput);
+      saved = await saveLesson(lessonId, lessonInput);
     } catch (error) {
       // Undo the module made for this lesson, so fixing the lesson and saving again does not clash with it.
       if (createdModuleId) await deleteModule(createdModuleId).catch(() => undefined);
       throw error;
     }
+    if (input.status === "published" && !publishedBefore) await announceNewLessons([saved], identity.email);
     refresh();
     return {
       value: { lessonId: saved, moduleId },
@@ -260,6 +265,7 @@ export async function setLessonStatusAction(
     if (!found) throw new Error("That lesson no longer exists.");
     if (status !== "draft" && status !== "published") throw new Error("Unknown status.");
     await saveLesson(found.id, { ...found, status });
+    if (status === "published" && !found.publishedAt) await announceNewLessons([found.id], identity.email);
     refresh();
     return { value: undefined, warning: await publish(identity, publishToOther, { lessonId: found.id }) };
   });

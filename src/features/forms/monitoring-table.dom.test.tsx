@@ -733,6 +733,33 @@ describe("the row menu \"…\" opens with something in it", () => {
     expect(dialog.queryByTestId("delete-finalized-warning")).toBeNull();
   });
 
+  /*
+   * Pau, 26 Nov 2026, after Delete appeared on finalized rows for their account: "oh i can but there is no check box".
+   * The named account (`mayDeleteFinalized`) can tick finalized and revised forms for the bulk delete too; the
+   * confirmation says it includes finalized forms. Everyone else still ticks drafts only (the test below).
+   */
+  it("oh i can but there is no check box: the named account can tick finalized and revised forms for the bulk delete", async () => {
+    admin();
+    table(
+      [
+        form({ employeeName: "Filed One" }),
+        form({ id: "r", employeeName: "Older One", status: "revised" }),
+        form({ id: "d", employeeName: "Draft One", status: "draft", finalizedAt: null }),
+      ],
+      { mayDeleteFinalized: true },
+    );
+    const filed = rowFor("Filed One").ui.getByRole("checkbox");
+    const older = rowFor("Older One").ui.getByRole("checkbox");
+    expect(rowFor("Draft One").ui.getByRole("checkbox")).toBeTruthy();
+
+    await userEvent.click(filed);
+    await userEvent.click(older);
+    await userEvent.click(screen.getByRole("button", { name: /delete selected/i }));
+    const dialog = within(await screen.findByRole("dialog"));
+    expect(dialog.getByText("Delete 2 forms?")).toBeTruthy();
+    expect(dialog.getByText(/cannot be undone/i)).toBeTruthy();
+  });
+
   it("a finalized form is still not ticked for the bulk delete, even by an administrator", () => {
     admin();
     table([form({ employeeName: "Filed One" }), form({ id: "d", employeeName: "Draft One", status: "draft", finalizedAt: null })]);

@@ -67,12 +67,18 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
      * would put the downloader (HR, often) in the form's general history, which every reader sees once it is approved
      * (owner, 23 Nov 2026: no leaks).
      */
-    if (!awaitingHr(loaded.instance.hrApprovalState)) await markExported(id, actor.id);
+    /*
+     * A PREVIEW IS NOT AN EXPORT (`?preview=1`, the View pop-up on the employee search, 26 Nov 2026: "i just need a
+     * preview pop up please not another tab"). Looking at a form on screen records nothing and is served inline, so the
+     * browser shows it in the dialog instead of saving a file.
+     */
+    const preview = new URL(request.url).searchParams.get("preview") === "1";
+    if (!preview && !awaitingHr(loaded.instance.hrApprovalState)) await markExported(id, actor.id);
 
     return new Response(bytes as BodyInit, {
       headers: {
         "content-type": "application/pdf",
-        "content-disposition": `attachment; filename="${pdfFileName(meta)}"`,
+        "content-disposition": `${preview ? "inline" : "attachment"}; filename="${pdfFileName(meta)}"`,
         // An HR record must not sit in a shared cache.
         "cache-control": "no-store, private",
       },
