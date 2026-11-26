@@ -43,6 +43,8 @@ describe("Employee Directory", () => {
     expect(headers).toEqual([
       "Woven ID",
       "Name",
+      // Added on purpose (Pau, 26 Nov 2026, approved by Curt): admins can look up one employee's Woven home address.
+      "Home address",
       "Work email",
       "Status",
       "Position",
