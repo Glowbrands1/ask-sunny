@@ -4416,8 +4416,12 @@ export async function proposeForm(
    * record: its form and person keys, never its text, QA's c163) is the card asked for. With no account from the model the
    * card goes back once, to be proposed with that card's account as the chat shows it, with this person's name;
    * copied_from_card says it came from that card. A level and a payroll answer are never copied.
+   *
+   * ONLY A FORM WITH AN ACCOUNT HAS ONE TO CARRY (production, 26 Nov 2026: "make the exit form for <B> instead of <A>"
+   * answered "the system expects an account from <A>'s original card to transfer"). An exit form holds no account, so
+   * the hand-back is for the account forms; <B>'s exit card is made from this request as it stands.
    */
-  const sameCardOf = sameCardAsked
+  const sameCardOf = sameCardAsked && ACCOUNT_FORMS.has(key)
     ? ([...(context.cardRecords ?? [])].reverse().find((record) => record.templateKey === key) ?? null)
     : null;
   const sameCardOther = Boolean(sameCardOf && (employee.id ? sameCardOf.employeeKey !== personKey(employee.id) : sameCardOf.nameKey !== personKey(employee.name)));
