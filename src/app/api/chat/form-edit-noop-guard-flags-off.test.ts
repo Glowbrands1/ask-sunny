@@ -297,6 +297,9 @@ const FLIPPED_IN_FLIP_7: readonly string[] = [
   "CARD_PLAN_MATCHES_CREATE_ENABLED",
   // QA 15 Nov 2026 (batch F8, #1002): a value edit moves the form's updated_at.
   "FORM_EDIT_TOUCHES_UPDATED_AT_ENABLED",
+  // Changed on purpose (Pau, 26 Nov 2026: "still not say N/A here"): on in production, a draft with no history now writes
+  // "N/A" to Prior Actions; the fixture predates it, so it is compared with it off.
+  "ALL_FIELDS_REQUIRED_ENABLED",
 ];
 const PRODUCTION = [...PRODUCTION_FLAGS.on, ...PRODUCTION_FLAGS.assumedOn].filter((name) => !FLIPPED_IN_FLIP_7.includes(name));
 const TOOL_FLAGS = ["FORM_EDIT_SINGLE_WRITER_ENABLED", "FORM_EDIT_TOOL_IN_STREAM_ENABLED"] as const;
