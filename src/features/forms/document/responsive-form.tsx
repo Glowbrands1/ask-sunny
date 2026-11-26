@@ -27,6 +27,7 @@ import {
 import { canPersonEdit } from "@/lib/forms/responsibility";
 import { cn } from "@/lib/utils/cn";
 import { NO_AUTOFILL } from "./autofill";
+import { shownHelp } from "@/lib/forms/required-fields";
 
 /**
  * ============================================================================
@@ -571,8 +572,8 @@ function FieldControl({
           onChange={(event) => onValue?.(field.key, event.target.value)}
         />
       )}
-      {field.help ? (
-        <p className="text-xs leading-snug text-subtle-foreground">{field.help}</p>
+      {shownHelp(field) ? (
+        <p className="text-xs leading-snug text-subtle-foreground">{shownHelp(field)}</p>
       ) : null}
       {missing ? <MissingNote /> : null}
       {lockedNote && !readOnly ? (
