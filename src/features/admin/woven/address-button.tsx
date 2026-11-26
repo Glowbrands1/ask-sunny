@@ -16,12 +16,30 @@ const NO_ADDRESS: Record<string, string> = {
   unavailable: "Woven did not answer — try again",
 };
 
-export function AddressButton({ directoryId }: { directoryId: string }) {
+/*
+ * AT MOST A FEW LOOKUPS AT ONCE when every row loads by itself (the named account, Pau, 26 Nov 2026): a page of rows
+ * asks Woven a handful at a time, well inside its rate limit, instead of all at the same moment.
+ */
+const AUTO_AT_ONCE = 4;
+let running = 0;
+const waiting: (() => void)[] = [];
+async function inTurn<T>(work: () => Promise<T>): Promise<T> {
+  if (running >= AUTO_AT_ONCE) await new Promise<void>((resolve) => waiting.push(resolve));
+  running += 1;
+  try {
+    return await work();
+  } finally {
+    running -= 1;
+    waiting.shift()?.();
+  }
+}
+
+export function AddressButton({ directoryId, auto = false }: { directoryId: string; auto?: boolean }) {
   const [state, setState] = React.useState<
     { kind: "idle" } | { kind: "loading" } | { kind: "found"; address: string } | { kind: "none"; text: string }
   >({ kind: "idle" });
 
-  async function show() {
+  const show = React.useCallback(async () => {
     setState({ kind: "loading" });
     try {
       const response = await fetch(`/api/admin/employees/woven/address?id=${encodeURIComponent(directoryId)}`, {
@@ -36,14 +54,20 @@ export function AddressButton({ directoryId }: { directoryId: string }) {
     } catch {
       setState({ kind: "none", text: "Could not read the address" });
     }
-  }
+  }, [directoryId]);
+
+  // The named account: the address loads with the page, a few rows at a time.
+  React.useEffect(() => {
+    if (!auto) return;
+    void inTurn(show);
+  }, [auto, show]);
 
   if (state.kind === "found") return <span className="block min-w-48 whitespace-normal text-foreground">{state.address}</span>;
   if (state.kind === "none") return <span className="text-muted-foreground">{state.text}</span>;
   return (
     <button
       type="button"
-      onClick={show}
+      onClick={() => void show()}
       disabled={state.kind === "loading"}
       className="inline-flex items-center gap-1 rounded-[var(--radius-sm)] border border-border bg-surface px-2 py-1 text-[12px] font-semibold text-foreground disabled:opacity-60"
     >

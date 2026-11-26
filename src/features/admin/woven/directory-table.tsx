@@ -73,7 +73,18 @@ function Locations({ list, expiring }: { list: DirectoryRow["additionalLocations
   );
 }
 
-export function DirectoryTable({ page, query, sample }: { page: DirectoryPage; query: DirectoryQuery; sample: boolean }) {
+export function DirectoryTable({
+  page,
+  query,
+  sample,
+  autoAddresses = false,
+}: {
+  page: DirectoryPage;
+  query: DirectoryQuery;
+  sample: boolean;
+  /** Every row's home address loads as the page opens (the named account only; see `address-list-access.ts`). */
+  autoAddresses?: boolean;
+}) {
   const lastPage = Math.max(1, Math.ceil(page.total / page.pageSize));
 
   return (
@@ -213,7 +224,7 @@ export function DirectoryTable({ page, query, sample }: { page: DirectoryPage; q
                     {row.emailAddress ?? <Badge tone="failed" size="sm">missing</Badge>}
                   </td>
                   <td className="px-3 py-2">
-                    {sample ? <span className="text-muted-foreground">—</span> : <AddressButton directoryId={row.id} />}
+                    {sample ? <span className="text-muted-foreground">—</span> : <AddressButton directoryId={row.id} auto={autoAddresses} />}
                   </td>
                   <td className="px-3 py-2">
                     <Badge tone={STATUS_TONE[row.employmentStatus]} size="sm">
