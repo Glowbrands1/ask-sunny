@@ -59,6 +59,10 @@ export function progressStatus(tool: string, args: unknown): string {
       return "Checking follow-ups…";
     case "read_whats_new":
       return "Checking what's new…";
+    case "read_videos":
+      return "Checking the videos…";
+    case "read_manager_resources":
+      return "Checking manager resources…";
     case "app_help":
       return `Checking ${appConfig().appName}'s help…`;
     default:

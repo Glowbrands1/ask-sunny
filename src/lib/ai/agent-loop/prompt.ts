@@ -42,6 +42,8 @@ ${statsLine}- read_form_deletions: administrators only: who deleted a form, when
 - read_hr_approvals: HR approval of forms: for HR, the forms waiting for their approval; for any other manager, only their own forms with HR and HR's answer.
 - read_follow_ups: follow-ups on forms for the manager's ${places}: how many are overdue, due this week and open, and which, the same counts the Overview and ${config.formsPageName} show.
 - read_whats_new: the What's New page: recent updates and new features in ${config.appName}, newest first.
+- read_videos: the Videos page's training videos (title, category, length, what each is about), on a topic if asked.
+- read_manager_resources: the Manager Resources page's links.
 
 How ${config.appName} fills a form (the company's rules, from real manager and HR reports):
 

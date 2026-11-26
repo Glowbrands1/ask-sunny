@@ -27,7 +27,7 @@ import type { Permission } from "@/types";
  */
 
 /** The loop tools that read a page's figures. */
-export type PageReaderTool = "read_reviews" | "read_stats" | "find_past_forms" | "read_hr_approvals" | "read_follow_ups" | "read_whats_new";
+export type PageReaderTool = "read_reviews" | "read_stats" | "find_past_forms" | "read_hr_approvals" | "read_follow_ups" | "read_whats_new" | "read_videos" | "read_manager_resources";
 
 export interface PageReader {
   readonly tool: PageReaderTool;
@@ -128,8 +128,11 @@ export const AI_READABLE_PAGES: readonly AiReadablePage[] = [
   { kind: "page", route: "/meetings/[key]/recaps", title: "Meeting recaps", access: { signedIn: true, note: "then the meeting's own open check" }, notReadable: MEETINGS },
   { kind: "page", route: "/meetings/[key]/report", title: "Meeting report", access: { signedIn: true, note: "then the meeting's own open check" }, notReadable: MEETINGS },
 
-  { kind: "page", route: "/videos", title: "Videos", access: { permission: "view_videos" }, notReadable: "The video library: " + NO_LOOP_READER },
-  { kind: "page", route: "/resources", title: "Manager resources", access: { permission: "view_manager_resources" }, notReadable: "The manager resources links: " + NO_LOOP_READER },
+  /* Board f039 part 2 (26 Nov 2026): the video library and the manager resources links. */
+  { kind: "page", route: "/videos", title: "Videos", access: { permission: "view_videos" },
+    reader: { tool: "read_videos", args: {}, figures: ["each video's title, category, length, who posted it and when", "what it is about", "the videos on a topic"], periods: ["newest first"], replayCase: "nov26-f039-videos-reach-the-model" } },
+  { kind: "page", route: "/resources", title: "Manager resources", access: { permission: "view_manager_resources" },
+    reader: { tool: "read_manager_resources", args: {}, figures: ["each link's name, what it is, category and link", "that none are listed yet, when the page has none"], periods: ["now"], replayCase: "nov26-f039-manager-resources-reach-the-model" } },
   { kind: "page", route: "/ai-training", title: "AI training", access: { permission: "view_ai_training" }, notReadable: TRAINING },
   { kind: "page", route: "/ai-training/[track]/[slug]", title: "AI training lesson", access: { permission: "view_ai_training" }, notReadable: TRAINING },
   { kind: "page", route: "/ai-training/manage", title: "Manage AI training", access: { permission: "view_ai_training" }, notReadable: TRAINING },

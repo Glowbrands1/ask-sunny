@@ -11,7 +11,7 @@ import type { AccessScope, Role } from "@/types";
 
 import { PRODUCTION_SALONS } from "@/data/salons";
 
-import { FIGURES_MAX, OTHERS_NOT_VISIBLE, OUTSIDE_ACCESS, dataToolHandlers, figuresWithin, readAiAssignments, readFollowUps, readFormDeletions, readReviews, readStats, readWhatsNew, salonsForTurn, type DataToolDeps, type FollowUpQueueRead, type FormDeletionRow } from "./data-tools";
+import { FIGURES_MAX, OTHERS_NOT_VISIBLE, OUTSIDE_ACCESS, dataToolHandlers, figuresWithin, readAiAssignments, readFollowUps, readFormDeletions, readManagerResources, readReviews, readStats, readVideos, readWhatsNew, salonsForTurn, type DataToolDeps, type FollowUpQueueRead, type FormDeletionRow } from "./data-tools";
 
 /*
  * The agent loop's app data tools (QA, 15 Nov 2026): read_reviews and read_stats, with Pau's scope rules enforced in
@@ -104,6 +104,8 @@ function deps(overrides: Partial<DataToolDeps> = {}) {
     readBreakdown: async () => null,
     loadFormDeletions: async () => [],
     loadAssignmentTracker: async () => ({ people: [], marks: [] }),
+    loadVideos: async () => [],
+    loadManagerResources: () => [],
     fetchDailyStatsGuide: vi.fn(async () => ({
       ok: true as const,
       grounding: { role: {} as never, documentId: "d", documentTitle: "DAILY STATS INTERPRETATION FRAMEWORK", matchedBy: "tag" as const, rows: [{ chunk_id: "c1", document_id: "d", document_title: "DAILY STATS INTERPRETATION FRAMEWORK", category: "operations", locator: "Section 2", content: "Lead with the one metric furthest from goal.", similarity: 0.9 } as never], presentGroups: [] },
@@ -301,7 +303,8 @@ describe("the scope rules", () => {
     // 23 Nov 2026 (Pau) added read_ai_assignments, the AI assignment tracker for its named people. Both on purpose.
     // QA, 24 Nov 2026 added read_follow_ups, the follow-up queue the Overview and Form Monitoring count. On purpose.
     // Pau, 26 Nov 2026 added read_whats_new, the What's New page's list (CLAUDE.md §5). On purpose.
-    expect(Object.keys(dataToolHandlers(ctx(MANAGER, "")))).toEqual(["read_reviews", "read_stats", "read_form_deletions", "read_ai_assignments", "read_hr_approvals", "read_follow_ups", "read_whats_new"]);
+    // Board f039 part 2 (26 Nov 2026) added read_videos and read_manager_resources, the Videos and Manager Resources pages. On purpose.
+    expect(Object.keys(dataToolHandlers(ctx(MANAGER, "")))).toEqual(["read_reviews", "read_stats", "read_form_deletions", "read_ai_assignments", "read_hr_approvals", "read_follow_ups", "read_whats_new", "read_videos", "read_manager_resources"]);
   });
 });
 
@@ -495,5 +498,37 @@ describe("read_whats_new (Pau, 26 Nov 2026)", () => {
     const out = (await readWhatsNew(ctx(MANAGER, "what's new?", "employee"), {}, ENTRIES)) as Out;
     expect(out.refused).toBeTruthy();
     expect(out.updates).toBeUndefined();
+  });
+});
+
+describe("read_videos and read_manager_resources (board f039 part 2)", () => {
+  const video = (title: string, category: string, keywords: string[], uploadedAt: string) =>
+    ({ id: title, title, description: `${title}, step by step.`, category, durationSeconds: 185, uploadedByName: "Invented Trainer", uploadedAt, equipment: [], keywords, tags: [], status: "ready" }) as never;
+  const VIDEOS = [video("Cleaning the beds", "operations", ["sanitation"], "2026-11-20T10:00:00Z"), video("Greeting a guest", "customer_service", [], "2026-11-10T10:00:00Z")];
+  type VideosOut = { videos?: { title: { untrusted_text: string }; minutes: number; posted: string }[]; total?: number; refused?: string };
+
+  it("lists the library, and a topic keeps the videos whose words match", async () => {
+    const all = (await readVideos(ctx(MANAGER, "what videos do we have?"), {}, deps({ loadVideos: async () => VIDEOS }).deps)) as VideosOut;
+    expect(all.videos?.map((entry) => entry.title.untrusted_text)).toEqual(["Cleaning the beds", "Greeting a guest"]);
+    expect(all.videos?.[0]).toMatchObject({ minutes: 3, posted: "Nov 20, 2026" });
+    const topic = (await readVideos(ctx(MANAGER, "is there a video on sanitation?"), { topic: "sanitation" }, deps({ loadVideos: async () => VIDEOS }).deps)) as VideosOut;
+    expect(topic.videos?.map((entry) => entry.title.untrusted_text)).toEqual(["Cleaning the beds"]);
+  });
+
+  it("a role without View videos is refused and reads nothing", async () => {
+    let read = false;
+    const out = (await readVideos(ctx(MANAGER, "what videos?", "nobody" as Role), {}, deps({ loadVideos: async () => ((read = true), VIDEOS) }).deps)) as VideosOut;
+    expect(out.refused).toBeTruthy();
+    expect(read).toBe(false);
+  });
+
+  it("manager resources: an empty page says none are listed, and a link is given as listed", async () => {
+    const none = (await readManagerResources(ctx(MANAGER, "what resources do we have?"), deps().deps)) as { resources: unknown[]; note: string };
+    expect(none.resources).toEqual([]);
+    expect(none.note).toMatch(/no links yet/);
+    const one = (await readManagerResources(ctx(MANAGER, "what resources do we have?"), deps({
+      loadManagerResources: () => [{ id: "r1", name: "Invented Portal", description: "Where the invented thing lives.", category: "reporting", url: "https://portal.invalid/", openMode: "new_tab", owner: "x", availability: "available", iconKey: "library" }],
+    }).deps)) as { resources: { name: string; link?: string; category: string }[] };
+    expect(one.resources).toEqual([{ name: "Invented Portal", what: "Where the invented thing lives.", category: "Reporting", link: "https://portal.invalid/" }]);
   });
 });
