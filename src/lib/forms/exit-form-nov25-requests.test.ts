@@ -186,16 +186,16 @@ describe("Exit form requests, 25 Nov 2026", () => {
     const home = { Address: { Address1: "412 Ashgrove Ln", City: "Lincoln", State: "NE", PostalCode: "68508" } };
     const scope = { level: "global" } as never;
     // The form's location (here neither record's) cannot settle it, but both records carry the same home address.
-    expect(await wovenExitAddress({ employeeName: "Remy Calder", scope, locationId: "s9" }, deps({ "w-corporate": home, "w-location": home }))).toBe(
+    expect(await wovenExitAddress({ employeeName: "Remy Calder", scope, role: "admin", locationId: "s9" }, deps({ "w-corporate": home, "w-location": home }))).toBe(
       "412 Ashgrove Ln, Lincoln, NE 68508",
     );
     // Only one of them has an address: that is it.
-    expect(await wovenExitAddress({ employeeName: "Remy Calder", scope }, deps({ "w-corporate": { Address: null }, "w-location": home }))).toBe(
+    expect(await wovenExitAddress({ employeeName: "Remy Calder", scope, role: "admin" }, deps({ "w-corporate": { Address: null }, "w-location": home }))).toBe(
       "412 Ashgrove Ln, Lincoln, NE 68508",
     );
     // Two different addresses: nothing is guessed.
     const other = { Address: { Address1: "9 Elm St", City: "Hastings", State: "NE", PostalCode: "68901" } };
-    expect(await wovenExitAddress({ employeeName: "Remy Calder", scope }, deps({ "w-corporate": home, "w-location": other }))).toBeNull();
+    expect(await wovenExitAddress({ employeeName: "Remy Calder", scope, role: "admin" }, deps({ "w-corporate": home, "w-location": other }))).toBeNull();
 
     // The directory's "Show address" reads one record and says why when there is none.
     expect(await wovenAddressForEmployee("w-1", { readDetails: async () => home })).toEqual({ status: "found", address: "412 Ashgrove Ln, Lincoln, NE 68508" });

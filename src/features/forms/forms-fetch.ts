@@ -120,6 +120,21 @@ export async function downloadFormPdf(
 }
 
 /**
+ * A FORM'S PDF FOR THE PREVIEW POP-UP (`?preview=1`: not recorded as an export, served inline). Returns a blob URL the
+ * caller shows in an <iframe> and revokes when the pop-up closes.
+ */
+export async function fetchFormPreviewUrl(instanceId: string, role: Role, name: string): Promise<string> {
+  const response = await fetch(`/api/forms/instances/${encodeURIComponent(instanceId)}/pdf?preview=1`, {
+    headers: formsHeaders(role, name),
+  });
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new Error(payload.error ?? "That form could not be opened.");
+  }
+  return URL.createObjectURL(await response.blob());
+}
+
+/**
  * PRINT A FINALIZED FORM (Pau, via QA, 23 Nov 2026: "will have option to print and save as PDF"). The same server PDF
  * as Download PDF (`/api/forms/instances/[id]/pdf`, the pinned template and the stored values, never the approval
  * notes), opened in a new tab where the browser's viewer prints it. The tab is opened before the fetch, inside the
