@@ -1298,6 +1298,10 @@ describe("new flags default off and wrappers are inert", () => {
           // integrations page only; no chat or form behaviour changes.
           ":(exclude)src/features/admin/woven/directory-table.tsx",
           ":(exclude)src/features/admin/woven/address-button.tsx",
+          // The named account sees every address without clicking (Pau, 26 Nov 2026: "for my access only";
+          // WOVEN_ADDRESS_LIST_EMAILS): the Woven page passes the yes/no down to the directory. Admin page only.
+          ":(exclude)src/app/(app)/admin/integrations/woven/[view]/page.tsx",
+          ":(exclude)src/features/admin/woven/woven-view-screen.tsx",
           ":(exclude)src/features/forms/hr-approval-panel.tsx",
           ":(exclude)src/features/forms/hr-approval-lists.tsx",
           ":(exclude)src/features/forms/hr-approval-screen.tsx",

@@ -63,7 +63,9 @@ function liveModel(copiesLine: boolean) {
     if (!result) {
       return { tool: "propose_form", input: { template_key: "dpoa", employee_id: "e-2", what_happened: "Remy was wearing sandals at work on 9/11.", incident_date: "2026-09-11", policy: headingWith(view, /dress code/i), ...(copiesLine ? { prior_actions: ON_FILE } : {}) } };
     }
-    const stated = result.facts?.stated?.prior_actions ?? result.card?.prior_actions ?? null;
+    // CHANGED ON PURPOSE (Pau, 26 Nov 2026; PRIOR_ON_FILE_ON_CARD_ENABLED): the card now holds the forms on file by design,
+    // so the stand-in reads only what the manager STATED; a form on file leaking into `stated` still fails this case.
+    const stated = result.facts?.stated?.prior_actions ?? null;
     const lines = ["Here's the Corrective Action Form for **Remy**."];
     if (stated) lines.push(`**Prior actions:** ${stated}, as you said.`);
     if (result.facts?.prior_on_file?.ask_exactly) lines.push(result.facts.prior_on_file.ask_exactly);
@@ -93,10 +95,11 @@ export const NOV23_AGENT_LOOP_PRIOR_ACTION_NEVER_AS_YOU_SAID_CASES: ReplayCase[]
     t.loopModel!(model);
     const thread = t.thread();
     const reply = await thread.say(SAID);
-    expect(card(reply)?.priorActions ?? null, `the card holds a prior action the manager never said:\n${reply.content}`).toBeNull();
+    // CHANGED ON PURPOSE (Pau, 26 Nov 2026: "Ai saw prior forms but i need them here"; PRIOR_ON_FILE_ON_CARD_ENABLED): forms on file are on the card's Prior actions, each saying what it is, never offered, and never "as you said".
+    expect(card(reply)?.priorActions ?? "", reply.content).toMatch(/Written Warning, finalized — 09\/10\/2026/);
     expect(reply.content, "the reply says a prior action was the manager's").not.toMatch(/Prior actions:[^\n]*as you said/);
     const id = await thread.create();
-    expect(t.values(id).prior_actions ?? "", "the saved form holds a prior action the manager never said").toBe("");
+    expect(t.values(id).prior_actions ?? "", "the saved form lost the form on file").toMatch(/09\/10\/2026/);
   }),
   fixed("nov23-prior-action-model-copies-on-file-line-not-kept", "The same turn, the model copying the forms-on-file line into prior_actions unasked: never kept, never saved", async (t) => {
     await archivedOnFile(t);
@@ -104,9 +107,11 @@ export const NOV23_AGENT_LOOP_PRIOR_ACTION_NEVER_AS_YOU_SAID_CASES: ReplayCase[]
     t.loopModel!(liveModel(true));
     const thread = t.thread();
     const reply = await thread.say(SAID);
-    expect(card(reply)?.priorActions ?? null, reply.content).toBeNull();
+    // CHANGED ON PURPOSE (Pau, 26 Nov 2026: "Ai saw prior forms but i need them here"; PRIOR_ON_FILE_ON_CARD_ENABLED): forms on file are on the card's Prior actions, each saying what it is, never offered, and never "as you said". The model's copy is not kept: the app's own line is, once.
+    // Two Written CAs are on file for 09/10 (the two archived ones): each is listed once, and the model's copy adds none.
+    expect((card(reply)?.priorActions ?? "").match(/09\/10\/2026/g) ?? [], reply.content).toHaveLength(2);
     const id = await thread.create();
-    expect(t.values(id).prior_actions ?? "").toBe("");
+    expect((t.values(id).prior_actions ?? "").match(/09\/10\/2026/g) ?? []).toHaveLength(2);
   }),
   fixed("nov23-prior-action-control-manager-says-it", "Control: \"…, she had a written on 9/10\" states the step, prior_actions_evidence quoting it: on the card and saved, and stated_this_turn lists prior_actions (\"as you said\" is the manager's)", async (t) => {
     vi.setSystemTime(new Date("2026-11-23T14:11:56Z"));
@@ -142,8 +147,9 @@ export const NOV23_AGENT_LOOP_PRIOR_ACTION_NEVER_AS_YOU_SAID_CASES: ReplayCase[]
     const model = liveModel(false);
     t.loopModel!(model);
     const reply = await t.thread().say(SAID);
-    expect(onFileOf(model)?.ask_exactly ?? "", reply.content).toMatch(/has a Written CA on file from 09\/10\/2026\. Want me to add it to Prior actions\?/);
-    expect(card(reply)?.priorActions ?? null, reply.content).toBeNull();
+    // CHANGED ON PURPOSE (Pau, 26 Nov 2026: "Ai saw prior forms but i need them here"; PRIOR_ON_FILE_ON_CARD_ENABLED): forms on file are on the card's Prior actions, each saying what it is, never offered, and never "as you said".
+    expect(onFileOf(model)?.ask_exactly ?? null, reply.content).toBeNull();
+    expect(card(reply)?.priorActions ?? "", reply.content).toMatch(/Written Warning, finalized — 09\/10\/2026/);
   }),
   fixed("nov23-on-file-first-name-shared-at-salon-not-attributed", "Pau (23 Nov 2026): an active finalized Written CA under the first name alone (\"Remy\") while another Remy is at the same salon: attributed to neither, never offered", async (t) => {
     t.directory([...STAFF, { id: "e-9", firstName: "Remy", lastName: "Okafor", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" }]);
@@ -161,8 +167,9 @@ export const NOV23_AGENT_LOOP_PRIOR_ACTION_NEVER_AS_YOU_SAID_CASES: ReplayCase[]
     const model = liveModel(false);
     t.loopModel!(model);
     const reply = await t.thread().say(SAID);
-    expect(onFileOf(model)?.ask_exactly ?? "", reply.content).toMatch(/has a Written CA on file from 09\/10\/2026\. Want me to add it to Prior actions\?/);
-    expect(card(reply)?.priorActions ?? null, reply.content).toBeNull();
+    // CHANGED ON PURPOSE (Pau, 26 Nov 2026: "Ai saw prior forms but i need them here"; PRIOR_ON_FILE_ON_CARD_ENABLED): forms on file are on the card's Prior actions, each saying what it is, never offered, and never "as you said".
+    expect(onFileOf(model)?.ask_exactly ?? null, reply.content).toBeNull();
+    expect(card(reply)?.priorActions ?? "", reply.content).toMatch(/Written Warning, finalized — 09\/10\/2026/);
   }),
   fixed("nov23-on-file-control-first-name-unique-offered", "Pau (23 Nov 2026), control: an active finalized Written CA under the first name alone, and no other Remy at the salon: it is offered (\"… has a Written CA on file from 09/10/2026. Want me to add it to Prior actions?\"), never added", async (t) => {
     await writtenOnFile(t, "Remy", false);
@@ -170,7 +177,8 @@ export const NOV23_AGENT_LOOP_PRIOR_ACTION_NEVER_AS_YOU_SAID_CASES: ReplayCase[]
     const model = liveModel(false);
     t.loopModel!(model);
     const reply = await t.thread().say(SAID);
-    expect(onFileOf(model)?.ask_exactly ?? "", reply.content).toMatch(/has a Written CA on file from 09\/10\/2026\. Want me to add it to Prior actions\?/);
-    expect(card(reply)?.priorActions ?? null, reply.content).toBeNull();
+    // CHANGED ON PURPOSE (Pau, 26 Nov 2026: "Ai saw prior forms but i need them here"; PRIOR_ON_FILE_ON_CARD_ENABLED): forms on file are on the card's Prior actions, each saying what it is, never offered, and never "as you said".
+    expect(onFileOf(model)?.ask_exactly ?? null, reply.content).toBeNull();
+    expect(card(reply)?.priorActions ?? "", reply.content).toMatch(/Written Warning, finalized — 09\/10\/2026/);
   }),
 ];
