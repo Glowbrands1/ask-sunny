@@ -65,6 +65,8 @@ export function agentLoopSystem(input: {
   readonly answeringWhoQuestion?: string | null;
   /** CREATE_FORM_BUTTON_PICKS_FORM: this turn is the rail's "Create a form from this conversation", and what is on screen. */
   readonly createFormButton?: CreateFormButtonScreen | null;
+  /** ANSWER_MODE_ON_LOOP: the answer mode the manager chose (Standard adds nothing). */
+  readonly answerMode?: "quick" | "standard" | "detailed";
 }): string {
   const config = appConfig();
   const place = config.locationWord;
@@ -93,6 +95,22 @@ export function agentLoopSystem(input: {
       ? `answering_who_question: your last reply asked who the ${input.answeringWhoQuestion} is for, and this message answers it. Look the name up with find_staff (person_evidence: the manager's words) before anything else; a first name alone is a name, never an acronym, a topic or a product.`
       : "",
     input.createFormButton ? createFormButtonLine(input.createFormButton, config.formsPageName) : "",
+    input.answerMode ? answerModeLine(input.answerMode) : "",
   ];
   return lines.filter(Boolean).join("\n\n");
+}
+
+/**
+ * ANSWER_MODE_ON_LOOP (the owner, 26 Nov 2026): the length the manager chose with the Quick / Standard / Detailed
+ * buttons, for an answer. Standard adds nothing, so its prompt is unchanged. A card, the question a card needs, a policy
+ * citation and the rules book's lines are never cut for length.
+ */
+export function answerModeLine(mode: "quick" | "standard" | "detailed"): string {
+  if (mode === "quick") {
+    return "Answer length: the manager chose Quick. Answer a question in two or three sentences, leading with the answer itself, with no preamble and no headings. A form card, the question a card needs, a policy citation and every line the rules book asks for are still given in full.";
+  }
+  if (mode === "detailed") {
+    return "Answer length: the manager chose Detailed. Give the full picture: what the company standard is, how to apply it, and what to watch for, with headings and bullets where they help scanning. Every fact still comes from your tools and sources.";
+  }
+  return "";
 }

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { agentLoopFor, agentLoopStepLimit, agentLoopUsers } from "./switch";
+import { agentLoopFor, agentLoopSkipReason, agentLoopStepLimit, agentLoopUsers } from "./switch";
 
 /*
  * AGENT_LOOP_ENABLED / AGENT_LOOP_USERS (QA, 14 Nov 2026): who gets the tool loop. Invented addresses only; QA sets the
@@ -82,5 +82,37 @@ describe("agentLoopStepLimit", () => {
     expect(agentLoopStepLimit()).toBe(1);
     process.env.AGENT_LOOP_MAX_STEPS = "lots";
     expect(agentLoopStepLimit()).toBe(6);
+  });
+});
+
+describe("agentLoopSkipReason: answer modes (ANSWER_MODE_ON_LOOP; the owner, 26 Nov 2026)", () => {
+  const before = process.env.ANSWER_MODE_ON_LOOP_ENABLED;
+  afterEach(() => {
+    if (before === undefined) delete process.env.ANSWER_MODE_ON_LOOP_ENABLED;
+    else process.env.ANSWER_MODE_ON_LOOP_ENABLED = before;
+  });
+
+  it("off: Quick and Detailed go to today's path, as before; Standard goes to the loop", () => {
+    process.env.ANSWER_MODE_ON_LOOP_ENABLED = "0";
+    expect(agentLoopSkipReason({ mode: "quick" })).toBe("answer_mode");
+    expect(agentLoopSkipReason({ mode: "detailed" })).toBe("answer_mode");
+    expect(agentLoopSkipReason({ mode: "standard" })).toBeNull();
+  });
+
+  it("on: every mode goes to the loop; attachments and report context still go to today's path", () => {
+    process.env.ANSWER_MODE_ON_LOOP_ENABLED = "1";
+    for (const mode of ["quick", "standard", "detailed"]) expect(agentLoopSkipReason({ mode }), mode).toBeNull();
+    expect(agentLoopSkipReason({ mode: "quick", attachedDocumentIds: ["doc"] })).toBe("attachments");
+    expect(agentLoopSkipReason({ mode: "detailed", reportContext: { family: "sales-totals" } })).toBe("report_context");
+  });
+});
+
+describe("answerModeLine (ANSWER_MODE_ON_LOOP)", () => {
+  it("Quick and Detailed each add one line; Standard adds nothing", async () => {
+    const { answerModeLine } = await import("./prompt");
+    expect(answerModeLine("standard")).toBe("");
+    expect(answerModeLine("quick")).toMatch(/^Answer length: the manager chose Quick\./);
+    expect(answerModeLine("quick")).toMatch(/A form card, the question a card needs, a policy citation and every line the rules book asks for are still given in full/);
+    expect(answerModeLine("detailed")).toMatch(/^Answer length: the manager chose Detailed\./);
   });
 });
