@@ -4,7 +4,7 @@ import { Search, X } from "lucide-react";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { formatDate } from "@/lib/utils/date";
 
-import { formPageHref } from "./form-page-href";
+import { FormPreviewButton } from "./form-preview-dialog";
 import { LOCATION_NOUN, REGISTER_HREF } from "./words";
 
 /**
@@ -174,13 +174,11 @@ export function EmployeeFormSearchResults({
                     </td>
                     <td className="max-w-[140px] truncate px-2.5 py-2 text-muted-foreground">{row.createdByName}</td>
                     <td className="px-2.5 py-2 text-right whitespace-nowrap">
-                      <Link
-                        href={formPageHref(row.id)}
-                        className="font-medium text-primary underline-offset-4 hover:underline"
-                        aria-label={`View the ${row.formName} for ${row.employeeName} dated ${formatDate(row.formDate)}`}
-                      >
-                        View
-                      </Link>
+                      {/* A pop-up over the list, not another page (Pau, 26 Nov 2026). */}
+                      <FormPreviewButton
+                        instanceId={row.id}
+                        title={`${row.formName} — ${row.employeeName}, ${formatDate(row.formDate)}`}
+                      />
                     </td>
                   </tr>
                 ))}
