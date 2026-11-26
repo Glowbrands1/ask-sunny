@@ -1,5 +1,5 @@
 import { warningLevelAndClauseEnabled } from "@/lib/config/chat-quality-flags";
-import { statedWarningLevel, type StatedWarningLevel } from "@/lib/forms/warning-level";
+import { statedWarningLevel, warningLevelLabel, type StatedWarningLevel } from "@/lib/forms/warning-level";
 
 import { withTerminationTickNote } from "./termination-tick-note";
 import type { AskRequest, AskResponse } from "./types";
@@ -17,7 +17,7 @@ import type { AskRequest, AskResponse } from "./types";
 const ASKED = "You'll set the verbal/written warning level on the form — I won't guess at it.";
 
 function label(level: StatedWarningLevel): string {
-  return level === "verbal" ? "Verbal Warning" : "Written Warning";
+  return warningLevelLabel(level);
 }
 
 /** The one level a turn states in an "and"-clause of its own, or null. */

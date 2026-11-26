@@ -667,7 +667,7 @@ export interface ChatFormProposal {
    * pinned version offers that level. See `statedWarningLevel` in
    * `lib/forms/corrective-action-intake.ts`.
    */
-  warningLevel?: "verbal" | "written" | null;
+  warningLevel?: "verbal" | "written" | "final_warning" | null;
   /**
    * The agent loop only (QA's design, 15 Nov 2026): its model decided this Corrective Action is a termination and the
    * manager's words carry a termination word. Create is sent `warningLevel: "termination"` and ticks it only when the

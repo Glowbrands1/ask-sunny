@@ -365,7 +365,7 @@ export const CARD_NOTE = "[app note: this reply showed a card built with propose
  * it never writes the card's values into the reply.
  */
 export interface CardClaims {
-  warningLevel?: "verbal" | "written";
+  warningLevel?: "verbal" | "written" | "final_warning";
   payrollDeduct?: "yes" | "no";
   payrollAmount?: string;
   policy?: string;

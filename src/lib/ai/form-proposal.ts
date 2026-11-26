@@ -80,6 +80,7 @@ import {
   payrollDeductUnclear,
   statedPayrollDeduct,
 } from "@/lib/forms/payroll-deduct";
+import { warningLevelLabel } from "@/lib/forms/warning-level";
 import { checkboxGroupsForVariant } from "@/lib/forms/document";
 import { exitFactsSupplied, readExitFacts } from "@/lib/forms/exit-facts";
 import {
@@ -2519,7 +2520,7 @@ function correctiveActionReady(
   if (proposal.warningLevel) {
     lines.push(
       "",
-      `**Type of Warning:** ${proposal.warningLevel === "verbal" ? "Verbal Warning" : "Written Warning"}, as you said — I'll tick it on the form. Tell me if that should change.`,
+      `**Type of Warning:** ${warningLevelLabel(proposal.warningLevel)}, as you said — I'll tick it on the form. Tell me if that should change.`,
     );
   }
 

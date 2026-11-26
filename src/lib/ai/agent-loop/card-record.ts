@@ -38,7 +38,7 @@ export interface CardRecord {
    * QA (16 Nov 2026; c208, Pau's "every answer is used"): the warning level the card held, kept on the manager's evidence
    * ("verbal" / "written"), so a rebuild of the same card keeps it. A value of the form, never a name. Null when none.
    */
-  readonly level?: "verbal" | "written" | null;
+  readonly level?: "verbal" | "written" | "final_warning" | null;
   /**
    * QA (16 Nov 2026; c022): the payroll answer the card held, kept on the manager's evidence, and its amount (digits), so a
    * rebuild of the same card keeps them, as the level. Values of the form, never a name. Null when none.
@@ -98,7 +98,7 @@ export interface CardRecord {
 }
 
 /** What a turn writes into `slots.agent_loop.card`. */
-export type CardSlot = Omit<CardRecord, "messageId" | "asked" | "level" | "policyLine" | "payroll" | "payrollAmount" | "accountKey" | "exitType" | "incidentDate" | "salonId" | "onFileOffered" | "sameIncidentChecked"> & { readonly sameIncidentChecked?: string; readonly onFileOffered?: readonly string[]; readonly asked?: readonly string[]; readonly level?: "verbal" | "written"; readonly policyLine?: string; readonly payroll?: "yes" | "no"; readonly payrollAmount?: string; readonly accountKey?: string; readonly exitType?: string; readonly incidentDate?: string; readonly salonId?: string };
+export type CardSlot = Omit<CardRecord, "messageId" | "asked" | "level" | "policyLine" | "payroll" | "payrollAmount" | "accountKey" | "exitType" | "incidentDate" | "salonId" | "onFileOffered" | "sameIncidentChecked"> & { readonly sameIncidentChecked?: string; readonly onFileOffered?: readonly string[]; readonly asked?: readonly string[]; readonly level?: "verbal" | "written" | "final_warning"; readonly policyLine?: string; readonly payroll?: "yes" | "no"; readonly payrollAmount?: string; readonly accountKey?: string; readonly exitType?: string; readonly incidentDate?: string; readonly salonId?: string };
 
 function isCardSlot(value: unknown): value is CardSlot {
   const row = value as Partial<CardSlot> | null;

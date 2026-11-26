@@ -33,6 +33,7 @@ import { sendClientFormEvent } from "./client-form-telemetry";
 import { createFailureKind } from "@/lib/analytics/client-form-events";
 import { InlineForm, type PrefillState } from "./inline-form";
 import { FormRevisionsMount } from "@/form-revisions/form-revisions-mount";
+import { warningLevelLabel } from "@/lib/forms/warning-level";
 
 export function MessageBubble({
   message,
@@ -704,7 +705,7 @@ function FormProposalCard({
         {proposal.incidentTime ? <ProposalRow label="Time">{proposal.incidentTime}</ProposalRow> : null}
         {proposal.warningLevel ? (
           <ProposalRow label="Type of warning">
-            {proposal.warningLevel === "verbal" ? "Verbal Warning" : "Written Warning"}
+            {warningLevelLabel(proposal.warningLevel)}
           </ProposalRow>
         ) : null}
         {proposal.priorActions ? (

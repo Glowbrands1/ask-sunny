@@ -33,7 +33,7 @@ export interface CardFields {
 export interface CardChange {
   /** `YYYY-MM-DD`, from a date input. */
   readonly formDate?: string | null;
-  readonly warningLevel?: "verbal" | "written" | null;
+  readonly warningLevel?: "verbal" | "written" | "final_warning" | null;
   readonly payrollDeduct?: "yes" | "no" | null;
   /** The store or salon's display name, as the card lists it. */
   readonly locationName?: string | null;

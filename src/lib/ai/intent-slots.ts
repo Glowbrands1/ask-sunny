@@ -1321,9 +1321,9 @@ export function payrollAmounts(text: string): string[] {
 }
 
 function groundWarning(
-  typed: "verbal" | "written" | null,
+  typed: "verbal" | "written" | "final_warning" | null,
   blob: string,
-): { value: "verbal" | "written" | null; ambiguous: boolean } {
+): { value: "verbal" | "written" | "final_warning" | null; ambiguous: boolean } {
   // A prior "Verbal CA" beside the level being issued is history. Both words
   // in the account are not a question, and the card is not held for one.
   const turns = blob.split("\n").map((line) => line.trim()).filter(Boolean);
@@ -1523,7 +1523,7 @@ function mergeSlots(
     managerOnly?: boolean;
     /** LATE_OPEN_DATE_ENABLED: the manager's stated Yes/No is kept, ahead of an amount's Yes. */
     managerAnswer?: boolean;
-    warningLevel: "verbal" | "written" | null;
+    warningLevel: "verbal" | "written" | "final_warning" | null;
     formType: string | null;
     policyHeading: string | null;
     policyPage: number | null;
@@ -1564,7 +1564,7 @@ function clarificationFor(input: {
   incidentType: string | null;
   date: { iso: string | null; ambiguous: readonly string[] };
   payrollAmount: string | null;
-  warningLevel: { value: "verbal" | "written" | null; ambiguous: boolean };
+  warningLevel: { value: "verbal" | "written" | "final_warning" | null; ambiguous: boolean };
   formType: { key: string | null; ambiguous: readonly TemplateRow[]; together?: boolean };
   state: ConversationFormState;
   people: readonly GroundedPerson[];
@@ -1635,7 +1635,7 @@ function readPriorChoice(
   reply: string,
   people: readonly GroundedPerson[],
   salons: readonly SalonRow[],
-): { person?: GroundedPerson; salon?: string; date?: string; form?: string; warning?: "verbal" | "written" } | null {
+): { person?: GroundedPerson; salon?: string; date?: string; form?: string; warning?: "verbal" | "written" | "final_warning" } | null {
   const asked = [...history].reverse().find((turn) => turn.role === "assistant");
   if (!asked) return null;
   const options = choiceOptions(asked.content);
