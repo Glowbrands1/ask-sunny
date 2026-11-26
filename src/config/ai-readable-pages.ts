@@ -27,7 +27,7 @@ import type { Permission } from "@/types";
  */
 
 /** The loop tools that read a page's figures. */
-export type PageReaderTool = "read_reviews" | "read_stats" | "find_past_forms" | "read_hr_approvals" | "read_follow_ups";
+export type PageReaderTool = "read_reviews" | "read_stats" | "find_past_forms" | "read_hr_approvals" | "read_follow_ups" | "read_whats_new";
 
 export interface PageReader {
   readonly tool: PageReaderTool;
@@ -83,6 +83,9 @@ export const AI_READABLE_PAGES: readonly AiReadablePage[] = [
    */
   { kind: "page", route: "/", title: "Overview", access: { permission: "view_overview" },
     reader: { tool: "read_follow_ups", args: {}, figures: ["follow-ups overdue, due this week and open", "each follow-up's employee, form, salon and date"], periods: ["today", "this business week"], replayCase: "nov24-follow-ups-overdue-same-count-as-the-overview" } },
+  /* Pau, 26 Nov 2026: recent updates, from `src/config/whats-new.ts`; an entry about a page only for a role that may open it. */
+  { kind: "page", route: "/whats-new", title: "What's New", access: { permission: "view_overview" },
+    reader: { tool: "read_whats_new", args: {}, figures: ["each update's date, title and what it does", "the page it is about"], periods: ["newest first", "since a day"], replayCase: "nov26-whats-new-reaches-the-model" } },
   { kind: "page", route: "/chat", title: "Chat", access: { permission: "ask_questions" }, notReadable: "The chat itself: nothing on it to read." },
 
   { kind: "page", route: "/reviews", title: "Google Reviews", access: { permission: "view_google_reviews" }, reader: REVIEWS_READER },

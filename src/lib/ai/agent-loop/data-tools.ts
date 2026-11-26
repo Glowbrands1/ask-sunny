@@ -5,6 +5,7 @@ import { readSalonMentions } from "@/lib/forms/salon-mention";
 import { DAILY_STATS_INTERPRETATION_FRAMEWORK } from "@/lib/knowledge/document-roles";
 import type { RoleGroundingResult } from "@/lib/knowledge/role-grounding";
 import { pagesToolLine, type PageReaderTool } from "@/config/ai-readable-pages";
+import { WHATS_NEW, whatsNewFor, type WhatsNewEntry } from "@/config/whats-new";
 import { FORM_RECORDS_PERMISSION } from "@/lib/forms/chat-form-records";
 import { activePermissionMatrix, asdNoFormMonitoringEnabled, hasPermission } from "@/lib/permissions";
 import { relativeBusinessDay } from "@/lib/forms/follow-up";
@@ -612,7 +613,54 @@ export const READER_PERMISSION = {
   find_past_forms: FORM_RECORDS_PERMISSION,
   read_hr_approvals: "view_form_monitoring",
   read_follow_ups: "view_overview",
+  read_whats_new: "view_overview",
 } as const satisfies Record<PageReaderTool, Permission>;
+
+/* ---------------------------------------------------------------- read_whats_new --- */
+
+export const WHATS_NEW_SOURCE = "What's New page";
+const WHATS_NEW_LISTED = 15;
+
+/**
+ * read_whats_new({since?}) (Pau, 26 Nov 2026; CLAUDE.md §5): the What's New page's list (`src/config/whats-new.ts`),
+ * newest first, as this manager's page shows it: the page's own permission, and an entry about another page only when
+ * their role may open that page (`whatsNewFor`). `since` (YYYY-MM-DD) keeps the entries from that day on.
+ */
+export async function readWhatsNew(context: DataToolContext, input: { since?: unknown }, entries: readonly WhatsNewEntry[] = WHATS_NEW): Promise<ToolResult> {
+  const matrix = activePermissionMatrix();
+  const role = context.actor.role;
+  if (!hasPermission(matrix, role, READER_PERMISSION.read_whats_new)) {
+    return { source: WHATS_NEW_SOURCE, refused: "This account's role does not open the What's New page. Nothing was read; say so plainly, in one line." };
+  }
+  const since = text(input.since);
+  const from = since && /^\d{4}-\d{2}-\d{2}$/.test(since) ? since : null;
+  const visible = whatsNewFor(role, (r, permission) => hasPermission(matrix, r, permission), entries).filter((entry) => !from || entry.date >= from);
+  const listed = visible.slice(0, WHATS_NEW_LISTED);
+  return {
+    source: WHATS_NEW_SOURCE,
+    app: appConfig().appName,
+    updates: listed.map((entry) => ({
+      date: formatBusinessDay(entry.date),
+      title: entry.title,
+      what: entry.description,
+      ...(entry.href ? { page: entry.href } : {}),
+    })),
+    ...(visible.length > listed.length ? { listed: listed.length, of: visible.length } : {}),
+    ...(from ? { since: formatBusinessDay(from) } : {}),
+    note:
+      (listed.length === 0
+        ? from
+          ? "Nothing new since that day. Say so, and that the What's New page lists the latest updates."
+          : "The What's New page lists nothing yet. Say so."
+        : "These are the updates on the What's New page, newest first. Give each with its date and title and what it does, in plain words, as written; never add an update that is not listed.") +
+      (visible.length > listed.length ? ` ${listed.length} of ${visible.length} are listed; say the page has the rest.` : ""),
+  };
+}
+
+/** "2026-11-26" → "Nov 26, 2026". */
+function formatBusinessDay(date: string): string {
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }).format(new Date(`${date}T12:00:00Z`));
+}
 
 /* ---------------------------------------------------------------- read_follow_ups --- */
 
@@ -848,6 +896,18 @@ export function dataToolSpecs(config: AppConfig) {
     input_schema: { type: "object", properties: {}, required: [] },
   },
   {
+    name: "read_whats_new",
+    description:
+      "What's new in " + config.appName + ": the What's New page's list of recent updates and new features (date, title, what it does, the page it is about), newest first, as this manager's page shows it. Use it for \"what's new?\", \"what's new in " + config.appName + "?\", \"any new features?\", \"what changed this week?\" (pass since). Never answer what's new from memory." + pagesToolLine(config.readablePages, "read_whats_new"),
+    input_schema: {
+      type: "object",
+      properties: {
+        since: { type: "string", description: "Only updates from this day on (YYYY-MM-DD), when the manager asked for a period (\"this week\", \"since Monday\")." },
+      },
+      required: [],
+    },
+  },
+  {
     name: "read_form_deletions",
     description:
       "Administrators only: who deleted a form, when and how (" + appConfig().formsPageName + ", chat, or outside the app), from the permanent deletion record, newest first. Pass employee_name for one employee's forms (\"who deleted <name>'s form?\"). A manager is refused.",
@@ -887,5 +947,6 @@ export function dataToolHandlers(
     read_ai_assignments: () => readAiAssignments(context, deps),
     read_hr_approvals: () => readHrApprovals(context, deps),
     read_follow_ups: () => readFollowUps(context, deps),
+    read_whats_new: (args) => readWhatsNew(context, args),
   };
 }

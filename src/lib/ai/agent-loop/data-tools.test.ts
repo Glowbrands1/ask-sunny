@@ -11,7 +11,7 @@ import type { AccessScope, Role } from "@/types";
 
 import { PRODUCTION_SALONS } from "@/data/salons";
 
-import { FIGURES_MAX, OTHERS_NOT_VISIBLE, OUTSIDE_ACCESS, dataToolHandlers, figuresWithin, readAiAssignments, readFollowUps, readFormDeletions, readReviews, readStats, salonsForTurn, type DataToolDeps, type FollowUpQueueRead, type FormDeletionRow } from "./data-tools";
+import { FIGURES_MAX, OTHERS_NOT_VISIBLE, OUTSIDE_ACCESS, dataToolHandlers, figuresWithin, readAiAssignments, readFollowUps, readFormDeletions, readReviews, readStats, readWhatsNew, salonsForTurn, type DataToolDeps, type FollowUpQueueRead, type FormDeletionRow } from "./data-tools";
 
 /*
  * The agent loop's app data tools (QA, 15 Nov 2026): read_reviews and read_stats, with Pau's scope rules enforced in
@@ -300,7 +300,8 @@ describe("the scope rules", () => {
     // HR approval (23 Nov 2026) added read_hr_approvals, so the AI can read the new approval step (CLAUDE.md rule 5).
     // 23 Nov 2026 (Pau) added read_ai_assignments, the AI assignment tracker for its named people. Both on purpose.
     // QA, 24 Nov 2026 added read_follow_ups, the follow-up queue the Overview and Form Monitoring count. On purpose.
-    expect(Object.keys(dataToolHandlers(ctx(MANAGER, "")))).toEqual(["read_reviews", "read_stats", "read_form_deletions", "read_ai_assignments", "read_hr_approvals", "read_follow_ups"]);
+    // Pau, 26 Nov 2026 added read_whats_new, the What's New page's list (CLAUDE.md §5). On purpose.
+    expect(Object.keys(dataToolHandlers(ctx(MANAGER, "")))).toEqual(["read_reviews", "read_stats", "read_form_deletions", "read_ai_assignments", "read_hr_approvals", "read_follow_ups", "read_whats_new"]);
   });
 });
 
@@ -466,5 +467,33 @@ describe("read_follow_ups", () => {
   it("is registered with the loop's other data tools", () => {
     const { deps: d } = deps();
     expect(Object.keys(dataToolHandlers(verified(), undefined, d))).toContain("read_follow_ups");
+  });
+});
+
+describe("read_whats_new (Pau, 26 Nov 2026)", () => {
+  const ENTRIES = [
+    { date: "2026-11-26", title: "Admin thing", description: "Only administrators can open this page today.", href: "/admin/integrations/woven", permission: "manage_integrations" as const },
+    { date: "2026-11-25", title: "Everyone thing", description: "Every manager has this one in the app now." },
+    { date: "2026-11-20", title: "Older thing", description: "An older update from the week before this one.", href: "/reviews", permission: "view_google_reviews" as const },
+  ];
+  type Out = { updates?: { title: string; date: string }[]; refused?: string };
+
+  it("a manager gets the entries their role may open, newest first, and not an administrators' one", async () => {
+    const out = (await readWhatsNew(ctx(MANAGER, "what's new?"), {}, ENTRIES)) as Out;
+    expect(out.updates?.map((update) => update.title)).toEqual(["Everyone thing", "Older thing"]);
+    expect(out.updates?.[0]?.date).toBe("Nov 25, 2026");
+  });
+
+  it("an administrator gets every entry; since keeps the entries from that day on", async () => {
+    const all = (await readWhatsNew(ctx(ADMIN, "what's new?", "admin"), {}, ENTRIES)) as Out;
+    expect(all.updates?.map((update) => update.title)).toEqual(["Admin thing", "Everyone thing", "Older thing"]);
+    const week = (await readWhatsNew(ctx(ADMIN, "what's new this week?", "admin"), { since: "2026-11-24" }, ENTRIES)) as Out;
+    expect(week.updates?.map((update) => update.title)).toEqual(["Admin thing", "Everyone thing"]);
+  });
+
+  it("a role that cannot open the What's New page is refused and reads nothing", async () => {
+    const out = (await readWhatsNew(ctx(MANAGER, "what's new?", "employee"), {}, ENTRIES)) as Out;
+    expect(out.refused).toBeTruthy();
+    expect(out.updates).toBeUndefined();
   });
 });

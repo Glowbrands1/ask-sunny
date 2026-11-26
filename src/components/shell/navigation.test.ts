@@ -389,6 +389,7 @@ describe("what each role sees on the rail", () => {
      */
     const routeToFile: Record<string, string> = {
       "/": "src/app/(app)/page.tsx",
+      "/whats-new": "src/app/(app)/whats-new/page.tsx",
       "/chat": "src/app/(app)/chat/page.tsx",
       "/knowledge": "src/app/(app)/knowledge/page.tsx",
       "/videos": "src/app/(app)/videos/page.tsx",

@@ -88,6 +88,16 @@ export const NAV_SECTIONS: NavSection[] = [
          */
         permission: "view_overview",
       },
+      {
+        /*
+         * WHAT'S NEW (Pau, 26 Nov 2026): recent updates to Sunny, from `src/config/whats-new.ts`. The managers' home, so
+         * the Overview's permission; each entry about a page is shown only to a role that may open that page.
+         */
+        label: "What's New",
+        href: "/whats-new",
+        icon: Sparkles,
+        permission: "view_overview",
+      },
     ],
   },
   {
