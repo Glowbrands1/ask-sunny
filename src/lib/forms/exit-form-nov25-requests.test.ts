@@ -10,7 +10,7 @@ import {
   noticeDatesToClear,
 } from "./exit-submission-rules";
 import { blankBeforeSubmission } from "./required-fields";
-import { wovenAddressLine, exitEmployeeDirectoryId } from "./exit-woven-address";
+import { wovenAddressLine, wovenAddressShape, exitEmployeeDirectoryId } from "./exit-woven-address";
 
 /**
  * Pau, 25 Nov 2026, on the Exit Form (their words):
@@ -141,5 +141,20 @@ describe("Exit form requests, 25 Nov 2026", () => {
       { id: "now", firstName: "Remy", lastName: "Calder", preferredFirstName: null, employmentStatus: "active", salonIds: ["s1"] },
     ];
     expect(exitEmployeeDirectoryId(rows, "Remy Calder", { level: "global" } as never)).toBe("now");
+  });
+
+  it('"not showing address" (26 Nov 2026): Woven sends Address as one string with no City, State or Zip beside it', () => {
+    // The production body's shape, from the log: Address is a plain value at the top, next to EmployeeID and the rest.
+    const body = { EmployeeID: 1, EmailAddress: "someone@example.test", Address: "412 Ashgrove Ln, Kearney, NE 68847" };
+    expect(wovenAddressLine(body)).toBe("412 Ashgrove Ln, Kearney, NE 68847");
+    expect(wovenAddressLine({ ...body, Address: "412 Ashgrove Ln\nKearney, NE 68847" })).toBe("412 Ashgrove Ln, Kearney, NE 68847");
+    // A street alone is not a mailing address: the line stays blank rather than half filled.
+    expect(wovenAddressLine({ ...body, Address: "412 Ashgrove Ln" })).toBeNull();
+    expect(wovenAddressLine({ ...body, Address: null })).toBeNull();
+    // The log describes the value without ever printing it.
+    const shape = wovenAddressShape({ ...body, Address: "412 Ashgrove Ln" });
+    expect(shape).toContain("Address=string(length 15, has digits, no ZIP, 0 commas)");
+    expect(shape).not.toContain("Ashgrove");
+    expect(wovenAddressShape({ ...body, Address: null })).toContain("Address=null");
   });
 });
