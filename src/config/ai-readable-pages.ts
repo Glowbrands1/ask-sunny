@@ -27,7 +27,7 @@ import type { Permission } from "@/types";
  */
 
 /** The loop tools that read a page's figures. */
-export type PageReaderTool = "read_reviews" | "read_stats" | "find_past_forms" | "read_hr_approvals" | "read_follow_ups" | "read_whats_new" | "read_videos" | "read_manager_resources";
+export type PageReaderTool = "read_reviews" | "read_stats" | "find_past_forms" | "read_hr_approvals" | "read_follow_ups" | "read_whats_new" | "read_videos" | "read_manager_resources" | "read_ai_training";
 
 export interface PageReader {
   readonly tool: PageReaderTool;
@@ -70,7 +70,7 @@ const REVIEWS_READER: PageReader = {
 const NO_LOOP_READER = "no tool of the chat or the agent loop reads it.";
 const ADMIN = "An admin console page: ";
 const MEETINGS = "Meeting docs: Sunny's chat and agent loop have no reader (the meeting page's own assistant, /api/l10/assistant, reads them there).";
-const TRAINING = "AI training lessons and their management: " + NO_LOOP_READER;
+const TRAINING_EDITOR = "The AI Training editors' console (drafts, the archive, editing), for the editor list only: an admin console; " + NO_LOOP_READER;
 
 export const AI_READABLE_PAGES: readonly AiReadablePage[] = [
   /*
@@ -133,10 +133,13 @@ export const AI_READABLE_PAGES: readonly AiReadablePage[] = [
     reader: { tool: "read_videos", args: {}, figures: ["each video's title, category, length, who posted it and when", "what it is about", "the videos on a topic"], periods: ["newest first"], replayCase: "nov26-f039-videos-reach-the-model" } },
   { kind: "page", route: "/resources", title: "Manager resources", access: { permission: "view_manager_resources" },
     reader: { tool: "read_manager_resources", args: {}, figures: ["each link's name, what it is, category and link", "that none are listed yet, when the page has none"], periods: ["now"], replayCase: "nov26-f039-manager-resources-reach-the-model" } },
-  { kind: "page", route: "/ai-training", title: "AI training", access: { permission: "view_ai_training" }, notReadable: TRAINING },
-  { kind: "page", route: "/ai-training/[track]/[slug]", title: "AI training lesson", access: { permission: "view_ai_training" }, notReadable: TRAINING },
-  { kind: "page", route: "/ai-training/manage", title: "Manage AI training", access: { permission: "view_ai_training" }, notReadable: TRAINING },
-  { kind: "page", route: "/ai-training/manage/lessons/[id]", title: "Edit AI training lesson", access: { permission: "view_ai_training" }, notReadable: TRAINING },
+  /* Board f039 part 2 (26 Nov 2026): the published lessons, as a reader who is not an editor sees them. */
+  { kind: "page", route: "/ai-training", title: "AI training", access: { permission: "view_ai_training" },
+    reader: { tool: "read_ai_training", args: {}, figures: ["each published lesson's track, module, week, title and summary", "when each was posted", "the lessons on a topic"], periods: ["in course order"], replayCase: "nov26-f039-ai-training-reaches-the-model" } },
+  { kind: "page", route: "/ai-training/[track]/[slug]", title: "AI training lesson", access: { permission: "view_ai_training" },
+    reader: { tool: "read_ai_training", args: {}, figures: ["the lesson's title, summary, track, module and week (its full text stays on the page)"], periods: ["in course order"], replayCase: "nov26-f039-ai-training-reaches-the-model" } },
+  { kind: "page", route: "/ai-training/manage", title: "Manage AI training", access: { permission: "view_ai_training" }, notReadable: TRAINING_EDITOR },
+  { kind: "page", route: "/ai-training/manage/lessons/[id]", title: "Edit AI training lesson", access: { permission: "view_ai_training" }, notReadable: TRAINING_EDITOR },
 
   { kind: "page", route: "/admin/ai-usage", title: "AI usage", access: { permission: "view_ai_usage" }, notReadable: ADMIN + "AI usage and spend figures; " + NO_LOOP_READER },
   { kind: "page", route: "/admin/analytics", title: "Analytics", access: { permission: "view_analytics" }, notReadable: ADMIN + "chat analytics figures; " + NO_LOOP_READER },

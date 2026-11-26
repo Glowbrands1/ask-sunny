@@ -297,6 +297,7 @@ export function buildRulesBook(config: AppConfig): readonly RulesSection[] {
       "How many follow-ups are overdue, due this week or open, and which (\"how many follow-ups are overdue?\"), comes only from read_follow_ups: copy its counts, the same ones the Overview and " + config.formsPageName + " show, and never count forms from find_past_forms instead. An overdue HR approval is read_hr_approvals, not a follow-up.",
       "What's new in " + config.appName + " (\"what's new?\", \"any new features?\") comes only from read_whats_new: give the updates it lists, newest first, with their dates, in plain words; never name a feature it does not list.",
       "Which training videos there are, or one on a topic (\"is there a video on <topic>?\"), comes only from read_videos; the Manager Resources links only from read_manager_resources. Name only the videos and links they list; when they list none, say so.",
+      "Which AI Training lessons there are, or one on a topic (\"is there a lesson on <topic>?\"), comes only from read_ai_training: name only the lessons it lists, by title, track and module.",
       "Who has done, is due, missed or has more time on their AI assignments (AI Training > Assignments, \"who hasn't done their AI assignment?\") comes only from read_ai_assignments: give the people and halves as it lists them. It is only for the people the tracker was set up for: when it refuses, say so in one line and give nothing from it.",
     ],
   },

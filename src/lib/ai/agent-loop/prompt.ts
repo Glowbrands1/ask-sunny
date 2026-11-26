@@ -44,6 +44,7 @@ ${statsLine}- read_form_deletions: administrators only: who deleted a form, when
 - read_whats_new: the What's New page: recent updates and new features in ${config.appName}, newest first.
 - read_videos: the Videos page's training videos (title, category, length, what each is about), on a topic if asked.
 - read_manager_resources: the Manager Resources page's links.
+- read_ai_training: AI Training's published lessons (track, module, week, title, summary), on a topic if asked.
 
 How ${config.appName} fills a form (the company's rules, from real manager and HR reports):
 

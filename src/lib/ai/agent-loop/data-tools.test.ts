@@ -11,7 +11,7 @@ import type { AccessScope, Role } from "@/types";
 
 import { PRODUCTION_SALONS } from "@/data/salons";
 
-import { FIGURES_MAX, OTHERS_NOT_VISIBLE, OUTSIDE_ACCESS, dataToolHandlers, figuresWithin, readAiAssignments, readFollowUps, readFormDeletions, readManagerResources, readReviews, readStats, readVideos, readWhatsNew, salonsForTurn, type DataToolDeps, type FollowUpQueueRead, type FormDeletionRow } from "./data-tools";
+import { FIGURES_MAX, OTHERS_NOT_VISIBLE, OUTSIDE_ACCESS, dataToolHandlers, figuresWithin, readAiAssignments, readFollowUps, readFormDeletions, readAiTraining, readManagerResources, readReviews, readStats, readVideos, readWhatsNew, salonsForTurn, type DataToolDeps, type FollowUpQueueRead, type FormDeletionRow } from "./data-tools";
 
 /*
  * The agent loop's app data tools (QA, 15 Nov 2026): read_reviews and read_stats, with Pau's scope rules enforced in
@@ -106,6 +106,7 @@ function deps(overrides: Partial<DataToolDeps> = {}) {
     loadAssignmentTracker: async () => ({ people: [], marks: [] }),
     loadVideos: async () => [],
     loadManagerResources: () => [],
+    loadTrainingCatalog: async () => ({ tracks: [], modules: [], lessons: [] }),
     fetchDailyStatsGuide: vi.fn(async () => ({
       ok: true as const,
       grounding: { role: {} as never, documentId: "d", documentTitle: "DAILY STATS INTERPRETATION FRAMEWORK", matchedBy: "tag" as const, rows: [{ chunk_id: "c1", document_id: "d", document_title: "DAILY STATS INTERPRETATION FRAMEWORK", category: "operations", locator: "Section 2", content: "Lead with the one metric furthest from goal.", similarity: 0.9 } as never], presentGroups: [] },
@@ -303,8 +304,9 @@ describe("the scope rules", () => {
     // 23 Nov 2026 (Pau) added read_ai_assignments, the AI assignment tracker for its named people. Both on purpose.
     // QA, 24 Nov 2026 added read_follow_ups, the follow-up queue the Overview and Form Monitoring count. On purpose.
     // Pau, 26 Nov 2026 added read_whats_new, the What's New page's list (CLAUDE.md §5). On purpose.
-    // Board f039 part 2 (26 Nov 2026) added read_videos and read_manager_resources, the Videos and Manager Resources pages. On purpose.
-    expect(Object.keys(dataToolHandlers(ctx(MANAGER, "")))).toEqual(["read_reviews", "read_stats", "read_form_deletions", "read_ai_assignments", "read_hr_approvals", "read_follow_ups", "read_whats_new", "read_videos", "read_manager_resources"]);
+    // Board f039 part 2 (26 Nov 2026) added read_videos, read_manager_resources and read_ai_training (the Videos, Manager
+    // Resources and AI Training pages). On purpose.
+    expect(Object.keys(dataToolHandlers(ctx(MANAGER, "")))).toEqual(["read_reviews", "read_stats", "read_form_deletions", "read_ai_assignments", "read_hr_approvals", "read_follow_ups", "read_whats_new", "read_videos", "read_manager_resources", "read_ai_training"]);
   });
 });
 
@@ -530,5 +532,33 @@ describe("read_videos and read_manager_resources (board f039 part 2)", () => {
       loadManagerResources: () => [{ id: "r1", name: "Invented Portal", description: "Where the invented thing lives.", category: "reporting", url: "https://portal.invalid/", openMode: "new_tab", owner: "x", availability: "available", iconKey: "library" }],
     }).deps)) as { resources: { name: string; link?: string; category: string }[] };
     expect(one.resources).toEqual([{ name: "Invented Portal", what: "Where the invented thing lives.", category: "Reporting", link: "https://portal.invalid/" }]);
+  });
+});
+
+describe("read_ai_training (board f039 part 2)", () => {
+  const lesson = (id: string, title: string, moduleId: string | null, status: "draft" | "published", sortOrder: number) =>
+    ({ id, trackId: "t1", moduleId, slug: id, title, summary: `${title} in one page.`, weekNumber: null, sortOrder, status, publishedAt: "2026-11-20T10:00:00Z" });
+  const CATALOG = {
+    tracks: [{ id: "t1", slug: "basics", title: "AI Basics", sortOrder: 1 }],
+    modules: [
+      { id: "m1", trackId: "t1", slug: "prompts", title: "Prompting", sortOrder: 1, adminOnly: false },
+      { id: "m2", trackId: "t1", slug: "archive", title: "Archive", sortOrder: 2, adminOnly: true },
+    ],
+    lessons: [lesson("l1", "Writing a clear prompt", "m1", "published", 1), lesson("l2", "Checking an answer", "m1", "published", 2), lesson("l3", "Unfinished draft", "m1", "draft", 3), lesson("l4", "Old archived lesson", "m2", "published", 1)],
+  };
+  type Out = { lessons?: { title: { untrusted_text: string }; module?: string; track: string }[]; refused?: string };
+
+  it("lists the published lessons only: never a draft or an admin-only module's lesson, even if the read returned them", async () => {
+    const out = (await readAiTraining(ctx(MANAGER, "what's in AI Training?"), {}, deps({ loadTrainingCatalog: async () => CATALOG }).deps)) as Out;
+    expect(out.lessons?.map((entry) => entry.title.untrusted_text)).toEqual(["Writing a clear prompt", "Checking an answer"]);
+    expect(out.lessons?.[0]).toMatchObject({ track: "AI Basics", module: "Prompting" });
+  });
+
+  it("a topic keeps the matching lessons; a role without View AI training is refused", async () => {
+    const topic = (await readAiTraining(ctx(MANAGER, "is there a lesson on writing clearly?"), { topic: "writing clearly" }, deps({ loadTrainingCatalog: async () => CATALOG }).deps)) as Out;
+    expect(topic.lessons?.map((entry) => entry.title.untrusted_text)).toEqual(["Writing a clear prompt"]);
+    const refused = (await readAiTraining(ctx(MANAGER, "lessons?", "nobody" as Role), {}, deps({ loadTrainingCatalog: async () => CATALOG }).deps)) as Out;
+    expect(refused.refused).toBeTruthy();
+    expect(refused.lessons).toBeUndefined();
   });
 });
