@@ -56,6 +56,8 @@ export function exitEmployeeDirectoryId(
   rows: readonly DirectoryRosterRow[],
   employeeName: string | null | undefined,
   scope: AccessScope | null,
+  /** The location the exit form is filed at, when it has one: it tells two people with one name apart. */
+  formLocationId: string | null = null,
 ): string | null {
   const wanted = normalizeTypedName(employeeName ?? "");
   if (!wanted || !scope) return null;
@@ -82,7 +84,17 @@ export function exitEmployeeDirectoryId(
    * A REHIRE IS TWO WOVEN ROWS WITH ONE NAME (Pau, 25 Nov 2026: "i have access to that in woven why didn't my address
    * populate"): the old, terminated row and the current one. Exactly one still employed is that person.
    */
-  return active.size === 1 ? [...active][0]! : null;
+  if (active.size === 1) return [...active][0]!;
+  /*
+   * TWO CURRENT RECORDS WITH ONE NAME (production, 26 Nov 2026: one employee has a corporate record and a location
+   * record in Woven): the one at the location the exit form is filed at is the person, when exactly one is there.
+   */
+  if (formLocationId) {
+    const pool = active.size > 0 ? active : found;
+    const here = rows.filter((row) => pool.has(row.id) && row.salonIds.includes(formLocationId));
+    if (here.length === 1) return here[0]!.id;
+  }
+  return null;
 }
 
 /* ----------------------------------------------------------- the address -- */
@@ -255,7 +267,7 @@ function withinBudget<T>(work: Promise<T>, ms: number): Promise<T | null> {
  * a Woven or directory outage leaves the line blank and the draft goes on.
  */
 export async function wovenExitAddress(
-  input: { employeeName: string | null | undefined; scope: AccessScope | null },
+  input: { employeeName: string | null | undefined; scope: AccessScope | null; locationId?: string | null },
   deps?: WovenExitAddressDeps,
 ): Promise<string | null> {
   if (!deps && !wovenExitAddressEnabled()) return null;
@@ -272,7 +284,7 @@ export async function wovenExitAddress(
       (async () => {
         const live = deps ?? (await liveDeps());
         if (!live) return why("no Woven credentials");
-        const directoryId = exitEmployeeDirectoryId(await live.readDirectory(), input.employeeName, input.scope);
+        const directoryId = exitEmployeeDirectoryId(await live.readDirectory(), input.employeeName, input.scope, input.locationId ?? null);
         if (!directoryId) return why("not exactly one Woven person by that full name at the manager's salons");
         const wovenId = await live.wovenIdOf(directoryId);
         if (!wovenId) return why("directory row has no Woven id");

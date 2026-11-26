@@ -157,4 +157,18 @@ describe("Exit form requests, 25 Nov 2026", () => {
     expect(shape).not.toContain("Ashgrove");
     expect(wovenAddressShape({ ...body, Address: null })).toContain("Address=null");
   });
+
+  it("two current Woven records with one name (a corporate one and a location one): the one at the form's location", () => {
+    const rows = [
+      { id: "corporate", firstName: "Remy", lastName: "Calder", preferredFirstName: null, employmentStatus: "active", salonIds: ["hq"] },
+      { id: "location", firstName: "Remy", lastName: "Calder", preferredFirstName: null, employmentStatus: "active", salonIds: ["s1"] },
+    ];
+    const scope = { level: "global" } as never;
+    // Without the form's location the two cannot be told apart, so nothing is guessed.
+    expect(exitEmployeeDirectoryId(rows, "Remy Calder", scope)).toBeNull();
+    expect(exitEmployeeDirectoryId(rows, "Remy Calder", scope, "s1")).toBe("location");
+    expect(exitEmployeeDirectoryId(rows, "Remy Calder", scope, "hq")).toBe("corporate");
+    // A location neither record is at still guesses nothing.
+    expect(exitEmployeeDirectoryId(rows, "Remy Calder", scope, "s9")).toBeNull();
+  });
 });
