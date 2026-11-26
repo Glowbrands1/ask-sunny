@@ -47,7 +47,8 @@ describe("what this turn already did (F1, F2)", () => {
 
 describe("turns the loop does not take yet (F5)", () => {
   it("each field the loop would lose sends the turn to today's path", () => {
-    expect(agentLoopSkipReason({ attachedDocumentIds: ["d"] })).toBe("attachments");
+    /* Changed on purpose (Pau, 26 Nov 2026): attached files stay in the loop, which reads them (`lib/chat/attachments.server.ts`). */
+    expect(agentLoopSkipReason({ attachments: [{ filename: "d.pdf", mediaType: "application/pdf", url: "data:application/pdf;base64,AA==" }] } as never)).toBeNull();
     expect(agentLoopSkipReason({ reportContext: { family: "sales-totals" } })).toBe("report_context");
     expect(agentLoopSkipReason({ pendingCopyFromInstanceId: "x" })).toBe("pending_copy");
     expect(agentLoopSkipReason({ mode: "quick" })).toBe("answer_mode");
@@ -55,7 +56,7 @@ describe("turns the loop does not take yet (F5)", () => {
   });
 
   it("a plain turn stays in the loop: standard mode, no attachments, no report, no copy", () => {
-    expect(agentLoopSkipReason({ mode: "standard", attachedDocumentIds: [] })).toBeNull();
+    expect(agentLoopSkipReason({ mode: "standard" })).toBeNull();
   });
 
   it("the card's continuation key is only noted: the browser sends it on nearly every turn after a card", () => {

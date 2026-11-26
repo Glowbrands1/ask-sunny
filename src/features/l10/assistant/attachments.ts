@@ -8,8 +8,29 @@ export const ATTACH_ACCEPT = "image/png,image/jpeg,image/gif,image/webp,applicat
 
 const OK = /^(image\/(png|jpe?g|gif|webp)|application\/pdf)$/;
 
-export function attachmentProblem(file: { name: string; type: string; size: number }): string | undefined {
-  if (!OK.test(file.type)) return `${file.name}: only images (PNG, JPG, GIF, WebP) and PDFs can be attached.`;
+/*
+ * THE MAIN CHAT TAKES THE SAME FILES, PLUS WORD AND PLAIN TEXT (Pau, 26 Nov 2026: managers attach files in the main
+ * chat, "just like the Leadership Hub assistant"). Same limits and the same encoding as the panel's; the server reads a
+ * .docx and a text file as text (`lib/chat/attachments.server.ts`), because Claude reads only images and PDFs natively.
+ * The panel's list (ATTACH_ACCEPT) is the Hub's and is unchanged.
+ */
+export const DOCX_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+export const CHAT_ATTACH_ACCEPT = `${ATTACH_ACCEPT},${DOCX_TYPE},.docx,text/plain,.txt,text/csv,.csv,text/markdown,.md`;
+const CHAT_OK = /^(image\/(png|jpe?g|gif|webp)|application\/pdf|application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document|text\/(plain|csv|markdown))$/;
+
+/** What a picked file is, by its type or (a browser that gives a .md or .csv no type) its extension. */
+export function attachmentType(file: { name: string; type: string }): string {
+  if (file.type && file.type !== "application/octet-stream") return file.type === "image/jpg" ? "image/jpeg" : file.type;
+  const extension = /\.([a-z0-9]+)$/i.exec(file.name)?.[1]?.toLowerCase();
+  return extension === "docx" ? DOCX_TYPE : extension === "md" ? "text/markdown" : extension === "csv" ? "text/csv" : extension === "txt" ? "text/plain" : file.type;
+}
+
+export function attachmentProblem(file: { name: string; type: string; size: number }, accepts: "panel" | "chat" = "panel"): string | undefined {
+  if (accepts === "chat" ? !CHAT_OK.test(attachmentType(file)) : !OK.test(file.type)) {
+    return accepts === "chat"
+      ? `${file.name}: only images (PNG, JPG, GIF, WebP), PDFs, Word (.docx) and text files can be attached.`
+      : `${file.name}: only images (PNG, JPG, GIF, WebP) and PDFs can be attached.`;
+  }
   if (file.size > MAX_FILE_BYTES) return `${file.name} is larger than 10 MB.`;
 }
 
@@ -67,6 +88,9 @@ export async function normalizedImage(file: File): Promise<string> {
 export async function toFilePart(file: File): Promise<FileUIPart> {
   const isImage = file.type.startsWith("image/");
   const url = isImage ? await normalizedImage(file) : await toDataUrl(file);
-  const mediaType = /^data:([^;,]+)/.exec(url)?.[1] ?? file.type;
-  return { type: "file", mediaType, url, filename: file.name };
+  // A file the browser gave no type (a .md, a .csv on some systems) is labelled by its extension, here and in its data URL.
+  const typed = attachmentType(file);
+  const read = /^data:([^;,]*)/.exec(url)?.[1] ?? "";
+  const mediaType = read && read !== "application/octet-stream" ? read : typed;
+  return { type: "file", mediaType, url: read === mediaType ? url : url.replace(/^data:[^;,]*/, `data:${mediaType}`), filename: file.name };
 }

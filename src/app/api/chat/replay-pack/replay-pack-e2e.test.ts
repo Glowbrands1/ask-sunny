@@ -108,6 +108,8 @@ const state = vi.hoisted(() => ({
   lastGrounding: "",
   /** The FORMS ON FILE block the answering model was last given (`lastFormRecords`). */
   lastFormRecords: "",
+  /** The attached files the answering model was last given (`lastAttachments`). */
+  lastAttachments: [] as unknown[],
   /** The REPORT DATA and the system prompt the answering model was last given (`lastReportData`, `lastSystem`). */
   lastReportData: "",
   lastSystem: "",
@@ -344,12 +346,13 @@ vi.mock("@/lib/ai/call-claude", () => ({
       usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 },
     };
   },
-  callClaude: async (input?: { system?: string; grounding?: string; reportData?: string | null; formRecords?: string | null; formEditTool?: { data: string; onToolUse: (call: unknown) => void } | null }) => {
+  callClaude: async (input?: { system?: string; grounding?: string; reportData?: string | null; formRecords?: string | null; attachments?: readonly unknown[]; formEditTool?: { data: string; onToolUse: (call: unknown) => void } | null }) => {
     /* PR 6: a model call made inside a loop tool counts toward the step limit, as the real call notes itself. */
     (await import("@/lib/ai/model-call-scope")).noteModelCall();
     state.chatModelCalls += 1;
     state.lastGrounding = String(input?.grounding ?? "");
     state.lastFormRecords = String(input?.formRecords ?? "");
+    state.lastAttachments = [...(input?.attachments ?? [])];
     state.lastReportData = String(input?.reportData ?? "");
     state.lastSystem = String(input?.system ?? "");
     // REPLAY_RECORD (QA, 10 Nov 2026): the system prompt each answer was asked with, as a hash, so two versions of the
@@ -980,6 +983,7 @@ beforeEach(async () => {
   state.manualVersionChecks = 0;
   state.lastGrounding = "";
   state.lastFormRecords = "";
+  state.lastAttachments = [];
   state.lastReportData = "";
   state.lastSystem = "";
   state.reviewsOnFile = false;
@@ -1176,6 +1180,7 @@ function context(): ReplayContext {
     },
     lastGrounding: () => state.lastGrounding,
     lastFormRecords: () => state.lastFormRecords,
+    lastAttachments: () => state.lastAttachments,
     lastReportData: () => state.lastReportData,
     lastSystem: () => state.lastSystem,
     reviewsOnFile: () => {
