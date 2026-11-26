@@ -286,7 +286,9 @@ async function postChat(request: Request, progress?: ProgressChannel) {
         /* PR 4: the loop's turn is logged by the tools it actually called (never by the message text). */
         const { loopTurnCategory } = await import("@/lib/ai/agent-loop/turn-category");
         await closeTurn(turnId, { category: loopTurnCategory(loopTools, looped), succeeded: true, latencyMs: Date.now() - askedAt });
-        return NextResponse.json({ ...looped, turnId });
+        /* The owner, 26 Nov 2026: a coaching how-to answer names the closest ready training video, or none (`ai/coaching-video.ts`). */
+        const withVideo = await (await import("@/lib/ai/coaching-video")).withCoachingVideo(looped, { question: parsedForLoop.question, history: parsedForLoop.history, role: context.identity.role });
+        return NextResponse.json({ ...withVideo, turnId });
       } catch (error) {
         await closeTurn(turnId, { category: "unclassified", succeeded: false, latencyMs: Date.now() - askedAt });
         throw error;
@@ -1200,6 +1202,11 @@ async function postChat(request: Request, progress?: ProgressChannel) {
         ? outline.policyKeptNote({ question: outlineQuestion, policyViolated: value("policy_violated"), policyLanguage: value("policy_language") })
         : null;
       if (note) answer = { ...answer, content: outline.withPolicyKeptNote(answer.content, note) };
+    }
+    /* The owner, 26 Nov 2026: a coaching how-to answer names the closest ready training video, or none (`ai/coaching-video.ts`). */
+    {
+      const turn = (() => { try { return parseAskRequest(body); } catch { return null; } })();
+      if (turn) answer = await (await import("@/lib/ai/coaching-video")).withCoachingVideo(answer, { question: turn.question, history: turn.history, role: context.identity.role });
     }
     // FINAL_REPLY_MARKER_GUARD_ENABLED: no bare source tag reaches the manager, whatever path answered. See `ai/source-note.ts`.
     return NextResponse.json({ ...finalReplyWithoutMarkers(answer), turnId });

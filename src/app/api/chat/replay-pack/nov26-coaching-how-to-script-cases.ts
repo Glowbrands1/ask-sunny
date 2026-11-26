@@ -28,7 +28,7 @@ const ASKS = [
 /** What a model wrote before: generic tips, no outline and nothing in quotes. */
 const TIPS_ONLY = "Be direct but kind, focus on the behavior rather than the person, listen to their side, and agree on what happens next.";
 
-/** The answer the rule asks for: a numbered outline, a quoted script, a checklist. */
+/** The answer the rule asks for: a numbered outline, a quoted script, a role-play, an action plan, a checklist (the role-play and plan added on purpose with the prep package, 26 Nov 2026). */
 const FULL = [
   "Here's how to run it:",
   "1. Opening: set a calm, private tone.",
@@ -39,6 +39,9 @@ const FULL = [
   "",
   "What to say:",
   "\"I wanted to talk with you about the last few shifts. I've noticed this a few times, and I want to understand what's going on and help you get back on track. What's been happening from your side?\"",
+  "",
+  "Role-play: you play the employee and push back once; practise the expectation together.",
+  "Action plan: on time for the next five shifts, checked by you; follow-up on the date above.",
   "",
   "Checklist: facts written down, private space, follow-up date on the calendar.",
 ].join("\n");

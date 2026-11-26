@@ -38,7 +38,7 @@ import { replyWithShortName } from "@/lib/forms/short-name";
 import { agentLoopRules, agentLoopSystem } from "./prompt";
 import { generatedId, identifiedTurns, messageIdTag, withoutMessageIdTags } from "./evidence";
 import { agentLoopStepLimit } from "./switch";
-import { asksCoachingHowTo, coachingAnswerShape, coachingHowToNote } from "@/lib/ai/coaching-how-to";
+import { asksCoachingHowTo, coachingAnswerShape, coachingHowToNote, completeShape, partsOf } from "@/lib/ai/coaching-how-to";
 
 import { adviceNotForm, onlyAsksWho } from "./advice-not-form";
 import { createFormButtonNoCardNote, isCreateFormButtonTurn } from "./create-form-button";
@@ -1603,16 +1603,16 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
           if (again && !onlyAsksWho(again)) text = again;
         }
         /*
-         * Owner, 26 Nov 2026: a coaching / hard-conversation how-to answer always has a numbered outline and a quoted
-         * script the manager can say (`coaching-how-to.ts`, the rules book's coachingHowToRule). A reply on such a turn
-         * with no card that lacks either goes back once; the answer it returns is kept only when it is no worse.
+         * Owner, 26 Nov 2026: a coaching / hard-conversation how-to answer is a prep package: a numbered outline, a quoted
+         * script the manager can say, a role-play and a measurable action plan among its parts (`coaching-how-to.ts`, the
+         * rules book's coachingHowToRule). A reply on such a turn with no card that lacks one goes back once; the answer
+         * it returns is kept only when it is no worse.
          */
         if (stoppedAt === "reply" && !effects.proposal && !effects.formOpened && !effects.formUpdate && adviceNotForm(input.question, input.history) && asksCoachingHowTo(input.question)) {
           const shape = coachingAnswerShape(text);
-          if (!shape.outline || !shape.script) {
+          if (!completeShape(shape)) {
             const again = await handBack(coachingHowToNote(shape));
-            const next = again ? coachingAnswerShape(again) : null;
-            if (again && next && !onlyAsksWho(again) && Number(next.outline) + Number(next.script) >= Number(shape.outline) + Number(shape.script)) text = again;
+            if (again && !onlyAsksWho(again) && partsOf(coachingAnswerShape(again)) >= partsOf(shape)) text = again;
           }
         }
         /*

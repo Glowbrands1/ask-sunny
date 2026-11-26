@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { adviceNotForm } from "./agent-loop/advice-not-form";
 import { agentLoopRules } from "./agent-loop/prompt";
 import { rulesBookText } from "./agent-loop/rules-book";
-import { asksCoachingHowTo, coachingAnswerShape, coachingHowToNote, coachingHowToRule, SIGNATURE_RULE, withCoachingHowTo } from "./coaching-how-to";
+import { asksCoachingHowTo, coachingAnswerShape, coachingCardPrepRule, coachingHowToNote, coachingHowToRule, completeShape, partsOf, SIGNATURE_RULE, withCoachingHowTo } from "./coaching-how-to";
 import { buildSystemPrompt } from "./prompts";
 
 /*
@@ -20,11 +20,27 @@ const ASKS = [
 describe("the coaching how-to rule", () => {
   const rule = coachingHowToRule("salon");
 
-  it("requires the outline, the quoted script and the checklist, all three", () => {
-    expect(rule).toMatch(/always all three/);
+  it("is a prep package: why, when, the outline, the quoted script, an analogy, a role-play, a measurable plan and a checklist", () => {
+    expect(rule).toMatch(/is a prep package the manager can use, tuned to the topic/);
+    expect(rule).toMatch(/\(1\) why it matters/);
+    expect(rule).toMatch(/\(2\) when to have the conversation/);
+    expect(rule).toMatch(/\(5\) a relatable analogy/);
+    expect(rule).toMatch(/\(6\) a role-play to run together/);
+    expect(rule).toMatch(/\(7\) a measurable action plan: what changes, how it is measured, and the follow-up date/);
     expect(rule).toMatch(/short outline of the conversation, as a numbered list: the opening, the facts and the expectation, listening to their side, agreement on next steps, and a follow-up date/);
-    expect(rule).toMatch(/sample script in quotation marks that the manager can read aloud word for word, tailored to the situation they described/);
+    expect(rule).toMatch(/sample script in quotation marks that the manager can read aloud word for word/);
     expect(rule).toMatch(/short checklist/);
+  });
+
+  it("orders the struggling-employee answer and asks at most two questions", () => {
+    expect(rule).toMatch(/struggling with <X>[\s\S]*coaching guidance first[\s\S]*Observed \/ Expectation \/ Practice \/ Follow-Up[\s\S]*role-play tied to the follow-up date[\s\S]*offering to make the form/);
+    expect(rule).toMatch(/at most one or two quick questions/);
+  });
+
+  it("a Coaching card gets the prep above it, never on the card or the form", () => {
+    expect(coachingCardPrepRule()).toMatch(/the reply above the card gives the prep package/);
+    expect(coachingCardPrepRule()).toMatch(/never put it in what_happened, on the card or on the form/);
+    expect(rulesBookText()).toContain(coachingCardPrepRule());
   });
 
   it("cites the JBA Policy Manual by its title, proposes no form, and frames coaching as development", () => {
@@ -55,19 +71,27 @@ describe("the coaching how-to rule", () => {
 });
 
 describe("coachingAnswerShape", () => {
-  it("finds a numbered outline and a quoted script", () => {
-    const reply = "1. Opening\n2. The facts\n3. Listen\n4. Next steps\n5. Follow-up\n\n\"I wanted to check in with you about the last few shifts and how we can fix it together.\"";
-    expect(coachingAnswerShape(reply)).toEqual({ outline: true, script: true });
+  it("finds a numbered outline, a quoted script, a role-play and a plan with a follow-up", () => {
+    const reply = "1. Opening\n2. The facts\n3. Listen\n4. Next steps\n5. Follow-up\n\n\"I wanted to check in with you about the last few shifts and how we can fix it together.\"\n\nRole-play it once. Action plan: on time five shifts, follow-up next week.";
+    expect(coachingAnswerShape(reply)).toEqual({ outline: true, script: true, rolePlay: true, plan: true });
+    expect(completeShape(coachingAnswerShape(reply))).toBe(true);
   });
 
-  it("generic tips have neither", () => {
-    expect(coachingAnswerShape("Be direct but kind, focus on the behavior, listen, and agree on next steps.")).toEqual({ outline: false, script: false });
+  it("generic tips have none of it", () => {
+    const shape = coachingAnswerShape("Be direct but kind, focus on the behavior, listen, and agree on next steps.");
+    expect(shape).toEqual({ outline: false, script: false, rolePlay: false, plan: false });
+    expect(partsOf(shape)).toBe(0);
   });
 
   it("a short quoted phrase is not a script; curly quotes and a blockquote are", () => {
     expect(coachingAnswerShape("Say \"thank you\" often.").script).toBe(false);
     expect(coachingAnswerShape("“I want to talk with you about being on time, because the team counts on you.”").script).toBe(true);
     expect(coachingAnswerShape("> I want to talk with you about being on time, because the team counts on you.").script).toBe(true);
+  });
+
+  it("a plan needs its follow-up", () => {
+    expect(coachingAnswerShape("Action plan: be on time.").plan).toBe(false);
+    expect(coachingAnswerShape("Action plan: be on time; check in Friday.").plan).toBe(true);
   });
 });
 
@@ -82,9 +106,17 @@ describe("asksCoachingHowTo, with adviceNotForm", () => {
     expect(asksCoachingHowTo("what time does the salon open on Sunday?")).toBe(false);
   });
 
+  it("\"how do I help an employee who is struggling with upselling\" is advice about coaching", () => {
+    expect(adviceNotForm("how do I help an employee who is struggling with upselling")).toBe(true);
+    expect(asksCoachingHowTo("how do I help an employee who is struggling with upselling")).toBe(true);
+  });
+
   it("the hand-back note names what is missing", () => {
-    expect(coachingHowToNote({ outline: false, script: true })).toMatch(/is missing a short numbered outline/);
-    expect(coachingHowToNote({ outline: true, script: false })).toMatch(/is missing a sample script in quotation marks/);
-    expect(coachingHowToNote({ outline: false, script: false })).toMatch(/JBA Policy Manual/);
+    const all = { outline: true, script: true, rolePlay: true, plan: true };
+    expect(coachingHowToNote({ ...all, outline: false })).toMatch(/is missing a short numbered outline/);
+    expect(coachingHowToNote({ ...all, script: false })).toMatch(/is missing the words to use: a sample script in quotation marks/);
+    expect(coachingHowToNote({ ...all, rolePlay: false })).toMatch(/is missing a role-play to run together/);
+    expect(coachingHowToNote({ ...all, plan: false })).toMatch(/is missing a measurable action plan with a follow-up date/);
+    expect(coachingHowToNote({ outline: false, script: false, rolePlay: false, plan: false })).toMatch(/JBA Policy Manual/);
   });
 });

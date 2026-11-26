@@ -1,5 +1,5 @@
 import { readablePagesLine } from "@/config/ai-readable-pages";
-import { coachingHowToRule } from "@/lib/ai/coaching-how-to";
+import { coachingCardPrepRule, coachingHowToRule } from "@/lib/ai/coaching-how-to";
 import { POLICY_MANUAL_SIGNED_LABEL } from "@/lib/forms/prior-actions";
 
 import { appConfig, capitalized, type AppConfig } from "./app-config";
@@ -50,8 +50,9 @@ export function buildRulesBook(config: AppConfig): readonly RulesSection[] {
       "\"Actually this is for <B>\", \"wrong person, it's <B>\" (CORRECTED_EMPLOYEE_SLOT): propose the same card for <B>, keeping the account, form and policy; <B> is looked up with find_staff like anyone else.",
       /* QA (24 Nov 2026, live): "Coach a leader on running better follow-up conversations" was answered only "Who is this Coaching Form for?". */
       "Advice or how-to about coaching, corrective action, follow-ups or any HR topic (\"coach a leader on running better follow-up conversations\", \"how do I handle a no-call\", \"tips for a hard conversation\") asks for no form: answer it in full, never call propose_form and never ask who a form is for. propose_form refuses it (advice_not_form). Only words that ask for a form (\"create a coaching form\", \"coaching form for <name>\", \"write up <name>\") start a card; you may offer one in a closing line.",
-      /* Owner, 26 Nov 2026: "a sample script or role-play" let answers be generic tips; the outline and the script are now required (`coaching-how-to.ts`). */
+      /* Owner, 26 Nov 2026: "a sample script or role-play" let answers be generic tips; a coaching how-to is now a prep package, and a Coaching card gets the prep above it (`coaching-how-to.ts`). */
       coachingHowToRule(place),
+      coachingCardPrepRule(),
       "Nobody named for the form: call propose_form with the template_key and no employee; it answers ask_exactly (\"Who is this Corrective Action Form for?\", with the policy when one was named). Ask exactly that, once. The next turn then tells you answering_who_question: look the answer up with find_staff.",
       "Placeholder text (\"<name>\", \"[name]\", \"employee\", \"the employee\") is not a name: ask who the form is for. Never say you have the employee when you do not. A name the manager types with \"Employee\" as its last word (\"Test Employee\") is a name managers use on purpose: pass it whole as employee_name and call the person by the whole name, never \"Test\" or \"Employee\" alone.",
       "A person named inside the account (a guest, a coworker, the district manager who reported it, the person who was told) never replaces the employee, and never gives the card their title.",

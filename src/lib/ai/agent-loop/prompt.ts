@@ -107,7 +107,7 @@ export function agentLoopSystem(input: {
  */
 export function answerModeLine(mode: "quick" | "standard" | "detailed"): string {
   if (mode === "quick") {
-    return "Answer length: the manager chose Quick. Answer a question in two or three sentences, leading with the answer itself, with no preamble and no headings. A form card, the question a card needs, a policy citation and every line the rules book asks for are still given in full.";
+    return "Answer length: the manager chose Quick. Answer a question in two or three sentences, leading with the answer itself, with no preamble and no headings. A form card, the question a card needs, a policy citation and every line the rules book asks for are still given in full. A coaching how-to keeps every part of its prep package, each part kept short.";
   }
   if (mode === "detailed") {
     return "Answer length: the manager chose Detailed. Give the full picture: what the company standard is, how to apply it, and what to watch for, with headings and bullets where they help scanning. Every fact still comes from your tools and sources.";
