@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { withoutTopicPrefix } from "@/lib/forms/coaching-topic-prefix";
 import { keptPlanSteps, withPlanSteps } from "@/lib/forms/stated-plan-steps";
-import { priorFormsUpToTodayEnabled, statedPlanStepsEnabled } from "@/lib/config/chat-quality-flags";
+import { allFieldsRequiredEnabled, priorFormsUpToTodayEnabled, statedPlanStepsEnabled } from "@/lib/config/chat-quality-flags";
 import { loopWriteUpSections } from "@/lib/forms/loop-write-up-sections";
 import { withAccountFactsKept } from "@/lib/forms/account-facts-kept";
 import { TERMINATION_OPTION, withTerminationPlan } from "@/lib/forms/termination-stated";
@@ -272,6 +272,7 @@ import { applyEmployeeName, employeeFirstName, employeeNameRules } from "@/lib/f
 import {
   LEGACY_PREVIOUS_ACTION_DATE_KEY,
   NO_PRIOR_ACTION,
+  NO_PRIOR_ACTIONS_FOUND,
   PRIOR_ACTIONS_KEY,
   groundPriorActions,
 } from "@/lib/forms/prior-actions";
@@ -2160,6 +2161,12 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       const base = { ...(exit?.values ?? attributions.values) };
       if (priorActions) {
         if (priorActions.value.trim() !== "") base[PRIOR_ACTIONS_KEY] = priorActions.value;
+        /*
+         * NOTHING FOUND READS "N/A" FROM THE DRAFT ON (Pau, 26 Nov 2026, on a drafted Corrective Action with the box
+         * empty: "still not say N/A here"). With ALL_FIELDS_REQUIRED_ENABLED, no step the manager stated and no form
+         * on file (finalized, or with HR) writes "N/A" now, not only at send time. A step added later replaces it.
+         */
+        else if (allFieldsRequiredEnabled()) base[PRIOR_ACTIONS_KEY] = NO_PRIOR_ACTIONS_FOUND;
         else delete base[PRIOR_ACTIONS_KEY];
       }
       return base;
