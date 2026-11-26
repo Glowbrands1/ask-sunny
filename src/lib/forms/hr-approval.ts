@@ -30,6 +30,7 @@ import {
   type HrDecision,
 } from "./hr-approval-rules";
 import {
+  fillNoPriorActionsFound,
   finalizeInstance,
   finalizePreflight,
   loadInstance,
@@ -164,7 +165,8 @@ export async function sendForHrApproval(
   if (heldForHr(before.instance.hrApprovalState)) throw new HrApprovalError("This form is already waiting for HR approval.");
   // Anyone the route let edit this draft may send it (owner, 23 Nov 2026); they are recorded as its sender.
 
-  finalizePreflight(before, options);
+  // ALL_FIELDS_REQUIRED_ENABLED: a blank Corrective Action history box is written "N/A" before the checks.
+  finalizePreflight(await fillNoPriorActionsFound(before, actor.id), options);
 
   const now = new Date().toISOString();
   const { data, error } = await getSupabaseAdmin()

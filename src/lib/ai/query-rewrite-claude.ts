@@ -81,6 +81,21 @@ export async function rewriteToManualTerms(input: {
   readonly loadHeadings?: () => Promise<readonly string[]>;
   readonly callModel?: (headings: readonly string[]) => Promise<unknown>;
 }): Promise<string> {
+  return (await manualHeadingQuery(input)) ?? input.fallback;
+}
+
+/**
+ * The heading half of `rewriteToManualTerms`: the query in the manual's terms, or null where the caller's own query
+ * stands (no heading fits, or a read failed). It reads only the question, the turns before it and the manual's headings,
+ * never the caller's query, so CHAT_PARALLEL_REWRITE_ENABLED can start it as the turn arrives (`ai/server-ask.ts`).
+ */
+export async function manualHeadingQuery(input: {
+  readonly question: string;
+  readonly history: readonly { role: string; content: string }[];
+  readonly scopeId: string;
+  readonly loadHeadings?: () => Promise<readonly string[]>;
+  readonly callModel?: (headings: readonly string[]) => Promise<unknown>;
+}): Promise<string | null> {
   try {
     const headings = input.loadHeadings ? await input.loadHeadings() : await defaultHeadings(input.scopeId);
     const known = manualTermsQuery({ question: input.question, headings, modelHeading: null });
@@ -89,9 +104,9 @@ export async function rewriteToManualTerms(input: {
       ? await input.callModel(headings)
       : await defaultHeadingCall(input.question, input.history, headings);
     const heading = raw && typeof raw === "object" && "heading" in raw ? String((raw as { heading: unknown }).heading) : "";
-    return manualTermsQuery({ question: input.question, headings, modelHeading: heading || null }) ?? input.fallback;
+    return manualTermsQuery({ question: input.question, headings, modelHeading: heading || null }) ?? null;
   } catch {
-    return input.fallback;
+    return null;
   }
 }
 

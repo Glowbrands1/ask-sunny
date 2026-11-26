@@ -1,5 +1,6 @@
 "use client";
 
+import { NOTICE_DATE_GATE, noticeDatesToClear } from "@/lib/forms/exit-submission-rules";
 import * as React from "react";
 import Link from "next/link";
 import { AlertTriangle, Check, Download, ExternalLink, Loader2, PencilLine, Plus, Printer } from "lucide-react";
@@ -21,6 +22,7 @@ import { useSession } from "@/lib/session/session-context";
 import { asdNoFormMonitoringEnabled } from "@/lib/permissions";
 import { checkboxGroupsForVariant, fieldsForVariant } from "@/lib/forms/document";
 import { yearCheckWarnings } from "@/lib/forms/date-year-check";
+import { blankBeforeSubmission, REQUIRED_FIELDS_BLANK } from "@/lib/forms/required-fields";
 import { planSummary } from "@/lib/forms/plan-summary";
 import { manualStandingNotice } from "@/lib/forms/standing-notices";
 import {
@@ -277,6 +279,29 @@ export function InlineForm({
    */
   const [confirmingPolicy, setConfirmingPolicy] = React.useState(false);
   /*
+   * BLANK FIELDS AT FINALIZE (Pau, 25 Nov 2026: "dont just auto reject it, add a pop up that there are missing fields
+   * and highlight it"). The fields the server refused as blank: the pop-up lists them and says why, and each stays
+   * outlined on the form until it is filled. `missingOpen` is the pop-up itself.
+   */
+  const [refusedBlank, setRefusedBlank] = React.useState<readonly { key: string; label: string }[]>([]);
+  const [missingOpen, setMissingOpen] = React.useState(false);
+  /*
+   * STILL BLANK, read live from what is on screen with the server's own rule (`required-fields.ts`), so a field's
+   * outline goes the moment it is filled in. Only fields the server named are outlined.
+   */
+  const stillBlank = React.useMemo(() => {
+    if (refusedBlank.length === 0 || load.kind !== "ready") return new Set<string>();
+    const keys = new Set([...Object.keys(edits.values), ...Object.keys(edits.checked)]);
+    const rows = [...keys].map((key) => ({ fieldKey: key, value: edits.values[key] ?? null, checked: edits.checked[key] ?? [] }));
+    const blankNow = new Set(
+      blankBeforeSubmission(load.loaded.version.document, load.loaded.instance.variantKey, rows, { reEvaluation: true }).map(
+        (part) => part.key,
+      ),
+    );
+    return new Set(refusedBlank.map((part) => part.key).filter((key) => blankNow.has(key)));
+  }, [refusedBlank, edits, load]);
+
+  /*
    * FINALIZE IS ASKED ONCE, TOO. It freezes an HR record — afterwards the only
    * way to change it is a new draft that replaces it — and in live QA a single
    * click did that with no chance to stop. When the policy dialog above is
@@ -416,6 +441,16 @@ export function InlineForm({
   const variant =
     loaded.version.variants.find((entry) => entry.key === loaded.instance.variantKey) ?? null;
 
+  /** Closes the pop-up and brings the first outlined field into view. */
+  function showMissing() {
+    setMissingOpen(false);
+    window.setTimeout(() => {
+      const first = document.querySelector<HTMLElement>("[data-missing-field]");
+      first?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+      first?.querySelector<HTMLElement>("input:not([disabled]), textarea:not([disabled]), button:not([disabled])")?.focus({ preventScroll: true });
+    }, 50);
+  }
+
   function change(next: ResponsiveFormValues) {
     setEdits(next);
     // "Saved" must never survive a keystroke — it would be describing the
@@ -539,6 +574,7 @@ export function InlineForm({
         }),
       });
       setHrNote("");
+      setRefusedBlank([]);
       await reload();
       setAction({ kind: "idle" });
     } catch (error) {
@@ -549,6 +585,16 @@ export function InlineForm({
        * dialog exists to prevent. Re-read the form so the dialog names the
        * fields the server named, then ask.
        */
+      /*
+       * BLANK FIELDS ARE A POP-UP, NOT AN ERROR LINE: it says which fields and why, and the form outlines them.
+       */
+      if (error instanceof FormsFetchError && error.code === REQUIRED_FIELDS_BLANK && error.missing.length > 0) {
+        await reload().catch(() => null);
+        setRefusedBlank(error.missing);
+        setAction({ kind: "idle" });
+        setMissingOpen(true);
+        return;
+      }
       if (
         error instanceof FormsFetchError &&
         error.code === POLICY_ACKNOWLEDGEMENT_REQUIRED &&
@@ -780,6 +826,7 @@ export function InlineForm({
           document={loaded.version.document}
           variant={variant}
           values={edits}
+          missing={readOnly ? undefined : stillBlank}
           readOnly={readOnly}
           onValue={(key, value) =>
             change({ ...edits, values: { ...edits.values, [key]: value } })
@@ -800,7 +847,16 @@ export function InlineForm({
               : single
                 ? [option]
                 : [...current, option];
-            change({ ...edits, checked: { ...edits.checked, [key]: next } });
+            /*
+             * Unticking "Submitted & Fulfilled Notice" clears the two notice
+             * dates: they are only entered with it ticked (Pau, 25 Nov 2026;
+             * `exit-submission-rules.ts`, which the save route applies too).
+             */
+            const cleared =
+              key === NOTICE_DATE_GATE.group
+                ? Object.fromEntries(noticeDatesToClear(next, edits.values).map((date) => [date, ""]))
+                : {};
+            change({ ...edits, values: { ...edits.values, ...cleared }, checked: { ...edits.checked, [key]: next } });
           }}
         />
       </div>
@@ -1037,6 +1093,13 @@ export function InlineForm({
             />
           ) : null}
 
+          {!readOnly && stillBlank.size > 0 ? (
+            <p data-testid="missing-fields-reminder" className="flex items-start gap-1 text-xs font-medium text-status-failed">
+              <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+              {stillBlank.size === 1 ? "1 field is" : `${stillBlank.size} fields are`} still blank, outlined in red above.
+            </p>
+          ) : null}
+
           {action.kind === "error" ? (
             <p className="flex items-start gap-1 text-xs text-status-attention">
               <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
@@ -1095,6 +1158,51 @@ export function InlineForm({
                   <Loader2 className="animate-spin" />
                 ) : null}
                 Finalize anyway
+              </Button>
+            </DialogActions>
+          </DialogContent>
+        ) : null}
+      </Dialog>
+
+      {/*
+        BLANK FIELDS (Pau, 25 Nov 2026: "pls add a note as to why dont just auto reject it, add a pop up that there are
+        missing fields and highlight it"). Says why the form cannot go yet, lists what is blank, and "Show me" closes it
+        onto the first outlined field.
+      */}
+      <Dialog
+        open={missingOpen}
+        onOpenChange={(open) => {
+          if (!open) setMissingOpen(false);
+        }}
+      >
+        {missingOpen ? (
+          <DialogContent
+            title="Some fields are still blank"
+            description={`${loaded.instance.templateName} · ${loaded.instance.employeeName}`}
+          >
+            <div data-testid="missing-fields-dialog" className="space-y-3 text-[13px] leading-relaxed">
+              <p className="text-muted-foreground">
+                {toHr
+                  ? "This form can't be sent for approval yet. "
+                  : "This form can't be finalized yet. "}
+                Every field has to be filled in first, so HR receives a complete record and nothing on it has to be
+                chased up later. Signatures aren&apos;t needed here: they are signed by hand, in person.
+              </p>
+              <div>
+                <p className="eyebrow">Still blank ({refusedBlank.length})</p>
+                <ul className="mt-1 list-disc space-y-0.5 pl-5 text-foreground">
+                  {refusedBlank.map((part) => (
+                    <li key={part.key}>{part.label}</li>
+                  ))}
+                </ul>
+              </div>
+              <p className="text-muted-foreground">
+                They are outlined in red on the form. Fill them in, save, then {toHr ? "send it again" : "finalize again"}.
+              </p>
+            </div>
+            <DialogActions>
+              <Button variant="primary" onClick={showMissing}>
+                Show me the blank fields
               </Button>
             </DialogActions>
           </DialogContent>

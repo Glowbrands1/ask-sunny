@@ -17,7 +17,8 @@ import { loopStandIn, type LoopDecision } from "./loop-stand-in";
  */
 
 const FIX = ["SOURCES_ON_TOPIC_ENABLED"];
-const STATUS = { open: "SOURCES_ON_TOPIC_ENABLED is off in production (default off; QA flips it)" } as const;
+/* Fixed in production: the owner turned SOURCES_ON_TOPIC_ENABLED on in Vercel (25 Nov 2026). */
+const STATUS = "fixed" as const;
 const REPORT = "QA's live test (24 Nov 2026): \"What are the top coaching priorities in a Daily Stats report?\" showed only the Confidential Information Policy, JBA Policy Manual p.22";
 const SAID = "What are the top coaching priorities in a Daily Stats report?";
 const ANSWER = "Good question to get straight before you dig into an actual report. Here's how the coaching framework approaches it — this is methodology, not a live read of a report.";

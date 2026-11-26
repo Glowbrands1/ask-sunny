@@ -17,7 +17,8 @@ import {
   PAYROLL_DEDUCT_LABEL,
   PAYROLL_DEDUCT_OPTIONS,
 } from "./payroll-deduct";
-import { POLICY_MANUAL_SIGNED_KEY, POLICY_MANUAL_SIGNED_LABEL, PRIOR_ACTIONS_KEY, PRIOR_ACTIONS_LABEL_REV9 } from "./prior-actions";
+import { POLICY_MANUAL_SIGNED_KEY, POLICY_MANUAL_SIGNED_LABEL, PRIOR_ACTIONS_KEY, PRIOR_ACTIONS_LABEL_NOW } from "./prior-actions";
+import { PRIOR_ACTIONS_HELP } from "./required-fields";
 import { CA_ACTION_PLAN_CLOSING } from "./required-closing";
 
 /**
@@ -508,8 +509,9 @@ export function correctiveActionDocument(): FormDocument {
       },
       {
         kind: "field",
-        field: field(PRIOR_ACTIONS_KEY, PRIOR_ACTIONS_LABEL_REV9, "ai", "long_text", {
-          help: 'One per line: each coaching or corrective action received in the past 90 days, with the date the employee signed it. Write "None — first occurrence" when there has been none. Required.',
+        field: field(PRIOR_ACTIONS_KEY, PRIOR_ACTIONS_LABEL_NOW, "ai", "long_text", {
+          // Pau, 26 Nov 2026: no "past 90 days"; the app writes N/A when there is none (`history-box-wording.ts`).
+          help: PRIOR_ACTIONS_HELP,
           minLines: 4,
           required: true,
         }),

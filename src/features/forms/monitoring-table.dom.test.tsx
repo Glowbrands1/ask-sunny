@@ -115,6 +115,8 @@ function table(
     outstandingExcluded?: number;
     listLimit?: number | null;
     showCount?: number;
+    /** The server's answer from FINALIZED_FORM_DELETE_EMAILS (`mayDeleteFinalizedForm`). */
+    mayDeleteFinalized?: boolean;
   } = {},
 ) {
   return render(
@@ -129,6 +131,7 @@ function table(
       outstandingExcluded={options.outstandingExcluded}
       listLimit={options.listLimit}
       showCount={options.showCount}
+      mayDeleteFinalized={options.mayDeleteFinalized}
     />,
   );
 }
@@ -481,7 +484,7 @@ describe("delete still works as it did, and there is no archive", () => {
   });
 
   it("offers nothing to remove on a finalized form to someone who is not an administrator: no menu at all", () => {
-    // 24 Nov 2026: only an administrator may delete a finalized form (see "an administrator may delete a finalized form").
+    // Only the named account may delete a finalized form (Pau, 26 Nov 2026; see "pls allow delete for finalized form in my account only").
     mockSession.value = { role: "district_manager", user: { name: "QA" }, can: () => true, demoMode: false };
     table([form({ employeeName: "Filed One" })]);
     expect(rowFor("Filed One").ui.queryByRole("button", { name: /more actions/i })).toBeNull();
@@ -653,10 +656,26 @@ describe("the row menu \"…\" opens with something in it", () => {
     expect(await screen.findByRole("menuitem", { name: /delete/i })).toBeTruthy();
   });
 
-  it("an admin gets no \"…\" on a form that was replaced by a newer version: it is the older half of a chain", () => {
+  it("an admin NOT on the list gets no \"…\" on a form that was replaced by a newer version", () => {
     admin();
     table([form({ employeeName: "Filed One", status: "revised" })]);
     expect(rowFor("Filed One").ui.queryByRole("button", { name: "More actions for Filed One" })).toBeNull();
+  });
+
+  /*
+   * Changed on purpose (Pau, 26 Nov 2026, screenshot of "v8 · revised" rows with no "…"): "i cant still dlete some of
+   * it". The named account gets Delete on an older version too, with the same warning as a finalized form.
+   */
+  it("i cant still dlete some of it: the named account gets Delete on a revised form, after the warning", async () => {
+    admin();
+    table([form({ employeeName: "Filed One", status: "revised" })], { mayDeleteFinalized: true });
+    await userEvent.click(rowFor("Filed One").ui.getByRole("button", { name: "More actions for Filed One" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: /^delete$/i }));
+    const dialog = within(await screen.findByRole("dialog"));
+    expect(dialog.getByTestId("delete-finalized-warning").textContent).toMatch(/cannot be undone/i);
+    await userEvent.click(dialog.getByRole("button", { name: /^delete$/i }));
+    await waitFor(() => expect(calls.list).toHaveLength(1));
+    expect(calls.list[0]).toMatchObject({ method: "DELETE" });
   });
 
   it("a manager who may delete drafts but is not an administrator gets no \"…\" on a finalized form", () => {
@@ -669,18 +688,28 @@ describe("the row menu \"…\" opens with something in it", () => {
    * Pau, 24 Nov 2026, with a screenshot of Ask Bubbles' Forms Register: "why cant delete? in bubbles — fix and merge". The row was
    * a finalized Corrective Action (the employee's name is invented here: Garnet Fairbrook), "v4 · finalized", and had no "…" because only drafts could be deleted. Decision (Pau,
    * asked in the session): administrators may delete a finalized form; nobody else.
+   *
+   * Narrowed on purpose by Pau, 26 Nov 2026: "pls allow delete for finalized form in my account only". The server now
+   * names the account (FINALIZED_FORM_DELETE_EMAILS → `mayDeleteFinalized`); the role alone no longer offers it.
    */
-  it("why cant delete? in bubbles: an administrator gets Delete on a finalized Corrective Action, after a warning", async () => {
+  const correctiveAction = () =>
+    form({
+      employeeName: "Garnet Fairbrook",
+      templateName: "Corrective Action",
+      templateShortName: "Corrective Action",
+      templateVersion: 4,
+      status: "finalized",
+    });
+
+  it("pls allow delete for finalized form in my account only: an administrator NOT on the list gets no \"…\" on it", () => {
     admin();
-    table([
-      form({
-        employeeName: "Garnet Fairbrook",
-        templateName: "Corrective Action",
-        templateShortName: "Corrective Action",
-        templateVersion: 4,
-        status: "finalized",
-      }),
-    ]);
+    table([correctiveAction()]);
+    expect(rowFor("Garnet Fairbrook").ui.queryByRole("button", { name: "More actions for Garnet Fairbrook" })).toBeNull();
+  });
+
+  it("why cant delete? in bubbles: the named account gets Delete on a finalized Corrective Action, after a warning", async () => {
+    admin();
+    table([correctiveAction()], { mayDeleteFinalized: true });
     await userEvent.click(rowFor("Garnet Fairbrook").ui.getByRole("button", { name: "More actions for Garnet Fairbrook" }));
     await userEvent.click(await screen.findByRole("menuitem", { name: /^delete$/i }));
 

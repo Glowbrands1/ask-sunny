@@ -272,6 +272,8 @@ async function postChat(request: Request, progress?: ProgressChannel) {
           today: businessToday(),
           conversationId: parsedForLoop.conversationId,
           openFormId: parsedForLoop.activeFormInstanceId ?? null,
+          /* ANSWER_MODE_ON_LOOP: a Quick or Detailed turn reaches the loop only with the flag on (`agentLoopSkipReason`). */
+          answerMode: parsedForLoop.mode,
           onTools: (tools) => {
             loopTools = tools;
           },

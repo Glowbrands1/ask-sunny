@@ -51,10 +51,9 @@ import type { Permission } from "@/types";
  *
  *   salon actor      the form's salon must be one they are assigned to
  *   global actor     everything — that is what global means
- *   district/region  FAILS CLOSED, exactly as creation does: their
- *                    `primaryAreaId` is an area id and nothing expands an area
- *                    into its salons, so "is this salon in your district?" has
- *                    no truthful answer yet
+ *   district/region  the roster's salons of that district or region, read as
+ *                    salons by `forms-visibility.ts` (25 Nov 2026); an area the
+ *                    roster does not know names none and fails closed
  *   demo (no scope)  not enforced — a scope the browser asserted about itself
  *                    is not a security control, and preview QA needs the data
  *
@@ -125,8 +124,9 @@ export function actorMaySeeInstance(
     if (visibility.level === "salon" && authorizedSalonIds(visibility).includes(instance.locationId)) {
       return true;
     }
-    // district | region — fails closed, exactly as creation does — unless it
-    // is the reader's own form at a salon they may still file against.
+    // Not one of the reader's salons (a district or region scope arrives here
+    // already resolved to its salons) — unless it is the reader's own form at a
+    // salon they may still file against.
     return ownFormStillInScope(actor, instance);
   }
 

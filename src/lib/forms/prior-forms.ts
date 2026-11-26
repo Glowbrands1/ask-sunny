@@ -11,6 +11,7 @@ import { amPriorWarningsEnabled, priorActionsPolicyEnabled } from "@/lib/config/
 import {
   classifyPriorForms,
   priorFormsFromRows,
+  withHr,
   sameName,
   type PriorFormOnFile,
   type PriorFormsReading,
@@ -107,7 +108,8 @@ async function readOnFile(input: {
       .map((row) => (theirs.has(row.id) ? row : { ...row, locationName: null }));
 
     const correctiveIds = rows
-      .filter((row) => row.templateKey === "dpoa" && row.status === "finalized")
+      // Forms still with HR are history too (Pau, 26 Nov 2026; `withHr`).
+      .filter((row) => row.templateKey === "dpoa" && (row.status === "finalized" || withHr(row) !== null))
       .map((row) => row.id);
     const warningLevels = new Map<string, string[]>();
     if (correctiveIds.length > 0) {

@@ -41,7 +41,6 @@ import {
   type FollowUpFilter,
   type FollowUpState,
 } from "@/lib/forms/follow-up";
-import { canAccessAdminConsole } from "@/lib/permissions";
 import { useSession } from "@/lib/session/session-context";
 import { cn } from "@/lib/utils/cn";
 import { formatDate } from "@/lib/utils/date";
@@ -159,6 +158,7 @@ export function MonitoringTable({
   listLimit = null,
   demo,
   showCount = MONITORING_PAGE_SIZE,
+  mayDeleteFinalized: namedForFinalizedDelete = false,
 }: {
   forms: MonitoredForm[];
   notice: string | null;
@@ -198,6 +198,11 @@ export function MonitoringTable({
   demo: { deletable: number; protected: number };
   /** How many forms the server was asked for (`?show=`), a whole number of pages. "Load more" adds one. */
   showCount?: number;
+  /**
+   * The signed-in account may delete a FINALIZED form: decided on the server from FINALIZED_FORM_DELETE_EMAILS and the
+   * verified email (`mayDeleteFinalizedForm`; Pau, 26 Nov 2026: "my account only"). Absent: drafts only.
+   */
+  mayDeleteFinalized?: boolean;
 }) {
   const [templateName, setTemplateName] = React.useState<string>("all");
   const [downloading, setDownloading] = React.useState<string | null>(null);
@@ -238,13 +243,15 @@ export function MonitoringTable({
   const mayManage = demoMode || can("manage_form_records");
   const mayTrack = demoMode || can("create_coaching_form");
   /*
-   * A FINALIZED FORM'S DELETE is for administrators only (Pau, 24 Nov 2026: "why cant delete? in bubbles" on a finalized
-   * Corrective Action). Everyone else with `manage_form_records` deletes drafts, as before. The server decides again
-   * (`DELETE /api/forms/instances/{id}` answers 409 to anyone else); this only decides whether the menu offers it.
+   * A FINALIZED FORM'S DELETE is for the named account only (Pau, 26 Nov 2026: "pls allow delete for finalized form in
+   * my account only"; from 24 Nov until then, every administrator). Everyone else with `manage_form_records` deletes
+   * drafts, as before. The server decides again (`DELETE /api/forms/instances/{id}` answers 409 to anyone else); this
+   * only decides whether the menu offers it.
    */
-  const mayDeleteFinalized = mayManage && canAccessAdminConsole(role);
+  const mayDeleteFinalized = mayManage && namedForFinalizedDelete;
   const mayDelete = (form: MonitoredForm) =>
-    mayManage && (form.status === "draft" || (form.status === "finalized" && mayDeleteFinalized));
+    // An older version ("revised") too, for the same account (Pau, 26 Nov 2026: "i cant still dlete some of it").
+    mayManage && (form.status === "draft" || ((form.status === "finalized" || form.status === "revised") && mayDeleteFinalized));
 
   const call = React.useCallback(
     <T,>(url: string, init: RequestInit = {}) => formsFetch<T>(url, role, user.name, init),
@@ -974,10 +981,10 @@ export function MonitoringTable({
               </div>
             </dl>
 
-            {confirming.form.status === "finalized" ? (
+            {confirming.form.status === "finalized" || confirming.form.status === "revised" ? (
               <p className="text-[13px] text-muted-foreground" data-testid="delete-finalized-warning">
-                Finalized forms are normally kept on file. As an administrator you can delete this one. It cannot be
-                undone, and the deletion is recorded with your name and the time.
+                Finalized forms are normally kept on file. Your account can delete this one. It cannot be undone, and
+                the deletion is recorded with your name and the time.
               </p>
             ) : null}
 

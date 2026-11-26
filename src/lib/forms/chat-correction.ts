@@ -41,7 +41,7 @@ import {
 } from "./payroll-deduct";
 import { extractEmployeeNames } from "./proposal";
 import { describesIncident, statedWarningLevel, WARNING_TYPE_KEY } from "./corrective-action-intake";
-import { NO_PRIOR_ACTION, priorLineDate, statedPriorActions } from "./prior-actions";
+import { isNoHistoryLine, NO_PRIOR_ACTION, priorLineDate, statedPriorActions } from "./prior-actions";
 import { detectTemplateIntent } from "./template-intent";
 import { applyAssistantDraft, saveInstanceValues } from "./instances";
 import { correctCaFromChat } from "./ca-chat-corrections";
@@ -653,7 +653,8 @@ async function correctCorrectiveActionFacts(input: {
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line !== "");
-  const kept = existing.filter((line) => line !== NO_PRIOR_ACTION);
+  // "N/A" (ALL_FIELDS_REQUIRED_ENABLED, written at send for approval) says no history, as "None — first occurrence" does.
+  const kept = existing.filter((line) => line !== NO_PRIOR_ACTION && !isNoHistoryLine(line));
   const added = priorLines.filter((line) => !kept.some((have) => priorLineKey(have) === priorLineKey(line)));
   if (added.length > 0) values[PRIOR_ACTIONS_KEY] = [...kept, ...added].join("\n");
   if (firstTime) {

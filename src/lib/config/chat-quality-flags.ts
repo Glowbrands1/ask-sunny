@@ -322,6 +322,28 @@ export function requiredFieldsAtFinalizeEnabled(): boolean {
 }
 
 /**
+ * ALL_FIELDS_REQUIRED_ENABLED (Pau, 25 Nov 2026; default off; same flag in both apps; QA audits, then flips it): "update
+ * all forms so that they cannot submit for approval if all field are not filled out". On: Finalize and "Finalize and
+ * send for approval" refuse a form with anything its creator fills still blank (`required-fields.ts`
+ * blankBeforeSubmission; signatures, hand-filled and employee lines are done in person and never asked for), and a
+ * blank Corrective Action history box is written "N/A" instead of refused. Off, only fields a version marks `required`
+ * are checked, and only with REQUIRED_FIELDS_AT_FINALIZE_ENABLED on.
+ */
+export function allFieldsRequiredEnabled(): boolean {
+  return envFlag("ALL_FIELDS_REQUIRED_ENABLED");
+}
+
+/**
+ * EXIT_ALL_FIELDS_REQUIRED_ENABLED (Pau, 25 Nov 2026; default off; same flag in both apps): "On the Exit Form, can the
+ * parameters be set so that every field must be completed or the form will not submit to HR?" On: the exit form is
+ * held to `blankBeforeSubmission` at Finalize and "Finalize and send for approval" even while ALL_FIELDS_REQUIRED_ENABLED
+ * is off (with it on, every form already is), so it also refuses an exit form with no Resignation Details box ticked.
+ */
+export function exitAllFieldsRequiredEnabled(): boolean {
+  return envFlag("EXIT_ALL_FIELDS_REQUIRED_ENABLED");
+}
+
+/**
  * PAYROLL_AMOUNT_SAME_MESSAGE_ENABLED (the sibling app's live chat, 5 Nov 2026; same flag in both apps; default
  * off). "…the register was off $20. which will be payroll deducted from <name>'s check. … payroll deduct applies"
  * still asked "**Payroll deduction amount**?". On: an amount followed by "which / that / this / it … (payroll)
@@ -4239,7 +4261,10 @@ export function chatParallelLoadsEnabled(): boolean {
  * question, the early call is dropped and the normalizer runs again, one extra Haiku call that the turn's spend
  * counts (it was paid for); with CHAT_STAGE_TIMINGS that step is named "query_normalize_rerun". And a turn that
  * extraction answers with a clarifying question ("which salon?") returns before the normalizer: its early call was made
- * and not used (one Haiku call; its rejection, if any, is held). Off, as before.
+ * and not used (one Haiku call; its rejection, if any, is held). Second half (owner, 25 Nov 2026): the search rewrite's
+ * heading pick (`manualHeadingQuery`, a Haiku call reading only the question, the turns before it and the headings)
+ * also starts as the turn arrives, with the same rule: used only for the same turn and scope, else run again where it
+ * ran ("query_rewrite_rerun"). The same inputs, so the same query. Off, as before.
  */
 export function chatParallelRewriteEnabled(): boolean {
   return envFlag("CHAT_PARALLEL_REWRITE_ENABLED");
@@ -5116,4 +5141,28 @@ export function loopCardCitesConductLineEnabled(): boolean {
  */
 export function sourcesOnTopicEnabled(): boolean {
   return envFlag("SOURCES_ON_TOPIC_ENABLED");
+}
+
+/**
+ * CREATE_FORM_BUTTON_PICKS_FORM (Pau, 25 Nov 2026; default off; same flag in both apps): on an employee's transfer, a
+ * manager pressed "Create a form from this conversation" three times; the agent loop told them to press Create draft
+ * themselves with no card under its reply, then said no new card was made because a draft was already open, and the
+ * manager could not tell whether a card was there. On: the button's turn tells the loop it was pressed and what is on
+ * screen, the model picks the form the conversation needs and makes its card, a card on screen is proposed again so it is
+ * under the reply (handed back once when it is not), and an open draft is named (`agent-loop/create-form-button.ts`).
+ * Off, as before.
+ */
+export function createFormButtonPicksFormEnabled(): boolean {
+  return envFlag("CREATE_FORM_BUTTON_PICKS_FORM_ENABLED");
+}
+
+/**
+ * ANSWER_MODE_ON_LOOP (the owner, 26 Nov 2026: "B" — one engine for every answer mode; default off): Quick and Detailed
+ * turns are answered by the agent loop, like Standard, instead of the older chat path (`agent-loop/switch.ts` no longer
+ * skips them). The chosen mode reaches the loop as one line about the answer's length (`agent-loop/prompt.ts`); Quick
+ * never shortens a card, a question the card needs or a policy citation. Off, Quick and Detailed go to the older path as
+ * before.
+ */
+export function answerModeOnLoopEnabled(): boolean {
+  return envFlag("ANSWER_MODE_ON_LOOP_ENABLED");
 }

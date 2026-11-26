@@ -1287,6 +1287,12 @@ describe("new flags default off and wrappers are inert", () => {
           // shows on any finalized form and opens the same server PDF as Download PDF. And the sibling app's approvals
           // as a tab next to Pending HR approval (owner, 23 Nov 2026: "i dont want the sunny approval in a different page
           // and link, just a tab pls"): shown only to an HR approver with SIBLING_HR_SECRET set, so off, never.
+          // BLANK FIELDS OUTLINED ON THE FORM (Pau, 25 Nov 2026, both apps: "add a pop up that there are missing fields
+          // and highlight it in both apps"): ResponsiveForm's `missing` prop outlines the fields Finalize refused as blank
+          // and marks them Required; the pop-up is in inline-form.tsx (above). Only with a refusal for blank fields
+          // (ALL_FIELDS_REQUIRED_ENABLED or REQUIRED_FIELDS_AT_FINALIZE_ENABLED); otherwise `missing` is empty and every
+          // field renders as before.
+          ":(exclude)src/features/forms/document/responsive-form.tsx",
           ":(exclude)src/features/forms/hr-approval-panel.tsx",
           ":(exclude)src/features/forms/hr-approval-lists.tsx",
           ":(exclude)src/features/forms/hr-approval-screen.tsx",
@@ -1395,6 +1401,11 @@ describe("new flags default off and wrappers are inert", () => {
           // not weekly … i mean salon leaderboard"): the This week column and the Rank by this week toggle
           // are removed. Reviews page only; no chat or form behaviour changes.
           ":(exclude)src/features/reviews/reviews-leaderboard.tsx",
+          // The exit form's notice dates (Pau, 25 Nov 2026: "dates can NOT be entered into the Date that notice was given
+          // and Date that notice was fulfilled fields UNLESS Submitted & Fulfilled Notice box is checked"): the form card
+          // greys the two dates out with a note until that box is ticked. Exit form only (`exit-submission-rules.ts`);
+          // every other field renders as before.
+          ":(exclude)src/features/forms/document/responsive-form.tsx",
         ]),
       ).toBe("");
       // CHANGED ON PURPOSE (Pau, 23 Nov 2026, archiving removed): forms are Draft or Finalized only, so

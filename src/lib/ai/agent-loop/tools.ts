@@ -83,6 +83,7 @@ import type { AccessScope, ChatFormProposal, ChatMessage, Role } from "@/types";
 import { adviceNotForm } from "@/lib/ai/agent-loop/advice-not-form";
 import { formAskedOutsideLibrary, formsYouCanCreate } from "@/lib/ai/agent-loop/form-not-in-library";
 import { accountKey, personKey, replyTurns, type CardRecord, type ExitOfferRecord, type NameQuestionRecord, type PersonAskedRecord, type SameIncidentRecord, type TurnRecord } from "@/lib/ai/agent-loop/card-record";
+import { withHr } from "@/lib/forms/prior-forms-lines";
 
 /**
  * ============================================================================
@@ -3091,6 +3092,8 @@ export interface PriorOnFile {
   readonly form: string;
   readonly level: string | null;
   readonly date: string | null;
+  /** Still with HR (Pau, 26 Nov 2026): "waiting for HR approval" or "sent back by HR" (`withHr`); absent when finalized. */
+  readonly withHr?: string;
 }
 
 /**
@@ -3134,7 +3137,8 @@ async function finalizedPriorsOnFile(context: ToolContext, person: RosterEmploye
     return otherOnRoster || formerThere;
   };
   const rows = listed
-    .filter((row) => row.status === "finalized" && kinds.has(row.templateKey) && (row.formDate ?? "") <= today && (!before || (row.formDate ?? "") < before))
+    // Forms still with HR count too (Pau, 26 Nov 2026: "also add what form is waiting on approval or sent for return").
+    .filter((row) => (row.status === "finalized" || withHr(row) !== null) && kinds.has(row.templateKey) && (row.formDate ?? "") <= today && (!before || (row.formDate ?? "") < before))
     .filter((row) => !firstNameShared(row) && (names.some((full) => samePerson(full, row.employeeName)) || sameRosterPerson(row.employeeName, displayName(person), roster)))
     .sort((a, b) => (a.formDate ?? "").localeCompare(b.formDate ?? "") || a.createdAt.localeCompare(b.createdAt))
     .slice(-10);
@@ -3145,7 +3149,8 @@ async function finalizedPriorsOnFile(context: ToolContext, person: RosterEmploye
         .then(({ loaded }) => (loaded.values.find((value) => value.fieldKey === "warning_type")?.checked ?? []).map((key) => levelName[key] ?? key).join(", ") || null)
         .catch(() => null)
       : null;
-    return { form: row.templateName, level, date: row.formDate ?? null };
+    const hr = withHr(row);
+    return { form: row.templateName, level, date: row.formDate ?? null, ...(hr ? { withHr: hr } : {}) };
   }));
 }
 
@@ -3241,7 +3246,7 @@ export function priorsOnFileLine(priors: readonly PriorOnFile[]): string {
     const found = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso ?? "");
     return found ? `${found[2]}/${found[3]}/${found[1]}` : "date not recorded";
   };
-  return priors.map((prior) => `${prior.form}${prior.level ? `, ${prior.level}` : ""} — ${usDay(prior.date)}`).join("; ");
+  return priors.map((prior) => `${prior.form}${prior.level ? `, ${prior.level}` : ""}${prior.withHr ? `, ${prior.withHr}` : ""} — ${usDay(prior.date)}`).join("; ");
 }
 
 /**
@@ -3257,7 +3262,8 @@ export function priorsOnFileOffer(name: string, priors: readonly PriorOnFile[]):
   const named = priors.map((prior) => {
     const label = /corrective action/i.test(prior.form) ? `${prior.level ? `${prior.level.split(",")[0]!.trim().split(/\s+/)[0]} ` : ""}CA` : prior.form;
     const day = usDay(prior.date);
-    return `${/^[AEIOU]/i.test(label) ? "an" : "a"} ${label} on file${day ? ` from ${day}` : ""}`;
+    const where = prior.withHr ? ` ${prior.withHr}` : " on file";
+    return `${/^[AEIOU]/i.test(label) ? "an" : "a"} ${label}${where}${day ? ` from ${day}` : ""}`;
   });
   const list = named.length <= 2 ? named.join(" and ") : `${named.slice(0, -1).join(", ")} and ${named.at(-1)}`;
   return `${name} has ${list}. Want me to add ${priors.length === 1 ? "it" : "them"} to Prior actions?`;
@@ -6028,7 +6034,12 @@ export async function proposeForm(
    * code no longer writes or appends any of it.
    */
   const conductHeading = appConfig().policyGuards.headings.conduct;
-  const underPerformance = Boolean(policyHeading && conductHeading && policyHeading.toLowerCase().includes(conductHeading.toLowerCase()) && (/\bunder[- ]?perform(?:ance|ing)\b|must see behaviou?rs?|\bperform[a-z]*\b/i.test(managerWords) || accountMetric().test(managerWords)));
+  /*
+   * QA's live test (25 Nov 2026): "Draft a coaching form for a performance concern for a made-up employee named Test
+   * Employee" carded "Under Performance isn't on the CA form…" on a Coaching Form. That line explains the Corrective
+   * Action Form's missing Under Performance box, so the fact is a Corrective Action's only.
+   */
+  const underPerformance = template.key === appConfig().formKeys.corrective && Boolean(policyHeading && conductHeading && policyHeading.toLowerCase().includes(conductHeading.toLowerCase()) && (/\bunder[- ]?perform(?:ance|ing)\b|must see behaviou?rs?|\bperform[a-z]*\b/i.test(managerWords) || accountMetric().test(managerWords)));
   accountMetric().lastIndex = 0;
   const corrective = template.key === appConfig().formKeys.corrective;
   /*

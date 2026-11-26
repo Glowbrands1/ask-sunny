@@ -51,6 +51,12 @@ export const PRIOR_ACTIONS_LABEL =
  */
 export const PRIOR_ACTIONS_LABEL_REV9 =
   "List previous coaching and corrective actions and include date signed by employee in past 90 days";
+/**
+ * WITHOUT "IN PAST 90 DAYS" (Pau, 26 Nov 2026: "just remove the 90 day wording"). The list has never been limited to
+ * 90 days: it holds every coaching and corrective action on file. The seed prints this; a stored version that still
+ * says "in past 90 days" is shown with this label (`currentHistoryWording`).
+ */
+export const PRIOR_ACTIONS_LABEL_NOW = "List previous coaching and corrective actions and include date signed by employee";
 export const POLICY_MANUAL_SIGNED_KEY = "policy_manual_signed";
 export const POLICY_MANUAL_SIGNED_LABEL = "List date of JBA policy manual signed by employee";
 
@@ -60,6 +66,19 @@ export const LEGACY_PREVIOUS_ACTION_DATE_KEY = "previous_action_date";
 
 /** What the line says when there is no history — a real answer, not a blank. */
 export const NO_PRIOR_ACTION = "None — first occurrence";
+
+/**
+ * What the history box says when nothing is listed at all — no step the manager stated and no form on file (Pau, 25 Nov
+ * 2026: "for the box with previous coaching/ca, if none found add N/A"). Written at Finalize / send for approval with
+ * ALL_FIELDS_REQUIRED_ENABLED on (`instances.ts` fillNoPriorActionsFound), so the box is never blank on an approved form.
+ */
+export const NO_PRIOR_ACTIONS_FOUND = "N/A";
+
+/** "None — first occurrence" or "N/A": a line that says there is no history, dropped once a real step is listed. */
+export function isNoHistoryLine(line: string): boolean {
+  const folded = line.trim().toLowerCase();
+  return folded === NO_PRIOR_ACTION.toLowerCase() || /^n\s*\/?\s*a\.?$/.test(folded) || /^none\b/.test(folded);
+}
 
 /** `YYYY-MM-DD` as the business writes a date by hand. */
 export function signedDate(iso: string): string {
@@ -163,12 +182,14 @@ function stepDescription(named: string): string {
  * ("— 09/02/2026"); `said_signed`, a step the manager said was signed
  * ("— signed 09/02/2026"). Off, every line reads "— signed <date>".
  */
-export type PriorLineSource = "on_file" | "said" | "said_signed";
+export type PriorLineSource = "on_file" | "said" | "said_signed" | "with_hr";
 
 export function priorActionLine(step: string, iso: string, topic = "", description = "", source: PriorLineSource = "said"): string {
   const what = description ? `${step} ${description}` : step;
   const head = topic ? `${what} — ${topic}` : what;
+  if (source === "with_hr") return `${head} — ${signedDate(iso)}`;
   if (!priorActionsNoSignedEnabled()) return `${head} — signed ${signedDate(iso)}`;
+  // A form on file still with HR (`with_hr`) is not finalized and was not signed: its line carries no mark.
   const mark = source === "on_file" ? "finalized " : source === "said_signed" ? "signed " : "";
   return `${head} — ${mark}${signedDate(iso)}`;
 }
@@ -545,7 +566,7 @@ export function groundPriorActions(input: {
 
   const lines = [...kept, ...added];
   // A history and "None" cannot both be true; a dated step wins.
-  const history = lines.filter((line) => !/^none\b/i.test(line));
+  const history = lines.filter((line) => !isNoHistoryLine(line));
   const final = history.length > 0 ? history : lines;
 
   if (final.length === 0 && statesFirstOccurrence(input.notes)) {

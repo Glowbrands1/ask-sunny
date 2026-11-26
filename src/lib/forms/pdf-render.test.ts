@@ -653,7 +653,8 @@ describe("a checkbox group's question prints, on every form family", () => {
       "Is Payroll Deduction applicable? *",
       "*Do they forfeit their bonus?",
       "*Are they to be dropped to minimum wage?",
-      "Written notice attached?",
+      // Reworded on purpose (Pau, 25 Nov 2026).
+      "Is written notice uploaded to the employee file?",
       "Is this employee eligible for rehire?",
     ]) {
       expect(text, question).toContain(question);

@@ -481,16 +481,22 @@ describe("criterion 4: ambiguous or unassigned salons are asked about, never pic
     expect(last.content).toContain(`**${name}** isn't a salon on your assignment`);
   });
 
-  it("a district manager stays fail-closed: the reply is not a salon on the form", async () => {
+  /*
+   * Changed on purpose (Pau, 25 Nov 2026: "i need this in sunny please"): a district scope now resolves through the
+   * roster to its salons (`dm-district-forms-visibility.test.ts`), so the DM is asked which of them, a reply naming one
+   * of them is put on the form, and a salon in another district (0410) still is not. The employee is kept throughout.
+   */
+  it("a district manager: a reply naming a salon of the district is the salon on the form; one outside it is not", async () => {
     state.role = "district_manager";
     state.scope = DISTRICT;
-    for (const reply of ["kearney", "410", "salon 0309"]) {
+    for (const reply of ["kearney", "salon 0309"]) {
       const responses = await everyTurn([ASKS, reply]);
-      expect(responses[0]!.formProposal).toMatchObject({ employeeName: "Jo Test", locationResolution: "unavailable" });
-      expect(responses[1]?.formProposal?.locationId ?? null).toBeNull();
-      expect(responses[1]?.formProposal?.locationResolution ?? "unavailable").toBe("unavailable");
-      expect(responses[1]?.formProposal?.employeeName ?? "Jo Test").toBe("Jo Test");
+      expect(responses[0]!.formProposal).toMatchObject({ employeeName: "Jo Test", locationResolution: "needs_selection" });
+      expect(responses[1]?.formProposal).toMatchObject({ employeeName: "Jo Test", locationId: "loc-0309" });
     }
+    const outside = await everyTurn([ASKS, "410"]);
+    expect(outside[1]?.formProposal?.locationId ?? null).not.toBe("loc-0410");
+    expect(outside[1]?.formProposal?.employeeName ?? "Jo Test").toBe("Jo Test");
   });
 
   it("a global administrator may name any roster salon in a correction", async () => {

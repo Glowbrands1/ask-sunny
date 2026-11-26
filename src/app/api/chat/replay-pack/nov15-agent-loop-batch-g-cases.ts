@@ -595,7 +595,12 @@ export const NOV15_AGENT_LOOP_BATCH_G_CASES: ReplayCase[] = [
       const values = t.values(id);
       const ticked = t.checked(id);
       expect(values.last_day_worked, "the last day is not on the draft").toBe("2026-11-28");
-      expect(values.notice_given_date, "the notice date is not on the draft").toBe("2026-11-14");
+      /*
+       * CHANGED ON PURPOSE (Pau, 25 Nov 2026: "dates can NOT be entered into the Date that notice was given … UNLESS
+       * Submitted & Fulfilled Notice box is checked"): notice is not fulfilled until 11/28, the box stays for the manager,
+       * so the notice date is not entered either. The date the manager gave is still the Resignation Date below.
+       */
+      expect(values.notice_given_date ?? "", "a notice date was entered without Submitted & Fulfilled Notice").toBe("");
       // A resignation with notice: the notice date is the resignation date. Notice is not fulfilled until 11/28, so "Submitted & Fulfilled Notice" stays for the manager.
       expect(values.resignation_date, "the resignation date is not on the draft").toBe("2026-11-14");
       expect(ticked.eligible_for_rehire ?? [], "rehire is not on the draft").toEqual(["yes"]);

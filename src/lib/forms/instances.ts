@@ -35,16 +35,27 @@ import { needsFollowUp } from "./follow-up";
 import {
   LEGACY_PREVIOUS_ACTION_DATE_KEY,
   LEGACY_PREVIOUS_ACTION_KEY,
+  NO_PRIOR_ACTIONS_FOUND,
   PRIOR_ACTIONS_KEY,
   legacyPriorActions,
 } from "./prior-actions";
 import { applyRequiredClosings } from "./required-closing";
 import { offeredOffenseKeys } from "./offense-keys";
-import { caSalesPolicyEnabled, requiredFieldsAtFinalizeEnabled } from "@/lib/config/chat-quality-flags";
+import { caSalesPolicyEnabled, allFieldsRequiredEnabled, exitAllFieldsRequiredEnabled, requiredFieldsAtFinalizeEnabled } from "@/lib/config/chat-quality-flags";
 import { collapseToTwoSentences } from "./action-plan-sentences";
 import { isIsoCalendarDate } from "./form-date-answer";
 import { refreshedActionPlan } from "./ca-action-plan";
-import { blankRequiredFields, requiredFieldsMessage } from "./required-fields";
+import {
+  exitSubmissionProblems,
+  isNoticeDateField,
+  NOTICE_DATE_GATE,
+  NOTICE_DATE_LOCKED_NOTE,
+  noticeDatesLocked,
+  noticeDatesToClear,
+  isExitDocument,
+  PERMANENT_ADDRESS_INCOMPLETE_MESSAGE,
+} from "./exit-submission-rules";
+import { blankBeforeSubmission, blankBeforeSubmissionMessage, blankRequiredFields, requiredFieldsMessage } from "./required-fields";
 import { getCurrentVersion, getVersion, type TemplateVersionRow } from "./repository";
 import { HELD_FOR_HR, asHrApprovalState, heldForHr, withoutHeldForHr, type HrApprovalState } from "./hr-approval-rules";
 import { editableDraftNow, inHrEditScope } from "./hr-edit-scope";
@@ -723,6 +734,8 @@ async function writeValues(
     })),
   ];
   if (rows.length === 0) return;
+  const touchesNoticeDates =
+    Object.keys(accepted.values).some(isNoticeDateField) || Object.prototype.hasOwnProperty.call(accepted.checked, NOTICE_DATE_GATE.group);
 
   /*
    * HR's edit of a form waiting for them goes through the one function the value guard lets past the hold
@@ -754,6 +767,27 @@ async function writeValues(
   if (isIsoCalendarDate(date)) {
     const { error: dateError } = await supabase.from("form_instances").update({ form_date: date }).eq("id", instanceId);
     if (dateError) throw new Error(`Could not save the form's date: ${dateError.message}`);
+  }
+
+  /*
+   * THE NOTICE DATES ONLY STAND WITH "SUBMITTED & FULFILLED NOTICE" TICKED (Pau, 25 Nov 2026; `exit-submission-rules.ts`).
+   * Whoever wrote — the card, the chat, a draft, HR — a write that leaves the box unticked clears both dates, so the
+   * form can never say notice was not fulfilled and still carry a notice date.
+   */
+  if (touchesNoticeDates) {
+    const { data, error: readError } = await supabase
+      .from("form_instance_values")
+      .select("field_key, value, checked")
+      .eq("instance_id", instanceId)
+      .in("field_key", [NOTICE_DATE_GATE.group, ...NOTICE_DATE_GATE.fields]);
+    if (readError) throw new Error(`Could not save the form: ${readError.message}`);
+    const stored = (data ?? []) as { field_key: string; value: string | null; checked: string[] | null }[];
+    const ticks = stored.find((row) => row.field_key === NOTICE_DATE_GATE.group)?.checked ?? [];
+    const dates = Object.fromEntries(stored.map((row) => [row.field_key, row.value]));
+    const clear = noticeDatesToClear(ticks, dates);
+    if (clear.length > 0) {
+      await writeValues(instanceId, { values: Object.fromEntries(clear.map((key) => [key, ""])), checked: {} }, filledBy, {}, options);
+    }
   }
 }
 
@@ -791,6 +825,8 @@ export async function applyStatedFacts(
    * the Corrective Action Form's payroll-deduct answer passes its own one key.
    */
   allowedKeys?: ReadonlySet<string>,
+  /** Saved as the facts' provenance: the manager's statement, or Woven (the exit form's Permanent Address, `exit-woven-address.ts`). */
+  source: "manager_statement" | "woven" = "manager_statement",
 ): Promise<string[]> {
   const loaded = await loadInstance(instanceId);
   if (!loaded || !editableDraftNow(loaded.instance)) return [];
@@ -805,7 +841,7 @@ export async function applyStatedFacts(
   const keys = [...Object.keys(selected.values), ...Object.keys(selected.checked)];
   if (keys.length === 0) return [];
 
-  const provenance = Object.fromEntries(keys.map((key) => [key, { source: "manager_statement" }]));
+  const provenance = Object.fromEntries(keys.map((key) => [key, { source }]));
   await writeValues(instanceId, selected, "system", provenance);
   await recordEvent(instanceId, "drafted", actor, { statedFacts: keys });
   return keys;
@@ -855,6 +891,23 @@ export async function saveInstanceValues(
 
   const document = parseFormDocument(loaded.version.document);
   const result = enforcePersonEdit(document, loaded.instance.variantKey, submitted);
+  /*
+   * A NOTICE DATE TYPED WHILE "SUBMITTED & FULFILLED NOTICE" IS UNTICKED IS REFUSED, and said so (Pau, 25 Nov 2026).
+   * The box as it will stand after this save: what was sent, else what is stored.
+   */
+  if (isExitDocument(document, loaded.instance.variantKey)) {
+    const ticks =
+      result.checked[NOTICE_DATE_GATE.group] ??
+      loaded.values.find((row) => row.fieldKey === NOTICE_DATE_GATE.group)?.checked ??
+      [];
+    if (noticeDatesLocked(ticks)) {
+      for (const key of NOTICE_DATE_GATE.fields) {
+        if ((result.values[key] ?? "").trim() === "") continue;
+        delete result.values[key];
+        result.rejected.push({ key, reason: NOTICE_DATE_LOCKED_NOTE });
+      }
+    }
+  }
   /*
    * A CLOSING THE VERSION REQUIRES IS RE-ATTACHED TO THE MANAGER'S EDIT TOO.
    * Deleting it in the textarea, or typing after it, does not take it off the
@@ -1120,8 +1173,8 @@ export class HeldForHrError extends Error {
 export class RequiredFieldsBlankError extends Error {
   readonly fields: { key: string; label: string }[];
 
-  constructor(fields: { key: string; label: string }[]) {
-    super(requiredFieldsMessage(fields));
+  constructor(fields: { key: string; label: string }[], message: string = requiredFieldsMessage(fields)) {
+    super(message);
     this.name = "RequiredFieldsBlankError";
     this.fields = fields;
   }
@@ -1152,6 +1205,27 @@ export function finalizePreflight(
   options: FinalizeOptions = {},
 ): { unverified: string[]; blankPolicy: string[] } {
   // A required field left blank is refused while the record is still a draft the manager can fix.
+  /*
+   * ALL_FIELDS_REQUIRED_ENABLED (Pau, 25 Nov 2026): every field the creator fills, not only the ones a version marks
+   * `required`; the Re-Evaluation section only on a re-evaluation. See `required-fields.ts` blankBeforeSubmission.
+   */
+  /*
+   * EXIT_ALL_FIELDS_REQUIRED_ENABLED holds the exit form to it on its own (Pau, 25 Nov 2026: "every field must be
+   * completed or the form will not submit to HR"). With either flag, its Permanent Address must also be a full mailing
+   * address with the ZIP (`exit-submission-rules.ts`).
+   */
+  const exitForm = isExitDocument(parseFormDocument(before.version.document), before.instance.variantKey);
+  if (allFieldsRequiredEnabled() || (exitForm && exitAllFieldsRequiredEnabled())) {
+    const blank = blankBeforeSubmission(parseFormDocument(before.version.document), before.instance.variantKey, before.values, {
+      reEvaluation: before.events.some((event) => event.kind === "created" && event.detail?.kind === "reevaluated"),
+      variant: variantsOf(before.version).find((entry) => entry.key === before.instance.variantKey) ?? null,
+    });
+    if (blank.length > 0) throw new RequiredFieldsBlankError(blank, blankBeforeSubmissionMessage(blank));
+  }
+  if (exitForm && (allFieldsRequiredEnabled() || exitAllFieldsRequiredEnabled())) {
+    const incomplete = exitSubmissionProblems(parseFormDocument(before.version.document), before.instance.variantKey, before.values);
+    if (incomplete.length > 0) throw new RequiredFieldsBlankError(incomplete, PERMANENT_ADDRESS_INCOMPLETE_MESSAGE);
+  }
   const blankRequired = !requiredFieldsAtFinalizeEnabled() ? [] : blankRequiredFields(parseFormDocument(before.version.document), before.instance.variantKey, before.values);
   if (blankRequired.length > 0) throw new RequiredFieldsBlankError(blankRequired);
 
@@ -1171,6 +1245,26 @@ export function finalizePreflight(
         .message);
   }
   return { unverified, blankPolicy };
+}
+
+/**
+ * "FOR THE BOX WITH PREVIOUS COACHING/CA, IF NONE FOUND ADD N/A" (Pau, 25 Nov 2026; ALL_FIELDS_REQUIRED_ENABLED). At
+ * Finalize and at "Finalize and send for approval", a Corrective Action whose history box is still blank — no step the
+ * manager stated, no form on file the draft found — is written "N/A" by the app, with provenance saying so, rather than
+ * refused. Anything already in the box is left exactly as it is. Returns the form as it now stands.
+ */
+export async function fillNoPriorActionsFound(before: LoadedInstance, actor: string): Promise<LoadedInstance> {
+  if (!allFieldsRequiredEnabled() || !editableDraftNow(before.instance)) return before;
+  const onForm = fieldsForVariant(parseFormDocument(before.version.document), before.instance.variantKey).some(
+    (field) => field.key === PRIOR_ACTIONS_KEY,
+  );
+  if (!onForm) return before;
+  if ((before.values.find((row) => row.fieldKey === PRIOR_ACTIONS_KEY)?.value ?? "").trim() !== "") return before;
+  await writeValues(before.instance.id, { values: { [PRIOR_ACTIONS_KEY]: NO_PRIOR_ACTIONS_FOUND }, checked: {} }, "system", {
+    [PRIOR_ACTIONS_KEY]: { source: "no_prior_actions_found" },
+  });
+  await recordEvent(before.instance.id, "drafted", actor, { noPriorActionsFound: [PRIOR_ACTIONS_KEY] });
+  return (await loadInstance(before.instance.id)) ?? before;
 }
 
 export async function finalizeInstance(
@@ -1200,7 +1294,8 @@ export async function finalizeInstance(
   if (heldForHr(before.instance.hrApprovalState) && options.fromHrApproval !== true && (await hrHoldLive())) {
     throw new HeldForHrError();
   }
-  const { unverified, blankPolicy } = finalizePreflight(before, options);
+  const checked = options.fromHrApproval === true ? before : await fillNoPriorActionsFound(before, actor);
+  const { unverified, blankPolicy } = finalizePreflight(checked, options);
 
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
@@ -1596,9 +1691,9 @@ export class InstanceProtectedError extends Error {}
  * else passes it: not the chat, not the agent loop, not the bulk delete, not the
  * demo sweep, so they still refuse a finalized form.
  *
- * A form that was REPLACED by a newer version (`revised`) is never deleted, even
- * by an administrator: it is the older half of a chain that still points at the
- * form that replaced it. Deleting the newer version is allowed, and puts the
+ * A form that was REPLACED by a newer version (`revised`) is deleted only with
+ * `allowFinalized` too (the named account, Pau, 26 Nov 2026): it is the older
+ * half of a chain, and the newer version's link back to it is set to null. Deleting the newer version is allowed, and puts the
  * older one back to `finalized` (`restorePredecessor`) so the chain is not left
  * pointing at nothing.
  *
@@ -1625,7 +1720,13 @@ export async function deleteInstance(
   if (!row) throw new Error("That form no longer exists.");
 
   const instance = mapInstance(row);
-  if (instance.status === "revised") {
+  /*
+   * The named account (FINALIZED_FORM_DELETE_EMAILS → `allowFinalized`) may delete an older version too (Pau, 26 Nov
+   * 2026, with a screenshot of rows marked "revised" that had no "…": "i cant still dlete some of it"). The newer
+   * version stays; its `revises_instance_id` is set to null by the foreign key, and the deletion is recorded as for any
+   * other form. Everybody else is still refused.
+   */
+  if (instance.status === "revised" && !options.allowFinalized) {
     throw new InstanceProtectedError(
       "This form was replaced by a newer version, so it cannot be deleted. Finalized forms are kept on file. Delete the newer version instead, if that is what you mean.",
     );

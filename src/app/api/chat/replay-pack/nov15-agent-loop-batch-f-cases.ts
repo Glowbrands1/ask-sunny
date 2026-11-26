@@ -222,7 +222,11 @@ export const NOV15_AGENT_LOOP_BATCH_F_CASES: ReplayCase[] = [
       ["attachments", { attachedDocumentIds: ["doc-batch-f"] }],
       ["report-context", { reportContext: { family: "sales-totals" } }],
       ["pending-copy", { pendingCopyFromInstanceId: "00000000-0000-4000-8000-00000000f5f5" }],
-      ["answer-mode", { mode: "quick" }],
+      /*
+       * Changed on purpose (the owner, 26 Nov 2026, "B"): an answer mode is no longer a reason to skip the loop.
+       * ANSWER_MODE_ON_LOOP is on in production, and Quick and Detailed are answered by the loop with a length line
+       * (`nov26-answer-mode-on-loop-cases.ts`); with the flag off they still go to today's path (`switch.test.ts`).
+       */
     ] as const
   ).map(([key, extra]): ReplayCase => ({
     id: `nov15-batch-f5-${key}-goes-to-todays-path`,

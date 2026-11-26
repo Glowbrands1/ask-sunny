@@ -1,4 +1,4 @@
-import { agentLoopEnabled } from "@/lib/config/chat-quality-flags";
+import { agentLoopEnabled, answerModeOnLoopEnabled } from "@/lib/config/chat-quality-flags";
 
 /**
  * ============================================================================
@@ -75,7 +75,8 @@ export function agentLoopSkipReason(request: {
   if ((request.attachedDocumentIds?.length ?? 0) > 0) return "attachments";
   if (request.reportContext) return "report_context";
   if (request.pendingCopyFromInstanceId) return "pending_copy";
-  if (request.mode && request.mode !== "standard") return "answer_mode";
+  /* ANSWER_MODE_ON_LOOP (the owner, 26 Nov 2026): Quick and Detailed are answered by the loop too, with the mode as a length line. */
+  if (request.mode && request.mode !== "standard" && !answerModeOnLoopEnabled()) return "answer_mode";
   return null;
 }
 

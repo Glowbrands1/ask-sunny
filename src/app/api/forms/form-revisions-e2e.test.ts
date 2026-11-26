@@ -335,7 +335,8 @@ describe('"works reallly good wish we could edit after this step but i like it!"
     // …and the same chat request now makes the change on it.
     const applied = await reopen("duplicate exit for tamsin ardwell and change date notice given to 10-12-26");
     expect(applied!.formOpened!.instanceId).toBe(draft);
-    expect((await review(draft)).body.values.find((row) => row.fieldKey === "notice_given_date")?.value).toBe("2026-10-12");
+    // CHANGED ON PURPOSE (Pau, 25 Nov 2026): no "Submitted & Fulfilled Notice" tick on this form, so the notice date is not entered.
+    expect((await review(draft)).body.values.find((row) => row.fieldKey === "notice_given_date")?.value ?? "").toBe("");
     expect(store.form_instances).toHaveLength(2);
 
     await finalize(draft);
