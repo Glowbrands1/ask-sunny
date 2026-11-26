@@ -72,6 +72,9 @@ const store: FakeStore = {
   form_hr_reminder_sends: [],
   app_notifications: [],
   app_users: [],
+  // The Calendar (26 Nov 2026, migration 20261127001000): personal reminders and the Hub read's nonces.
+  calendar_reminders: [],
+  calendar_partner_nonces: [],
 } as unknown as FakeStore;
 
 // As production builds the role table when the ASD may create forms (NEXT_PUBLIC_, read once at load).

@@ -57,6 +57,10 @@ export function progressStatus(tool: string, args: unknown): string {
       return "Checking HR approvals…";
     case "read_follow_ups":
       return "Checking follow-ups…";
+    case "read_calendar":
+      return "Checking your calendar…";
+    case "propose_reminder":
+      return "Preparing a reminder card…";
     case "app_help":
       return `Checking ${appConfig().appName}'s help…`;
     default:

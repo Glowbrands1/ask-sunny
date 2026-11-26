@@ -429,6 +429,8 @@ export interface ChatMessage {
    * missing fact become a demo fact on the next turn.
    */
   formProposal?: ChatFormProposal;
+  /** A calendar reminder the chat proposed (propose_reminder): a card; nothing is saved until Add to calendar. */
+  reminderProposal?: { title: string; date: string; time: string | null; visibility: "only_me" | "my_team" };
   /**
    * The form choices offered when the request named no form.
    *

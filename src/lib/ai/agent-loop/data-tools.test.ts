@@ -91,6 +91,7 @@ function deps(overrides: Partial<DataToolDeps> = {}) {
     supabaseReady: async () => true,
     loadHrApprovals: async () => ({ kind: "off" }),
     loadFollowUpQueue: async () => null,
+    loadCalendar: async () => null,
     loadReviewsSnapshot: async () => SNAPSHOT,
     loadReviewFeed: async (storeCode) =>
       ({ reviews: storeCode === null ? Object.values(FEED_BY_STORE).flat() : (FEED_BY_STORE[storeCode] ?? []), total: 0 }) as unknown as ReviewFeed,
@@ -300,7 +301,9 @@ describe("the scope rules", () => {
     // HR approval (23 Nov 2026) added read_hr_approvals, so the AI can read the new approval step (CLAUDE.md rule 5).
     // 23 Nov 2026 (Pau) added read_ai_assignments, the AI assignment tracker for its named people. Both on purpose.
     // QA, 24 Nov 2026 added read_follow_ups, the follow-up queue the Overview and Form Monitoring count. On purpose.
-    expect(Object.keys(dataToolHandlers(ctx(MANAGER, "")))).toEqual(["read_reviews", "read_stats", "read_form_deletions", "read_ai_assignments", "read_hr_approvals", "read_follow_ups"]);
+    // Pau, 26 Nov 2026 added the Calendar: read_calendar (the page's own read) and propose_reminder (a card the
+    // manager confirms; it saves nothing). On purpose (CLAUDE.md rule 5).
+    expect(Object.keys(dataToolHandlers(ctx(MANAGER, "")))).toEqual(["read_reviews", "read_stats", "read_form_deletions", "read_ai_assignments", "read_hr_approvals", "read_follow_ups", "read_calendar", "propose_reminder"]);
   });
 });
 

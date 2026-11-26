@@ -1836,6 +1836,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     ...(effects.proposal ? { formProposal: effects.proposal } : {}),
     ...(effects.formUpdate ? { formUpdate: effects.formUpdate } : {}),
     ...(effects.formOpened ? { formOpened: effects.formOpened } : {}),
+    ...(effects.reminderProposal ? { reminderProposal: effects.reminderProposal } : {}),
   };
   return finalReplyWithoutMarkers(withoutSensitiveDefaults(answer, input.question));
 }

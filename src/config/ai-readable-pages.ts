@@ -27,7 +27,7 @@ import type { Permission } from "@/types";
  */
 
 /** The loop tools that read a page's figures. */
-export type PageReaderTool = "read_reviews" | "read_stats" | "find_past_forms" | "read_hr_approvals" | "read_follow_ups";
+export type PageReaderTool = "read_reviews" | "read_stats" | "find_past_forms" | "read_hr_approvals" | "read_follow_ups" | "read_calendar";
 
 export interface PageReader {
   readonly tool: PageReaderTool;
@@ -83,6 +83,9 @@ export const AI_READABLE_PAGES: readonly AiReadablePage[] = [
    */
   { kind: "page", route: "/", title: "Overview", access: { permission: "view_overview" },
     reader: { tool: "read_follow_ups", args: {}, figures: ["follow-ups overdue, due this week and open", "each follow-up's employee, form, salon and date"], periods: ["today", "this business week"], replayCase: "nov24-follow-ups-overdue-same-count-as-the-overview" } },
+  /* Pau, 26 Nov 2026: one calendar with the Leadership Hub and Ask Bubbles; read_calendar is the page's own read. */
+  { kind: "page", route: "/calendar", title: "Calendar", access: { permission: "view_overview" },
+    reader: { tool: "read_calendar", args: {}, figures: ["each follow-up, HR approval, Google Reviews check, reminder and L10 meeting by day and Central time", "which are overdue or due today", "who can see a reminder"], periods: ["this week", "next week", "a day", "a date range"], replayCase: "nov26-calendar-whats-on-my-calendar-this-week" } },
   { kind: "page", route: "/chat", title: "Chat", access: { permission: "ask_questions" }, notReadable: "The chat itself: nothing on it to read." },
 
   { kind: "page", route: "/reviews", title: "Google Reviews", access: { permission: "view_google_reviews" }, reader: REVIEWS_READER },

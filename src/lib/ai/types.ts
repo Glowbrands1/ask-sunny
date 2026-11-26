@@ -284,6 +284,11 @@ export interface AskResponse {
    * changed. The chat attaches it to this answer as a form card. An id, never
    * values. See `lib/forms/editable-draft.ts`.
    */
+  /**
+   * A calendar reminder the agent loop proposed this turn (propose_reminder): shown as a card; saved only when the
+   * manager presses Add to calendar (the Calendar's own server action, as that manager).
+   */
+  reminderProposal?: { title: string; date: string; time: string | null; visibility: "only_me" | "my_team" };
   formOpened?: {
     instanceId: string;
     /** Presentation only, until the card's own fetch lands. */
