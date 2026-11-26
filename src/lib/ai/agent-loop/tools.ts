@@ -6195,7 +6195,7 @@ export async function proposeForm(
     ...(statedSteps.length > 0 ? { prior_steps_said: statedSteps } : {}),
     /* QA item 22: the finalized forms on file for this person; the card's level is never chosen from them. */
     /* The forms on file are offered, never added (QA, 23 Nov 2026; port of Ask Bubbles #1089): ask_exactly ends the reply. */
-    ...(priorsOnFile.length > 0 ? { prior_on_file: { forms: priorsOnFile, line: onFileLine, on_card: false, ...(onFileOffer ? { ask_exactly: onFileOffer } : {}) } } : {}),
+    ...(priorsOnFile.length > 0 ? { prior_on_file: { forms: priorsOnFile, line: onFileLine, on_card: onFileToAdd.length > 0, ...(onFileToAdd.length > 0 ? { used_on_card: true } : {}), ...(onFileOffer ? { ask_exactly: onFileOffer } : {}) } } : {}),
     /* The owner (24 Nov 2026): a form of theirs for this person already with HR is said, with its offense and policy. */
     ...(otherWithHr.length > 0 ? { with_hr: { forms: otherWithHr.map(({ instanceId, form, date, state, offense, policy }) => ({ instance_id: instanceId, form, date, state, offense, policy })), say_exactly: formsWithHrLine(card.employeeName ?? employee.name, otherWithHr) } } : {}),
     ...(corrective && payroll === "yes" && !amount && statedAmount ? { payroll_amount_said: `$${statedAmount}` } : {}),
