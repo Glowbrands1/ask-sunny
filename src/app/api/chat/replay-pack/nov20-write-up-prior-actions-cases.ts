@@ -2,6 +2,7 @@ import { expect, vi } from "vitest";
 
 import { KEARNEY, STAFF, type ReplayCase, type ReplayContext } from "./cases";
 import { evidenceFrom, lastResult, loopStandIn, type LoopDecision } from "./loop-stand-in";
+import { allFieldsRequiredEnabled } from "@/lib/config/chat-quality-flags";
 
 /**
  * ============================================================================
@@ -61,7 +62,9 @@ export const NOV20_WRITE_UP_PRIOR_ACTIONS_CASES: ReplayCase[] = [
   /* -------------------------------------------------------------------------- 2. prior actions */
   fixed("nov17-write-up-prior-actions-blank-unless-stated", `"${CA_LATE}" (nothing said about prior actions), the drafter writes "None — first occurrence": Prior actions stays blank`, async (t) => {
     const saved = await created(t, CA_LATE, CA_CARD, { observation: CA_OBSERVATION, prior_actions: "None — first occurrence" });
-    expect(saved.values.prior_actions ?? "", "a prior-actions answer the manager never gave").toBe("");
+    // CHANGED ON PURPOSE (Pau, 26 Nov 2026: "still not say N/A here" / "yes i want it before"; ALL_FIELDS_REQUIRED_ENABLED):
+    // nothing said and nothing on file reads "N/A", never the drafter's "None — first occurrence". Blank with the flag off.
+    expect(saved.values.prior_actions ?? "", "a prior-actions answer the manager never gave").toBe(allFieldsRequiredEnabled() ? "N/A" : "");
   }),
   fixed("nov17-write-up-prior-actions-stated-first-time-kept", `Control: "${CA_LATE}, this is the first time": "None — first occurrence" is the manager's and stays`, async (t) => {
     // The loop's card records what the manager said about earlier steps; Create keeps the drafter's line for it.

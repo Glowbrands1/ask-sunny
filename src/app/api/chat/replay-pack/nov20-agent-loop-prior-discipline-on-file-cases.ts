@@ -4,6 +4,7 @@ import type { ChatFormProposal } from "@/types";
 
 import { KEARNEY, STAFF, type ReplayCase, type ReplayContext } from "./cases";
 import { evidenceFrom, lastResult, loopStandIn, type LoopDecision } from "./loop-stand-in";
+import { allFieldsRequiredEnabled } from "@/lib/config/chat-quality-flags";
 
 /**
  * ============================================================================
@@ -83,20 +84,21 @@ export const NOV20_AGENT_LOOP_PRIOR_DISCIPLINE_ON_FILE_CASES: ReplayCase[] = [
     const thread = t.thread();
     await thread.say("put togehter a corrective action for remy calder");
     const reply = await thread.say("did not come into her scheduled shift today at 9:30");
-    expect(card(reply)?.priorActions ?? null, `a form on file was added to Prior actions on its own:\n${reply.content}`).toBeNull();
+    // CHANGED ON PURPOSE (Pau, 26 Nov 2026: "Ai saw prior forms but i need them here"; PRIOR_ON_FILE_ON_CARD_ENABLED): the forms on file are on the card's Prior actions, each saying what it is, and are no longer offered.
+    expect(card(reply)?.priorActions ?? null, reply.content).toBe("Corrective Action Form, Verbal Warning, finalized — 10/20/2026");
     expect(card(reply)?.warningLevel ?? null, "the level was set from the form on file").toBeNull();
-    expect((lastResult(model.views.at(-1)!, "propose_form") as CardOut).facts?.prior_on_file?.ask_exactly ?? "").toMatch(/has a Verbal CA on file from 10\/20\/2026\. Want me to add it to Prior actions\?/);
+    expect((lastResult(model.views.at(-1)!, "propose_form") as CardOut).facts?.prior_on_file?.ask_exactly ?? null, "a form on the card was offered too").toBeNull();
     const raised = await thread.say("make it a written");
     expect(card(raised)?.warningLevel, "the manager's own level was not kept").toBe("written");
-    expect(card(raised)?.priorActions ?? null).toBeNull();
+    expect(card(raised)?.priorActions ?? null).toBe("Corrective Action Form, Verbal Warning, finalized — 10/20/2026");
   }),
   fixed("nov20-prior-on-file-seven-cas", "Seven finalized CAs on file (three Verbal, four Written): every one is in prior actions with its level, oldest first, and no level is set on the new card", async (t) => {
     for (const [index, date] of ["2026-08-11", "2026-08-25", "2026-09-08", "2026-09-22", "2026-10-06", "2026-10-20", "2026-11-03"].entries()) await onFile(t, date, "dpoa", index < 3 ? "verbal" : "written");
     vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
     t.loopModel!(newCard());
     const reply = await t.thread().say("ca for remy calder, she was late to open on 11/14");
-    expect(card(reply)?.priorActions ?? null, reply.content).toBeNull();
-    for (const day of ["08/11/2026", "08/25/2026", "09/08/2026", "09/22/2026", "10/06/2026", "10/20/2026", "11/03/2026"]) expect(reply.content, "a form on file was not offered").toContain(day);
+    // CHANGED ON PURPOSE (Pau, 26 Nov 2026: "Ai saw prior forms but i need them here"; PRIOR_ON_FILE_ON_CARD_ENABLED): the forms on file are on the card's Prior actions, each saying what it is, and are no longer offered.
+    for (const day of ["08/11/2026", "08/25/2026", "09/08/2026", "09/22/2026", "10/06/2026", "10/20/2026", "11/03/2026"]) expect(card(reply)?.priorActions ?? "", "a form on file is not on the card").toContain(day);
     expect(card(reply)?.warningLevel ?? null).toBeNull();
   }),
   fixed("nov20-prior-on-file-coaching-yes-draft-no", "A finalized Coaching Form is a prior action; a CA still in draft is not", async (t) => {
@@ -105,21 +107,26 @@ export const NOV20_AGENT_LOOP_PRIOR_DISCIPLINE_ON_FILE_CASES: ReplayCase[] = [
     vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
     t.loopModel!(newCard());
     const reply = await t.thread().say("ca for remy calder, she was late to open on 11/14");
-    expect(card(reply)?.priorActions ?? null, reply.content).toBeNull();
-    expect(reply.content, "the finalized coaching was not offered").toMatch(/a Coaching Form on file from 09\/12\/2026/);
-    expect(reply.content, "the draft CA was offered").not.toMatch(/11\/10\/2026/);
+    // CHANGED ON PURPOSE (Pau, 26 Nov 2026: "Ai saw prior forms but i need them here"; PRIOR_ON_FILE_ON_CARD_ENABLED): the forms on file are on the card's Prior actions, each saying what it is, and are no longer offered. A draft never sent to HR is still not history.
+    expect(card(reply)?.priorActions ?? null, reply.content).toBe("Coaching Form, finalized — 09/12/2026");
+    expect(card(reply)?.priorActions ?? "", "the draft CA is on the card").not.toMatch(/11\/10\/2026/);
   }),
   fixed("nov20-prior-on-file-control-manager-steps-win", "Control: the manager states the history (\"she had a coaching on 9/8\"): their steps are the prior actions, not the forms on file", async (t) => {
     await onFile(t, "2026-10-20", "dpoa", "verbal");
     vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
     t.loopModel!(newCard("Coaching — 09/08/2026"));
     const reply = await t.thread().say("ca for remy calder, she was late to open on 11/14, she had a coaching on 9/8");
-    expect(card(reply)?.priorActions).toBe("Coaching — 09/08/2026");
+    // CHANGED ON PURPOSE (Pau, 26 Nov 2026: "Ai saw prior forms but i need them here"; PRIOR_ON_FILE_ON_CARD_ENABLED): the forms on file are on the card's Prior actions, each saying what it is, and are no longer offered. The manager's steps come first.
+    expect(card(reply)?.priorActions).toBe("Coaching — 09/08/2026; Corrective Action Form, Verbal Warning, finalized — 10/20/2026");
   }),
-  fixed("nov20-prior-on-file-control-nothing-on-file", "Control: nothing finalized on file: prior actions stay empty", async (t) => {
+  fixed("nov20-prior-on-file-control-nothing-on-file", "Control: nothing finalized on file: prior actions stay empty on the card, and the drafted form says N/A (Pau, 26 Nov 2026: \"still not say N/A here\" / \"yes i want it before\")", async (t) => {
     vi.setSystemTime(new Date("2026-11-14T22:40:00Z"));
     t.loopModel!(newCard());
-    const reply = await t.thread().say("ca for remy calder, she was late to open on 11/14");
+    const thread = t.thread();
+    const reply = await thread.say("ca for remy calder, she was late to open on 11/14");
     expect(card(reply)?.priorActions ?? null).toBeNull();
+    // ALL_FIELDS_REQUIRED_ENABLED (on in production): nothing stated and nothing on file reads "N/A" from the draft on.
+    const id = await thread.create();
+    expect(t.values(id).prior_actions ?? "", "the drafted form's history box is not N/A").toBe(allFieldsRequiredEnabled() ? "N/A" : "");
   }),
 ];
