@@ -1305,6 +1305,10 @@ describe("new flags default off and wrappers are inert", () => {
           ":(exclude)src/features/calendar/calendar-view.tsx",
           ":(exclude)src/features/calendar/new-event.tsx",
           ":(exclude)src/features/calendar/reminder-card.tsx",
+          // The named account sees every address without clicking (Pau, 26 Nov 2026: "for my access only";
+          // WOVEN_ADDRESS_LIST_EMAILS): the Woven page passes the yes/no down to the directory. Admin page only.
+          ":(exclude)src/app/(app)/admin/integrations/woven/[view]/page.tsx",
+          ":(exclude)src/features/admin/woven/woven-view-screen.tsx",
           ":(exclude)src/features/forms/hr-approval-panel.tsx",
           ":(exclude)src/features/forms/hr-approval-lists.tsx",
           ":(exclude)src/features/forms/hr-approval-screen.tsx",
