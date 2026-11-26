@@ -22,7 +22,16 @@ import { WovenHeader } from "./tabs";
 
 type Params = Record<string, string | string[] | undefined>;
 
-export function WovenViewScreen({ props, params }: { props: WovenViewProps; params: Params }) {
+export function WovenViewScreen({
+  props,
+  params,
+  showAllAddresses = false,
+}: {
+  props: WovenViewProps;
+  params: Params;
+  /** The named account (WOVEN_ADDRESS_LIST_EMAILS): every directory row loads its home address without a click. */
+  showAllAddresses?: boolean;
+}) {
   const actionsDisabled = props.sampleLabel !== null || !props.liveMode;
   const { content } = props;
 
@@ -44,7 +53,7 @@ export function WovenViewScreen({ props, params }: { props: WovenViewProps; para
       ) : content.state === "unconfigured" ? (
         <EmptyState icon={<Database />} title="Supabase is not configured for this deployment" description="The Woven directory lives in Supabase." />
       ) : content.data.view === "directory" ? (
-        <DirectoryTable page={content.data.page} query={parseDirectoryQuery(params)} sample={props.sampleLabel !== null} />
+        <DirectoryTable page={content.data.page} query={parseDirectoryQuery(params)} sample={props.sampleLabel !== null} autoAddresses={showAllAddresses} />
       ) : content.data.view === "changes" ? (
         <ChangeFeed page={content.data.page} query={parseChangeQuery(params)} actionsDisabled={actionsDisabled} />
       ) : content.data.view === "runs" ? (

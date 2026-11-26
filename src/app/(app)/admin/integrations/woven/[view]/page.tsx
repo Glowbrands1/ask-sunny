@@ -5,6 +5,7 @@ import { PermissionGate } from "@/components/permission-gate";
 import { isWovenView, loadWovenView, viewShowsPeople } from "@/features/admin/woven/load";
 import { WovenViewScreen } from "@/features/admin/woven/woven-view-screen";
 import { requirePagePermission } from "@/lib/auth/page";
+import { mayListAllAddresses } from "@/lib/employees/woven/address-list-access";
 
 export const metadata: Metadata = {
   title: "Woven Employee Sync",
@@ -34,7 +35,7 @@ export default async function WovenViewPage({
   params: Promise<{ view: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requirePagePermission("manage_integrations");
+  const identity = await requirePagePermission("manage_integrations");
 
   const { view } = await params;
   if (!isWovenView(view)) notFound();
@@ -44,7 +45,8 @@ export default async function WovenViewPage({
   const query = await searchParams;
   const props = await loadWovenView(view, query);
 
-  const screen = <WovenViewScreen props={props} params={query} />;
+  // WOVEN_ADDRESS_LIST_EMAILS (Pau, 26 Nov 2026): the named account sees every row's home address without clicking.
+  const screen = <WovenViewScreen props={props} params={query} showAllAddresses={view === "directory" && mayListAllAddresses(identity)} />;
   return (
     <PermissionGate permission="manage_integrations" adminOnly>
       {people ? <PermissionGate permission="manage_users">{screen}</PermissionGate> : screen}
