@@ -17,8 +17,10 @@ import { lastResult, loopStandIn, type LoopView } from "./loop-stand-in";
  * no description told the model it could ask. read_stats now takes each by name (its own report family, under the
  * pages' View reports gate and the manager's own salons). These cases ask in a manager's words through the real chat
  * route with production's flags, and assert the report asked for is read for the manager's own salons only and its
- * figures reach the model. The report reads need tables the harness does not hold, so the briefing is scripted: it
- * records what it was asked for and returns figures for that report.
+ * figures reach the model, with the period they belong to and their data date (QA, 24 Nov 2026: Spa Engagement mixed
+ * periods; Bed Usage and Spa Wellness were stuck on 31 Aug data, so the model must say whose period and which date each
+ * figure is). The report reads need tables the harness does not hold, so the briefing is scripted: it records what it
+ * was asked for and returns figures, a period and a data date for that report.
  */
 const REPORT = "Pau, 20 Nov 2026: \"how can we program this AI to read new things added to the app? i need to always say it?\" (board f039: the bed and spa reports)";
 const FLAG = "AGENT_LOOP_ENABLED";
@@ -27,6 +29,13 @@ const FIGURES: Partial<Record<ReportFamilyId, string>> = {
   "bed-usage": "BED USAGE — month to date\nKearney: total tans 1,204; beds 12; tans per bed 100.3 (chain 88.1).",
   "spa-engagement": "SPA ENGAGEMENT — month to date\nKearney: spa sessions 310; unique tanners 640; unique spa tanners 122; sessions per bed 51.7.",
   "spa-wellness": "SPA WELLNESS — month to date, year to date, last twelve months\nKearney: Red light sessions MTD 88 (peers 74); YTD 1,010; LTM 1,102.",
+};
+
+/** The period each scripted report was read for, and its data date (Spa Wellness: QA's stale 31 Aug delivery). */
+const PERIOD: Partial<Record<ReportFamilyId, { label: string; type: "mtd" | "ytd"; start: string; end: string; asOf: string }>> = {
+  "bed-usage": { label: "November 2026 MTD", type: "mtd", start: "2026-11-01", end: "2026-11-24", asOf: "2026-11-24" },
+  "spa-engagement": { label: "November 2026 MTD", type: "mtd", start: "2026-11-01", end: "2026-11-24", asOf: "2026-11-24" },
+  "spa-wellness": { label: "2026 YTD", type: "ytd", start: "2026-01-01", end: "2026-08-31", asOf: "2026-08-31" },
 };
 
 async function ask(t: ReplayContext, report: string, words: string) {
@@ -43,8 +52,11 @@ async function ask(t: ReplayContext, report: string, words: string) {
         present: input.families,
         missing: [],
         periodIntent: null,
-        periods: {},
-        freshness: [],
+        periods: Object.fromEntries(input.families.map((family) => {
+          const period = PERIOD[family]!;
+          return [family, { ok: true, intent: null, fellBackToLatest: false, period: { id: `${family}-p`, type: period.type, start: period.start, end: period.end, label: period.label, ingestedAt: null, salonCount: null } }];
+        })),
+        freshness: input.families.map((family) => ({ familyId: family, familyLabel: family, level: "current", asOf: PERIOD[family]!.asOf, daysBehind: 2, ingestedAt: null, periodLabel: PERIOD[family]!.label, sentence: `Figures as of ${PERIOD[family]!.asOf}.` })),
       } as ReportBriefing;
     },
     readBreakdown: async () => null,
@@ -79,6 +91,12 @@ function reportCase(id: string, title: string, report: string, family: ReportFam
       // KEARNEY is salon 0309 alone: the report is read for it, never unrestricted.
       expect(asked.at(-1)?.scope, "read_stats read more than the manager's own salons").toMatchObject({ unrestricted: false, salonNumbers: ["0309"] });
       expect(JSON.stringify(output.figures), `the ${title} figures did not reach the model`).toContain(FIGURES[family]!.split("\n")[1]!.slice(0, 30));
+      // The period the figures belong to and their data date reach the model with them, and it is told never to mix periods.
+      const period = PERIOD[family]!;
+      expect(output.report_periods, "the period and data date did not reach the model").toEqual([
+        { report: title, period: period.label, window: period.type === "mtd" ? "month to date" : "year to date", from: period.start, to: period.end, data_date: period.asOf },
+      ]);
+      expect(String(output.note)).toMatch(/never add, compare or combine figures of two different periods or data dates/);
     },
   };
 }

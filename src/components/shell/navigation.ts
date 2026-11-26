@@ -1,5 +1,6 @@
 import {
   BarChart3,
+  BookOpenCheck,
   FileStack,
   Gauge,
   GraduationCap,
@@ -239,6 +240,14 @@ export const NAV_SECTIONS: NavSection[] = [
         href: "/admin/ai-usage",
         icon: Gauge,
         permission: "view_ai_usage",
+      },
+      {
+        /* QA, 24 Nov 2026: the list of every page the AI can read, from the page registry. */
+        label: "AI-readable pages",
+        href: "/admin/ai-readable-pages",
+        icon: BookOpenCheck,
+        permission: "view_ai_usage",
+        adminOnly: true,
       },
       {
         label: "User Management",

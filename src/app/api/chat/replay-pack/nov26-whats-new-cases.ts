@@ -22,7 +22,8 @@ const FLAG = "AGENT_LOOP_ENABLED";
 const ASK = "what's new in Sunny?";
 const ADMIN_ONLY = "Employee address in the Employee Directory";
 
-type Update = { date: string; title: string; what: string; page?: string };
+type Update = { tag: string; title: string; before: string; now: string; how_to_use: string; show_me?: { page: string; link: string } };
+type Release = { date: string; summary: string; updates: Update[] };
 
 async function ask(t: ReplayContext, words: string, input: Record<string, unknown> = {}) {
   vi.setSystemTime(new Date("2026-11-26T16:00:00Z"));
@@ -30,9 +31,9 @@ async function ask(t: ReplayContext, words: string, input: Record<string, unknow
   t.loopModel!(model);
   await t.thread().say(words);
   const output = model.views.flatMap((view) => view.results.filter((result) => result.tool === "read_whats_new")).at(-1)?.output as
-    | { updates?: Update[]; refused?: string; error?: string }
+    | { releases?: Release[]; refused?: string; error?: string }
     | undefined;
-  return { model, output };
+  return { model, output, updates: (output?.releases ?? []).flatMap((release) => release.updates) };
 }
 
 export const NOV26_WHATS_NEW_CASES: ReplayCase[] = [
@@ -46,18 +47,21 @@ export const NOV26_WHATS_NEW_CASES: ReplayCase[] = [
       if (!t.loopOn?.() || process.env.AGENT_LOOP_LIVE === "1") return;
       t.directory(STAFF);
       t.as("salon_director", KEARNEY);
-      const { model, output } = await ask(t, ASK);
+      const { model, output, updates } = await ask(t, ASK);
       expect(model.views[0]?.system, "the readable-pages line is not in what the model is given").toContain(readablePagesLine(AI_READABLE_PAGES)!);
       expect(model.views[0]?.system).toContain("What's New (read_whats_new)");
       expect(output?.refused, JSON.stringify(output)).toBeUndefined();
-      const titles = (output?.updates ?? []).map((update) => update.title);
+      const titles = updates.map((update) => update.title);
       for (const title of ["What's New", "Missing fields explained at Finalize", "Google Reviews leaderboard by period", "Notifications bar"]) {
         expect(titles, `${title} did not reach the model`).toContain(title);
       }
       expect(titles, "an administrators-only update reached a Salon Director").not.toContain(ADMIN_ONLY);
-      expect(output?.updates?.[0]?.date, "newest first").toBe("Nov 26, 2026");
-      const missing = output!.updates!.find((update) => update.title === "Missing fields explained at Finalize")!;
-      expect(missing.what).toBe(WHATS_NEW.find((entry) => entry.title === missing.title)!.description);
+      expect(output?.releases?.[0]?.date, "newest first").toBe("Nov 26, 2026");
+      expect(output?.releases?.[0]?.summary, "the release's summary").toBe(WHATS_NEW[0]!.summary);
+      // The owner's format: tag, Before / Now / How to use it, and the Show me page, so the answer can say how to use it.
+      const missing = updates.find((update) => update.title === "Missing fields explained at Finalize")!;
+      const entry = WHATS_NEW.flatMap((release) => release.entries).find((candidate) => candidate.title === missing.title)!;
+      expect(missing).toMatchObject({ tag: entry.tag, before: entry.before, now: entry.now, how_to_use: entry.howToUse, show_me: { page: entry.showMe!.label, link: entry.showMe!.href } });
     },
   },
   {
@@ -70,8 +74,8 @@ export const NOV26_WHATS_NEW_CASES: ReplayCase[] = [
       if (!t.loopOn?.() || process.env.AGENT_LOOP_LIVE === "1") return;
       t.directory(STAFF);
       t.as("admin", { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] });
-      const { output } = await ask(t, "any new features this week?", { since: "2026-11-25" });
-      const titles = (output?.updates ?? []).map((update) => update.title);
+      const { updates } = await ask(t, "any new features this week?", { since: "2026-11-25" });
+      const titles = updates.map((update) => update.title);
       expect(titles).toContain(ADMIN_ONLY);
       expect(titles).toContain("Create a form from this conversation");
       expect(titles, "an update from before the 25th was given for this week").not.toContain("Google Reviews leaderboard by period");

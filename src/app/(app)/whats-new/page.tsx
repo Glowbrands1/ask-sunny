@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import { WHATS_NEW, whatsNewFor } from "@/config/whats-new";
 import { WhatsNewScreen } from "@/features/whats-new/whats-new-screen";
+import { ACTIVE_BRAND } from "@/lib/brand";
 import { requirePagePermission } from "@/lib/auth/page";
 import { activePermissionMatrix, hasPermission } from "@/lib/permissions";
 
@@ -20,6 +21,6 @@ export default async function WhatsNewPage() {
   // The saved permission matrix is loaded by the gate, so the entries below are filtered on it.
   const identity = await requirePagePermission("view_overview");
   const matrix = activePermissionMatrix();
-  const entries = whatsNewFor(identity?.role ?? null, (role, permission) => hasPermission(matrix, role, permission), WHATS_NEW);
-  return <WhatsNewScreen entries={entries} />;
+  const releases = whatsNewFor(identity?.role ?? null, (role, permission) => hasPermission(matrix, role, permission), WHATS_NEW);
+  return <WhatsNewScreen releases={releases} appName={ACTIVE_BRAND.productName} />;
 }

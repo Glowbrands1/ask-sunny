@@ -83,7 +83,7 @@ export const AI_READABLE_PAGES: readonly AiReadablePage[] = [
     reader: { tool: "read_follow_ups", args: {}, figures: ["follow-ups overdue, due this week and open", "each follow-up's employee, form, salon and date"], periods: ["today", "this business week"], replayCase: "nov24-follow-ups-overdue-same-count-as-the-overview" } },
   /* Pau, 26 Nov 2026: recent updates, from `src/config/whats-new.ts`; an entry about a page only for a role that may open it. */
   { kind: "page", route: "/whats-new", title: "What's New", access: { permission: "view_overview" },
-    reader: { tool: "read_whats_new", args: {}, figures: ["each update's date, title and what it does", "the page it is about"], periods: ["newest first", "since a day"], replayCase: "nov26-whats-new-reaches-the-model" } },
+    reader: { tool: "read_whats_new", args: {}, figures: ["each release's date and summary", "each update's tag (New or Improved), before, now and how to use it", "its Show me page"], periods: ["newest first", "since a day"], replayCase: "nov26-whats-new-reaches-the-model" } },
   { kind: "page", route: "/chat", title: "Chat", access: { permission: "ask_questions" }, notReadable: "The chat itself: nothing on it to read." },
 
   { kind: "page", route: "/reviews", title: "Google Reviews", access: { permission: "view_google_reviews" }, reader: REVIEWS_READER },
@@ -141,6 +141,9 @@ export const AI_READABLE_PAGES: readonly AiReadablePage[] = [
   { kind: "page", route: "/ai-training/manage", title: "Manage AI training", access: { permission: "view_ai_training" }, notReadable: TRAINING_EDITOR },
   { kind: "page", route: "/ai-training/manage/lessons/[id]", title: "Edit AI training lesson", access: { permission: "view_ai_training" }, notReadable: TRAINING_EDITOR },
 
+  /* QA, 24 Nov 2026: this list, shown to admins in the app (generated from it, so it cannot drift). */
+  { kind: "page", route: "/admin/ai-readable-pages", title: "AI-readable pages", access: { permission: "view_ai_usage", adminConsole: true },
+    notReadable: ADMIN + "this list of pages itself; the AI is given it as its rules book's page line and its tools' descriptions, not as a page to read." },
   { kind: "page", route: "/admin/ai-usage", title: "AI usage", access: { permission: "view_ai_usage" }, notReadable: ADMIN + "AI usage and spend figures; " + NO_LOOP_READER },
   { kind: "page", route: "/admin/analytics", title: "Analytics", access: { permission: "view_analytics" }, notReadable: ADMIN + "chat analytics figures; " + NO_LOOP_READER },
   { kind: "page", route: "/admin/analytics/[view]", title: "Analytics view", access: { permission: "view_analytics" }, notReadable: ADMIN + "chat analytics figures; " + NO_LOOP_READER },

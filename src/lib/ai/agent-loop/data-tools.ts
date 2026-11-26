@@ -5,7 +5,7 @@ import { readSalonMentions } from "@/lib/forms/salon-mention";
 import { DAILY_STATS_INTERPRETATION_FRAMEWORK } from "@/lib/knowledge/document-roles";
 import type { RoleGroundingResult } from "@/lib/knowledge/role-grounding";
 import { pagesToolLine, type PageReaderTool } from "@/config/ai-readable-pages";
-import { WHATS_NEW, whatsNewFor, type WhatsNewEntry } from "@/config/whats-new";
+import { WHATS_NEW, whatsNewFor, type WhatsNewRelease } from "@/config/whats-new";
 import { PRODUCTION_RESOURCES } from "@/data/resources";
 import { RESOURCE_CATEGORY_LABEL } from "@/data/resource-taxonomy";
 import { VIDEO_CATEGORY_LABEL } from "@/lib/videos/categories";
@@ -17,7 +17,7 @@ import { activePermissionMatrix, asdNoFormMonitoringEnabled, hasPermission } fro
 import { relativeBusinessDay } from "@/lib/forms/follow-up";
 import type { Permission } from "@/types";
 import type { ReportBriefing, LoadReportBriefingInput } from "@/lib/reporting/read/report-briefing";
-import { REPORT_FAMILIES_BY_ID, type ReportFamilyId } from "@/lib/reporting/read/report-families";
+import { REPORT_FAMILIES_BY_ID, REPORT_PERIOD_TYPE_LABEL, type ReportFamilyId } from "@/lib/reporting/read/report-families";
 import { routeReportFamilies } from "@/lib/reporting/read/family-routing";
 import { narrowSalonSelection, reportingScopeOf, type ReportingScope } from "@/lib/reporting/scope/authorized-salons";
 import { goalStatus, GOAL_STATUS_LABEL, goalSummary, formatGoalMonth, formatMonthToDate } from "@/lib/reviews/goal";
@@ -567,7 +567,12 @@ export async function readStats(
     salons: numbers === null ? "all salons" : numbers.map((number) => salonName(number, number)),
     present: briefing.present.map(label),
     missing: briefing.missing.map(label),
-    freshness: briefing.freshness.map((entry) => ({ report: entry.familyLabel, as_of: entry.asOf, days_behind: entry.daysBehind, says: entry.sentence })),
+    freshness: briefing.freshness.map((entry) => ({ report: entry.familyLabel, as_of: entry.asOf, days_behind: entry.daysBehind, ...(entry.periodLabel ? { period: entry.periodLabel } : {}), says: entry.sentence })),
+    /*
+     * QA, 24 Nov 2026 (Spa Engagement mixed periods; Bed Usage and Spa Wellness stuck on 31 Aug): each report's figures
+     * come with the period they belong to and their data date, so the model never puts figures of two periods together.
+     */
+    report_periods: reportPeriods(briefing),
     figures: untrusted(figures.text, source),
     ...(figures.truncatedSalons.length > 0
       ? {
@@ -578,8 +583,29 @@ export async function readStats(
     ...(breakdown ? { breakdown: untrusted(breakdown, source) } : {}),
     ...(focusGuide ? { focus_guide: focusGuide } : {}),
     ...(restricted && RANKING.test(asked) ? { others: OTHERS_NOT_VISIBLE } : {}),
-    note: "Give only figures written here, with the report's own labels, the period and the salon each is for. A report under missing was not found: say so; never estimate it.",
+    note: "Give only figures written here, with the report's own labels, the period and the salon each is for. Each report's figures belong to the period and data date in report_periods: say them with the figures, and never add, compare or combine figures of two different periods or data dates as if they were one. A report under missing was not found: say so; never estimate it.",
   };
+}
+
+/** Per report read: the period its figures belong to (label, window, first and last day) and its data date. */
+function reportPeriods(briefing: ReportBriefing): Record<string, unknown>[] {
+  const label = (id: ReportFamilyId) => REPORT_FAMILIES_BY_ID[id]?.label ?? id;
+  return (briefing.requested ?? briefing.present ?? []).map((id) => {
+    const resolution = briefing.periods?.[id];
+    const fresh = (briefing.freshness ?? []).find((entry) => entry.familyId === id);
+    const dataDate = fresh?.asOf ?? null;
+    if (!resolution) return { report: label(id), data_date: dataDate };
+    if (!resolution.ok) return { report: label(id), period: null, could_not_read: resolution.failure.detail, data_date: dataDate };
+    return {
+      report: label(id),
+      period: resolution.period.label,
+      window: REPORT_PERIOD_TYPE_LABEL[resolution.period.type] ?? resolution.period.type,
+      from: resolution.period.start,
+      to: resolution.period.end,
+      data_date: dataDate ?? resolution.period.end,
+      ...(resolution.fellBackToLatest ? { newest_available: true } : {}),
+    };
+  });
 }
 
 /* ---------------------------------------------------------------- read_form_deletions --- */
@@ -804,10 +830,12 @@ const WHATS_NEW_LISTED = 15;
 
 /**
  * read_whats_new({since?}) (Pau, 26 Nov 2026; CLAUDE.md §5): the What's New page's list (`src/config/whats-new.ts`),
- * newest first, as this manager's page shows it: the page's own permission, and an entry about another page only when
- * their role may open that page (`whatsNewFor`). `since` (YYYY-MM-DD) keeps the entries from that day on.
+ * releases newest first, as this manager's page shows it: the page's own permission, and an entry about another page
+ * only when their role may open that page (`whatsNewFor`). Each entry comes with its tag (New / Improved), what it was
+ * like before, what changed, how to use it and the page it is about, so the answer can say how to use each one.
+ * `since` (YYYY-MM-DD) keeps the releases from that day on.
  */
-export async function readWhatsNew(context: DataToolContext, input: { since?: unknown }, entries: readonly WhatsNewEntry[] = WHATS_NEW): Promise<ToolResult> {
+export async function readWhatsNew(context: DataToolContext, input: { since?: unknown }, releases: readonly WhatsNewRelease[] = WHATS_NEW): Promise<ToolResult> {
   const matrix = activePermissionMatrix();
   const role = context.actor.role;
   if (!hasPermission(matrix, role, READER_PERMISSION.read_whats_new)) {
@@ -815,26 +843,41 @@ export async function readWhatsNew(context: DataToolContext, input: { since?: un
   }
   const since = text(input.since);
   const from = since && /^\d{4}-\d{2}-\d{2}$/.test(since) ? since : null;
-  const visible = whatsNewFor(role, (r, permission) => hasPermission(matrix, r, permission), entries).filter((entry) => !from || entry.date >= from);
-  const listed = visible.slice(0, WHATS_NEW_LISTED);
+  const visible = whatsNewFor(role, (r, permission) => hasPermission(matrix, r, permission), releases).filter((release) => !from || release.date >= from);
+  const total = visible.reduce((count, release) => count + release.entries.length, 0);
+  let left = WHATS_NEW_LISTED;
+  const listed = visible
+    .map((release) => {
+      const entries = release.entries.slice(0, Math.max(0, left));
+      left -= entries.length;
+      return { release, entries };
+    })
+    .filter((group) => group.entries.length > 0);
+  const shown = listed.reduce((count, group) => count + group.entries.length, 0);
   return {
     source: WHATS_NEW_SOURCE,
     app: appConfig().appName,
-    updates: listed.map((entry) => ({
-      date: formatBusinessDay(entry.date),
-      title: entry.title,
-      what: entry.description,
-      ...(entry.href ? { page: entry.href } : {}),
+    releases: listed.map(({ release, entries }) => ({
+      date: formatBusinessDay(release.date),
+      summary: release.summary,
+      updates: entries.map((entry) => ({
+        tag: entry.tag,
+        title: entry.title,
+        before: entry.before,
+        now: entry.now,
+        how_to_use: entry.howToUse,
+        ...(entry.showMe ? { show_me: { page: entry.showMe.label, link: entry.showMe.href } } : {}),
+      })),
     })),
-    ...(visible.length > listed.length ? { listed: listed.length, of: visible.length } : {}),
+    ...(total > shown ? { listed: shown, of: total } : {}),
     ...(from ? { since: formatBusinessDay(from) } : {}),
     note:
-      (listed.length === 0
+      (shown === 0
         ? from
           ? "Nothing new since that day. Say so, and that the What's New page lists the latest updates."
           : "The What's New page lists nothing yet. Say so."
-        : "These are the updates on the What's New page, newest first. Give each with its date and title and what it does, in plain words, as written; never add an update that is not listed.") +
-      (visible.length > listed.length ? ` ${listed.length} of ${visible.length} are listed; say the page has the rest.` : ""),
+        : "These are the updates on the What's New page, newest release first. For each, give its tag (New or Improved), title and what changed (now), and how to use it, in plain words, as written; offer its Show me page when it has one. Never add an update that is not listed.") +
+      (total > shown ? ` ${shown} of ${total} are listed; say the page has the rest.` : ""),
   };
 }
 
@@ -1079,7 +1122,7 @@ export function dataToolSpecs(config: AppConfig) {
   {
     name: "read_whats_new",
     description:
-      "What's new in " + config.appName + ": the What's New page's list of recent updates and new features (date, title, what it does, the page it is about), newest first, as this manager's page shows it. Use it for \"what's new?\", \"what's new in " + config.appName + "?\", \"any new features?\", \"what changed this week?\" (pass since). Never answer what's new from memory." + pagesToolLine(config.readablePages, "read_whats_new"),
+      "What's new in " + config.appName + ": the What's New page's list of recent updates and new features, releases newest first (date and summary), each update with its tag (New or Improved), what it was like before, what changed now, how to use it and its Show me page, as this manager's page shows it. Use it for \"what's new?\", \"what's new in " + config.appName + "?\", \"any new features?\", \"what changed this week?\" (pass since). Never answer what's new from memory." + pagesToolLine(config.readablePages, "read_whats_new"),
     input_schema: {
       type: "object",
       properties: {
