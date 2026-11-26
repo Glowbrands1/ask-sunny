@@ -7,10 +7,11 @@ import { Bell } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger, Tooltip } from "@/components/ui/overlays";
-import type { AppNotification, BellData } from "@/lib/notifications/types";
+import { followUpFormId, type AppNotification, type BellData } from "@/lib/notifications/types";
 import { cn } from "@/lib/utils/cn";
 
 import { dismissNotificationsAction, markNotificationsReadAction, markNotificationsUnreadAction } from "./actions";
+import { FollowUpActions } from "./follow-up-actions";
 import { NotificationsPanel } from "./notifications-panel";
 
 /**
@@ -51,6 +52,8 @@ export function NotificationBell({
   // Put back to unread here at once (the envelope on a read row), so the row and the badge change before the server answers.
   const [unreadHere, setUnreadHere] = useState<Set<string>>(new Set());
   const [, start] = useTransition();
+  // A follow-up notice settled from here (Completed / Extend): what happened, shown in place of its buttons.
+  const [settledHere, setSettledHere] = useState<Map<string, string>>(new Map());
   // A pinned one (HR's "waiting for your approval" while the form still waits) is never read or removed from here: it
   // stays for every approver until HR approves, rejects or sends the form back (owner, 24 Nov 2026).
   const isRead = (n: AppNotification) => !n.pinned && !unreadHere.has(n.id) && (!!n.readAt || readHere === "all" || readHere.has(n.id));
@@ -81,6 +84,19 @@ export function NotificationBell({
       onNavigate?.();
       router.push(n.href);
     }
+  }
+
+  /**
+   * Completed or Extend on a follow-up notice went through: say so in the row, take it off this person's list on the
+   * server (it is settled), and re-read the page so Form Monitoring shows the new state.
+   */
+  function settled(n: AppNotification, message: string) {
+    setSettledHere((prev) => new Map(prev).set(n.id, message));
+    setReadHere((prev) => (prev === "all" ? prev : new Set(prev).add(n.id)));
+    start(async () => {
+      await dismissNotificationsAction([n.id]);
+    });
+    router.refresh();
   }
 
   function readAll() {
@@ -196,7 +212,25 @@ export function NotificationBell({
         className="w-[min(22rem,calc(100vw-1.5rem))] p-0"
       >
         <NotificationsPanel
-          rows={items.map((n) => ({ id: n.id, title: n.title, body: n.body, meta: timeAgo(n.createdAt), read: isRead(n), pinned: n.pinned === true }))}
+          rows={items.map((n) => {
+            const formId = followUpFormId(n);
+            const done = settledHere.get(n.id);
+            return {
+              id: n.id,
+              title: n.title,
+              body: n.body,
+              meta: timeAgo(n.createdAt),
+              read: isRead(n),
+              pinned: n.pinned === true,
+              actions: formId ? (
+                done ? (
+                  <p className="text-xs font-semibold text-foreground">{done}</p>
+                ) : (
+                  <FollowUpActions formId={formId} onDone={(message) => settled(n, message)} />
+                )
+              ) : undefined,
+            };
+          })}
           unread={unread}
           onOpen={(id) => {
             const n = items.find((item) => item.id === id);

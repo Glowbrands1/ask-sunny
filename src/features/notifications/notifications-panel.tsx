@@ -20,6 +20,8 @@ export interface PanelRow {
   readonly read: boolean;
   /** Stays until its matter is settled (HR's "waiting for your approval"): no ×, and a line saying why. */
   readonly pinned?: boolean;
+  /** Buttons under the row (a follow-up notice's Completed / Extend), outside the row's open button. */
+  readonly actions?: ReactNode;
 }
 
 export function NotificationsPanel({
@@ -68,7 +70,8 @@ export function NotificationsPanel({
       {rows.length ? (
         <ul className="max-h-[min(26rem,70vh)] overflow-y-auto py-1" aria-label="Notifications">
           {rows.map((n) => (
-            <li key={n.id} className="group flex items-start transition-colors hover:bg-hover-surface">
+            <li key={n.id} className="group transition-colors hover:bg-hover-surface">
+              <div className="flex items-start">
               <button type="button" onClick={() => onOpen(n.id)} className={cn("flex min-w-0 flex-1 items-start gap-3 py-2.5 pl-4 text-left", (onDismiss || (onMarkUnread && n.read)) && !n.pinned ? null : "pr-4")}>
                 <span aria-hidden className={cn("mt-1.5 size-2 shrink-0 rounded-full", n.read ? "bg-transparent" : "bg-accent")} />
                 <span className="min-w-0 flex-1">
@@ -106,6 +109,8 @@ export function NotificationsPanel({
                 <X className="size-4" aria-hidden />
               </button>
               ) : null}
+              </div>
+              {n.actions ? <div className="pr-4 pb-2.5 pl-9">{n.actions}</div> : null}
             </li>
           ))}
         </ul>
