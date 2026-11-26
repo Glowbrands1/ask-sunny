@@ -811,9 +811,19 @@ async function writeValues(
  * stored (batch G8; Pau's written approval, 15 Nov 2026, QA relay). The Action Plan's closing follows it.
  */
 function terminationTicked(loaded: LoadedInstance, checked?: Readonly<Record<string, readonly string[]>> | null): boolean {
+  return levelTicked(loaded, "termination", checked);
+}
+
+/** Whether the form will hold this Type of Warning option after this write: ticked in this write, else already stored. */
+function levelTicked(loaded: LoadedInstance, option: string, checked?: Readonly<Record<string, readonly string[]>> | null): boolean {
   const written = checked?.warning_type;
-  if (written) return written.includes("termination");
-  return loaded.values.some((row) => row.fieldKey === "warning_type" && row.checked.includes("termination"));
+  if (written) return written.includes(option);
+  return loaded.values.some((row) => row.fieldKey === "warning_type" && row.checked.includes(option));
+}
+
+/** The Action Plan's closing follows the warning level (Termination; revision 10's Final Written Warning). */
+function closingOptions(loaded: LoadedInstance, checked?: Readonly<Record<string, readonly string[]>> | null): { terminationTicked: boolean; finalWarningTicked: boolean } {
+  return { terminationTicked: terminationTicked(loaded, checked), finalWarningTicked: levelTicked(loaded, "final_warning", checked) };
 }
 
 export async function applyStatedFacts(
@@ -913,7 +923,7 @@ export async function saveInstanceValues(
    * Deleting it in the textarea, or typing after it, does not take it off the
    * record — see `required-closing.ts`. Nothing else they typed is changed.
    */
-  const values = applyRequiredClosings(document, loaded.instance.variantKey, result.values, { terminationTicked: terminationTicked(loaded, result.checked) });
+  const values = applyRequiredClosings(document, loaded.instance.variantKey, result.values, closingOptions(loaded, result.checked));
 
   /*
    * ==========================================================================
@@ -1038,7 +1048,7 @@ export async function applyAssistantDraft(
    */
   const guarded = {
     ...refused,
-    values: applyRequiredClosings(document, loaded.instance.variantKey, refused.values, { terminationTicked: terminationTicked(loaded, draft.checked) }),
+    values: applyRequiredClosings(document, loaded.instance.variantKey, refused.values, closingOptions(loaded, draft.checked)),
   };
 
   await writeValues(
@@ -1094,7 +1104,7 @@ export async function applyAssistantRevision(
   // A redraft keeps the version's required closings, exactly as a first draft does.
   const guarded = {
     ...refused,
-    values: applyRequiredClosings(document, loaded.instance.variantKey, refused.values, { terminationTicked: terminationTicked(loaded, draft.checked) }),
+    values: applyRequiredClosings(document, loaded.instance.variantKey, refused.values, closingOptions(loaded, draft.checked)),
   };
 
   const writable = new Set([
@@ -1549,7 +1559,7 @@ export async function reviseInstance(
     const textValues = Object.fromEntries(
       rows.flatMap((row) => (typeof row.value === "string" ? [[row.field_key, row.value]] : [])),
     );
-    const closed = applyRequiredClosings(target, loaded.instance.variantKey, textValues, { terminationTicked: terminationTicked(loaded) });
+    const closed = applyRequiredClosings(target, loaded.instance.variantKey, textValues, closingOptions(loaded));
     for (const row of rows) {
       if (typeof row.value === "string" && closed[row.field_key] !== row.value) {
         row.value = closed[row.field_key]!;

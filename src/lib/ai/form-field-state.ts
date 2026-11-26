@@ -29,7 +29,7 @@ export interface ConfirmedFormFields {
   readonly useToday: boolean;
   readonly payrollDeduct: "yes" | "no" | null;
   readonly payrollAmount: string | null;
-  readonly warningLevel: "verbal" | "written" | null;
+  readonly warningLevel: "verbal" | "written" | "final_warning" | null;
   readonly policySection: string | null;
   readonly whatHappened: boolean;
   readonly deadline: string | null;

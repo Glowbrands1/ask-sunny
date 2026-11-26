@@ -82,7 +82,66 @@ function caShortcutWordsOn(): boolean {
  * in one turn are a list, not a decision, and state nothing; a question
  * states nothing either.
  */
-export type StatedWarningLevel = "verbal" | "written";
+export type StatedWarningLevel = "verbal" | "written" | "final_warning";
+
+/*
+ * ============================================================================
+ * FINAL WRITTEN WARNING (the owner's scope list from QA's Ask Vicki comparison, 26 Nov 2026)
+ * ============================================================================
+ *
+ * The Corrective Action Form's Type of Warning gains "Final Written Warning" (revision 10, option key
+ * `final_warning`, the key `WARNING_LEVEL_KEYS` already reserved). It is a warning, not a final employment action:
+ * `escalation-guard.ts` never refuses it and nothing sends a termination notice for it. Its Action Plan ends with
+ * `FINAL_WARNING_PLAN_CLOSING` (`required-closing.ts`).
+ *
+ * FINAL_WRITTEN_WARNING_ENABLED (default off): "final written" the manager stated for this form is that option.
+ * Off, "final written" is Written, as Pau ruled on 30 Oct 2026 when the form had no Final option.
+ */
+export const FINAL_WARNING_OPTION = "final_warning";
+export const FINAL_WARNING_LABEL = "Final Written Warning";
+
+/** FINAL_WRITTEN_WARNING_ENABLED, read here because this module imports only the payroll reader. */
+export function finalWrittenWarningOn(): boolean {
+  const raw = typeof process === "undefined" ? undefined : process.env.FINAL_WRITTEN_WARNING_ENABLED;
+  return typeof raw === "string" && ["1", "true", "on", "yes"].includes(raw.trim().toLowerCase());
+}
+
+/**
+ * The manager's words say "final written" for every "written" in them ("final written warning", "a final written CA"),
+ * and no plain written: "written … then a final written" names both and is no final written warning.
+ */
+export function saysFinalWritten(text: string): boolean {
+  const read = (text ?? "").toLowerCase();
+  const written = [...read.matchAll(/\bwritten\b/g)];
+  return written.length > 0 && written.every((match) => /\bfinal[\s-]+$/.test(read.slice(Math.max(0, match.index! - 8), match.index)));
+}
+
+/**
+ * With FINAL_WRITTEN_WARNING_ENABLED on, a Written level the manager's words state as "final written" is the Final
+ * Written Warning, on a form that offers it (`offered`, the Type of Warning options; omitted: the current Corrective
+ * Action Form, which does). Every other level, and everything with the flag off, is returned unchanged.
+ */
+export function withFinalWritten<T extends string | null | undefined>(level: T, words: string, offered?: readonly string[]): T | typeof FINAL_WARNING_OPTION {
+  if (level !== "written" || !finalWrittenWarningOn() || !saysFinalWritten(words)) return level;
+  if (offered && !offered.includes(FINAL_WARNING_OPTION)) return level;
+  return FINAL_WARNING_OPTION;
+}
+
+/** What the form calls a level: "Verbal Warning", "Written Warning", "Final Written Warning", "Termination", "Demotion". */
+export function warningLevelLabel(level: string | null | undefined): string {
+  switch (level) {
+    case "verbal":
+      return "Verbal Warning";
+    case FINAL_WARNING_OPTION:
+      return FINAL_WARNING_LABEL;
+    case "termination":
+      return "Termination";
+    case "demotion":
+      return "Demotion";
+    default:
+      return "Written Warning";
+  }
+}
 
 /** The Type of Warning group on the Corrective Action Form. */
 export const WARNING_TYPE_KEY = "warning_type";
@@ -91,7 +150,7 @@ export const WARNING_TYPE_KEY = "warning_type";
 export const WARNING_LEVEL_STATED_KEYS: ReadonlySet<string> = new Set([WARNING_TYPE_KEY]);
 
 export function isStatedWarningLevel(value: unknown): value is StatedWarningLevel {
-  return value === "verbal" || value === "written";
+  return value === "verbal" || value === "written" || value === FINAL_WARNING_OPTION;
 }
 
 const LEVEL_NAMED = /\b(verbal|written)\s+(?:warning|ca|c\/a|corrective(?:\s+action)?)\b/g;
@@ -255,7 +314,8 @@ export function statedWarningLevel(
       levels.add(match[1] as StatedWarningLevel);
     }
   }
-  return levels.size === 1 ? [...levels][0]! : null;
+  const level = levels.size === 1 ? [...levels][0]! : null;
+  return withFinalWritten(level, text);
 }
 
 /*

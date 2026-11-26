@@ -5166,3 +5166,13 @@ export function createFormButtonPicksFormEnabled(): boolean {
 export function answerModeOnLoopEnabled(): boolean {
   return envFlag("ANSWER_MODE_ON_LOOP_ENABLED");
 }
+
+/**
+ * FINAL_WRITTEN_WARNING_ENABLED (the owner's scope list from QA's Ask Vicki comparison, 26 Nov 2026; default off): the
+ * Corrective Action Form's revision 10 has "Final Written Warning" on Type of Warning, and with this on the manager's
+ * "final written" ticks it (on the card, at Create and on an edit) instead of Written. Read in `warning-level.ts`
+ * (`finalWrittenWarningOn`, which imports no flags module). Off, "final written" is Written, as Pau ruled (30 Oct 2026).
+ */
+export function finalWrittenWarningEnabled(): boolean {
+  return envFlag("FINAL_WRITTEN_WARNING_ENABLED");
+}

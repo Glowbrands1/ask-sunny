@@ -54,7 +54,7 @@ export interface CheckedReading {
   readonly incidentDateTurn: number | null;
   /** The newest manager turn that states each date written anywhere in them, by ISO day. */
   readonly dateTurns: Readonly<Record<string, number>>;
-  readonly warningLevel: "verbal" | "written" | null;
+  readonly warningLevel: "verbal" | "written" | "final_warning" | null;
   readonly payroll: "yes" | "no" | null;
   readonly payrollAmount: string | null;
   readonly policyHeading: string | null;

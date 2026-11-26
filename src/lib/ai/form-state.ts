@@ -18,7 +18,7 @@ export interface ConversationFormState {
   readonly salonId: string | null;
   readonly title: string | null;
   readonly formDate: string | null;
-  readonly warningLevel: "verbal" | "written" | null;
+  readonly warningLevel: "verbal" | "written" | "final_warning" | null;
   readonly payrollDeduct: "yes" | "no" | null;
   readonly policyHeading: string | null;
   readonly policyPage: number | null;

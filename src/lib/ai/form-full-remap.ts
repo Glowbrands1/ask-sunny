@@ -32,7 +32,7 @@ import { payrollDeductAmount, payrollDeductFromConversation } from "@/lib/forms/
 import { extractEmployeeNames, extractJobTitle, titleAfterJobTitleLabel } from "@/lib/forms/proposal";
 import { detectTemplateIntent } from "@/lib/forms/template-intent";
 import { inlineCloseMatch } from "@/lib/forms/typed-name-proceeds";
-import { warningLevelFromTurns } from "@/lib/forms/warning-level";
+import { warningLevelFromTurns, warningLevelLabel } from "@/lib/forms/warning-level";
 import type { AskResponse } from "./types";
 import {
   currentRequestStart,
@@ -118,7 +118,7 @@ export interface FormRemapSlots {
   readonly locationId: string | null;
   readonly incidentDateIso: string | null;
   readonly incidentTime: string | null;
-  readonly warningLevel: "verbal" | "written" | null;
+  readonly warningLevel: "verbal" | "written" | "final_warning" | null;
   readonly payrollDeduct: "yes" | "no" | null;
   readonly payrollAmount: string | null;
   readonly policySection: string | null;
@@ -1137,7 +1137,7 @@ function renderReply(
     if (fixed.policyLine) lines.push(fixed.policyLine);
   } else if (slots.policySection) lines.push(`**Policy:** ${slots.policySection}, as you said`);
   if (slots.warningLevel) {
-    const label = slots.warningLevel === "verbal" ? "Verbal Warning" : "Written Warning";
+    const label = warningLevelLabel(slots.warningLevel);
     lines.push(`**Type of warning:** ${label}, as you said`);
   }
   if (slots.payrollDeduct) lines.push(`**Payroll deduct:** ${slots.payrollDeduct === "yes" ? "Yes" : "No"}, as you said`);

@@ -53,6 +53,12 @@ function withoutFutureClosing(value: string): string {
     .trim();
 }
 
+/** The value with the Final Written Warning closing taken out (the box was unticked: the plan's own closing returns). */
+function withoutFinalWarningClosing(value: string): string {
+  if (!FINAL_WARNING_CLOSING.test(value.trim())) return value;
+  return value.replace(closingPattern(FINAL_WARNING_PLAN_CLOSING), " ").replace(/[^\S\n]{2,}/g, " ").replace(/[^\S\n]+\n/g, "\n").trim();
+}
+
 /**
  * A last sentence that states the termination itself (Pau's approval, 15 Nov 2026), past or perfect only: "has / have
  * resulted in" or "resulted in" (immediate) termination of employment, "employment has been / was terminated". Never
@@ -65,6 +71,15 @@ function lastSentence(value: string): string {
   const sentences = value.trim().split(/(?<=[.!?])\s+/);
   return sentences.at(-1) ?? "";
 }
+
+/**
+ * The Action Plan's closing on a Final Written Warning (revision 10; the owner's scope list from QA's Ask Vicki
+ * comparison, 26 Nov 2026), in the owner's words exactly. It takes the place of the future-violations closing, never
+ * beside it. A value that already ends with it is closed: nothing is added after it, on a write or on the page.
+ */
+export const FINAL_WARNING_PLAN_CLOSING =
+  "Further violations may result in additional disciplinary action, up to and including termination, following leadership review.";
+const FINAL_WARNING_CLOSING = /Further violations may result in additional disciplinary action, up to and including termination, following leadership review\s*[.!]*\s*$/i;
 
 /** The Corrective Action Form's Action Plan closing, in the business's words (revision 6). */
 export const CA_ACTION_PLAN_CLOSING =
@@ -117,6 +132,8 @@ export function withRequiredClosing(value: string, closing: string): string {
    * future violations. Off, this line changes nothing.
    */
   if (terminationClosingEnabled() && TERMINATION_CLOSING.test(value.trim())) return value;
+  /* Revision 10: a Final Written Warning's plan ends with its own closing; the future-violations one is never added after it. */
+  if (wanted !== FINAL_WARNING_PLAN_CLOSING && FINAL_WARNING_CLOSING.test(value.trim())) return value;
   /*
    * Edited with Pau's written approval, 15 Nov 2026 (QA relay): a plan ending in a stated termination keeps no
    * future-violations closing. The manager's own last sentence ("Violation of Company policy has resulted in immediate
@@ -178,7 +195,7 @@ export function applyRequiredClosings(
    * Corrective Action plan's closing is the termination closing, never "Future policy violations may result in …";
    * a plan that already states the termination keeps nothing added (`withRequiredClosing`). Off or absent: as before.
    */
-  options: { readonly terminationTicked?: boolean } = {},
+  options: { readonly terminationTicked?: boolean; readonly finalWarningTicked?: boolean } = {},
 ): Record<string, string> {
   const fields = closingFields(document, variantKey);
   if (fields.length === 0) return values;
@@ -188,9 +205,13 @@ export function applyRequiredClosings(
     const current = values[field.key];
     if (typeof current !== "string") continue;
     const termination = options.terminationTicked === true && terminationClosingEnabled() && field.requiredClosing === CA_ACTION_PLAN_CLOSING;
+    /* Revision 10: with Final Written Warning ticked (and not Termination), the plan ends with its closing instead. */
+    const finalWarning = !termination && options.finalWarningTicked === true && field.requiredClosing === CA_ACTION_PLAN_CLOSING;
     const closed = termination
       ? withRequiredClosing(withoutFutureClosing(current), TERMINATION_PLAN_CLOSING)
-      : withRequiredClosing(current, field.requiredClosing!);
+      : finalWarning
+        ? withRequiredClosing(withoutFutureClosing(current), FINAL_WARNING_PLAN_CLOSING)
+        : withRequiredClosing(withoutFinalWarningClosing(current), field.requiredClosing!);
     if (closed !== current) {
       next ??= { ...values };
       next[field.key] = closed;

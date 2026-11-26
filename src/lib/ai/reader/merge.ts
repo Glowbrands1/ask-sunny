@@ -17,7 +17,7 @@ import type { CheckedReading, LocationRow } from "./check";
 type Employee = { person: GroundedPerson | null; name: string | null; ambiguous: readonly GroundedPerson[]; typed: string | null };
 type Salon = { id: string | null; name: string | null; ambiguous: readonly LocationRow[] };
 type DateRead = { iso: string | null; ambiguous: readonly string[] };
-type Warning = { value: "verbal" | "written" | null; ambiguous: boolean };
+type Warning = { value: "verbal" | "written" | "final_warning" | null; ambiguous: boolean };
 
 export interface ReadingMerge {
   employee<T extends Employee>(code: T): T;

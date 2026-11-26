@@ -596,9 +596,9 @@ function keptPayroll(
 function keptWarning(
   turns: readonly string[],
   question: string,
-  current: "verbal" | "written" | null,
-  previous: "verbal" | "written" | null,
-): "verbal" | "written" | null {
+  current: "verbal" | "written" | "final_warning" | null,
+  previous: "verbal" | "written" | "final_warning" | null,
+): "verbal" | "written" | "final_warning" | null {
   return warningLevelFromTurns([question]) ?? current ?? previous ?? warningLevelFromTurns(turns);
 }
 
