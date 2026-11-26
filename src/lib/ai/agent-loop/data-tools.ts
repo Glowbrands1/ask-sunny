@@ -681,8 +681,8 @@ export async function readAiTraining(context: DataToolContext, input: { topic?: 
   const words = topic ? topicWords(topic) : [];
   const matching = lessons.filter((lesson) => {
     if (words.length === 0) return true;
-    const module = lesson.moduleId ? shownModules.get(lesson.moduleId)?.title ?? "" : "";
-    const haystack = [lesson.title, lesson.summary ?? "", module, track.get(lesson.trackId)?.title ?? ""].join(" ").toLowerCase();
+    const moduleTitle = lesson.moduleId ? shownModules.get(lesson.moduleId)?.title ?? "" : "";
+    const haystack = [lesson.title, lesson.summary ?? "", moduleTitle, track.get(lesson.trackId)?.title ?? ""].join(" ").toLowerCase();
     return words.some((word) => haystack.includes(word));
   });
   const listed = matching.slice(0, TRAINING_LESSONS_LISTED);
