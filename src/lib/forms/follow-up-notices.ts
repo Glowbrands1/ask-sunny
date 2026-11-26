@@ -44,7 +44,7 @@ function shortDate(date: string): string {
 
 /** The bell's wording. It names the employee and the form, never anything else from it. */
 export function followUpNotice(
-  form: Pick<InstanceRow, "employeeName" | "templateShortName" | "followUpDate">,
+  form: Pick<InstanceRow, "id" | "employeeName" | "templateShortName" | "followUpDate">,
   stage: FollowUpNoticeStage,
 ): { kind: string; title: string; body: string; href: string } {
   const what = `${form.templateShortName || "form"} for ${form.employeeName}`;
@@ -53,13 +53,13 @@ export function followUpNotice(
         kind: FOLLOW_UP_DUE_KIND,
         title: "Follow-up due today",
         body: `Your follow-up on the ${what} is due today. Mark it followed up in Form Monitoring once it is done.`,
-        href: "/forms/monitoring?followup=open",
+        href: `/forms/monitoring?followup=open&form=${form.id}`,
       }
     : {
         kind: FOLLOW_UP_OVERDUE_KIND,
         title: "Follow-up overdue",
         body: `Your follow-up on the ${what} was due ${shortDate(form.followUpDate ?? "")} and is not marked done yet.`,
-        href: "/forms/monitoring?followup=overdue",
+        href: `/forms/monitoring?followup=overdue&form=${form.id}`,
       };
 }
 
