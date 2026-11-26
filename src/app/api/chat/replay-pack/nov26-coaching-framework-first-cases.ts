@@ -64,11 +64,11 @@ const FROM_FRAMEWORK = [
 const handedBack = (view: LoopView) => /\[app check\]/.test(view.turns.at(-1)?.text ?? "");
 const searchedIn = (views: readonly LoopView[]) => views.flatMap((view) => view.results).filter((result) => result.tool === "search_knowledge").map((result) => JSON.stringify(result.output));
 
-function start(t: ReplayContext) {
+function start(t: ReplayContext, rows: readonly Record<string, unknown>[] = [PASSAGE]) {
   vi.setSystemTime(new Date("2026-11-26T18:00:00Z"));
   t.directory([...STAFF]);
   t.as("salon_director", KEARNEY);
-  t.knowledgeHas!([PASSAGE]);
+  t.knowledgeHas!(rows);
 }
 
 const loopCase = (id: string, title: string, run: (t: ReplayContext) => Promise<void>): ReplayCase => ({
@@ -103,5 +103,15 @@ export const NOV26_COACHING_FRAMEWORK_FIRST_CASES: ReplayCase[] = [
     const reply = await t.thread().say(SAID);
     expect(standIn.views.some(handedBack), "a complete, searched answer was handed back").toBe(false);
     expect(reply.content).toContain(FRAMEWORK_LINE);
+  }),
+  loopCase("nov26-coaching-framework-first-no-match", "No coaching guide in the knowledge base: the search finds nothing, the answer is a plain outline and script in the model's own words, it names no source, and it is not handed back again", async (t) => {
+    start(t, []);
+    const standIn = loopStandIn((view: LoopView): LoopDecision => (lastResult(view, "search_knowledge") ? { text: OWN_WORDS } : { tool: "search_knowledge", input: { query: "coaching conversation structure" } }));
+    t.loopModel!(standIn);
+    const reply = await t.thread().say(SAID);
+    expect(standIn.views.some(handedBack), "a searched answer with every part was handed back").toBe(false);
+    expect(reply.content).toBe(OWN_WORDS);
+    expect(reply.citations ?? [], "a source was named that the search never returned").toEqual([]);
+    expect(reply.formProposal ?? null, "a card was made for an advice question").toBeNull();
   }),
 ];
