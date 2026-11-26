@@ -384,7 +384,8 @@ describe("creating a Corrective Action from chat", () => {
 
     const { text } = await download(id, "ca-rev5-created");
     // CHANGED ON PURPOSE, revision 9 (HR via Pau, 19 Nov 2026): the history box has a new label, and the manual box is beside it.
-    expect(text).toContain("List previous coaching and corrective actions and include date signed by employee in past 90 days");
+    // Changed on purpose (Pau, 26 Nov 2026: "just remove the 90 day wording"): the label no longer says "in past 90 days".
+    expect(text).toContain("List previous coaching and corrective actions and include date signed by employee");
     expect(text).toContain("List date of JBA policy manual signed by employee");
     expect(text).toContain("Coaching - signed 09/02/2026");
     expect(text).toContain("Verbal warning - signed 09/21/2026");

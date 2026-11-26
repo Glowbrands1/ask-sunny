@@ -37,7 +37,8 @@ const { blankRequiredFields, requiredFieldsMessage } = await import("./required-
 const { default: REVISION_7 } = await import("@/test/fixtures/forms/corrective-action-revision-7.json");
 
 const Q1 = "List date of JBA policy manual signed by employee";
-const Q2 = "List previous coaching and corrective actions and include date signed by employee in past 90 days";
+// Changed on purpose (Pau, 26 Nov 2026: "just remove the 90 day wording"): HR's question 2 no longer says "in past 90 days".
+const Q2 = "List previous coaching and corrective actions and include date signed by employee";
 const OLD_LINE = "List previously received coaching and/or corrective action with date signed";
 
 describe("the Corrective Action Form's two history boxes", () => {

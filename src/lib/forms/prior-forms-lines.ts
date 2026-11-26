@@ -40,6 +40,8 @@ interface HistoryRow {
   readonly templateKey: string;
   readonly employeeName: string;
   readonly status: string;
+  /** HR approval: a draft "pending" or "changes_requested" (sent back) still counts as history (`withHr`). */
+  readonly hrApprovalState?: string | null;
   readonly formDate: string;
   readonly locationId?: string | null;
   readonly locationName?: string | null;
@@ -87,7 +89,7 @@ export function priorFormsFromRows(input: {
     .filter(
       (row) =>
         row.id !== input.excludeInstanceId &&
-        row.status === "finalized" &&
+        (row.status === "finalized" || withHr(row) !== null) &&
         HISTORY_TEMPLATES.has(row.templateKey) &&
         nameKey(row.employeeName) === who &&
         /^\d{4}-\d{2}-\d{2}$/.test(row.formDate) &&
@@ -106,15 +108,36 @@ export function priorFormsFromRows(input: {
       const step =
         row.templateKey === "coaching" ? "Coaching" : level ? CORRECTIVE_STEP[level]! : "Corrective action";
       const policy = row.templateKey === "coaching" ? "" : shortPolicy(input.policies?.get(row.id));
+      const hr = withHr(row);
+      const named = policy ? `${step} (${policy})` : step;
       return {
         instanceId: row.id,
         templateKey: row.templateKey,
         formDate: row.formDate,
-        line: priorActionLine(policy ? `${step} (${policy})` : step, row.formDate, "", "", "on_file"),
+        line: hr ? priorActionLine(`${named}, ${hr}`, row.formDate, "", "", "with_hr") : priorActionLine(named, row.formDate, "", "", "on_file"),
         locationId: row.locationId ?? null,
         locationName: row.locationName ?? null,
       };
     });
+}
+
+/**
+ * ============================================================================
+ * FORMS STILL WITH HR COUNT TOO (Pau, 26 Nov 2026, both apps)
+ * ============================================================================
+ *
+ * "for the count, also add what form is waiting on approval or sent for return still add it on the list". A Coaching
+ * or Corrective Action sent to HR is a draft until HR approves it, so it was left off the history and the next form for
+ * the same employee read as a first step. A form waiting for HR approval ("pending") or sent back by HR
+ * ("changes_requested") is now listed, and its line says so instead of "finalized": "Verbal corrective action, waiting
+ * for HR approval — 11/20/2026". A rejected form, or a draft never sent, is not history. Returns the words for the line,
+ * or null when the row is not with HR.
+ */
+export function withHr(row: { status: string; hrApprovalState?: string | null }): string | null {
+  if (row.status !== "draft") return null;
+  if (row.hrApprovalState === "pending") return "waiting for HR approval";
+  if (row.hrApprovalState === "changes_requested") return "sent back by HR";
+  return null;
 }
 
 /**

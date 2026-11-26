@@ -21,6 +21,7 @@ import { TEMPLATE_SEEDS } from "./library";
 import { withholdUnpublishedDpoa } from "./payroll-amount-field";
 import { seedOverrideAllows } from "./template-seed-override";
 import { templateSyncDecision } from "./template-sync-policy";
+import { currentHistoryWording } from "./history-box-wording";
 
 /**
  * THE FORMS SYSTEM OF RECORD.
@@ -128,7 +129,8 @@ function mapVersion(row: Record<string, unknown>): TemplateVersionRow {
     templateId: String(row.template_id),
     version: Number(row.version),
     status: row.status as TemplateVersionRow["status"],
-    document: parseFormDocument(row.document),
+    // The history box without "in past 90 days" (Pau, 26 Nov 2026); see `history-box-wording.ts`.
+    document: currentHistoryWording(parseFormDocument(row.document)),
     variants: parseFormVariants(row.variants),
     seedRevision: Number(row.seed_revision ?? 1),
     proposal: readProposal(row.proposal),
