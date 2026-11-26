@@ -190,6 +190,16 @@ export interface AskRequest {
    * failing the insert and losing the whole event.
    */
   surface?: ActivitySurface | null;
+  /**
+   * VOICE_INPUT_ENABLED: the question's text came from the mic (the voice route's transcript, checked and sent by the
+   * person). REPORTING ONLY, like `surface`: it reaches the chat trace (`slots.voice_input`) and changes no decision,
+   * and it is never a reason for the agent loop to skip a turn.
+   */
+  inputMode?: "voice";
+  /** The voice route's trace id for the transcript this text came from. */
+  voiceTraceId?: string;
+  /** Whether the sent text differs from the transcript. */
+  voiceEdited?: boolean;
   context: AskContext;
 }
 

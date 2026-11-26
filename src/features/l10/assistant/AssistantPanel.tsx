@@ -20,6 +20,8 @@ import { NoteCard } from "./NoteCard";
 import { SourceViewer } from "./SourceViewer";
 import { isNoteDraft } from "./notes";
 import { BrainIcon, CheckIcon, ChevronIcon, CloseIcon, DocumentIcon, PaperclipIcon, ReportIcon, CollapseIcon, ExpandIcon, HistoryIcon, PlusIcon, SendIcon, SparkleIcon, StopIcon } from "./icons";
+import { VoiceButton } from "@/features/voice/voice-button";
+import { appendTranscript } from "@/features/voice/voice-draft";
 import { currentChatId, deleteFromHistory, listHistory, loadConversation, openFromHistory, saveConversation, saveToHistory, startNewChat, type ChatSummary } from "./storage";
 
 /**
@@ -316,6 +318,8 @@ function Chat({ meetingKey, scope, deep, onDeepChange }: { meetingKey: string; s
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const mention = useMentionPicker({ people, text: draft, setText: setDraft, inputRef });
   const running = status === "submitted" || status === "streaming";
+  /* VOICE_INPUT_ENABLED: the mic's notices and errors, on a line directly under the chat box. */
+  const [voiceSlot, setVoiceSlot] = useState<HTMLDivElement | null>(null);
   const viewport = useRef<HTMLDivElement>(null);
   useEffect(() => {
     viewport.current?.scrollTo?.({ top: viewport.current.scrollHeight });
@@ -478,6 +482,22 @@ function Chat({ meetingKey, scope, deep, onDeepChange }: { meetingKey: string; s
             >
               <PaperclipIcon />
             </button>
+            {/*
+              VOICE_INPUT_ENABLED: the mic, only for a person voice is on for. The transcript is appended to the draft
+              (never opening the @ list) for the person to check; Send and what it posts are unchanged.
+            */}
+            <VoiceButton
+              surface="l10"
+              meetingKey={meetingKey}
+              disabled={running}
+              tone="light"
+              messageSlot={voiceSlot}
+              onText={(transcript) => {
+                setDraft((current) => appendTranscript(current, transcript));
+                inputRef.current?.focus();
+              }}
+              className={cx("size-11 rounded-xl text-muted hover:bg-white/70 hover:text-ink", focusRing)}
+            />
             <button
               type="button"
               role="switch"
@@ -502,6 +522,7 @@ function Chat({ meetingKey, scope, deep, onDeepChange }: { meetingKey: string; s
             )}
           </div>
         </form>
+        <div ref={setVoiceSlot} className="px-2" data-testid="assistant-voice-slot" />
         <p className="m-0 px-1 text-center text-[11px] text-muted">Can&apos;t change data. Reads this meeting from the Leadership Hub, and your Ask Sunny reports, Google reviews and forms on file. Check important answers.</p>
       </div>
     </div>

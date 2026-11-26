@@ -68,6 +68,11 @@ export const RATE_LIMITS = {
   search: { limit: 60, windowSeconds: 60 },
   reindex: { limit: 10, windowSeconds: 60 },
   mutate: { limit: 30, windowSeconds: 60 },
+  /*
+   * VOICE_INPUT_ENABLED: a cheap first guard for the voice route, per address. Not the real limit: that is the
+   * per-person, per-salon and company counters in the database (`lib/voice/voice-usage.ts`).
+   */
+  voice: { limit: 30, windowSeconds: 60 },
 } as const satisfies Record<string, RateLimitRule>;
 
 export type RateLimitedRoute = keyof typeof RATE_LIMITS;

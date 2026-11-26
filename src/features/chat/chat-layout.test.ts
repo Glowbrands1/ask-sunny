@@ -147,7 +147,19 @@ describe("the composer's own footprint", () => {
   it("imports no attachment, image or microphone icon", () => {
     // Dormant code is allowed by the brief; a dead control is not. Nothing is
     // left importing one.
+    // VOICE_INPUT_ENABLED (27 Nov 2026): the composer's only voice control is the shared, gated `VoiceButton`
+    // (it renders nothing unless voice is on for this person and the browser can record). No icon of its own.
     expect(COMPOSER_CODE).not.toMatch(/\bPaperclip\b|\bImagePlus\b|\bMic\b/);
+    expect(COMPOSER_CODE).toContain('from "@/features/voice/voice-button"');
+  });
+
+  it("the shared mic renders nothing while voice is off for the person", () => {
+    // A gated, working mic is allowed; an always-visible one is not. `VoiceButton` returns null before anything else
+    // unless `useVoiceAccess().enabled` (decided on the server) and the browser can record.
+    const button = code(readFileSync("src/features/voice/voice-button.tsx", "utf8"));
+    expect(button).toMatch(/if \(!enabled \|\| !supported\) return null;/);
+    const access = code(readFileSync("src/features/voice/voice-access.tsx", "utf8"));
+    expect(access).toMatch(/const OFF: VoiceAccess = \{ enabled: false/);
   });
 
   it("renders no permanently mounted helper paragraph", () => {
@@ -173,6 +185,11 @@ describe("no chat surface renders a dead control or a source block", () => {
     expect(CHAT_SOURCES.map((entry) => entry.name)).toContain("chat-screen.tsx");
   });
 
+  /*
+   * VOICE_INPUT_ENABLED (27 Nov 2026): still none of these in the chat feature itself. The working mic lives in
+   * `features/voice/` and is used through `VoiceButton`, which is gated (see the composer's test above); a "Mic" icon
+   * or a "Voice input" label of the chat's own would be a second, ungated control.
+   */
   it.each(["Paperclip", "ImagePlus", "Mic", "Coming later", "Attach a file", "Voice input"])(
     "renders no %s anywhere in chat",
     (token) => {
