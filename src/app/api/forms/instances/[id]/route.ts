@@ -4,7 +4,6 @@ import { cardChangePlanRebuildEnabled } from "@/lib/config/chat-quality-flags";
 import { syncCorrectiveActionPlan } from "@/lib/forms/ca-action-plan-sync";
 import { PAYROLL_AMOUNT_KEY } from "@/lib/forms/payroll-amount-field";
 import { errorResponse } from "@/lib/api/respond";
-import { canAccessAdminConsole } from "@/lib/permissions";
 import { REQUIRED_FIELDS_BLANK } from "@/lib/forms/required-fields";
 import { POLICY_ACKNOWLEDGEMENT_REQUIRED } from "@/lib/forms/policy-verification";
 import {
@@ -50,8 +49,8 @@ import {
  *   POST   finalize, or open a revision / re-evaluation
  *   DELETE remove a DRAFT outright, values and events with it. A finalized form
  *          is a signed HR document and is kept on file: refused (409) for everyone
- *          but an administrator, who may delete it (Pau, 24 Nov 2026). The
- *          deletion record (who, when, a snapshot) is written either way.
+ *          but the accounts on FINALIZED_FORM_DELETE_EMAILS (Pau, 26 Nov 2026).
+ *          The deletion record (who, when, a snapshot) is written either way.
  *
  * There is no archive verb (Pau, 23 Nov 2026): a form is Draft or Finalized.
  *
@@ -302,11 +301,12 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
     const { id } = await context.params;
     const { actor } = await authorizeInstance(request, id, "manage");
     /*
-     * ADMINISTRATORS MAY DELETE A FINALIZED FORM (Pau, 24 Nov 2026; port from the sibling app). Everybody else with
-     * `manage_form_records` still deletes drafts only. The role is the verified account's own (admin, owner, developer:
-     * `ADMIN_CONSOLE_ROLES`); in preview it is the one the browser asserted, as for every other permission there.
+     * ONLY THE NAMED ACCOUNT MAY DELETE A FINALIZED FORM (Pau, 26 Nov 2026: "pls allow delete for finalized form in my
+     * account only"; port from the sibling app. Until then every administrator could, 24 Nov). The list is
+     * FINALIZED_FORM_DELETE_EMAILS, matched on the verified email (`finalized-delete.ts`). Everybody else with
+     * `manage_form_records` deletes drafts only.
      */
-    const allowFinalized = actor.role !== null && canAccessAdminConsole(actor.role);
+    const allowFinalized = actor.mayDeleteFinalized === true;
     const deleted = await deleteInstance(id, { id: actor.id, role: actor.role, via: "route" }, { allowFinalized });
     // HR APPROVAL: a deleted waiting form leaves HR's bell.
     await withdrawnFromHr(deleted);
