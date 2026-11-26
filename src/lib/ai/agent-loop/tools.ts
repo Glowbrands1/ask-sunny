@@ -6145,8 +6145,9 @@ export async function proposeForm(
      * evidence check still decides), or leaves it when the words are history ("written up before").
      */
     ...(levelNotGiven ? { level_not_given: { option: levelNotGiven, note: `This card has no warning level, and the manager's message names the form's ${levelNotGiven === "written" ? "Written" : "Verbal"} Warning option. If it states THIS form's level, propose the card again with warning_level ${levelNotGiven} and level_evidence quoting those words; if it is history ("written up before"), leave the level unset.` } } : {}),
-    ...(level || payroll || priorActions
-      ? { stated: { ...(level ? { warning_level: level } : {}), ...(payroll ? { payroll_deduct: payroll } : {}), ...(payroll === "yes" && amount ? { payroll_amount: `$${amount.replace(/^\$/, "")}` } : {}), ...(priorActions ? { prior_actions: priorActions } : {}) } }
+    // What the manager STATED: their own steps only, never the forms on file the app added (PRIOR_ON_FILE_ON_CARD_ENABLED).
+    ...(level || payroll || priorActionsListed
+      ? { stated: { ...(level ? { warning_level: level } : {}), ...(payroll ? { payroll_deduct: payroll } : {}), ...(payroll === "yes" && amount ? { payroll_amount: `$${amount.replace(/^\$/, "")}` } : {}), ...(priorActionsListed ? { prior_actions: priorActionsListed } : {}) } }
       : {}),
     /*
      * QA's live finding (16 Nov 2026): "as you said" only for what THIS message stated. The level and payroll whose

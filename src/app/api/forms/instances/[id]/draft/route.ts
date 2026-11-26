@@ -2985,8 +2985,13 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      * about earlier steps. A loop card's Create saves the drafter's prior actions only when the card recorded some (the
      * loop's record of what the manager said, checked against their words); with none recorded the line stays blank.
      */
-    if (body.cardFromLoop === true && typeof body.cardPriorActions === "string" && body.cardPriorActions.trim() === "" && !keeps("prior_actions") && (draftedPayload.values.prior_actions ?? "").trim() !== "") {
-      draftedPayload.values = { ...draftedPayload.values, prior_actions: "" };
+    if (body.cardFromLoop === true && typeof body.cardPriorActions === "string" && body.cardPriorActions.trim() === "" && !keeps("prior_actions") && fields.some((field) => field.key === "prior_actions")) {
+      /*
+       * ALL_FIELDS_REQUIRED_ENABLED (Pau, 26 Nov 2026: "still not say N/A here" / "yes i want it before"): the card held
+       * no step and no form on file, so the line reads "N/A" rather than staying blank. Off, blank as before.
+       */
+      const none = allFieldsRequiredEnabled() ? NO_PRIOR_ACTIONS_FOUND : "";
+      if ((draftedPayload.values.prior_actions ?? "").trim() !== none) draftedPayload.values = { ...draftedPayload.values, prior_actions: none };
     }
     /*
      * QA's live test of #1121 (20 Nov 2026, f061): the card showed "Prior actions: Verbal (2), dates not given" and the form
