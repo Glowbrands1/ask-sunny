@@ -63,7 +63,8 @@ describe("1. what a manager reads", () => {
 
     // Revision 5: one list in place of the two previous-action lines.
     // CHANGED ON PURPOSE, revision 9 (HR via Pau, 19 Nov 2026): the list is two required boxes, in HR's words.
-    expect(labels).toContain("List previous coaching and corrective actions and include date signed by employee in past 90 days");
+    // Changed on purpose (Pau, 26 Nov 2026: "just remove the 90 day wording"): the label no longer says "in past 90 days".
+    expect(labels).toContain("List previous coaching and corrective actions and include date signed by employee");
     expect(labels).toContain("List date of JBA policy manual signed by employee");
     expect(labels).not.toContain("Previous corrective action for this policy or issue");
     expect(labels).not.toContain("Date of previous corrective action");

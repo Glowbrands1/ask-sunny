@@ -28,6 +28,10 @@
       "schedule": "23 * * * *"
     },
     {
+      "path": "/api/forms/follow-up/cron",
+      "schedule": "20 12 * * *"
+    },
+    {
       "path": "/api/forms/hr-approval/cron",
       "schedule": "5 11,12 * * 1-5"
     }

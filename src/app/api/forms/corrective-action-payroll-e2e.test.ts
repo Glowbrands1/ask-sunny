@@ -413,7 +413,8 @@ describe("\"create ca for Rosalyn Test she was late today, got verbal warning on
 
     const { bytes, text } = await download(result.reference.instanceId, "ca-prior-warning-date");
     // CHANGED ON PURPOSE, revision 9 (HR via Pau, 19 Nov 2026): the history box has a new label, and the manual box is beside it.
-    expect(text).toContain("List previous coaching and corrective actions and include date signed by employee in past 90 days");
+    // Changed on purpose (Pau, 26 Nov 2026: "just remove the 90 day wording"): the label no longer says "in past 90 days".
+    expect(text).toContain("List previous coaching and corrective actions and include date signed by employee");
     expect(text).toContain("List date of JBA policy manual signed by employee");
     expect(text).not.toContain("Date of previous corrective action");
     expect(text).toMatch(/Verbal warning . signed 09\/21\/2026/);

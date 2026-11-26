@@ -56,7 +56,8 @@ export function exitEmployeeDirectoryId(
   rows: readonly DirectoryRosterRow[],
   employeeName: string | null | undefined,
   scope: AccessScope | null,
-  formSalonId?: string | null,
+  /** The location the exit form is filed at, when it has one: it tells two people with one name apart. */
+  formLocationId: string | null = null,
 ): string | null {
   const wanted = normalizeTypedName(employeeName ?? "");
   if (!wanted || !scope) return null;
@@ -65,7 +66,6 @@ export function exitEmployeeDirectoryId(
 
   const found = new Set<string>();
   const active = new Set<string>();
-  const atFormSalon = new Set<string>();
   for (const row of rows) {
     const last = row.lastName?.trim() ?? "";
     if (!last) continue;
@@ -77,7 +77,6 @@ export function exitEmployeeDirectoryId(
     if (names.includes(wanted)) {
       found.add(row.id);
       if (row.employmentStatus !== "terminated") active.add(row.id);
-      if (formSalonId && row.salonIds.includes(formSalonId)) atFormSalon.add(row.id);
     }
   }
   if (found.size === 1) return [...found][0]!;
@@ -87,11 +86,44 @@ export function exitEmployeeDirectoryId(
    */
   if (active.size === 1) return [...active][0]!;
   /*
-   * ONE NAME, TWO WOVEN ROWS, ONE AT THE FORM'S SALON (production, 26 Nov 2026: an employee with a salon row and a
-   * second active row at the corporate Woven location, which maps to no salon; a global manager sees both). The row at
-   * the salon the exit form is filed for is that person. Two at that salon is still nobody.
+   * TWO CURRENT RECORDS WITH ONE NAME (production, 26 Nov 2026: one employee has a corporate record and a location
+   * record in Woven): the one at the location the exit form is filed at is the person, when exactly one is there.
    */
-  return atFormSalon.size === 1 ? [...atFormSalon][0]! : null;
+  if (formLocationId) {
+    const pool = active.size > 0 ? active : found;
+    const here = rows.filter((row) => pool.has(row.id) && row.salonIds.includes(formLocationId));
+    if (here.length === 1) return here[0]!.id;
+  }
+  return null;
+}
+
+/** How many same-name records the exit form will read to see whether they are one person. */
+const MAX_SAME_NAME_RECORDS = 3;
+
+/**
+ * Every directory id `employeeName` matches at a location `scope` may see: the still-employed ones, or all of them
+ * when none is. Pure.
+ */
+export function exitEmployeeCandidates(
+  rows: readonly DirectoryRosterRow[],
+  employeeName: string | null | undefined,
+  scope: AccessScope | null,
+): string[] {
+  const wanted = normalizeTypedName(employeeName ?? "");
+  if (!wanted || !scope) return [];
+  const allowed = scope.level === "global" ? null : new Set(authorizedSalonIds(scope));
+  if (allowed && allowed.size === 0) return [];
+  const matches = rows.filter((row) => {
+    const last = row.lastName?.trim() ?? "";
+    if (!last) return false;
+    if (allowed && !row.salonIds.some((id) => allowed.has(id))) return false;
+    return [row.firstName, row.preferredFirstName]
+      .map((first) => first?.trim() ?? "")
+      .filter((first) => first.length > 0)
+      .some((first) => normalizeTypedName(`${first} ${last}`) === wanted);
+  });
+  const active = matches.filter((row) => row.employmentStatus !== "terminated");
+  return (active.length > 0 ? active : matches).map((row) => row.id);
 }
 
 /* ----------------------------------------------------------- the address -- */
@@ -264,7 +296,7 @@ function withinBudget<T>(work: Promise<T>, ms: number): Promise<T | null> {
  * a Woven or directory outage leaves the line blank and the draft goes on.
  */
 export async function wovenExitAddress(
-  input: { employeeName: string | null | undefined; scope: AccessScope | null; formSalonId?: string | null },
+  input: { employeeName: string | null | undefined; scope: AccessScope | null; locationId?: string | null },
   deps?: WovenExitAddressDeps,
 ): Promise<string | null> {
   if (!deps && !wovenExitAddressEnabled()) return null;
@@ -281,8 +313,33 @@ export async function wovenExitAddress(
       (async () => {
         const live = deps ?? (await liveDeps());
         if (!live) return why("no Woven credentials");
-        const directoryId = exitEmployeeDirectoryId(await live.readDirectory(), input.employeeName, input.scope, input.formSalonId);
-        if (!directoryId) return why("not exactly one Woven person by that full name at the manager's salons");
+        const directory = await live.readDirectory();
+        const directoryId = exitEmployeeDirectoryId(directory, input.employeeName, input.scope, input.locationId ?? null);
+        if (!directoryId) {
+          /*
+           * ONE PERSON, SEVERAL WOVEN RECORDS (Pau, 26 Nov 2026: "admins and has 2 location or more … they can get
+           * address too"): when the name matches a few current records the form's location cannot settle, each is
+           * read; if every one that has an address gives the same address, that is the person's home address. Any
+           * disagreement fills nothing.
+           */
+          const candidates = exitEmployeeCandidates(directory, input.employeeName, input.scope);
+          if (candidates.length < 2 || candidates.length > MAX_SAME_NAME_RECORDS) {
+            return why("not exactly one Woven person by that full name at the manager's salons");
+          }
+          const addresses = new Set<string>();
+          for (const candidate of candidates) {
+            const candidateWovenId = await live.wovenIdOf(candidate);
+            if (!candidateWovenId) continue;
+            const line = wovenAddressLine(await live.readDetails(candidateWovenId));
+            if (line) addresses.add(line);
+          }
+          if (addresses.size === 1) return [...addresses][0]!;
+          return why(
+            addresses.size === 0
+              ? `${candidates.length} Woven records by that full name, none with an address`
+              : `${candidates.length} Woven records by that full name with different addresses`,
+          );
+        }
         const wovenId = await live.wovenIdOf(directoryId);
         if (!wovenId) return why("directory row has no Woven id");
         const details = await live.readDetails(wovenId);
@@ -295,3 +352,45 @@ export async function wovenExitAddress(
     return why(`error: ${error instanceof Error ? error.name : "unknown"}`);
   }
 }
+
+/**
+ * ============================================================================
+ * ONE PERSON'S HOME ADDRESS, ON REQUEST (Pau, 26 Nov 2026: "can we list their address here" — the Employee
+ * Directory; "Show address" on each row, admins only, nothing saved)
+ * ============================================================================
+ *
+ * The same live read the exit form uses, for one Woven employee id the directory already holds. The address is
+ * returned to the caller and nowhere else: not stored, not logged. Why it is missing is a reason code.
+ */
+export type WovenAddressLookup =
+  | { readonly status: "found"; readonly address: string }
+  | { readonly status: "none"; readonly reason: "no_credentials" | "no_address" | "incomplete_address" | "unavailable" };
+
+export async function wovenAddressForEmployee(
+  wovenEmployeeId: string,
+  deps?: Pick<WovenExitAddressDeps, "readDetails">,
+): Promise<WovenAddressLookup> {
+  try {
+    const live = deps ?? (await liveDeps());
+    if (!live) return { status: "none", reason: "no_credentials" };
+    const details = await withinBudget(live.readDetails(wovenEmployeeId), WOVEN_EXIT_ADDRESS_BUDGET_MS);
+    if (details === null) return { status: "none", reason: "unavailable" };
+    const address = wovenAddressLine(details);
+    if (address) return { status: "found", address };
+    return { status: "none", reason: hasAnyAddress(details) ? "incomplete_address" : "no_address" };
+  } catch {
+    return { status: "none", reason: "unavailable" };
+  }
+}
+
+/** Whether the body carries any address text at all (to tell "none in Woven" from "not a complete address"). */
+function hasAnyAddress(details: unknown): boolean {
+  if (!isRecord(details)) return false;
+  return Object.keys(details).some((key) => {
+    if (!/address/i.test(key) || /email|location/i.test(key)) return false;
+    const value = details[key];
+    if (typeof value === "string") return value.trim() !== "";
+    return isRecord(value) && Object.values(value).some((part) => typeof part === "string" && part.trim() !== "");
+  });
+}
+

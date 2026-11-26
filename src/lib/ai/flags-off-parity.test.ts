@@ -1293,6 +1293,11 @@ describe("new flags default off and wrappers are inert", () => {
           // (ALL_FIELDS_REQUIRED_ENABLED or REQUIRED_FIELDS_AT_FINALIZE_ENABLED); otherwise `missing` is empty and every
           // field renders as before.
           ":(exclude)src/features/forms/document/responsive-form.tsx",
+          // "Show address" on the Employee Directory (Pau, 26 Nov 2026: "can we list their address here"; admins only,
+          // nothing saved): a Home address column whose button asks Woven for one person's address on click. Admin
+          // integrations page only; no chat or form behaviour changes.
+          ":(exclude)src/features/admin/woven/directory-table.tsx",
+          ":(exclude)src/features/admin/woven/address-button.tsx",
           ":(exclude)src/features/forms/hr-approval-panel.tsx",
           ":(exclude)src/features/forms/hr-approval-lists.tsx",
           ":(exclude)src/features/forms/hr-approval-screen.tsx",

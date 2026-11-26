@@ -238,7 +238,7 @@ export function blankBeforeSubmission(
  * that published help only, so a help line an administrator wrote is kept. Pure and browser-safe.
  */
 export const PRIOR_ACTIONS_HELP =
-  'One per line: each coaching or corrective action received in the past 90 days, with the date the employee signed it. If none is found, "N/A" is filled in automatically when the form is finalized or sent for approval.';
+  'One per line: each coaching or corrective action on file, with the date the employee signed it, including any waiting for HR approval or sent back. If none is found, "N/A" is filled in automatically when the form is finalized or sent for approval.';
 
 export function shownHelp(field: { key: string; help?: string }): string | undefined {
   if (field.key === "prior_actions" && field.help?.includes('Write "None — first occurrence" when there has been none')) {

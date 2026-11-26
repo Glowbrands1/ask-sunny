@@ -41,7 +41,6 @@ import {
   type FollowUpFilter,
   type FollowUpState,
 } from "@/lib/forms/follow-up";
-import { canAccessAdminConsole } from "@/lib/permissions";
 import { useSession } from "@/lib/session/session-context";
 import { cn } from "@/lib/utils/cn";
 import { formatDate } from "@/lib/utils/date";
@@ -157,6 +156,7 @@ export function MonitoringTable({
   outstandingExcluded = 0,
   listLimit = null,
   demo,
+  mayDeleteFinalized: namedForFinalizedDelete = false,
 }: {
   forms: MonitoredForm[];
   notice: string | null;
@@ -194,6 +194,11 @@ export function MonitoringTable({
    * from the rows on screen, which are filtered and could give a wrong number.
    */
   demo: { deletable: number; protected: number };
+  /**
+   * The signed-in account may delete a FINALIZED form: decided on the server from FINALIZED_FORM_DELETE_EMAILS and the
+   * verified email (`mayDeleteFinalizedForm`; Pau, 26 Nov 2026: "my account only"). Absent: drafts only.
+   */
+  mayDeleteFinalized?: boolean;
 }) {
   const [templateName, setTemplateName] = React.useState<string>("all");
   const [downloading, setDownloading] = React.useState<string | null>(null);
@@ -234,13 +239,15 @@ export function MonitoringTable({
   const mayManage = demoMode || can("manage_form_records");
   const mayTrack = demoMode || can("create_coaching_form");
   /*
-   * A FINALIZED FORM'S DELETE is for administrators only (Pau, 24 Nov 2026: "why cant delete? in bubbles" on a finalized
-   * Corrective Action). Everyone else with `manage_form_records` deletes drafts, as before. The server decides again
-   * (`DELETE /api/forms/instances/{id}` answers 409 to anyone else); this only decides whether the menu offers it.
+   * A FINALIZED FORM'S DELETE is for the named account only (Pau, 26 Nov 2026: "pls allow delete for finalized form in
+   * my account only"; from 24 Nov until then, every administrator). Everyone else with `manage_form_records` deletes
+   * drafts, as before. The server decides again (`DELETE /api/forms/instances/{id}` answers 409 to anyone else); this
+   * only decides whether the menu offers it.
    */
-  const mayDeleteFinalized = mayManage && canAccessAdminConsole(role);
+  const mayDeleteFinalized = mayManage && namedForFinalizedDelete;
   const mayDelete = (form: MonitoredForm) =>
-    mayManage && (form.status === "draft" || (form.status === "finalized" && mayDeleteFinalized));
+    // An older version ("revised") too, for the same account (Pau, 26 Nov 2026: "i cant still dlete some of it").
+    mayManage && (form.status === "draft" || ((form.status === "finalized" || form.status === "revised") && mayDeleteFinalized));
 
   const call = React.useCallback(
     <T,>(url: string, init: RequestInit = {}) => formsFetch<T>(url, role, user.name, init),
@@ -395,17 +402,20 @@ export function MonitoringTable({
   }
 
   /*
-   * BULK DELETE. Only a draft the viewer may already delete from the row menu
-   * gets a box; finalized and revised forms are kept on file and never do. The
+   * BULK DELETE. Only a form the viewer may already delete from the row menu
+   * (`mayDelete`) gets a box: a draft, or, for the named account only, a
+   * finalized or revised form (Pau, 26 Nov 2026: "oh i can but there is no check
+   * box"). Everyone else still gets boxes on drafts only. The
    * ticks that count are the ones still on screen, so a row that left the list
    * (filter, refresh) can never be deleted unseen.
    */
-  const deletable = mayManage ? shown.filter((form) => form.status === "draft") : [];
+  const deletable = shown.filter(mayDelete);
   const deletableIds = deletable.map((form) => form.id);
   const picked = deletable.filter((form) => selected.has(form.id));
   const allPicked = deletable.length > 0 && picked.length === deletable.length;
   const somePicked = picked.length > 0 && !allPicked;
   const bulkBusy = bulkProgress !== null;
+  const pickedIncludesFiled = picked.some((form) => form.status !== "draft");
 
   const headerBox = React.useRef<HTMLInputElement | null>(null);
   React.useEffect(() => {
@@ -705,7 +715,7 @@ export function MonitoringTable({
                       <tr key={form.id} className="border-b border-border last:border-0">
                         {mayManage ? (
                           <td className="w-10 px-1 py-1">
-                            {form.status === "draft" ? (
+                            {mayDelete(form) ? (
                               <label className="flex min-h-10 min-w-10 cursor-pointer items-center justify-center">
                                 <input
                                   type="checkbox"
@@ -953,10 +963,10 @@ export function MonitoringTable({
               </div>
             </dl>
 
-            {confirming.form.status === "finalized" ? (
+            {confirming.form.status === "finalized" || confirming.form.status === "revised" ? (
               <p className="text-[13px] text-muted-foreground" data-testid="delete-finalized-warning">
-                Finalized forms are normally kept on file. As an administrator you can delete this one. It cannot be
-                undone, and the deletion is recorded with your name and the time.
+                Finalized forms are normally kept on file. Your account can delete this one. It cannot be undone, and
+                the deletion is recorded with your name and the time.
               </p>
             ) : null}
 
@@ -985,8 +995,12 @@ export function MonitoringTable({
         }}
       >
         <DialogContent
-          title={`Delete ${picked.length} draft${picked.length === 1 ? "" : "s"}?`}
-          description="Drafts are removed for good. A deletion record is kept."
+          title={`Delete ${picked.length} ${pickedIncludesFiled ? "form" : "draft"}${picked.length === 1 ? "" : "s"}?`}
+          description={
+            pickedIncludesFiled
+              ? "Includes finalized forms, which are normally kept on file. They are removed for good and cannot be undone. A deletion record is kept with your name and the time."
+              : "Drafts are removed for good. A deletion record is kept."
+          }
         >
           <ul className="list-disc space-y-1 pl-5 text-[13px] text-foreground">
             {picked.slice(0, 5).map((form) => (
