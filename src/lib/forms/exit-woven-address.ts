@@ -4,6 +4,7 @@ import type { AccessScope } from "@/types";
 
 import type { DirectoryRosterRow } from "./employee-roster";
 import { normalizeTypedName } from "./employee-match";
+import { isCompleteMailingAddress } from "./exit-submission-rules";
 import { authorizedSalonIds } from "./location-scope";
 
 /**
@@ -130,6 +131,18 @@ export function wovenAddressLine(details: unknown): string | null {
     const line = addressLineOf(record);
     if (line) return line;
   }
+  /*
+   * THE WHOLE ADDRESS AS ONE STRING (production, 26 Nov 2026: Woven's details body carries `Address` as a single value
+   * with no City, State or Zip beside it). Taken only when it reads as a complete mailing address — street number,
+   * city, state and ZIP — so a street alone never fills the line.
+   */
+  for (const key of ADDRESS_OBJECT) {
+    const found = Object.keys(details).find((candidate) => candidate.toLowerCase() === key.toLowerCase());
+    const value = found ? details[found] : null;
+    if (typeof value !== "string") continue;
+    const line = value.replace(/\s*[\r\n]+\s*/g, ", ").replace(/\s+/g, " ").replace(/,\s*,/g, ",").trim();
+    if (line.length <= 200 && isCompleteMailingAddress(line)) return line;
+  }
   return null;
 }
 
@@ -175,7 +188,16 @@ export function wovenAddressShape(details: unknown): string {
       const inner = Array.isArray(value) ? (isRecord(value[0]) ? value[0] : {}) : (value as Record<string, unknown>);
       return `${key}{${Object.keys(inner).slice(0, 30).join(",")}}`;
     });
-  return [top.join(","), ...nested].filter(Boolean).join(" ");
+  /* A plain value is described by its type and size only: never the text itself. */
+  const plain = top
+    .filter((key) => /address/i.test(key) && !/email/i.test(key) && !isRecord(details[key]) && !Array.isArray(details[key]))
+    .map((key) => {
+      const value = details[key];
+      if (typeof value !== "string") return `${key}=${value === null ? "null" : typeof value}`;
+      const trimmed = value.trim();
+      return `${key}=string(length ${trimmed.length}, ${/\d/.test(trimmed) ? "has digits" : "no digits"}, ${/\b\d{5}(?:-\d{4})?\b/.test(trimmed) ? "has ZIP" : "no ZIP"}, ${(trimmed.match(/,/g) ?? []).length} commas)`;
+    });
+  return [top.join(","), ...nested, ...plain].filter(Boolean).join(" ");
 }
 
 /* -------------------------------------------------------------- the read -- */
