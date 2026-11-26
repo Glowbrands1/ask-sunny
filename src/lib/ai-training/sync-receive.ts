@@ -22,6 +22,10 @@ export interface ReceiveDeps {
   addMissingTracks: (rows: ParsedImport["tracks"]) => Promise<number>;
   /** A plain-language reason when a different lesson/module/track here already uses a name, else null. */
   findClash: (parsed: ParsedImport) => Promise<string | null>;
+  /** Of these lesson ids, the ones already published in this app (so not announced again). */
+  publishedBefore?: (ids: string[]) => Promise<Set<string>>;
+  /** Rings everyone's bell here for lessons published here for the first time (announce.ts). Must not throw. */
+  announce?: (lessonIds: string[], publisherEmail: string) => Promise<void>;
 }
 
 export type ReceiveResult =
@@ -66,6 +70,10 @@ export async function receiveSync(req: { headers: Headers; text(): Promise<strin
   const clash = await deps.findClash(parsed).catch(() => null);
   if (clash) return refuse(409, clash);
 
+  // Read before the write: once imported, every published lesson here has a `published_at`.
+  const published = parsed.lessons.filter((l) => l.status === "published").map((l) => l.id);
+  const before = deps.announce && published.length ? await deps.publishedBefore?.(published).catch(() => null) : null;
+
   const counts = { tracks: 0, modules: 0, lessons: 0, pages: 0 } as Record<ImportTable, number>;
   try {
     counts.tracks = await deps.addMissingTracks(parsed.tracks);
@@ -84,5 +92,8 @@ export async function receiveSync(req: { headers: Headers; text(): Promise<strin
       return refuse(500, "the change could not be saved there");
     }
   }
+  // Unknown what was published before (the read failed)? Say nothing rather than risk telling everyone twice.
+  const fresh = before ? published.filter((lessonId) => !before.has(lessonId)) : [];
+  if (deps.announce && fresh.length) await deps.announce(fresh, email).catch(() => undefined);
   return { status: 200, body: { ok: true, counts } };
 }

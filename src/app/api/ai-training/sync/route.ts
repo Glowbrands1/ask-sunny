@@ -1,3 +1,4 @@
+import { announceNewLessons, lessonsPublishedBefore } from "@/lib/ai-training/announce.server";
 import { aiTrainingEditorEmails } from "@/lib/ai-training/editors";
 import { addMissingTracks, findSyncClash, importRows } from "@/lib/ai-training/repository";
 import { syncConfig } from "@/lib/ai-training/sync";
@@ -22,6 +23,8 @@ export async function POST(request: Request) {
     importRows,
     addMissingTracks,
     findClash: findSyncClash,
+    publishedBefore: lessonsPublishedBefore,
+    announce: announceNewLessons,
   });
   return Response.json(result.body, { status: result.status });
 }
