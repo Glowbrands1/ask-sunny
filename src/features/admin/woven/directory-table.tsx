@@ -14,6 +14,7 @@ import {
 import { changeLabel, employeeName, mappingSummary } from "@/lib/employees/woven/views";
 import { cn } from "@/lib/utils/cn";
 import { day, label, when } from "./format";
+import { HomeAddressReveal } from "./home-address-reveal";
 
 /**
  * THE EMPLOYEE DIRECTORY — every Woven employee on file, active and terminated.
@@ -181,6 +182,7 @@ export function DirectoryTable({ page, query, sample }: { page: DirectoryPage; q
                 {[
                   "Woven ID",
                   "Name",
+                  "Home address",
                   "Work email",
                   "Status",
                   "Position",
@@ -206,6 +208,9 @@ export function DirectoryTable({ page, query, sample }: { page: DirectoryPage; q
                 <tr key={row.id} className="align-top whitespace-nowrap">
                   <td className="px-3 py-2 font-mono text-[11.5px] text-muted-foreground">{row.externalEmployeeId}</td>
                   <td className="px-3 py-2 font-semibold text-foreground">{employeeName(row)}</td>
+                  <td className="max-w-64 px-3 py-2">
+                    <HomeAddressReveal directoryId={row.id} disabled={sample} />
+                  </td>
                   <td className="px-3 py-2">
                     {row.emailAddress ?? <Badge tone="failed" size="sm">missing</Badge>}
                   </td>

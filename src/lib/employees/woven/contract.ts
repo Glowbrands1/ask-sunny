@@ -148,6 +148,8 @@ export const PAGE_TOTAL_KEYS = [] as const satisfies readonly string[];
  * THE ONE EXCEPTION IS NOT THE SYNC: the exit form's Permanent Address (Pau, 25 Nov 2026) reads ONE employee's
  * `Address` from their details, live, while their exit form is drafted, behind WOVEN_EXIT_ADDRESS_ENABLED
  * (`lib/forms/exit-woven-address.ts`). It goes onto that form only; the directory still never holds an address.
+ * The admin Employee Directory's "Show home address" (Pau, 26 Nov 2026, approved by Curt) reads it the same way, live,
+ * for one employee an admin clicks (`home-address-lookup.ts`). Who may see either: `home-address-access.ts`.
  */
 export const FIELD = {
   employeeId: ["EmployeeID"],

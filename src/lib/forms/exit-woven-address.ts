@@ -1,6 +1,7 @@
 import "server-only";
 
-import type { AccessScope } from "@/types";
+import { mayReadHomeAddress } from "@/lib/employees/woven/home-address-access";
+import type { AccessScope, Role } from "@/types";
 
 import type { DirectoryRosterRow } from "./employee-roster";
 import { normalizeTypedName } from "./employee-match";
@@ -211,7 +212,8 @@ export interface WovenExitAddressDeps {
   readDetails: (wovenEmployeeId: string) => Promise<unknown>;
 }
 
-async function liveDeps(): Promise<WovenExitAddressDeps | null> {
+/** The live Woven reads, or null without credentials. Shared with the admin directory's home-address lookup. */
+export async function liveWovenAddressDeps(): Promise<WovenExitAddressDeps | null> {
   const { readWovenConfig } = await import("@/lib/employees/woven/config");
   const config = readWovenConfig();
   if (!config.credentials) return null;
@@ -242,7 +244,7 @@ async function liveDeps(): Promise<WovenExitAddressDeps | null> {
   };
 }
 
-function withinBudget<T>(work: Promise<T>, ms: number): Promise<T | null> {
+export function withinBudget<T>(work: Promise<T>, ms: number): Promise<T | null> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<null>((resolve) => {
     timer = setTimeout(() => resolve(null), ms);
@@ -255,10 +257,19 @@ function withinBudget<T>(work: Promise<T>, ms: number): Promise<T | null> {
  * a Woven or directory outage leaves the line blank and the draft goes on.
  */
 export async function wovenExitAddress(
-  input: { employeeName: string | null | undefined; scope: AccessScope | null },
+  input: { employeeName: string | null | undefined; scope: AccessScope | null; role: Role | null },
   deps?: WovenExitAddressDeps,
 ): Promise<string | null> {
   if (!deps && !wovenExitAddressEnabled()) return null;
+  /*
+   * ONLY ADMINS, DMs, RMs AND SALON DIRECTORS (Pau, 26 Nov 2026, approved by Curt: "only Admins and Managers"; managers =
+   * District Managers, Regional Managers and Salon Directors). Anyone else — an assistant salon director included —
+   * drafts the exit form with the line blank, as before.
+   */
+  if (!mayReadHomeAddress(input.role)) {
+    console.info("exit-woven-address: no address (role may not read home addresses)");
+    return null;
+  }
   /*
    * WHY IT CAME BACK EMPTY IS LOGGED, AS A REASON CODE (Pau, 25 Nov 2026: "why didn't my address populate in form?").
    * Never a name, an id or an address: only which step stopped, and for an unreadable body its property names.
@@ -270,7 +281,7 @@ export async function wovenExitAddress(
   try {
     const result = await withinBudget(
       (async () => {
-        const live = deps ?? (await liveDeps());
+        const live = deps ?? (await liveWovenAddressDeps());
         if (!live) return why("no Woven credentials");
         const directoryId = exitEmployeeDirectoryId(await live.readDirectory(), input.employeeName, input.scope);
         if (!directoryId) return why("not exactly one Woven person by that full name at the manager's salons");
