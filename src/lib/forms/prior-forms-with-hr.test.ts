@@ -29,8 +29,8 @@ describe('"also add what form is waiting on approval or sent for return still ad
     });
     expect(forms.map((form) => form.line)).toEqual([
       "Coaching — signed 09/02/2026",
-      "Verbal corrective action, waiting for HR approval — 10/02/2026",
-      "Coaching, sent back by HR — 10/20/2026",
+      "Verbal corrective action, draft, waiting for HR approval — 10/02/2026",
+      "Coaching, draft, sent back by HR — 10/20/2026",
     ]);
   });
 
@@ -59,13 +59,13 @@ describe('"also add what form is waiting on approval or sent for return still ad
   it("the chat's prior actions and its offer say a form is with HR", () => {
     const priors = [
       { form: "Coaching Form", level: null, date: "2026-09-02" },
-      { form: "Corrective Action Form", level: "Verbal Warning", date: "2026-10-02", withHr: "waiting for HR approval" },
+      { form: "Corrective Action Form", level: "Verbal Warning", date: "2026-10-02", withHr: "draft, waiting for HR approval" },
     ];
     expect(priorsOnFileLine(priors)).toBe(
-      "Coaching Form — 09/02/2026; Corrective Action Form, Verbal Warning, waiting for HR approval — 10/02/2026",
+      "Coaching Form, finalized — 09/02/2026; Corrective Action Form, Verbal Warning, draft, waiting for HR approval — 10/02/2026",
     );
     expect(priorsOnFileOffer("Juniper", priors)).toBe(
-      "Juniper has a Coaching Form on file from 09/02/2026 and a Verbal CA waiting for HR approval from 10/02/2026. Want me to add them to Prior actions?",
+      "Juniper has a Coaching Form on file from 09/02/2026 and a Verbal CA draft, waiting for HR approval from 10/02/2026. Want me to add them to Prior actions?",
     );
   });
 });

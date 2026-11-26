@@ -87,16 +87,15 @@ export const NOV23_AGENT_LOOP_ADDING_PRIOR_STEP_KEEPS_ON_FILE_CASES: ReplayCase[
      * form on file on Prior actions by itself, so T3's card offers the CA on file (10/20/2026) instead, and the manager here
      * never says yes. What this case still guards: the step the manager adds lands, and nothing unaccepted is added.
      */
-    expect(priorOf(stand), "T3's card lists the CA on file the manager never accepted").not.toMatch(/10\/20\/2026/);
-    const offered = stand.views.flatMap((view) => view.results.filter((result) => result.tool === "propose_form")).map((result) => JSON.stringify(result.output)).join("\n");
-    expect(offered, "the CA on file was never offered").toMatch(/on file from 10\/20\/2026\. Want me to add it to Prior actions\?/);
+    // CHANGED ON PURPOSE (Pau, 26 Nov 2026: "Ai saw prior forms but i need them here"; PRIOR_ON_FILE_ON_CARD_ENABLED): forms on file are put on the card's Prior actions by the app, each saying what it is, and never offered. What A13 guards again: adding a step never removes the form on file.
+    expect(priorOf(stand), "T3's card does not hold the CA on file").toMatch(/finalized — 10\/20\/2026/);
     const reply = await thread.say(T[3]!);
     expect(priorOf(stand), `the signing was not added:\n${reply.content}`).toMatch(/10\/15\/2026/);
-    expect(priorOf(stand), `the CA on file was added unasked:\n${reply.content}`).not.toMatch(/10\/20\/2026/);
+    expect(priorOf(stand), `adding the signing removed the CA on file:\n${reply.content}`).toMatch(/10\/20\/2026/);
     const id = await thread.create();
     const saved = JSON.stringify(t.values(id));
     expect(saved, `the saved form lost the signing:\n${saved}`).toMatch(/10\/15\/2026/);
-    expect(saved, `the saved form holds the CA on file unasked:\n${saved}`).not.toMatch(/10\/20\/2026/);
+    expect(saved, `the saved form lost the CA on file:\n${saved}`).toMatch(/10\/20\/2026/);
   }),
   loopCase("nov23-a13-control-on-file-step-restated-listed-once", "Control: a step the manager restates with the on-file form's own date (10/20/2026) is that form, listed once", async (t) => {
     const stand = model("Verbal CA — 10/20/2026");
