@@ -37,6 +37,15 @@ describe("the coaching how-to rule", () => {
     expect(rule).toMatch(/at most one or two quick questions/);
   });
 
+  it("builds the package from the company's own coaching guidance first, naming the document (the owner, 26 Nov 2026)", () => {
+    expect(rule).toMatch(/Build it from the company's own coaching guidance first: search the knowledge base \(search_knowledge, where you have it\) before you answer/);
+    expect(rule).toMatch(/Performance Management Framework holds the coaching conversation structure with the lines to say, the "Help me coach this employee" answer format, role-play and the Management Diamond/);
+    expect(rule).toMatch(/its \[placeholders\] filled in from what the manager described, and you name the document with its source marker; write your own wording only for a part no document covers/);
+    const note = coachingHowToNote({ outline: true, script: true, rolePlay: true, plan: true }, false);
+    expect(note).toMatch(/You answered without searching the knowledge base: call search_knowledge first/);
+    expect(coachingHowToNote({ outline: true, script: true, rolePlay: true, plan: true }, true)).not.toMatch(/without searching/);
+  });
+
   it("a Coaching card gets the prep above it, never on the card or the form", () => {
     expect(coachingCardPrepRule()).toMatch(/the reply above the card gives the prep package/);
     expect(coachingCardPrepRule()).toMatch(/never put it in what_happened, on the card or on the form/);

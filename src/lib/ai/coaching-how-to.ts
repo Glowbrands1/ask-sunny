@@ -22,7 +22,10 @@
  *
  * Both chat paths read the rule from here: the agent loop's rules book (`agent-loop/rules-book.ts`) and the older chat
  * prompt (`prompts.ts`, `withCoachingHowTo`). The loop also checks its advice reply (`coachingAnswerShape`) and hands a
- * reply missing the outline, the script, the role-play or the plan back once (the loop's run module). Pure: reads text only.
+ * reply missing the outline, the script, the role-play or the plan, or written without a knowledge-base search, back once
+ * (the loop's run module). The company's own coaching guidance comes first (the owner, 26 Nov 2026: "yes use it"): the
+ * Performance Management Framework's conversation structure, its "Help me coach this employee" format, role-play and
+ * Management Diamond; the model writes its own wording only where no document covers a part. Pure: reads text only.
  */
 
 /** The rule, as both prompts give it. `place` is the app's word for a location ("salon", "store"). */
@@ -37,6 +40,7 @@ export function coachingHowToRule(place: string): string {
     "(6) a role-play to run together: who plays whom, the push-back to practise, and what good sounds like; " +
     "(7) a measurable action plan: what changes, how it is measured, and the follow-up date; " +
     "then a short checklist. " +
+    "Build it from the company's own coaching guidance first: search the knowledge base (search_knowledge, where you have it) before you answer. The Performance Management Framework holds the coaching conversation structure with the lines to say, the \"Help me coach this employee\" answer format, role-play and the Management Diamond (what, how, why, when, practice). When a document covers it, the outline and the words to use follow that document's own steps and lines, its [placeholders] filled in from what the manager described, and you name the document with its source marker; write your own wording only for a part no document covers. " +
     "For \"how do I help an employee who is struggling with <X>\": give the coaching guidance first (from the official guides and the JBA Policy Manual where they cover it), then what a coaching form would hold, as Observed / Expectation / Practice / Follow-Up, then the role-play tied to the follow-up date, and close by offering to make the form. " +
     "When the manager has not said what the employee does now or what is expected, still give the package from what they said, and end with at most one or two quick questions that would sharpen it. " +
     "Cite the JBA Policy Manual by its title and the section's heading when a policy applies, and never invent one. Advice asks for no form: never propose a form and never ask who a form is for; a closing line may offer one."
@@ -105,14 +109,16 @@ export function asksCoachingHowTo(question: string): boolean {
 }
 
 /** The loop's hand-back note when an advice reply is missing part of the package. */
-export function coachingHowToNote(shape: CoachingAnswerShape): string {
+export function coachingHowToNote(shape: CoachingAnswerShape, searched = true): string {
   const missing = [
     !shape.outline ? "a short numbered outline of the conversation (opening, the facts and the expectation, listening, agreement on next steps, a follow-up date)" : null,
     !shape.script ? "the words to use: a sample script in quotation marks the manager can read aloud, tailored to what they described" : null,
     !shape.rolePlay ? "a role-play to run together" : null,
     !shape.plan ? "a measurable action plan with a follow-up date" : null,
   ].filter(Boolean);
-  return `[app check] The manager asked how to coach or run a hard conversation, and your reply is missing ${missing.join("; ")}. Write your answer again as the whole prep package: why it matters, when to have it, the numbered outline, the words to use in quotation marks, an analogy, the role-play, the measurable action plan with the follow-up date, and a short checklist, citing the JBA Policy Manual where a policy applies. Propose no form and never ask who a form is for; you may offer one in a closing line.`;
+  const search = searched ? "" : " You answered without searching the knowledge base: call search_knowledge first (the Performance Management Framework's coaching conversation structure, its \"Help me coach this employee\" format, role-play and the Management Diamond), build the outline and the words to use from the document's own steps and lines, and name it with its source marker.";
+  if (missing.length === 0) return `[app check] The manager asked how to coach or run a hard conversation.${search} Then write your answer again as the whole prep package. Propose no form and never ask who a form is for; you may offer one in a closing line.`;
+  return `[app check] The manager asked how to coach or run a hard conversation, and your reply is missing ${missing.join("; ")}.${search} Write your answer again as the whole prep package: why it matters, when to have it, the numbered outline, the words to use in quotation marks, an analogy, the role-play, the measurable action plan with the follow-up date, and a short checklist, citing the JBA Policy Manual where a policy applies. Propose no form and never ask who a form is for; you may offer one in a closing line.`;
 }
 
 /** The older chat path's rule line, inserted after the signature-lines rule (both prompt branches carry that line). */

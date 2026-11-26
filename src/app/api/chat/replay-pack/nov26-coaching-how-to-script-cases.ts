@@ -1,7 +1,7 @@
 import { expect, vi } from "vitest";
 
 import { STAFF, type ReplayCase, type ReplayContext } from "./cases";
-import { loopStandIn, type LoopDecision, type LoopView } from "./loop-stand-in";
+import { lastResult, loopStandIn, type LoopDecision, type LoopView } from "./loop-stand-in";
 
 /**
  * ============================================================================
@@ -95,18 +95,20 @@ export const NOV26_COACHING_HOW_TO_SCRIPT_CASES: ReplayCase[] = [
   ...loopCases,
   {
     id: "nov26-loop-coaching-how-to-full-answer-kept",
-    title: "A coaching how-to answer that already has the outline and the script is kept as it is (no extra model call)",
+    title: "A coaching how-to answer that searched the knowledge base and has every part is kept as it is (no hand-back)",
     report: REPORT,
     status: "fixed",
     fixFlags: [FLAG],
     async run(t) {
       if (!t.loopOn?.() || process.env.AGENT_LOOP_LIVE === "1") return;
       start(t);
-      const standIn = loopStandIn((): LoopDecision => ({ text: FULL }));
+      // Changed on purpose (the owner, 26 Nov 2026: "yes use it"): an answer is built from the knowledge base first, so a
+      // complete answer is kept as it is only after a search_knowledge step; one written without a search goes back once.
+      const standIn = loopStandIn((view: LoopView): LoopDecision => (lastResult(view, "search_knowledge") ? { text: FULL } : { tool: "search_knowledge", input: { query: "coaching lateness" } }));
       t.loopModel!(standIn);
       const reply = await t.thread().say(ASKS[0]);
       expect(reply.content).toBe(FULL);
-      expect(standIn.views.length, "the full answer was handed back").toBe(1);
+      expect(standIn.views.some((view) => /\[app check\]/.test(view.turns.at(-1)?.text ?? "")), "the full answer was handed back").toBe(false);
     },
   },
   {
