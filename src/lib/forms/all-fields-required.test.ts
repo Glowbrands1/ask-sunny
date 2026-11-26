@@ -300,3 +300,17 @@ describe(`"${PAU}" — Finalize and send for approval`, () => {
     expect((await loadInstance(instance.id))!.values.find((row) => row.fieldKey === "prior_actions")?.value ?? "").toBe("");
   });
 });
+
+describe('"add N/A AI filled out none, since it auto adds it there pls change verbage here"', () => {
+  it("the history box's help says N/A is filled in automatically, not to write None", async () => {
+    const { shownHelp } = await import("./required-fields");
+    const { correctiveActionDocument } = await import("./library");
+    const { fieldsForVariant } = await import("./document");
+    const field = fieldsForVariant(correctiveActionDocument(), null).find((entry) => entry.key === "prior_actions")!;
+    const help = shownHelp(field)!;
+    expect(help).toContain('"N/A" is filled in automatically');
+    expect(help).not.toContain('Write "None — first occurrence"');
+    // A help line an administrator wrote is kept as it is.
+    expect(shownHelp({ key: "prior_actions", help: "List every step." })).toBe("List every step.");
+  });
+});

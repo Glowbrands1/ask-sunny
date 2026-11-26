@@ -231,6 +231,22 @@ export function blankBeforeSubmission(
   }));
 }
 
+/**
+ * THE HISTORY BOX'S HELP, AS IT NOW WORKS (Pau, 25 Nov 2026, on the form: "add N/A AI filled out none, since it auto
+ * adds it there pls change verbage here"). Published Corrective Action versions tell the manager to write "None — first
+ * occurrence"; the app now writes "N/A" itself when nothing is listed (`fillNoPriorActionsFound`). Shown in place of
+ * that published help only, so a help line an administrator wrote is kept. Pure and browser-safe.
+ */
+export const PRIOR_ACTIONS_HELP =
+  'One per line: each coaching or corrective action received in the past 90 days, with the date the employee signed it. If none is found, "N/A" is filled in automatically when the form is finalized or sent for approval.';
+
+export function shownHelp(field: { key: string; help?: string }): string | undefined {
+  if (field.key === "prior_actions" && field.help?.includes('Write "None — first occurrence" when there has been none')) {
+    return PRIOR_ACTIONS_HELP;
+  }
+  return field.help;
+}
+
 /** The refusal for `blankBeforeSubmission`: names what is blank, at most eight, then how many more. */
 export function blankBeforeSubmissionMessage(blank: readonly { label: string }[]): string {
   const shown = blank.slice(0, 8).map((part) => `"${part.label}"`);
