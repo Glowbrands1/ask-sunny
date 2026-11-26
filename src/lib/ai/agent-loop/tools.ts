@@ -541,6 +541,31 @@ function notTheOfferAnswer(check: AnswerEvidence, context: ToolContext, roster?:
   return check;
 }
 
+/**
+ * new_form_evidence quoting an earlier message of THIS request (the ask) whose quote names this form, with this card's
+ * person named by the manager in that message or a later one (the answer to "who is this form for?"). This request:
+ * after the chat's last card and after the last manager turn that names a roster person other than this one
+ * (`requestStart`). Names only; the manager's words are never read for meaning.
+ */
+function newFormAskedThisRequest(context: ToolContext, evidence: unknown, template: { readonly name: string; readonly shortName?: string | null }, employee: { readonly id?: string | null; readonly name: string }, roster: readonly RosterEmployee[]): boolean {
+  const turns = identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId);
+  const check = verifyEvidence(evidence, turns);
+  if (!check.ok || !quoteNamesForm(readEvidence(evidence)?.quote ?? "", template)) return false;
+  const rosterNames = roster.flatMap(fullNamesOf);
+  const row = employee.id ? roster.find((person) => person.id === employee.id) : undefined;
+  const own = row ? [...fullNamesOf(row), row.firstName, row.preferredFirstName ?? ""].map((name) => name.trim()).filter(Boolean) : [employee.name];
+  const namesThis = (text: string) => own.some((name) => holdsPhrase(withoutMessageIdTags(text), name));
+  const namesAnother = (text: string) => {
+    const clean = withoutMessageIdTags(text);
+    if (namesThis(clean)) return false;
+    return roster.filter((person) => person.id !== row?.id).some((person) => fullNamesOf(person).some((full) => mentionsPerson(clean, full, rosterNames)));
+  };
+  const cards = [...(context.cardRecords ?? []), ...(context.earlierCard ? [context.earlierCard] : [])];
+  const start = requestStart({ turns, namesAnother, cardMessageIds: cards.map((card) => card.messageId) });
+  if (check.turn.index <= start) return false;
+  return turns.some((turn) => turn.role === "user" && turn.index >= check.turn.index && namesThis(turn.content));
+}
+
 /** The card on screen is this person's card on this form (by roster id, else by name). */
 function sameCardOnScreen(onScreen: CardRecord | null | undefined, templateKey: string, employee: { readonly id?: string | null; readonly name: string }): boolean {
   return Boolean(onScreen && onScreen.templateKey === templateKey && ((employee.id && onScreen.employeeKey === personKey(employee.id)) || onScreen.nameKey === personKey(employee.name)));
@@ -4291,7 +4316,16 @@ export async function proposeForm(
    * form (new_form_evidence, this message) or correct the person (the name check above); a person named inside the account
    * is never a reason. The reply keeps the first card and asks nothing new unless the manager says who.
    */
-  if (cardPersonThisRequestEnabled() && !asksNewForm && nameCorrectedFrom === null) {
+  /*
+   * THE ASK AND THE ANSWER ARE ONE REQUEST (production, 26 Nov 2026: with one person's exit draft open, "exit form <M>"
+   * got "who is this exit form for?", and the answer "<B>", then "yes" to "is this exit form for <B>, as a new
+   * request?", were each refused person_change_not_asked): new_form_evidence counted only this message's words, so the
+   * message that asked for the form and the one that named the person never met. An earlier message counts when it is
+   * in THIS request (after the chat's last card and after the last turn naming another roster person: `requestStart`),
+   * its quote names this form (`quoteNamesForm`), and a manager turn from it on names this card's person.
+   */
+  const asksNewFormThisRequest = !asksNewForm && cardPersonThisRequestEnabled() && read.kind === "read" && newFormAskedThisRequest(context, input.new_form_evidence, template, employee, read.roster);
+  if (cardPersonThisRequestEnabled() && !asksNewForm && !asksNewFormThisRequest && nameCorrectedFrom === null) {
     // The card on screen, else this chat's latest card (the rules book already asks for new_form_evidence on "a new request after an earlier card").
     const shown = context.cardOnScreen ?? context.earlierCard ?? null;
     const shownIsOther = Boolean(shown && (shown.employeeKey && employee.id ? shown.employeeKey !== personKey(employee.id) : shown.nameKey ? shown.nameKey !== personKey(employee.name) : false));
@@ -4323,7 +4357,7 @@ export async function proposeForm(
     })();
     if ((shownIsOther || draftIsOther) && !ownRequest) {
       return {
-        reason_code: "person_change_not_asked", error: `A card or draft for another person is open, and the manager did not ask for another form or say the form is for ${employee.name}. A person named inside an account (who told, who messaged, who reported) is not the form's person. Keep the open card or draft for its person and put what the manager said on it with edit_form; make a card for ${employee.name} only if the manager asks for another form for them (new_form_evidence).`,
+        reason_code: "person_change_not_asked", error: `A card or draft for another person is open, and the manager did not ask for another form or say the form is for ${employee.name}. A person named inside an account (who told, who messaged, who reported) is not the form's person. Keep the open card or draft for its person and put what the manager said on it with edit_form; make a card for ${employee.name} only if the manager asks for another form for them (new_form_evidence). When an earlier message of this request asked for this form and this message says who it is for (the answer to "who is this form for?"), new_form_evidence may quote that earlier message.`,
       };
     }
   }
