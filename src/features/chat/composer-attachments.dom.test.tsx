@@ -35,10 +35,11 @@ afterEach(cleanup);
 describe("attaching files in the main chat", () => {
   it("shows one working attach button inside the input pill, and no chips row until a file is picked", () => {
     render(<Harness />);
-    const attach = screen.getByRole("button", { name: /attach files/i });
+    // The owner's wording (26 Nov 2026): an "Attach a file" button next to the text box.
+    const attach = screen.getByRole("button", { name: "Attach a file" });
     expect(attach.hasAttribute("disabled")).toBe(false);
     expect(screen.queryByRole("list", { name: "Files to send" })).toBeNull();
-    expect((screen.getByTestId("chat-attach-input") as HTMLInputElement).accept).toMatch(/application\/pdf.*\.docx.*text\/plain/);
+    expect((screen.getByTestId("chat-attach-input") as HTMLInputElement).accept).toMatch(/application\/pdf.*\.docx.*\.xlsx.*text\/plain/);
   });
 
   it("a picked file becomes a chip, and its remove button takes it off again", () => {
@@ -50,15 +51,16 @@ describe("attaching files in the main chat", () => {
     expect(chips()).toHaveLength(0);
   });
 
-  it("takes images, PDFs, Word and text files, a .md the browser gave no type included", () => {
+  it("takes images, PDFs, Word, Excel and text files, a .md the browser gave no type included", () => {
     render(<Harness />);
     pick(
+      new File(["x"], "week-47.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
       pdf(),
       new File(["x"], "board.png", { type: "image/png" }),
       new File(["x"], "Notes.docx", { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }),
       new File(["Week 1"], "plan.md", { type: "" }),
     );
-    expect(chips().map((chip) => chip.textContent)).toEqual(["Coaching plan.pdf", "board.png", "Notes.docx", "plan.md"]);
+    expect(chips().map((chip) => chip.textContent)).toEqual(["week-47.xlsx", "Coaching plan.pdf", "board.png", "Notes.docx", "plan.md"]);
     expect(screen.queryByTestId("chat-attachment-error")).toBeNull();
   });
 
@@ -66,7 +68,16 @@ describe("attaching files in the main chat", () => {
     render(<Harness />);
     pick(new File(["x"], "payroll.zip", { type: "application/zip" }), pdf());
     expect(chips()).toHaveLength(1);
-    expect(screen.getByTestId("chat-attachment-error").textContent).toMatch(/payroll\.zip: only images .*PDFs, Word \(\.docx\) and text files can be attached/);
+    expect(screen.getByTestId("chat-attachment-error").textContent).toMatch(/payroll\.zip: only images .*PDFs, Word \(\.docx\), Excel \(\.xlsx\) and text files can be attached/);
+  });
+
+  it("an old .doc gets a clear message: re-save as .docx or PDF and attach it again", () => {
+    render(<Harness />);
+    pick(new File(["x"], "Plan.doc", { type: "application/msword" }), new File(["x"], "Stats.xls", { type: "" }));
+    expect(chips()).toHaveLength(0);
+    expect(screen.getByTestId("chat-attachment-error").textContent).toBe(
+      "Plan.doc is an older Word file (.doc), which can't be read. Re-save it as .docx or PDF and attach it again. Stats.xls is an older Excel file (.xls), which can't be read. Re-save it as .xlsx or PDF and attach it again.",
+    );
   });
 
   it("stops at the panel's five files, says so, and disables the button at the limit", () => {

@@ -1,4 +1,4 @@
-import { toFilePart } from "@/features/l10/assistant/attachments";
+import { toFilePart } from "@/lib/attachments/file-parts";
 import type { ChatFileAttachment } from "@/lib/ai/types";
 import type { ChatAttachmentName, ChatMessage } from "@/types";
 

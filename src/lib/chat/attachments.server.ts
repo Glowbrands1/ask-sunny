@@ -2,7 +2,7 @@ import "server-only";
 
 import { AiError } from "@/lib/ai/errors";
 import type { ChatFileAttachment } from "@/lib/ai/types";
-import { DOCX_TYPE, MAX_FILE_BYTES, MAX_FILES_PER_MESSAGE } from "@/features/l10/assistant/attachments";
+import { DOCX_TYPE, MAX_FILE_BYTES, MAX_FILES_PER_MESSAGE, XLSX_TYPE, olderOfficeFileProblem } from "@/lib/attachments/file-parts";
 
 /**
  * ============================================================================
@@ -28,7 +28,7 @@ export const ATTACHMENT_TEXT_LIMIT = 60_000;
 const NAME_LIMIT = 200;
 
 export function isAcceptedAttachmentType(mediaType: string): boolean {
-  return IMAGE.test(mediaType) || TEXT.test(mediaType) || mediaType === PDF || mediaType === DOCX_TYPE;
+  return IMAGE.test(mediaType) || TEXT.test(mediaType) || mediaType === PDF || mediaType === DOCX_TYPE || mediaType === XLSX_TYPE;
 }
 
 /** The request's `attachments`, checked; absent or empty is no files. Anything else is a 400 with a plain sentence. */
@@ -40,8 +40,10 @@ export function parseChatAttachments(raw: unknown): ChatFileAttachment[] | undef
   return raw.map((entry) => {
     const file = (entry ?? {}) as Partial<Record<keyof ChatFileAttachment, unknown>>;
     const mediaType = typeof file.mediaType === "string" ? file.mediaType : "";
+    const older = olderOfficeFileProblem(typeof file.filename === "string" && file.filename ? file.filename : "This file", mediaType);
+    if (older) throw new AiError("bad_request", older, 400);
     if (!isAcceptedAttachmentType(mediaType)) {
-      throw new AiError("bad_request", "Only images (PNG, JPG, GIF, WebP), PDFs, Word (.docx) and text files can be attached.", 400);
+      throw new AiError("bad_request", "Only images (PNG, JPG, GIF, WebP), PDFs, Word (.docx), Excel (.xlsx) and text files can be attached.", 400);
     }
     const url = typeof file.url === "string" ? file.url : "";
     if (!url.startsWith(`data:${mediaType};base64,`)) throw new AiError("bad_request", "Attachments must be uploaded from your device.", 400);
@@ -72,6 +74,13 @@ export async function readAttachments(files: readonly ChatFileAttachment[] | und
       if (IMAGE.test(file.mediaType) || file.mediaType === PDF) return { kind: "native", filename: file.filename, mediaType: file.mediaType, base64: base64Of(file) };
       const bytes = Buffer.from(base64Of(file), "base64");
       if (TEXT.test(file.mediaType)) return { kind: "text", filename: file.filename, text: bounded(file.filename, "text file", bytes.toString("utf8")) };
+      if (file.mediaType === XLSX_TYPE) {
+        try {
+          return { kind: "text", filename: file.filename, text: bounded(file.filename, "Excel workbook", await workbookText(bytes)) };
+        } catch {
+          return { kind: "text", filename: file.filename, text: `ATTACHED FILE: ${file.filename} (Excel workbook)\n\n[This file could not be read. It may be damaged or password-protected; ask the manager to save it again as .xlsx or PDF and attach it again.]` };
+        }
+      }
       try {
         const { extractDocx } = await import("@/lib/ingestion/extract/docx");
         const read = await extractDocx(new Uint8Array(bytes));
@@ -82,6 +91,25 @@ export async function readAttachments(files: readonly ChatFileAttachment[] | und
       }
     }),
   );
+}
+
+/** An Excel workbook as text: each sheet by name, each row one line, its cells' shown values separated by " | ". */
+async function workbookText(bytes: Buffer): Promise<string> {
+  const ExcelJS = (await import("exceljs")).default;
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(bytes as unknown as ArrayBuffer);
+  const sheets: string[] = [];
+  workbook.eachSheet((sheet) => {
+    const rows: string[] = [];
+    sheet.eachRow({ includeEmpty: false }, (row) => {
+      const cells: string[] = [];
+      row.eachCell({ includeEmpty: true }, (cell) => cells.push((cell.text ?? "").replace(/\s+/g, " ").trim()));
+      while (cells.length > 0 && cells.at(-1) === "") cells.pop();
+      if (cells.length > 0) rows.push(cells.join(" | "));
+    });
+    sheets.push(`Sheet: ${sheet.name}\n${rows.length > 0 ? rows.join("\n") : "[empty]"}`);
+  });
+  return sheets.join("\n\n");
 }
 
 /** The line ahead of the files, so the model knows they are the manager's and by which names. */

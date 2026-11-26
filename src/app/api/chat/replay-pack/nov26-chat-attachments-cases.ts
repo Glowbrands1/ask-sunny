@@ -107,6 +107,30 @@ export const NOV26_CHAT_ATTACHMENTS_CASES: ReplayCase[] = [
     },
   },
   {
+    id: "nov26-chat-attach-excel-figures-reach-the-loop",
+    title: `"what were total guests this week?" with an Excel workbook attached: its sheet and figures reach the loop's model, and the rules say to check the numbers`,
+    report: REPORT,
+    status: "fixed",
+    async run(t) {
+      if (!t.loopOn?.()) return;
+      const thread = start(t);
+      const model = loopStandIn(() => ({ text: "218 guests: North 120 and South 98 (Week 47 sheet, Guests column)." }));
+      t.loopModel!(model);
+      const ExcelJS = (await import("exceljs")).default;
+      const book = new ExcelJS.Workbook();
+      const sheet = book.addWorksheet("Week 47");
+      sheet.addRow(["Location", "Guests"]);
+      sheet.addRow(["North", 120]);
+      sheet.addRow(["South", 98]);
+      const XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+      await thread.say("what were total guests this week?", {}, { attachments: [{ filename: "week-47.xlsx", mediaType: XLSX, url: dataUrl(XLSX, Buffer.from(await book.xlsx.writeBuffer())) }] });
+      const read = lastUserText(model.views[0]);
+      expect(read).toContain("ATTACHED FILE: week-47.xlsx (Excel workbook)");
+      expect(read, "the workbook's figures did not reach the model").toContain("Sheet: Week 47\nLocation | Guests\nNorth | 120\nSouth | 98");
+      expect(model.views[0]!.system, "the check-the-numbers rule is not in the loop's prompt").toMatch(/Check the numbers on a stats-style file/);
+    },
+  },
+  {
     id: "nov26-chat-attach-older-path-reads-the-file",
     title: `"${SAID}" from a manager not on the loop: the older path's model is given the PDF too`,
     report: REPORT,

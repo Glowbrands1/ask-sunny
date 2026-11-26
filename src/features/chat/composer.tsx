@@ -16,7 +16,7 @@ import {
 import { cn } from "@/lib/utils/cn";
 import { LONG_MESSAGE_LIMIT, messageLengthStatus } from "@/lib/chat/message-limit";
 import { chatLongMessageClientEnabled } from "@/lib/config/chat-quality-flags";
-import { CHAT_ATTACH_ACCEPT, MAX_FILES_PER_MESSAGE, attachmentProblem } from "@/features/l10/assistant/attachments";
+import { CHAT_ATTACH_ACCEPT, MAX_FILES_PER_MESSAGE, attachmentProblem } from "@/lib/attachments/file-parts";
 import type { AnswerMode } from "@/types";
 
 const MODES: AnswerMode[] = ["quick", "standard", "detailed"];
@@ -91,8 +91,9 @@ const MODE_OPTIONS = MODES.map((mode) => ({
  * One paperclip inside the input pill, where the dead attach button used to sit beside it, so the dock is no taller
  * at rest. Files waiting to be sent show as chips above the pill, each with its remove button, only while there are
  * any. The DM L10 panel's mechanism (`features/l10/assistant/attachments.ts`): the same limits (5 files, 10 MB each),
- * the same browser-side encoding; the main chat also takes Word and text files, which the server reads as text. Paste
- * and drop add files too, as in the panel.
+ * the same browser-side encoding; the main chat also takes Word, Excel and text files, which the server reads as text
+ * (an older .doc or .xls is refused by name, with how to re-save it). Paste and drop add files too, as in the panel.
+ * The row keeps room for one more round button beside it (a dictation mic, planned separately).
  */
 export function Composer({
   value,
@@ -242,8 +243,8 @@ export function Composer({
         type="button"
         onClick={() => fileInputRef.current?.click()}
         disabled={busy || atFileLimit}
-        aria-label={atFileLimit ? `Limit of ${MAX_FILES_PER_MESSAGE} files reached` : "Attach files (images, PDF, Word or text)"}
-        title={atFileLimit ? `Limit of ${MAX_FILES_PER_MESSAGE} files reached` : "Attach images, PDFs, Word or text files"}
+        aria-label={atFileLimit ? `Limit of ${MAX_FILES_PER_MESSAGE} files reached` : "Attach a file"}
+        title={atFileLimit ? `Limit of ${MAX_FILES_PER_MESSAGE} files reached` : "Attach a file: images, PDF, Word, Excel or text"}
         className="grid size-9 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-hover-surface hover:text-hover-surface-foreground disabled:opacity-40"
       >
         <Paperclip className="size-[17px]" />

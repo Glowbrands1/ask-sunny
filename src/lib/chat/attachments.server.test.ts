@@ -13,6 +13,16 @@ import { safeMetadata } from "./payload";
  */
 const data = (mediaType: string, bytes: Buffer | string) => `data:${mediaType};base64,${Buffer.from(bytes).toString("base64")}`;
 const DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+async function workbook(): Promise<Buffer> {
+  const ExcelJS = (await import("exceljs")).default;
+  const book = new ExcelJS.Workbook();
+  const sheet = book.addWorksheet("Week 47");
+  sheet.addRow(["Location", "Guests", "Sales"]);
+  sheet.addRow(["North", 120, 3450.5]);
+  sheet.addRow(["South", 98, 2875]);
+  return Buffer.from(await book.xlsx.writeBuffer());
+}
 const pdf = { filename: "plan.pdf", mediaType: "application/pdf", url: data("application/pdf", "%PDF-1.7 Wren Ashdown") };
 
 describe("the route's check of attached files", () => {
@@ -45,7 +55,24 @@ describe("the route's check of attached files", () => {
   });
 });
 
+describe("older Office files are refused with how to re-save them", () => {
+  it("a .doc and a .xls name the file and the format to use", () => {
+    expect(() => parseChatAttachments([{ filename: "Plan.doc", mediaType: "application/msword", url: data("application/msword", "x") }])).toThrow("Plan.doc is an older Word file (.doc), which can't be read. Re-save it as .docx or PDF and attach it again.");
+    expect(() => parseChatAttachments([{ filename: "Stats.xls", mediaType: "application/vnd.ms-excel", url: data("application/vnd.ms-excel", "x") }])).toThrow("Stats.xls is an older Excel file (.xls), which can't be read. Re-save it as .xlsx or PDF and attach it again.");
+  });
+});
+
 describe("how each file is read for the model", () => {
+  it("an Excel workbook is read sheet by sheet, row by row, with its figures as shown", async () => {
+    const [read] = await readAttachments(parseChatAttachments([{ filename: "week-47.xlsx", mediaType: XLSX, url: data(XLSX, await workbook()) }]));
+    expect(read).toEqual({ kind: "text", filename: "week-47.xlsx", text: "ATTACHED FILE: week-47.xlsx (Excel workbook)\n\nSheet: Week 47\nLocation | Guests | Sales\nNorth | 120 | 3450.5\nSouth | 98 | 2875" });
+  });
+
+  it("a damaged workbook is said to be unreadable, not dropped", async () => {
+    const [read] = await readAttachments([{ filename: "bad.xlsx", mediaType: XLSX, url: data(XLSX, "not a zip") }]);
+    expect(read!.kind === "text" && read!.text).toContain("This file could not be read.");
+  });
+
   it("an image and a PDF go as they are; a text file and a Word document as text", async () => {
     const word = readFileSync(join(process.cwd(), "src/test/fixtures/forms/coaching-form.docx"));
     const read = await readAttachments([
