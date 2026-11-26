@@ -391,14 +391,14 @@ describe("F-02: a salon reply never replaces the employee — on the card or on 
     expect(form.instance.locationId).toBe("loc-0311");
   });
 
-  it("a district manager: the employee stays, and the salon stays fail-closed", async () => {
+  // Changed on purpose (Pau, 25 Nov 2026: "i need this in sunny please"): Kearney is in this district on the roster, so
+  // it is now the salon on the form (`dm-district-forms-visibility.test.ts`). The employee still stays.
+  it("a district manager: the employee stays, and a salon of their district is the salon", async () => {
     state.role = "district_manager";
     state.scope = DISTRICT;
     const { proposal } = await conversation([OPEN, "at kearney"]);
-    // A district scope reads no directory (fail-closed), so the manager's spelling stands.
     expect(proposal.employeeName).toBe("pat rivera");
-    expect(proposal.locationId).toBeNull();
-    expect(proposal.locationResolution).toBe("unavailable");
+    expect(proposal.locationId).toBe("loc-0309");
   });
 
   it("with nobody named yet, a salon reply is not the employee", async () => {

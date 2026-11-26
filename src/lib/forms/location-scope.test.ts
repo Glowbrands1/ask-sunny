@@ -79,8 +79,11 @@ describe("20. a salon they are not assigned to is REFUSED", () => {
   });
 });
 
-describe("21. district and regional actors FAIL CLOSED", () => {
-  it.each(["district", "region"] as const)("%s is refused, not accepted-and-flagged", (level) => {
+// Changed on purpose (Pau, 25 Nov 2026, "i need this in sunny please"): a district or region now resolves through the
+// roster (`dm-district-forms-visibility.test.ts`). An area the roster does NOT know still fails closed, which is what
+// these ids are; only the refusal's wording changed, since "cannot yet verify" is no longer true.
+describe("21. district and regional actors FAIL CLOSED off the roster", () => {
+  it.each(["district", "region"] as const)("%s the roster does not know is refused, not accepted-and-flagged", (level) => {
     const result = authorizeLocation(
       { level, primaryAreaId: `${level}-01`, alsoCoversAreaIds: [] },
       "loc-0101",
@@ -88,7 +91,7 @@ describe("21. district and regional actors FAIL CLOSED", () => {
 
     expect(result.kind).toBe("refused");
     if (result.kind !== "refused") return;
-    expect(result.reason).toMatch(/cannot yet verify/i);
+    expect(result.reason).toMatch(/not one you are assigned to/i);
   });
 
   it("does not authorize the district's own area id as if it were a salon", () => {
