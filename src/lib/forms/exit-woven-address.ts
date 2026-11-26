@@ -56,6 +56,7 @@ export function exitEmployeeDirectoryId(
   rows: readonly DirectoryRosterRow[],
   employeeName: string | null | undefined,
   scope: AccessScope | null,
+  formSalonId?: string | null,
 ): string | null {
   const wanted = normalizeTypedName(employeeName ?? "");
   if (!wanted || !scope) return null;
@@ -64,6 +65,7 @@ export function exitEmployeeDirectoryId(
 
   const found = new Set<string>();
   const active = new Set<string>();
+  const atFormSalon = new Set<string>();
   for (const row of rows) {
     const last = row.lastName?.trim() ?? "";
     if (!last) continue;
@@ -75,6 +77,7 @@ export function exitEmployeeDirectoryId(
     if (names.includes(wanted)) {
       found.add(row.id);
       if (row.employmentStatus !== "terminated") active.add(row.id);
+      if (formSalonId && row.salonIds.includes(formSalonId)) atFormSalon.add(row.id);
     }
   }
   if (found.size === 1) return [...found][0]!;
@@ -82,7 +85,13 @@ export function exitEmployeeDirectoryId(
    * A REHIRE IS TWO WOVEN ROWS WITH ONE NAME (Pau, 25 Nov 2026: "i have access to that in woven why didn't my address
    * populate"): the old, terminated row and the current one. Exactly one still employed is that person.
    */
-  return active.size === 1 ? [...active][0]! : null;
+  if (active.size === 1) return [...active][0]!;
+  /*
+   * ONE NAME, TWO WOVEN ROWS, ONE AT THE FORM'S SALON (production, 26 Nov 2026: an employee with a salon row and a
+   * second active row at the corporate Woven location, which maps to no salon; a global manager sees both). The row at
+   * the salon the exit form is filed for is that person. Two at that salon is still nobody.
+   */
+  return atFormSalon.size === 1 ? [...atFormSalon][0]! : null;
 }
 
 /* ----------------------------------------------------------- the address -- */
@@ -255,7 +264,7 @@ function withinBudget<T>(work: Promise<T>, ms: number): Promise<T | null> {
  * a Woven or directory outage leaves the line blank and the draft goes on.
  */
 export async function wovenExitAddress(
-  input: { employeeName: string | null | undefined; scope: AccessScope | null },
+  input: { employeeName: string | null | undefined; scope: AccessScope | null; formSalonId?: string | null },
   deps?: WovenExitAddressDeps,
 ): Promise<string | null> {
   if (!deps && !wovenExitAddressEnabled()) return null;
@@ -272,7 +281,7 @@ export async function wovenExitAddress(
       (async () => {
         const live = deps ?? (await liveDeps());
         if (!live) return why("no Woven credentials");
-        const directoryId = exitEmployeeDirectoryId(await live.readDirectory(), input.employeeName, input.scope);
+        const directoryId = exitEmployeeDirectoryId(await live.readDirectory(), input.employeeName, input.scope, input.formSalonId);
         if (!directoryId) return why("not exactly one Woven person by that full name at the manager's salons");
         const wovenId = await live.wovenIdOf(directoryId);
         if (!wovenId) return why("directory row has no Woven id");

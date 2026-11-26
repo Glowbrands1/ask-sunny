@@ -785,7 +785,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
     ) {
       const { wovenExitAddress, wovenExitAddressEnabled } = await import("@/lib/forms/exit-woven-address");
       const address = wovenExitAddressEnabled()
-        ? await wovenExitAddress({ employeeName: loaded.instance.employeeName, scope: actor.scope })
+        ? await wovenExitAddress({ employeeName: loaded.instance.employeeName, scope: actor.scope, formSalonId: loaded.instance.locationId })
         : null;
       if (address) {
         const only = new Set([EXIT_PERMANENT_ADDRESS_KEY]);
