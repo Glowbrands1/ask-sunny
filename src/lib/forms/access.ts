@@ -6,6 +6,7 @@ import { authorizeRequest } from "@/lib/auth/server";
 import { activePermissionMatrix, hasPermission } from "@/lib/permissions";
 import { resolveFormsVisibility } from "./forms-visibility";
 import { resolveHrApprover } from "./hr-approval-approvers";
+import { mayDeleteFinalizedForm } from "./finalized-delete";
 import type { AccessScope, Permission, Role } from "@/types";
 
 /**
@@ -76,6 +77,11 @@ export interface FormsActor {
    * or false: a form waiting for HR that this actor did not create does not exist for them. See `hr-approval-rules.ts`.
    */
   hrApprover?: boolean;
+  /**
+   * This account may delete a FINALIZED form: its verified email is on FINALIZED_FORM_DELETE_EMAILS (Pau, 26 Nov 2026:
+   * "my account only"; `finalized-delete.ts`). Absent or false for everyone else and for every demo actor.
+   */
+  mayDeleteFinalized?: boolean;
 }
 
 const DEMO_ROLE_HEADER = "x-ask-sunny-demo-role";
@@ -134,6 +140,7 @@ export async function authorizeForms(
       // two can never disagree.
       verified: context.identity.verified,
       hrApprover: context.identity.verified ? await resolveHrApprover(context.identity.subject) : false,
+      mayDeleteFinalized: mayDeleteFinalizedForm(context.identity),
     };
   }
 

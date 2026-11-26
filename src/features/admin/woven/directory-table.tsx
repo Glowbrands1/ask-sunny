@@ -13,8 +13,8 @@ import {
 } from "@/lib/employees/woven/view-types";
 import { changeLabel, employeeName, mappingSummary } from "@/lib/employees/woven/views";
 import { cn } from "@/lib/utils/cn";
+import { AddressButton } from "./address-button";
 import { day, label, when } from "./format";
-import { HomeAddressReveal } from "./home-address-reveal";
 
 /**
  * THE EMPLOYEE DIRECTORY — every Woven employee on file, active and terminated.
@@ -24,7 +24,8 @@ import { HomeAddressReveal } from "./home-address-reveal";
  * normalised employment status — never inferred from a termination date. Filtering runs on the server in
  * `views.ts`, the same function for real and sample data.
  *
- * NAMES AND EMAILS APPEAR HERE, which is why the page needs Manage users.
+ * NAMES AND EMAILS APPEAR HERE, which is why the page needs Manage users. A home address is never on file: "Show
+ * address" asks Woven for one person's, live, on click (`address-button.tsx`).
  */
 
 const BASE = "/admin/integrations/woven/directory";
@@ -182,8 +183,8 @@ export function DirectoryTable({ page, query, sample }: { page: DirectoryPage; q
                 {[
                   "Woven ID",
                   "Name",
-                  "Home address",
                   "Work email",
+                  "Home address",
                   "Status",
                   "Position",
                   "Position ID",
@@ -208,11 +209,11 @@ export function DirectoryTable({ page, query, sample }: { page: DirectoryPage; q
                 <tr key={row.id} className="align-top whitespace-nowrap">
                   <td className="px-3 py-2 font-mono text-[11.5px] text-muted-foreground">{row.externalEmployeeId}</td>
                   <td className="px-3 py-2 font-semibold text-foreground">{employeeName(row)}</td>
-                  <td className="max-w-64 px-3 py-2">
-                    <HomeAddressReveal directoryId={row.id} disabled={sample} />
-                  </td>
                   <td className="px-3 py-2">
                     {row.emailAddress ?? <Badge tone="failed" size="sm">missing</Badge>}
+                  </td>
+                  <td className="px-3 py-2">
+                    {sample ? <span className="text-muted-foreground">—</span> : <AddressButton directoryId={row.id} />}
                   </td>
                   <td className="px-3 py-2">
                     <Badge tone={STATUS_TONE[row.employmentStatus]} size="sm">

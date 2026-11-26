@@ -25,12 +25,15 @@ import {
   withoutUnreadable,
 } from "@/lib/forms/instance-scope";
 import { pageFormsAccess } from "@/lib/forms/page-scope";
+import { mayDeleteFinalizedForm } from "@/lib/forms/finalized-delete";
 import type { Permission } from "@/types";
 import { HrApprovalTabs, HrApprovedList, HrQueueList, MyFormsWithHr, SiblingHrQueueList } from "@/features/forms/hr-approval-lists";
 import { fetchSiblingHrQueue, type SiblingHrQueue } from "@/lib/partner/sibling-hr-queue";
 import { hrQueueSummary, listHrApproved, listHrQueue, listMyFormsWithHr, type HrApprovedRow, type HrQueueRow, type MyHrFormRow } from "@/lib/forms/hr-approval";
 import { mayReadHrDecision } from "@/lib/forms/hr-approval-rules";
 import { ACTIVE_BRAND } from "@/lib/brand";
+import { mayUseEmployeeFormSearch, parseEmployeeSearchStatus, searchFormsByEmployee, type EmployeeFormSearch } from "@/lib/forms/employee-form-search";
+import { EmployeeFormSearchBox, EmployeeFormSearchResults } from "@/form-revisions/employee-form-search";
 
 export const metadata: Metadata = { title: "Form Monitoring" };
 export const dynamic = "force-dynamic";
@@ -55,11 +58,11 @@ const LIST_LIMIT = 200;
 export default async function FormMonitoringPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; followup?: string; app?: string }>;
+  searchParams: Promise<{ view?: string; followup?: string; app?: string; employee?: string; status?: string }>;
 }) {
   const identity = await requirePagePermission("view_form_monitoring");
 
-  const { view: requestedView, followup: requestedFollowUp, app: requestedApp } = await searchParams;
+  const { view: requestedView, followup: requestedFollowUp, app: requestedApp, employee: requestedEmployee, status: requestedStatus } = await searchParams;
   /*
    * The follow-up filter comes from the URL so a view survives a refresh and can be
    * linked to, and it is narrowed here rather than trusted — an unknown
@@ -132,7 +135,31 @@ export default async function FormMonitoringPage({
     // A failed approval read leaves the ordinary list as it is; the tab and the card simply do not show.
   }
 
-  if (!access.noSalon) try {
+  /*
+   * FIND AN EMPLOYEE'S FORMS (leadership meeting, 24 Nov 2026): HR and administrators only, `?employee=<name>`. Read
+   * on its own so a person's older forms are found past the list's 200 rows, and narrowed by the list's own filter and
+   * per-row check, so it can never show a form the list would not. See `employee-form-search.ts`.
+   */
+  const employeeSearchOffered = mayUseEmployeeFormSearch(access.actor) && !hrView && !access.noSalon;
+  const employeeQuery = employeeSearchOffered && typeof requestedEmployee === "string" ? requestedEmployee.trim().slice(0, 120) : "";
+  const employeeStatus = parseEmployeeSearchStatus(requestedStatus);
+  let employeeSearch: EmployeeFormSearch | null = null;
+  let employeeSearchFailure: string | null = null;
+  if (employeeQuery) {
+    try {
+      const readsExit = await pageCan("create_exit_form");
+      const holds = (permission: Permission) => (permission === "create_exit_form" ? readsExit : false);
+      employeeSearch = await searchFormsByEmployee(access.actor, employeeQuery, {
+        filter: instanceListFilterFor(access.actor),
+        status: employeeStatus,
+        keep: (rows) => withoutUnreadable(rows, holds).filter(mayRead),
+      });
+    } catch (error) {
+      employeeSearchFailure = (error as Error).message;
+    }
+  }
+
+  if (!access.noSalon && !employeeQuery) try {
     /*
      * EXIT FORMS ONLY FOR THOSE WHO MAY CREATE THEM. The Resignation/Exit Form
      * carries payroll, bonus, minimum-wage and rehire answers, so a reader
@@ -253,11 +280,25 @@ export default async function FormMonitoringPage({
           <Notice tone="attention" title="No home salon assigned">
             Form Monitoring shows the forms for your own salon, and your account has no salon assigned yet. An administrator can set it in User Management.
           </Notice>
+        ) : employeeQuery ? (
+          <>
+            <EmployeeFormSearchBox query={employeeQuery} status={employeeStatus} />
+            <EmployeeFormSearchResults
+              query={employeeQuery}
+              searchable={employeeSearchFailure !== null || (employeeSearch?.words.length ?? 0) > 0}
+              rows={employeeSearch?.results ?? []}
+              capped={employeeSearch?.capped ?? false}
+              failure={employeeSearchFailure}
+              filtered={employeeStatus !== "all"}
+            />
+          </>
         ) : failure ? (
           <Notice tone="attention" title="Form history could not be read">
             {failure}
           </Notice>
         ) : (
+          <>
+          {employeeSearchOffered ? <EmployeeFormSearchBox query="" /> : null}
           <MonitoringTable
             forms={forms}
             notice={formsIdentityIsUnverified() ? SYNTHETIC_DATA_NOTICE : null}
@@ -268,7 +309,9 @@ export default async function FormMonitoringPage({
             outstandingExcluded={outstandingExcluded}
             listLimit={listCapped ? LIST_LIMIT : null}
             demo={demo}
+            mayDeleteFinalized={mayDeleteFinalizedForm(identity)}
           />
+          </>
         )}
       </PageShell>
     </>

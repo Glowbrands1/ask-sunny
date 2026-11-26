@@ -161,11 +161,21 @@ describe("deleting a finalized form as an administrator (allowFinalized)", () =>
     expect(store.form_instance_events).toHaveLength(0);
   });
 
-  it("still refuses a form that was replaced by a newer version: it is the older half of a chain", async () => {
-    store.form_instances = [instance({ id: "rev-1", status: "revised" })];
+  /*
+   * Changed on purpose (Pau, 26 Nov 2026, with a screenshot of "revised" rows that had no "…": "i cant still dlete some
+   * of it"). The named account (`allowFinalized`) may delete an older version too; the newer version stays. Without the
+   * option it is still refused ("refuses a revised form too", above).
+   */
+  it("i cant still dlete some of it: the named account deletes an older (revised) version, and the newer one stays", async () => {
+    store.form_instances = [
+      instance({ id: "rev-1", status: "revised", finalized_at: "2026-09-02T10:00:00Z" }),
+      instance({ id: "rev-2", status: "finalized", finalized_at: "2026-09-03T10:00:00Z", revises_instance_id: "rev-1" }),
+    ];
 
-    await expect(deleteInstance("rev-1", undefined, { allowFinalized: true })).rejects.toThrow(InstanceProtectedError);
-    expect(store.form_instances).toHaveLength(1);
+    const deleted = await deleteInstance("rev-1", undefined, { allowFinalized: true });
+
+    expect(deleted.id).toBe("rev-1");
+    expect(store.form_instances.map((row) => [row.id, row.status])).toEqual([["rev-2", "finalized"]]);
   });
 
   it("without the option it still refuses, and says an administrator can delete it", async () => {
