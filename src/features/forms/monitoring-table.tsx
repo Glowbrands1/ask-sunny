@@ -402,17 +402,20 @@ export function MonitoringTable({
   }
 
   /*
-   * BULK DELETE. Only a draft the viewer may already delete from the row menu
-   * gets a box; finalized and revised forms are kept on file and never do. The
+   * BULK DELETE. Only a form the viewer may already delete from the row menu
+   * (`mayDelete`) gets a box: a draft, or, for the named account only, a
+   * finalized or revised form (Pau, 26 Nov 2026: "oh i can but there is no check
+   * box"). Everyone else still gets boxes on drafts only. The
    * ticks that count are the ones still on screen, so a row that left the list
    * (filter, refresh) can never be deleted unseen.
    */
-  const deletable = mayManage ? shown.filter((form) => form.status === "draft") : [];
+  const deletable = shown.filter(mayDelete);
   const deletableIds = deletable.map((form) => form.id);
   const picked = deletable.filter((form) => selected.has(form.id));
   const allPicked = deletable.length > 0 && picked.length === deletable.length;
   const somePicked = picked.length > 0 && !allPicked;
   const bulkBusy = bulkProgress !== null;
+  const pickedIncludesFiled = picked.some((form) => form.status !== "draft");
 
   const headerBox = React.useRef<HTMLInputElement | null>(null);
   React.useEffect(() => {
@@ -712,7 +715,7 @@ export function MonitoringTable({
                       <tr key={form.id} className="border-b border-border last:border-0">
                         {mayManage ? (
                           <td className="w-10 px-1 py-1">
-                            {form.status === "draft" ? (
+                            {mayDelete(form) ? (
                               <label className="flex min-h-10 min-w-10 cursor-pointer items-center justify-center">
                                 <input
                                   type="checkbox"
@@ -992,8 +995,12 @@ export function MonitoringTable({
         }}
       >
         <DialogContent
-          title={`Delete ${picked.length} draft${picked.length === 1 ? "" : "s"}?`}
-          description="Drafts are removed for good. A deletion record is kept."
+          title={`Delete ${picked.length} ${pickedIncludesFiled ? "form" : "draft"}${picked.length === 1 ? "" : "s"}?`}
+          description={
+            pickedIncludesFiled
+              ? "Includes finalized forms, which are normally kept on file. They are removed for good and cannot be undone. A deletion record is kept with your name and the time."
+              : "Drafts are removed for good. A deletion record is kept."
+          }
         >
           <ul className="list-disc space-y-1 pl-5 text-[13px] text-foreground">
             {picked.slice(0, 5).map((form) => (
