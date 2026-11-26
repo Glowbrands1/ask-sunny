@@ -4,6 +4,7 @@ import { businessToday } from "@/lib/business-date";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { canAccessAdminConsole } from "@/lib/permissions";
 import { authorizedSalonIds } from "./location-scope";
+import { rosterScopeForManager } from "./roster-manager";
 import type { AccessScope, Role } from "@/types";
 
 /**
@@ -133,6 +134,32 @@ async function wovenAffiliatedSalons(employeeId: string): Promise<string[]> {
   }
 }
 
+/**
+ * A District or Regional Manager left on a `global` scope: the district or
+ * region the roster names them on (`roster-manager.ts`; Pau, 26 Nov 2026 —
+ * "she should though"). Reads the account's own email and name. Fails closed.
+ */
+async function rosterAreaSalons(identity: VisibilityIdentity): Promise<string[]> {
+  if (identity.role !== "district_manager" && identity.role !== "regional_manager") return [];
+  try {
+    const { data, error } = await getSupabaseAdmin()
+      .from("app_users")
+      .select("email, display_name")
+      .eq("id", identity.subject)
+      .maybeSingle();
+    if (error || !data) return [];
+    const row = data as { email?: unknown; display_name?: unknown };
+    const scope = rosterScopeForManager(
+      identity.role,
+      typeof row.email === "string" ? row.email : null,
+      typeof row.display_name === "string" ? row.display_name : null,
+    );
+    return scope ? authorizedSalonIds(scope) : [];
+  } catch {
+    return [];
+  }
+}
+
 /** The scope this verified identity may READ forms under. */
 export async function resolveFormsVisibility(identity: VisibilityIdentity): Promise<AccessScope> {
   if (canAccessAdminConsole(identity.role)) return ALL_SALONS;
@@ -142,12 +169,15 @@ export async function resolveFormsVisibility(identity: VisibilityIdentity): Prom
    * A `salon` scope IS a store assignment, so its salons are honoured as
    * assigned. A `district` or `region` scope is one too, through the roster:
    * the salons of that district or region (an area the roster does not know
-   * names none). `global` names no salon — every account carries it. In every
+   * names none). `global` names no salon — every account carries it — except
+   * for a District or Regional Manager the roster names on a district or
+   * region, who reads that area's salons. In every
    * case Woven's locations for the account are added: the primary, and each
    * further location they are assigned to.
    */
   const { scope } = identity;
-  const assigned = scope && scope.level !== "global" ? authorizedSalonIds(scope) : [];
+  const assigned =
+    scope && scope.level !== "global" ? authorizedSalonIds(scope) : await rosterAreaSalons(identity);
   const woven = await wovenEmployee(identity.subject);
   const affiliated = woven?.employeeId ? await wovenAffiliatedSalons(woven.employeeId) : [];
   const salons = [

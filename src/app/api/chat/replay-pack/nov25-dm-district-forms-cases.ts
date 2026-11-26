@@ -73,4 +73,25 @@ export const NOV25_DM_DISTRICT_FORMS_CASES: ReplayCase[] = [
       expect(block).not.toContain("Thessaly Brookhaven");
     },
   },
+  {
+    id: "nov26-dm-whole-company-reads-district-forms",
+    title: "a District Manager whose account is still on \"whole company\" asks \"who got a CA this month?\": the roster names her on the district, so its CA reaches the model and one outside it does not",
+    report: 'Pau, 26 Nov 2026: "she should though" ... "rachel and sarah all district her salon and other salon and her managers forms"',
+    status: "fixed",
+    async run(t) {
+      vi.setSystemTime(new Date("2026-11-25T18:00:00Z"));
+      t.directory(STAFF);
+      const [last, first] = DISTRICT.name.split(",").map((part) => part.trim());
+      t.addRows!("app_users", [
+        { id: "nov26-dm", email: `${first}.${last}@example.com`, display_name: first, status: "active" },
+      ]);
+      t.as("district_manager", { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] }, "nov26-dm");
+      onFile(t);
+      t.modelSays("Here are this month's corrective actions.");
+      await t.thread().say("who got a CA this month?");
+      const block = t.lastFormRecords?.() ?? "";
+      expect(block, block).toContain("Marlowe Quintrell");
+      expect(block).not.toContain("Thessaly Brookhaven");
+    },
+  },
 ];

@@ -21,3 +21,10 @@ two-line change would widen who reads Buff City Soap HR records, so it waits for
 
 **Tests:** `src/app/api/forms/dm-district-forms-visibility.test.ts`; replay
 `src/app/api/chat/replay-pack/nov25-dm-district-forms-cases.ts`. Both fail before the change.
+
+**Follow-up (Pau, 26 Nov 2026):** "she should though" — "rachel and sarah all district her salon and other salon and
+her managers forms". District Managers were left on a `global` scope, which grants no salon for Forms. Now a District
+(or Regional) Manager on `global` is matched to the district (or region) the roster names them on
+(`src/lib/forms/roster-manager.ts`: both first and last name in their email or display name, exactly one match, else
+nothing). No User Management change is needed, and Reporting (which already shows a `global` account every salon) is
+untouched. Same Ask Bubbles decision as above.

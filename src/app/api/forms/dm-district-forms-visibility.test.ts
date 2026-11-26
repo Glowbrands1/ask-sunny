@@ -40,18 +40,18 @@ const DM_SCOPE: AccessScope = { level: "district", primaryAreaId: DISTRICT.id, a
 const RM_SCOPE: AccessScope = { level: "region", primaryAreaId: REGION.id, alsoCoversAreaIds: [] };
 const GLOBAL: AccessScope = { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] };
 
-/** No designation row, no Woven person: only the stored scope can grant a salon. */
-function mockNoWovenNoDesignation() {
+/** No designation row, no Woven person: only the stored scope (or the roster's name) can grant a salon. */
+function mockNoWovenNoDesignation(account: { email: string; display_name: string } | null = null) {
   vi.doMock("@/lib/supabase/server", () => ({
     getSupabaseAdmin: () => ({
-      from: () => {
+      from: (table: string) => {
         const builder = {
           select: () => builder,
           eq: () => builder,
           in: () => builder,
           is: () => builder,
           limit: async () => ({ data: [], error: null }),
-          maybeSingle: async () => ({ data: null, error: null }),
+          maybeSingle: async () => ({ data: table === "app_users" ? account : null, error: null }),
         };
         return builder;
       },
@@ -59,10 +59,10 @@ function mockNoWovenNoDesignation() {
   }));
 }
 
-async function load() {
+async function load(account: { email: string; display_name: string } | null = null) {
   process.env.NEXT_PUBLIC_DEMO_MODE = "false";
   vi.resetModules();
-  mockNoWovenNoDesignation();
+  mockNoWovenNoDesignation(account);
   const { pageFormsAccess } = await import("@/lib/forms/page-scope");
   const { actorMaySeeInstance } = await import("@/lib/forms/instance-scope");
   const { authorizeLocation, authorizedSalonIds, proposeLocation } = await import("@/lib/forms/location-scope");
@@ -144,6 +144,30 @@ describe("are Dms able to see the forms that their managers are submitting?", ()
     const access = await pageFormsAccess(identity("dm", "district_manager", scope) as never);
     expect(access.locationIds).toContain(extra);
     expect(access.locationIds).toContain(IN_DISTRICT[0]);
+  });
+});
+
+describe("she should though: a DM left on \"whole company\" reads the district the roster names her on", () => {
+  /** The account of the person the roster names on the district, from the roster's own "Last, First". */
+  const [last, first] = DISTRICT.name.split(",").map((part) => part.trim());
+  const manager = { email: `${first}.${last}@example.com`, display_name: first! };
+
+  it("Form Monitoring, the queue, the badge and the chat read every salon of her district, with no setting changed", async () => {
+    const { pageFormsAccess } = await load(manager);
+    const access = await pageFormsAccess(identity("dm", "district_manager", GLOBAL) as never);
+    expect([...(access.locationIds ?? [])].sort()).toEqual([...IN_DISTRICT].sort());
+  });
+
+  it("a DM the roster does not name still reads nothing extra", async () => {
+    const { pageFormsAccess } = await load({ email: "someone.else@example.com", display_name: "Someone" });
+    const access = await pageFormsAccess(identity("dm", "district_manager", GLOBAL) as never);
+    expect(access).toMatchObject({ locationIds: [], noSalon: true });
+  });
+
+  it("a Salon Director with a matching name is not widened", async () => {
+    const { pageFormsAccess } = await load(manager);
+    const access = await pageFormsAccess(identity("sd", "salon_director", GLOBAL) as never);
+    expect(access).toMatchObject({ locationIds: [], noSalon: true });
   });
 });
 
