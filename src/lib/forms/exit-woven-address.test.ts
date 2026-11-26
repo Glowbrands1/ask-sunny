@@ -133,7 +133,7 @@ describe("the live read", () => {
 
   it("a global manager's exit form reads the row at the form's salon", async () => {
     const live = deps({ wovenIdOf: async (id) => (id === "d-3" ? "W-503" : "W-504") });
-    expect(await wovenExitAddress({ employeeName: "Ash Brook", scope: GLOBAL, locationId: "salon-a" }, live)).toBe("412 Invented Ln, Faketown, NE 68000");
+    expect(await wovenExitAddress({ employeeName: "Ash Brook", scope: GLOBAL, role: "admin", locationId: "salon-a" }, live)).toBe("412 Invented Ln, Faketown, NE 68000");
     expect(live.asked).toEqual(["W-503"]);
   });
 
