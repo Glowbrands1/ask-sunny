@@ -18,7 +18,7 @@ export function sunnyLoopContent({ place, staff }: LoopWords): AgentLoopContent 
   return {
     notPeopleExamples: "\"Under Performance\", \"Club Close\", \"MSB\" (must see behaviors) and other metrics",
     otherTopics: "Must See Behaviors, a cleaning duty left undone",
-    statsReports: "Daily Stats, Sales Totals and Comp",
+    statsReports: "Daily Stats, Sales Totals, Comp, Bed Usage, Spa Wellness and Spa Engagement",
     terminationApproval: "DM/HR approval",
     timeZone: { label: "US Central time", short: "Central", abbrev: "CT" },
     whoRules: [

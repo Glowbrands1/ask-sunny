@@ -71,8 +71,6 @@ const NO_LOOP_READER = "no tool of the chat or the agent loop reads it.";
 const ADMIN = "An admin console page: ";
 const MEETINGS = "Meeting docs: Sunny's chat and agent loop have no reader (the meeting page's own assistant, /api/l10/assistant, reads them there).";
 const TRAINING = "AI training lessons and their management: " + NO_LOOP_READER;
-const UNNAMED_REPORT =
-  "read_stats's report list and its description name only Daily Stats, Sales Totals and Comp. A question may still be routed to this report's family by its words, but no description tells the model it can ask, and no replay case proves the figures reach it.";
 
 export const AI_READABLE_PAGES: readonly AiReadablePage[] = [
   /*
@@ -98,9 +96,13 @@ export const AI_READABLE_PAGES: readonly AiReadablePage[] = [
     reader: { tool: "read_stats", args: { report: "comp" }, figures: ["the Comp report's measures per salon, as the page labels them", "how current the report is"], periods: ["month to date", "year to date"], replayCase: "nov15-agent-loop-daily-stats-own-salons" } },
   { kind: "page", route: "/reports/salon-performance/[salon]", title: "Salon Performance for one salon", access: { permission: "view_reports" },
     reader: { tool: "read_stats", args: { report: "comp", salon: "<the salon>" }, figures: ["one salon's Comp measures"], periods: ["month to date", "year to date"], replayCase: "nov15-agent-loop-daily-stats-own-salons" } },
-  { kind: "page", route: "/reports/bed-usage", title: "Bed Usage", access: { permission: "view_reports" }, notReadable: UNNAMED_REPORT },
-  { kind: "page", route: "/reports/spa-engagement", title: "Spa Engagement", access: { permission: "view_reports" }, notReadable: UNNAMED_REPORT },
-  { kind: "page", route: "/reports/spa-wellness", title: "Spa Wellness", access: { permission: "view_reports" }, notReadable: UNNAMED_REPORT },
+  /* Pau, 26 Nov 2026 (CLAUDE.md §5): the bed and spa reports, through read_stats, each its own report family. */
+  { kind: "page", route: "/reports/bed-usage", title: "Bed Usage", access: { permission: "view_reports" },
+    reader: { tool: "read_stats", args: { report: "bed usage" }, figures: ["total tans, bed quantity and tans per bed per salon and equipment level", "performance against the chain", "how current the report is"], periods: ["month to date"], replayCase: "nov26-f039-bed-usage-reaches-the-model" } },
+  { kind: "page", route: "/reports/spa-engagement", title: "Spa Engagement", access: { permission: "view_reports" },
+    reader: { tool: "read_stats", args: { report: "spa engagement" }, figures: ["spa sessions, unique tanners and unique spa tanners per salon", "spa beds, sessions per bed and the published ranks", "how current the report is"], periods: ["month to date"], replayCase: "nov26-f039-spa-engagement-reaches-the-model" } },
+  { kind: "page", route: "/reports/spa-wellness", title: "Spa Wellness", access: { permission: "view_reports" },
+    reader: { tool: "read_stats", args: { report: "spa wellness" }, figures: ["spa sessions by equipment type against peers with the same equipment", "first and last use dates", "how current the report is"], periods: ["month to date", "year to date", "last twelve months"], replayCase: "nov26-f039-spa-wellness-reaches-the-model" } },
 
   { kind: "page", route: "/forms/monitoring", title: "Form Monitoring", access: { permission: "view_form_monitoring" },
     reader: { tool: "find_past_forms", args: {}, figures: ["the forms on file per person, form and date", "their counts", "each form's status"], periods: ["a date", "a date range", "this month"], replayCase: "nov20-f081-c-month-list-counts" } },
