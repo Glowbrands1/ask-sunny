@@ -38,6 +38,8 @@ import { replyWithShortName } from "@/lib/forms/short-name";
 import { agentLoopRules, agentLoopSystem } from "./prompt";
 import { generatedId, identifiedTurns, messageIdTag, withoutMessageIdTags } from "./evidence";
 import { agentLoopStepLimit } from "./switch";
+import { asksCoachingHowTo, coachingAnswerShape, coachingHowToNote } from "@/lib/ai/coaching-how-to";
+
 import { adviceNotForm, onlyAsksWho } from "./advice-not-form";
 import { createFormButtonNoCardNote, isCreateFormButtonTurn } from "./create-form-button";
 import { formAskedOutsideLibrary, saysNoSuchForm, withLibraryForms } from "./form-not-in-library";
@@ -1599,6 +1601,19 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
         if (stoppedAt === "reply" && !effects.proposal && onlyAsksWho(text) && adviceNotForm(input.question, input.history)) {
           const again = await handBack("[app check] The manager asked for advice, not a form, and your reply only asks who a form is for. Answer the question itself now: practical steps, a short checklist, a sample script or role-play where it helps, citing the manual where a policy applies. Never ask who a form is for; you may offer the form in one closing line.");
           if (again && !onlyAsksWho(again)) text = again;
+        }
+        /*
+         * Owner, 26 Nov 2026: a coaching / hard-conversation how-to answer always has a numbered outline and a quoted
+         * script the manager can say (`coaching-how-to.ts`, the rules book's coachingHowToRule). A reply on such a turn
+         * with no card that lacks either goes back once; the answer it returns is kept only when it is no worse.
+         */
+        if (stoppedAt === "reply" && !effects.proposal && !effects.formOpened && !effects.formUpdate && adviceNotForm(input.question, input.history) && asksCoachingHowTo(input.question)) {
+          const shape = coachingAnswerShape(text);
+          if (!shape.outline || !shape.script) {
+            const again = await handBack(coachingHowToNote(shape));
+            const next = again ? coachingAnswerShape(again) : null;
+            if (again && next && !onlyAsksWho(again) && Number(next.outline) + Number(next.script) >= Number(shape.outline) + Number(shape.script)) text = again;
+          }
         }
         /*
          * QA (24 Nov 2026, live): "Draft a vacation request form" was answered "There's no \"Vacation Request Form\" in the
