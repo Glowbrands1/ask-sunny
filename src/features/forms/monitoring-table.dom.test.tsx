@@ -654,10 +654,26 @@ describe("the row menu \"…\" opens with something in it", () => {
     expect(await screen.findByRole("menuitem", { name: /delete/i })).toBeTruthy();
   });
 
-  it("an admin gets no \"…\" on a form that was replaced by a newer version: it is the older half of a chain", () => {
+  it("an admin NOT on the list gets no \"…\" on a form that was replaced by a newer version", () => {
     admin();
     table([form({ employeeName: "Filed One", status: "revised" })]);
     expect(rowFor("Filed One").ui.queryByRole("button", { name: "More actions for Filed One" })).toBeNull();
+  });
+
+  /*
+   * Changed on purpose (Pau, 26 Nov 2026, screenshot of "v8 · revised" rows with no "…"): "i cant still dlete some of
+   * it". The named account gets Delete on an older version too, with the same warning as a finalized form.
+   */
+  it("i cant still dlete some of it: the named account gets Delete on a revised form, after the warning", async () => {
+    admin();
+    table([form({ employeeName: "Filed One", status: "revised" })], { mayDeleteFinalized: true });
+    await userEvent.click(rowFor("Filed One").ui.getByRole("button", { name: "More actions for Filed One" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: /^delete$/i }));
+    const dialog = within(await screen.findByRole("dialog"));
+    expect(dialog.getByTestId("delete-finalized-warning").textContent).toMatch(/cannot be undone/i);
+    await userEvent.click(dialog.getByRole("button", { name: /^delete$/i }));
+    await waitFor(() => expect(calls.list).toHaveLength(1));
+    expect(calls.list[0]).toMatchObject({ method: "DELETE" });
   });
 
   it("a manager who may delete drafts but is not an administrator gets no \"…\" on a finalized form", () => {

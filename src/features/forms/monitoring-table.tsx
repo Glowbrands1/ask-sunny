@@ -246,7 +246,8 @@ export function MonitoringTable({
    */
   const mayDeleteFinalized = mayManage && namedForFinalizedDelete;
   const mayDelete = (form: MonitoredForm) =>
-    mayManage && (form.status === "draft" || (form.status === "finalized" && mayDeleteFinalized));
+    // An older version ("revised") too, for the same account (Pau, 26 Nov 2026: "i cant still dlete some of it").
+    mayManage && (form.status === "draft" || ((form.status === "finalized" || form.status === "revised") && mayDeleteFinalized));
 
   const call = React.useCallback(
     <T,>(url: string, init: RequestInit = {}) => formsFetch<T>(url, role, user.name, init),
@@ -959,10 +960,10 @@ export function MonitoringTable({
               </div>
             </dl>
 
-            {confirming.form.status === "finalized" ? (
+            {confirming.form.status === "finalized" || confirming.form.status === "revised" ? (
               <p className="text-[13px] text-muted-foreground" data-testid="delete-finalized-warning">
-                Finalized forms are normally kept on file. As an administrator you can delete this one. It cannot be
-                undone, and the deletion is recorded with your name and the time.
+                Finalized forms are normally kept on file. Your account can delete this one. It cannot be undone, and
+                the deletion is recorded with your name and the time.
               </p>
             ) : null}
 
