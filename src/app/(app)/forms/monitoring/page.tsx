@@ -14,6 +14,7 @@ import {
   type InstanceRow,
 } from "@/lib/forms/instances";
 import { privateAwareLimit, privateCreatorsActive } from "@/lib/forms/private-creators";
+import { parseShowCount } from "@/lib/forms/monitoring-page-size";
 import {
   MonitoringTable,
   type MonitoredForm,
@@ -39,7 +40,6 @@ export const metadata: Metadata = { title: "Form Monitoring" };
 export const dynamic = "force-dynamic";
 
 /** The list's page of rows: the newest this many forms. */
-const LIST_LIMIT = 200;
 
 /**
  * FORM MONITORING, read from the database rather than from this browser.
@@ -58,11 +58,13 @@ const LIST_LIMIT = 200;
 export default async function FormMonitoringPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; followup?: string; app?: string; employee?: string; status?: string }>;
+  searchParams: Promise<{ view?: string; followup?: string; app?: string; employee?: string; status?: string; show?: string }>;
 }) {
   const identity = await requirePagePermission("view_form_monitoring");
 
-  const { view: requestedView, followup: requestedFollowUp, app: requestedApp, employee: requestedEmployee, status: requestedStatus } = await searchParams;
+  const { view: requestedView, followup: requestedFollowUp, app: requestedApp, employee: requestedEmployee, status: requestedStatus, show: requestedShow } = await searchParams;
+  // How many forms to load: one page, and "Load more" adds a page. See `monitoring-page-size.ts`.
+  const listLimit = parseShowCount(requestedShow);
   /*
    * The follow-up filter comes from the URL so a view survives a refresh and can be
    * linked to, and it is narrowed here rather than trusted — an unknown
@@ -170,11 +172,11 @@ export default async function FormMonitoringPage({
     const holds = (permission: Permission) => (permission === "create_exit_form" ? readsExit : false);
     // PRIVATE_CREATOR_FORMS: over-read, then trim to the page of 200; one row more than the page either way, so the
     // page can say when it stopped (QA, 24 Nov 2026: a count of loaded rows must say that is what it is).
-    const requested = privateCreatorsActive() ? privateAwareLimit(LIST_LIMIT + 1) : LIST_LIMIT + 1;
+    const requested = privateCreatorsActive() ? privateAwareLimit(listLimit + 1) : listLimit + 1;
     const read = await listInstances(requested, instanceListFilterFor(access.actor));
     const instances = withoutUnreadable(read, holds).filter(mayRead);
-    listCapped = read.length >= requested || instances.length > LIST_LIMIT;
-    instances.splice(LIST_LIMIT);
+    listCapped = read.length >= requested || instances.length > listLimit;
+    instances.splice(listLimit);
     const toMonitored = (instance: InstanceRow): MonitoredForm => ({
       id: instance.id,
       templateName: instance.templateName,
@@ -307,7 +309,8 @@ export default async function FormMonitoringPage({
             attention={attention}
             outstanding={outstanding}
             outstandingExcluded={outstandingExcluded}
-            listLimit={listCapped ? LIST_LIMIT : null}
+            listLimit={listCapped ? listLimit : null}
+            showCount={listLimit}
             demo={demo}
             mayDeleteFinalized={mayDeleteFinalizedForm(identity)}
           />

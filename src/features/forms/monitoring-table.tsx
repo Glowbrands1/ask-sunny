@@ -46,6 +46,7 @@ import { cn } from "@/lib/utils/cn";
 import { formatDate } from "@/lib/utils/date";
 import { downloadFormPdf, formsFetch } from "./forms-fetch";
 import { RegisterRowActions } from "@/form-revisions/register-row-actions";
+import { MONITORING_PAGE_SIZE, nextShowCount } from "@/lib/forms/monitoring-page-size";
 
 /**
  * FORM MONITORING — the system of record, and the screen follow-ups are worked
@@ -156,6 +157,7 @@ export function MonitoringTable({
   outstandingExcluded = 0,
   listLimit = null,
   demo,
+  showCount = MONITORING_PAGE_SIZE,
   mayDeleteFinalized: namedForFinalizedDelete = false,
 }: {
   forms: MonitoredForm[];
@@ -194,6 +196,8 @@ export function MonitoringTable({
    * from the rows on screen, which are filtered and could give a wrong number.
    */
   demo: { deletable: number; protected: number };
+  /** How many forms the server was asked for (`?show=`), a whole number of pages. "Load more" adds one. */
+  showCount?: number;
   /**
    * The signed-in account may delete a FINALIZED form: decided on the server from FINALIZED_FORM_DELETE_EMAILS and the
    * verified email (`mayDeleteFinalizedForm`; Pau, 26 Nov 2026: "my account only"). Absent: drafts only.
@@ -393,10 +397,13 @@ export function MonitoringTable({
    * linked to — which is what lets the Overview send somebody straight to
    * `?followup=overdue`.
    */
-  function go(next: { followUp?: FollowUpFilter }) {
+  function go(next: { followUp?: FollowUpFilter; show?: number }) {
     const params = new URLSearchParams();
     const nextFollowUp = next.followUp ?? followUp;
+    // A pill keeps what is already loaded; "Load more" adds a page.
+    const nextShow = next.show ?? showCount;
     if (nextFollowUp !== "all") params.set("followup", nextFollowUp);
+    if (nextShow > MONITORING_PAGE_SIZE) params.set("show", String(nextShow));
     const query = params.toString();
     router.push(query ? `/forms/monitoring?${query}` : "/forms/monitoring");
   }
@@ -919,6 +926,20 @@ export function MonitoringTable({
           </CardContent>
         </Card>
       )}
+
+      {/*
+        * LOAD MORE. The server sends one page of forms at a time; this asks it
+        * for the next one. Shown whenever the list stopped at its page
+        * (`listLimit`), even when a pill has filtered it to nothing — older
+        * forms may match.
+        */}
+      {listLimit !== null && nextShowCount(showCount) !== null ? (
+        <div className="flex justify-center">
+          <Button variant="secondary" onClick={() => go({ show: nextShowCount(showCount) ?? showCount })}>
+            Load more forms
+          </Button>
+        </div>
+      ) : null}
 
       {/*
         * THE CONFIRMATION NAMES THE RECORD.
