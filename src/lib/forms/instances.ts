@@ -1691,9 +1691,9 @@ export class InstanceProtectedError extends Error {}
  * else passes it: not the chat, not the agent loop, not the bulk delete, not the
  * demo sweep, so they still refuse a finalized form.
  *
- * A form that was REPLACED by a newer version (`revised`) is never deleted, even
- * by an administrator: it is the older half of a chain that still points at the
- * form that replaced it. Deleting the newer version is allowed, and puts the
+ * A form that was REPLACED by a newer version (`revised`) is deleted only with
+ * `allowFinalized` too (the named account, Pau, 26 Nov 2026): it is the older
+ * half of a chain, and the newer version's link back to it is set to null. Deleting the newer version is allowed, and puts the
  * older one back to `finalized` (`restorePredecessor`) so the chain is not left
  * pointing at nothing.
  *
@@ -1720,7 +1720,13 @@ export async function deleteInstance(
   if (!row) throw new Error("That form no longer exists.");
 
   const instance = mapInstance(row);
-  if (instance.status === "revised") {
+  /*
+   * The named account (FINALIZED_FORM_DELETE_EMAILS → `allowFinalized`) may delete an older version too (Pau, 26 Nov
+   * 2026, with a screenshot of rows marked "revised" that had no "…": "i cant still dlete some of it"). The newer
+   * version stays; its `revises_instance_id` is set to null by the foreign key, and the deletion is recorded as for any
+   * other form. Everybody else is still refused.
+   */
+  if (instance.status === "revised" && !options.allowFinalized) {
     throw new InstanceProtectedError(
       "This form was replaced by a newer version, so it cannot be deleted. Finalized forms are kept on file. Delete the newer version instead, if that is what you mean.",
     );

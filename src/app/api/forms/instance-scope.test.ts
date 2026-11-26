@@ -118,9 +118,11 @@ async function load(
     demo?: boolean;
     /** The authenticated subject. Distinct per actor, so the creator branch is testable. */
     subject?: string;
+    /** The verified email (FINALIZED_FORM_DELETE_EMAILS is matched on it). */
+    email?: string;
   } = {},
 ) {
-  const { scope = SALON_A, role = "salon_director", demo = false, subject = "user-a" } = options;
+  const { scope = SALON_A, role = "salon_director", demo = false, subject = "user-a", email = "a@example.com" } = options;
 
   process.env.NEXT_PUBLIC_DEMO_MODE = demo ? "true" : "false";
   vi.resetModules();
@@ -138,7 +140,7 @@ async function load(
         return {
           identity: {
             subject,
-            email: "a@example.com",
+            email,
             displayName: "A",
             role,
             scope,
@@ -372,17 +374,38 @@ describe("F4. a foreign form cannot be written by knowing its UUID", () => {
    * Pau, 24 Nov 2026: "why cant delete? in bubbles" (a finalized Corrective Action in Ask Bubbles' Forms Register). Decision: an
    * administrator may delete a finalized form; every other role that may delete drafts may not. The route says which
    * with `allowFinalized`; `deleteInstance` (instances-cleanup.test.ts) is what refuses without it.
+   *
+   * Narrowed on purpose by Pau, 26 Nov 2026: "pls allow delete for finalized form in my account only". Only the
+   * verified email on FINALIZED_FORM_DELETE_EMAILS gets `allowFinalized`; an administrator not on it no longer does.
    */
-  it("passes allowFinalized for an administrator, and never for a district manager", async () => {
-    deleteOptions.length = 0;
-    const manager = await load({ role: "district_manager", scope: SALON_A });
-    expect((await manager.detail.DELETE(req("DELETE"), params(MINE))).status).toBe(200);
-    expect(deleteOptions).toEqual([false]);
+  it("pls allow delete for finalized form in my account only: only the named account passes allowFinalized", async () => {
+    const GLOBAL: AccessScope = { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] };
+    process.env.FINALIZED_FORM_DELETE_EMAILS = "Owner@Example.test";
+    try {
+      deleteOptions.length = 0;
+      const manager = await load({ role: "district_manager", scope: SALON_A });
+      expect((await manager.detail.DELETE(req("DELETE"), params(MINE))).status).toBe(200);
+      expect(deleteOptions).toEqual([false]);
 
-    deleteOptions.length = 0;
-    const admin = await load({ role: "admin", scope: { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] } });
-    expect((await admin.detail.DELETE(req("DELETE"), params(MINE))).status).toBe(200);
-    expect(deleteOptions).toEqual([true]);
+      deleteOptions.length = 0;
+      const otherAdmin = await load({ role: "admin", scope: GLOBAL, email: "someone.else@example.test" });
+      expect((await otherAdmin.detail.DELETE(req("DELETE"), params(MINE))).status).toBe(200);
+      expect(deleteOptions).toEqual([false]);
+
+      deleteOptions.length = 0;
+      const owner = await load({ role: "admin", scope: GLOBAL, email: "owner@example.test" });
+      expect((await owner.detail.DELETE(req("DELETE"), params(MINE))).status).toBe(200);
+      expect(deleteOptions).toEqual([true]);
+
+      // Variable unset: nobody, the named account included.
+      delete process.env.FINALIZED_FORM_DELETE_EMAILS;
+      deleteOptions.length = 0;
+      const unset = await load({ role: "admin", scope: GLOBAL, email: "owner@example.test" });
+      expect((await unset.detail.DELETE(req("DELETE"), params(MINE))).status).toBe(200);
+      expect(deleteOptions).toEqual([false]);
+    } finally {
+      delete process.env.FINALIZED_FORM_DELETE_EMAILS;
+    }
   });
 
   it("still lets the caller save their OWN form", async () => {
