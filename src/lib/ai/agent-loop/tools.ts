@@ -48,6 +48,7 @@ import {
   manualSectionDedupeEnabled,
   retrievalRecallEnabled,
   priorFormsUpToTodayEnabled,
+  priorOnFileOnCardEnabled,
   typedEmployeeEveryCardEnabled,
   adminCardAsksSalonEnabled,
   loopCardCitesConductLineEnabled,
@@ -540,6 +541,31 @@ function notTheOfferAnswer(check: AnswerEvidence, context: ToolContext, roster?:
   const current = check.turnId === (context.questionMessageId || CURRENT_MESSAGE_ID);
   if (current && roster && answeredNameQuestions(nameQuestionView(context, roster)).some((asked) => asked.latest)) return { ok: false, reason: "answer_to_name_question" };
   return check;
+}
+
+/**
+ * new_form_evidence quoting an earlier message of THIS request (the ask) whose quote names this form, with this card's
+ * person named by the manager in that message or a later one (the answer to "who is this form for?"). This request:
+ * after the chat's last card and after the last manager turn that names a roster person other than this one
+ * (`requestStart`). Names only; the manager's words are never read for meaning.
+ */
+function newFormAskedThisRequest(context: ToolContext, evidence: unknown, template: { readonly name: string; readonly shortName?: string | null }, employee: { readonly id?: string | null; readonly name: string }, roster: readonly RosterEmployee[]): boolean {
+  const turns = identifiedTurns(context.history as ChatMessage[], context.question, context.questionMessageId);
+  const check = verifyEvidence(evidence, turns);
+  if (!check.ok || !quoteNamesForm(readEvidence(evidence)?.quote ?? "", template)) return false;
+  const rosterNames = roster.flatMap(fullNamesOf);
+  const row = employee.id ? roster.find((person) => person.id === employee.id) : undefined;
+  const own = row ? [...fullNamesOf(row), row.firstName, row.preferredFirstName ?? ""].map((name) => name.trim()).filter(Boolean) : [employee.name];
+  const namesThis = (text: string) => own.some((name) => holdsPhrase(withoutMessageIdTags(text), name));
+  const namesAnother = (text: string) => {
+    const clean = withoutMessageIdTags(text);
+    if (namesThis(clean)) return false;
+    return roster.filter((person) => person.id !== row?.id).some((person) => fullNamesOf(person).some((full) => mentionsPerson(clean, full, rosterNames)));
+  };
+  const cards = [...(context.cardRecords ?? []), ...(context.earlierCard ? [context.earlierCard] : [])];
+  const start = requestStart({ turns, namesAnother, cardMessageIds: cards.map((card) => card.messageId) });
+  if (check.turn.index <= start) return false;
+  return turns.some((turn) => turn.role === "user" && turn.index >= check.turn.index && namesThis(turn.content));
 }
 
 /** The card on screen is this person's card on this form (by roster id, else by name). */
@@ -3246,7 +3272,8 @@ export function priorsOnFileLine(priors: readonly PriorOnFile[]): string {
     const found = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso ?? "");
     return found ? `${found[2]}/${found[3]}/${found[1]}` : "date not recorded";
   };
-  return priors.map((prior) => `${prior.form}${prior.level ? `, ${prior.level}` : ""}${prior.withHr ? `, ${prior.withHr}` : ""} — ${usDay(prior.date)}`).join("; ");
+  // Each line says what the form is (Pau, 26 Nov 2026: "also say if its a draft and finalized").
+  return priors.map((prior) => `${prior.form}${prior.level ? `, ${prior.level}` : ""}, ${prior.withHr ?? "finalized"} — ${usDay(prior.date)}`).join("; ");
 }
 
 /**
@@ -4297,7 +4324,16 @@ export async function proposeForm(
    * form (new_form_evidence, this message) or correct the person (the name check above); a person named inside the account
    * is never a reason. The reply keeps the first card and asks nothing new unless the manager says who.
    */
-  if (cardPersonThisRequestEnabled() && !asksNewForm && nameCorrectedFrom === null) {
+  /*
+   * THE ASK AND THE ANSWER ARE ONE REQUEST (production, 26 Nov 2026: with one person's exit draft open, "exit form <M>"
+   * got "who is this exit form for?", and the answer "<B>", then "yes" to "is this exit form for <B>, as a new
+   * request?", were each refused person_change_not_asked): new_form_evidence counted only this message's words, so the
+   * message that asked for the form and the one that named the person never met. An earlier message counts when it is
+   * in THIS request (after the chat's last card and after the last turn naming another roster person: `requestStart`),
+   * its quote names this form (`quoteNamesForm`), and a manager turn from it on names this card's person.
+   */
+  const asksNewFormThisRequest = !asksNewForm && cardPersonThisRequestEnabled() && read.kind === "read" && newFormAskedThisRequest(context, input.new_form_evidence, template, employee, read.roster);
+  if (cardPersonThisRequestEnabled() && !asksNewForm && !asksNewFormThisRequest && nameCorrectedFrom === null) {
     // The card on screen, else this chat's latest card (the rules book already asks for new_form_evidence on "a new request after an earlier card").
     const shown = context.cardOnScreen ?? context.earlierCard ?? null;
     const shownIsOther = Boolean(shown && (shown.employeeKey && employee.id ? shown.employeeKey !== personKey(employee.id) : shown.nameKey ? shown.nameKey !== personKey(employee.name) : false));
@@ -4329,7 +4365,7 @@ export async function proposeForm(
     })();
     if ((shownIsOther || draftIsOther) && !ownRequest) {
       return {
-        reason_code: "person_change_not_asked", error: `A card or draft for another person is open, and the manager did not ask for another form or say the form is for ${employee.name}. A person named inside an account (who told, who messaged, who reported) is not the form's person. Keep the open card or draft for its person and put what the manager said on it with edit_form; make a card for ${employee.name} only if the manager asks for another form for them (new_form_evidence).`,
+        reason_code: "person_change_not_asked", error: `A card or draft for another person is open, and the manager did not ask for another form or say the form is for ${employee.name}. A person named inside an account (who told, who messaged, who reported) is not the form's person. Keep the open card or draft for its person and put what the manager said on it with edit_form; make a card for ${employee.name} only if the manager asks for another form for them (new_form_evidence). When an earlier message of this request asked for this form and this message says who it is for (the answer to "who is this form for?"), new_form_evidence may quote that earlier message.`,
       };
     }
   }
@@ -4422,8 +4458,12 @@ export async function proposeForm(
    * record: its form and person keys, never its text, QA's c163) is the card asked for. With no account from the model the
    * card goes back once, to be proposed with that card's account as the chat shows it, with this person's name;
    * copied_from_card says it came from that card. A level and a payroll answer are never copied.
+   *
+   * ONLY A FORM WITH AN ACCOUNT HAS ONE TO CARRY (production, 26 Nov 2026: "make the exit form for <B> instead of <A>"
+   * answered "the system expects an account from <A>'s original card to transfer"). An exit form holds no account, so
+   * the hand-back is for the account forms; <B>'s exit card is made from this request as it stands.
    */
-  const sameCardOf = sameCardAsked
+  const sameCardOf = sameCardAsked && ACCOUNT_FORMS.has(key)
     ? ([...(context.cardRecords ?? [])].reverse().find((record) => record.templateKey === key) ?? null)
     : null;
   const sameCardOther = Boolean(sameCardOf && (employee.id ? sameCardOf.employeeKey !== personKey(employee.id) : sameCardOf.nameKey !== personKey(employee.name)));
@@ -5351,13 +5391,27 @@ export async function proposeForm(
    * the accepted line). The old `onFileBeside` (#1256: forms on file kept beside added steps) put forms on the card the
    * manager never accepted, so it is gone; the offer below replaces it.
    */
-  const priorActions = priorActionsListed;
+  /*
+   * THE FORMS ON FILE GO ON THE CARD (Pau, 26 Nov 2026, on a card whose reply offered three CAs on file and whose box
+   * stayed empty: "Ai saw prior forms but i need them here"). This replaces the 23 Nov ruling above: this person's forms
+   * on file (finalized, or a draft with HR, `finalizedPriorsOnFile`) are added to Prior actions on their own, after the
+   * manager's own steps, each saying what it is, never twice for a date a kept step already has. They are never "as you
+   * said": the manager's quote does not hold their dates.
+   */
+  const listedDates = priorActionsListed ? readDates(priorActionsListed) : [];
+  const onFileToAdd = !priorOnFileOnCardEnabled() ? [] : priorsOnFile.filter((prior) => {
+    const iso = onFileDateOf(prior);
+    if (iso === null) return true;
+    return !listedDates.some((held) => sameDate(held, { month: Number(iso.slice(5, 7)), day: Number(iso.slice(8, 10)), year: Number(iso.slice(0, 4)) }));
+  });
+  const priorActions = [priorActionsListed, onFileToAdd.length > 0 ? priorsOnFileLine(onFileToAdd) : null].filter((part): part is string => Boolean(part)).join("; ").slice(0, 600) || null;
   /*
    * U09 / U21 (port of Ask Bubbles #1054): a prior step on this card's Prior actions is never this incident's account
    * (`accountWithoutPriorSteps`). Only the steps the card keeps: a sentence leaves the Observation only when Prior actions
    * holds it, so nothing is lost.
    */
-  if (whatHappened && priorActions) whatHappened = accountWithoutPriorSteps(whatHappened, priorActions, date);
+  // Only the manager's own steps leave the account; a form on file added above is never a sentence of it.
+  if (whatHappened && priorActionsListed) whatHappened = accountWithoutPriorSteps(whatHappened, priorActionsListed, date);
   /*
    * "AS YOU SAID" ONLY WITH THE MANAGER'S OWN WORDS (QA, 23 Nov 2026): prior_actions_evidence quotes the manager's message
    * of this request that states the steps, checked by code like level_evidence (`answerEvidence`: a real message of this
@@ -6129,8 +6183,9 @@ export async function proposeForm(
      * evidence check still decides), or leaves it when the words are history ("written up before").
      */
     ...(levelNotGiven ? { level_not_given: { option: levelNotGiven, note: `This card has no warning level, and the manager's message names the form's ${levelNotGiven === "written" ? "Written" : "Verbal"} Warning option. If it states THIS form's level, propose the card again with warning_level ${levelNotGiven} and level_evidence quoting those words; if it is history ("written up before"), leave the level unset.` } } : {}),
-    ...(level || payroll || priorActions
-      ? { stated: { ...(level ? { warning_level: level } : {}), ...(payroll ? { payroll_deduct: payroll } : {}), ...(payroll === "yes" && amount ? { payroll_amount: `$${amount.replace(/^\$/, "")}` } : {}), ...(priorActions ? { prior_actions: priorActions } : {}) } }
+    // What the manager STATED: their own steps only, never the forms on file the app added (PRIOR_ON_FILE_ON_CARD_ENABLED).
+    ...(level || payroll || priorActionsListed
+      ? { stated: { ...(level ? { warning_level: level } : {}), ...(payroll ? { payroll_deduct: payroll } : {}), ...(payroll === "yes" && amount ? { payroll_amount: `$${amount.replace(/^\$/, "")}` } : {}), ...(priorActionsListed ? { prior_actions: priorActionsListed } : {}) } }
       : {}),
     /*
      * QA's live finding (16 Nov 2026): "as you said" only for what THIS message stated. The level and payroll whose
@@ -6178,7 +6233,7 @@ export async function proposeForm(
     ...(statedSteps.length > 0 ? { prior_steps_said: statedSteps } : {}),
     /* QA item 22: the finalized forms on file for this person; the card's level is never chosen from them. */
     /* The forms on file are offered, never added (QA, 23 Nov 2026; port of Ask Bubbles #1089): ask_exactly ends the reply. */
-    ...(priorsOnFile.length > 0 ? { prior_on_file: { forms: priorsOnFile, line: onFileLine, on_card: false, ...(onFileOffer ? { ask_exactly: onFileOffer } : {}) } } : {}),
+    ...(priorsOnFile.length > 0 ? { prior_on_file: { forms: priorsOnFile, line: onFileLine, on_card: onFileToAdd.length > 0, ...(onFileToAdd.length > 0 ? { used_on_card: true } : {}), ...(onFileOffer ? { ask_exactly: onFileOffer } : {}) } } : {}),
     /* The owner (24 Nov 2026): a form of theirs for this person already with HR is said, with its offense and policy. */
     ...(otherWithHr.length > 0 ? { with_hr: { forms: otherWithHr.map(({ instanceId, form, date, state, offense, policy }) => ({ instance_id: instanceId, form, date, state, offense, policy })), say_exactly: formsWithHrLine(card.employeeName ?? employee.name, otherWithHr) } } : {}),
     ...(corrective && payroll === "yes" && !amount && statedAmount ? { payroll_amount_said: `$${statedAmount}` } : {}),

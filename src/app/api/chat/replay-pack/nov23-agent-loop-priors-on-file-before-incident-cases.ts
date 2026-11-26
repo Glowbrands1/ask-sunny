@@ -72,10 +72,8 @@ export const NOV23_AGENT_LOOP_PRIORS_ON_FILE_BEFORE_INCIDENT_CASES: ReplayCase[]
        * on file are offered, never put on Prior actions by the AI. The before-incident filter (#1083) now applies to the
        * offer: it names 10/02 and never 11/10 or 11/17, and the card's Prior actions hold none of them.
        */
-      expect(prior, "a form on file was put on Prior actions unasked").not.toMatch(/10\/02\/2026|11\/10\/2026|11\/17\/2026/);
-      const offers = model.views.flatMap((view) => view.results.filter((result) => result.tool === "propose_form"))
-        .map((result) => (result.output as { facts?: { prior_on_file?: { ask_exactly?: string } } } | null)?.facts?.prior_on_file?.ask_exactly ?? "")
-        .join("\n");
+      // CHANGED ON PURPOSE (Pau, 26 Nov 2026: "Ai saw prior forms but i need them here"; PRIOR_ON_FILE_ON_CARD_ENABLED): forms on file are put on the card's Prior actions by the app, each saying what it is, and never offered. The before-incident filter (#1083) now applies to the card's own Prior actions.
+      const offers = prior;
       if (priorFormsUpToTodayEnabled()) {
         /*
          * Changed on purpose (Pau, 24 Nov 2026: "it needs to add all past forms"; PRIOR_FORMS_UP_TO_TODAY_ENABLED is on in
