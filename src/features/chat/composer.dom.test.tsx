@@ -168,9 +168,15 @@ describe("answer modes survive the compaction", () => {
 /* ------------------------------------------------- what no longer shows --- */
 
 describe("nothing dead is rendered", () => {
-  it("shows no attachment, image or voice control", () => {
+  it("shows no attachment, image or voice control where none would work", () => {
     // F. They were honest and disabled. A manager still reads three controls
     // that do not work as broken product.
+    //
+    // CHANGED ON PURPOSE (QA retest, 24 Nov 2026: "No upload or voice"): voice
+    // is back as a WORKING control, "Dictate with your voice", shown only where
+    // the browser has speech recognition. jsdom has none, like Firefox, so here
+    // it must still be absent — which is the rule this test exists for. The
+    // working mic is pinned in composer-dictation.dom.test.tsx.
     renderComposer();
     for (const name of [/attach/i, /image/i, /voice/i, /microphone/i]) {
       expect(screen.queryByRole("button", { name })).toBeNull();

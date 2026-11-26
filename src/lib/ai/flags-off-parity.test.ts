@@ -1365,6 +1365,11 @@ describe("new flags default off and wrappers are inert", () => {
           // Confetti on a 5-star rating (requested by Paulyne, 9 Nov 2026): the
           // one mount line after a rating saves; `lib/ui/confetti.ts` does the rest.
           ":(exclude)src/features/chat/conversation-rating.tsx",
+          // "Dictate with your voice" (on the owner's agreed list; QA retest, 24 Nov 2026: "No upload or voice"; both
+          // apps): a mic beside Send (composer.tsx, excluded above) and on the rating comment box, using the browser's
+          // own speech recognition. Input control only: words go into the box, nothing is sent on its own, no request
+          // or route changes, and where the browser cannot dictate it renders nothing.
+          ":(exclude)src/components/dictate-button.tsx",
           // DM L10 tab (requested by Paulyne via QA, 13 Nov 2026; approved by QA): new pages and
           // components only, shown only when HUB_PARTNER_SECRET is set and the Leadership Hub says
           // the person holds the meeting's role. No existing page, chat or form behaviour changes.

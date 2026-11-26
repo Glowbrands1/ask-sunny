@@ -146,7 +146,9 @@ describe("the composer's own footprint", () => {
 
   it("imports no attachment, image or microphone icon", () => {
     // Dormant code is allowed by the brief; a dead control is not. Nothing is
-    // left importing one.
+    // left importing one. The working dictation mic (24 Nov 2026) is not an
+    // exception to this: its icon lives in components/dictate-button.tsx, which
+    // renders nothing where the browser cannot dictate.
     expect(COMPOSER_CODE).not.toMatch(/\bPaperclip\b|\bImagePlus\b|\bMic\b/);
   });
 
