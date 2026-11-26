@@ -1,6 +1,7 @@
 import "server-only";
 
-import type { AccessScope } from "@/types";
+import { mayReadHomeAddress } from "@/lib/employees/woven/home-address-access";
+import type { AccessScope, Role } from "@/types";
 
 import type { DirectoryRosterRow } from "./employee-roster";
 import { normalizeTypedName } from "./employee-match";
@@ -296,7 +297,12 @@ function withinBudget<T>(work: Promise<T>, ms: number): Promise<T | null> {
  * a Woven or directory outage leaves the line blank and the draft goes on.
  */
 export async function wovenExitAddress(
-  input: { employeeName: string | null | undefined; scope: AccessScope | null; locationId?: string | null },
+  input: {
+    employeeName: string | null | undefined;
+    scope: AccessScope | null;
+    role: Role | null;
+    locationId?: string | null;
+  },
   deps?: WovenExitAddressDeps,
 ): Promise<string | null> {
   if (!deps && !wovenExitAddressEnabled()) return null;
@@ -308,6 +314,11 @@ export async function wovenExitAddress(
     console.info(`exit-woven-address: no address (${reason})`);
     return null;
   };
+  /*
+   * ONLY ADMINS AND MANAGERS (Curt, 26 Nov 2026: "only Admins and Managers both apps"): the address is filled only
+   * for an admin, a District or Regional Manager or a Salon Director. Anyone else's draft leaves the line blank.
+   */
+  if (!mayReadHomeAddress(input.role)) return why("role may not read home addresses");
   try {
     const result = await withinBudget(
       (async () => {

@@ -788,6 +788,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         ? await wovenExitAddress({
             employeeName: loaded.instance.employeeName,
             scope: actor.scope,
+            role: actor.role,
             locationId: loaded.instance.locationId,
           })
         : null;
