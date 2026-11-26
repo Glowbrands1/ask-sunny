@@ -275,6 +275,7 @@ import {
   NO_PRIOR_ACTIONS_FOUND,
   PRIOR_ACTIONS_KEY,
   groundPriorActions,
+  isNoHistoryLine,
 } from "@/lib/forms/prior-actions";
 
 /**
@@ -2730,13 +2731,18 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      * on it would say nothing anyone decided. So the plan is built when this
      * draft wrote something, or the form already holds a draft.
      */
+    /*
+     * The "N/A" written to an empty history box (ALL_FIELDS_REQUIRED_ENABLED; Pau, 26 Nov 2026: "yes i want it before") is
+     * not something drafted: a form holding only that is still blank here.
+     */
+    const autoNoHistory = (key: string, value: string | null | undefined) => key === PRIOR_ACTIONS_KEY && isNoHistoryLine(value ?? "");
     const holdsDraft = (values: Record<string, string>, checked: Record<string, string[]>) =>
-      Object.values(values).some((value) => typeof value === "string" && value.trim() !== "") ||
+      Object.entries(values).some(([key, value]) => typeof value === "string" && value.trim() !== "" && !autoNoHistory(key, value)) ||
       Object.values(checked).some((options) => options.length > 0);
     const draftedAnything =
       holdsDraft(named.values, validated.checked) ||
       (loaded.values ?? []).some(
-        (row) => row.filledBy === "ai" && ((row.value ?? "").trim() !== "" || row.checked.length > 0),
+        (row) => row.filledBy === "ai" && !autoNoHistory(row.fieldKey, row.value) && ((row.value ?? "").trim() !== "" || row.checked.length > 0),
       );
     /*
      * THE MANAGER'S ACTION PLAN, OR NONE (ACTION_PLAN_MANAGER_ONLY_ENABLED; Pau,

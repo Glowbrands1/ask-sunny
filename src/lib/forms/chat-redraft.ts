@@ -7,6 +7,7 @@ import type { ChatMessage } from "@/types";
 
 import { describesIncident, describesMoreThanTheRequest } from "./corrective-action-intake";
 import { parseFormDocument } from "./document";
+import { isNoHistoryLine, PRIOR_ACTIONS_KEY } from "./prior-actions";
 import { isQuestion } from "./employment-change";
 import { authorizeInstance } from "./instance-scope";
 import { extractEmployeeNames, managerContext, samePerson } from "./proposal";
@@ -63,8 +64,15 @@ export async function redraftActiveForm(input: {
   if (!groups.some((group) => group.key === "offense_type")) return null;
 
   /* Sunny's draft wrote nothing on it. */
+  /*
+   * The "N/A" the app writes to an empty history box (ALL_FIELDS_REQUIRED_ENABLED; Pau, 26 Nov 2026: "yes i want it
+   * before") is not the draft writing: a form holding only that is still redrafted.
+   */
   const sunnyWrote = loaded.values.some(
-    (row) => row.filledBy === "ai" && ((row.value ?? "").trim() !== "" || row.checked.length > 0),
+    (row) =>
+      row.filledBy === "ai" &&
+      !(row.fieldKey === PRIOR_ACTIONS_KEY && isNoHistoryLine(row.value ?? "")) &&
+      ((row.value ?? "").trim() !== "" || row.checked.length > 0),
   );
   if (sunnyWrote) return null;
 
