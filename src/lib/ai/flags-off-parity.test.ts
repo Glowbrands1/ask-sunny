@@ -1271,6 +1271,11 @@ describe("new flags default off and wrappers are inert", () => {
           // PERMISSIONS MATRIX SAVED TO THE DATABASE (Pau, 23 Nov 2026, both apps): the admin Permissions screen saves its
           // overrides through PUT /api/admin/permissions instead of showing a read-only policy. Admin screen only.
           ":(exclude)src/features/admin/permissions-matrix.tsx",
+          // WOVEN HOME ADDRESS (Pau, 26 Nov 2026, approved by Curt: "only Admins and Managers both apps"): the Woven
+          // directory's "Home address" column and its "Show home address" button, admin console only. One employee's
+          // address is read live from Woven on click; nothing is stored. No chat or form screen changes.
+          ":(exclude)src/features/admin/woven/directory-table.tsx",
+          ":(exclude)src/features/admin/woven/home-address-reveal.tsx",
           // INVITE_LINK_HOLD_ENABLED (QA approved 28 Oct 2026, both apps): the new
           // invitation Continue page and its form. Off, the page never shows Continue.
           ":(exclude)src/app/auth/invite-continue/page.tsx",

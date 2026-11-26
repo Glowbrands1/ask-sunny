@@ -48,7 +48,7 @@ export function HomeAddressReveal({ directoryId, disabled }: { directoryId: stri
         {busy ? "Looking up…" : "Show home address"}
       </button>
       {result?.status === "unavailable" ? <span className="text-[11px] text-muted-foreground">Woven didn&apos;t answer. Try again.</span> : null}
-      {error ? <span className="text-[11px] text-[var(--color-failed,#b91c1c)]">{error}</span> : null}
+      {error ? <span className="text-[11px] text-status-failed">{error}</span> : null}
     </span>
   );
 }
