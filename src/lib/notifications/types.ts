@@ -41,6 +41,18 @@ export interface BellData {
   waitingSiblingHr?: { app: string; count: number };
 }
 
+/**
+ * The form a follow-up notice is about (Pau, 26 Nov 2026: "ability to click from notification that they have completed
+ * it like COmpleted or extend"). The daily notice (`follow-up-notices.ts`) links to `...&form=<id>`; the bell offers
+ * Completed and Extend on that form. Null for every other notification.
+ */
+export const FOLLOW_UP_NOTICE_KINDS: readonly string[] = ["form_follow_up_due", "form_follow_up_overdue"];
+export function followUpFormId(notification: Pick<AppNotification, "kind" | "href">): string | null {
+  if (!FOLLOW_UP_NOTICE_KINDS.includes(notification.kind) || !notification.href) return null;
+  const match = /[?&]form=([0-9a-f-]{36})(?:&|$)/i.exec(notification.href);
+  return match ? match[1] : null;
+}
+
 /** Only an in-app path ("/x", not "//host" or "https:") is kept as a link. */
 export function safeNotificationHref(href: string | null | undefined): string | null {
   return href && /^\/[^/\\]/.test(href) ? href : null;

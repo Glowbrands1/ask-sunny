@@ -334,6 +334,15 @@ export function allFieldsRequiredEnabled(): boolean {
 }
 
 /**
+ * PRIOR_ON_FILE_ON_CARD_ENABLED (Pau, 26 Nov 2026; same flag in both apps): "Ai saw prior forms but i need them here".
+ * On: a Corrective Action card's Prior actions hold this person's forms on file (finalized, or a draft with HR) on their
+ * own, each saying what it is, and the reply no longer offers them. Off, they are offered in one line, as before.
+ */
+export function priorOnFileOnCardEnabled(): boolean {
+  return envFlag("PRIOR_ON_FILE_ON_CARD_ENABLED");
+}
+
+/**
  * EXIT_ALL_FIELDS_REQUIRED_ENABLED (Pau, 25 Nov 2026; default off; same flag in both apps): "On the Exit Form, can the
  * parameters be set so that every field must be completed or the form will not submit to HR?" On: the exit form is
  * held to `blankBeforeSubmission` at Finalize and "Finalize and send for approval" even while ALL_FIELDS_REQUIRED_ENABLED

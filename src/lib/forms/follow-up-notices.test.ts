@@ -55,6 +55,8 @@ describe("when its due and overdue pls add a notification whoever created the fo
         kind: "form_follow_up_due",
         title: "Follow-up due today",
         body: expect.stringContaining("Corrective Action for Marlo Quint"),
+        // The bell offers Completed / Extend on this form ("ability to click from notification ... COmpleted or extend").
+        href: "/forms/monitoring?followup=open&form=f-1",
       }),
     ]);
   });

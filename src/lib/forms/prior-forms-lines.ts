@@ -135,8 +135,9 @@ export function priorFormsFromRows(input: {
  */
 export function withHr(row: { status: string; hrApprovalState?: string | null }): string | null {
   if (row.status !== "draft") return null;
-  if (row.hrApprovalState === "pending") return "waiting for HR approval";
-  if (row.hrApprovalState === "changes_requested") return "sent back by HR";
+  // Pau, 26 Nov 2026: "also say if its a draft and finalized".
+  if (row.hrApprovalState === "pending") return "draft, waiting for HR approval";
+  if (row.hrApprovalState === "changes_requested") return "draft, sent back by HR";
   return null;
 }
 
