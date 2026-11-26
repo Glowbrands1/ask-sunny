@@ -22,7 +22,7 @@
  *
  * Both chat paths read the rule from here: the agent loop's rules book (`agent-loop/rules-book.ts`) and the older chat
  * prompt (`prompts.ts`, `withCoachingHowTo`). The loop also checks its advice reply (`coachingAnswerShape`) and hands a
- * reply missing the outline, the script, the role-play or the plan back once (`agent-loop/run.ts`). Pure: reads text only.
+ * reply missing the outline, the script, the role-play or the plan back once (the loop's run module). Pure: reads text only.
  */
 
 /** The rule, as both prompts give it. `place` is the app's word for a location ("salon", "store"). */
