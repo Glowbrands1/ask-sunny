@@ -5155,3 +5155,14 @@ export function sourcesOnTopicEnabled(): boolean {
 export function createFormButtonPicksFormEnabled(): boolean {
   return envFlag("CREATE_FORM_BUTTON_PICKS_FORM_ENABLED");
 }
+
+/**
+ * ANSWER_MODE_ON_LOOP (the owner, 26 Nov 2026: "B" — one engine for every answer mode; default off): Quick and Detailed
+ * turns are answered by the agent loop, like Standard, instead of the older chat path (`agent-loop/switch.ts` no longer
+ * skips them). The chosen mode reaches the loop as one line about the answer's length (`agent-loop/prompt.ts`); Quick
+ * never shortens a card, a question the card needs or a policy citation. Off, Quick and Detailed go to the older path as
+ * before.
+ */
+export function answerModeOnLoopEnabled(): boolean {
+  return envFlag("ANSWER_MODE_ON_LOOP_ENABLED");
+}
