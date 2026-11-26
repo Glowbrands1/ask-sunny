@@ -1,5 +1,6 @@
 import {
   BarChart3,
+  CalendarCheck,
   FileStack,
   Gauge,
   GraduationCap,
@@ -86,6 +87,13 @@ export const NAV_SECTIONS: NavSection[] = [
          * A hidden link is not a boundary; the page guard is, and this entry
          * now names the same permission the guard checks.
          */
+        permission: "view_overview",
+      },
+      {
+        /* Pau, 26 Nov 2026: one calendar with the Leadership Hub and Ask Bubbles (follow-ups, HR approvals, reviews, L10s, reminders). */
+        label: "Calendar",
+        href: "/calendar",
+        icon: CalendarCheck,
         permission: "view_overview",
       },
     ],
