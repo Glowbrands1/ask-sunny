@@ -1,7 +1,7 @@
 # Voice input in the AI chat boxes (Ask Sunny only, 27 Nov 2026)
 
 **Request (the owner, 27 Nov 2026):** a mic in every AI chat box (the chat, the Overview band, a report's ask bar
-and the L10 Leadership Assistant). A recording of up to 60 seconds goes to the server, AssemblyAI Sync turns it into
+and the L10 Leadership Assistant; also the Google Reviews ask bar, which sends to `/api/chat` the same way). A recording of up to 60 seconds goes to the server, AssemblyAI Sync turns it into
 text, the text lands in that box for the person to check and edit, and they press Send as usual. Off by default
 (`VOICE_INPUT_ENABLED`), and on only for the emails on the server-only `VOICE_INPUT_USERS`.
 
