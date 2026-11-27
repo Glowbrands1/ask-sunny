@@ -191,7 +191,7 @@ export function AskBand({
                 the greeting on a phone. */}
             <SunnyMascot className="hidden w-[96px] shrink-0 sm:block" />
             <div className="min-w-0">
-            <h1 className="display text-[26px] text-band-foreground sm:text-[32px]">
+            <h1 className="display text-[22px] text-band-foreground sm:text-[32px]">
               {greeting},{" "}
               <span className="text-brand-yellow">{greetingName}</span>
             </h1>
