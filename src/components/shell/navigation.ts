@@ -23,7 +23,6 @@ import {
   REPORTS_DEFAULT_PATH,
   REPORTS_SECTION_PATH,
 } from "@/features/reports/reports-routes";
-import { whatsNewEnabled } from "@/config/whats-new";
 import type { Permission } from "@/types";
 
 export interface NavItem {
@@ -63,6 +62,11 @@ export interface NavItem {
    * Matched as a prefix, exactly as `href` is.
    */
   activePrefix?: string;
+  /**
+   * What's New's entry: shown only to the people the server says see it (`whatsNewVisibleFor`, handed down by the
+   * layout as `useWhatsNewVisible()`): everyone once NEXT_PUBLIC_WHATS_NEW_ENABLED is on, else WHATS_NEW_USERS only.
+   */
+  whatsNew?: true;
 }
 
 export interface NavSection {
@@ -101,11 +105,10 @@ export const NAV_SECTIONS: NavSection[] = [
       /*
        * WHAT'S NEW (Pau, 26 Nov 2026): recent updates to Sunny, from `src/config/whats-new.ts`. The managers' home, so
        * the Overview's permission; each entry about a page is shown only to a role that may open that page. Hidden for
-       * everyone until rolled out (Pau, 27 Nov 2026; `whatsNewEnabled`).
+       * everyone until rolled out (Pau, 27 Nov 2026), except the people on WHATS_NEW_USERS (the owner, 27 Nov 2026: "live
+       * but on my own page only"): `whatsNew` below, decided on the server.
        */
-      ...(whatsNewEnabled()
-        ? [{ label: "What's New", href: "/whats-new", icon: Sparkles, permission: "view_overview" as const }]
-        : []),
+      { label: "What's New", href: "/whats-new", icon: Sparkles, permission: "view_overview", whatsNew: true },
     ],
   },
   {

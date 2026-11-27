@@ -7,7 +7,8 @@ import { readSalonMentions } from "@/lib/forms/salon-mention";
 import { DAILY_STATS_INTERPRETATION_FRAMEWORK } from "@/lib/knowledge/document-roles";
 import type { RoleGroundingResult } from "@/lib/knowledge/role-grounding";
 import { pagesToolLine, type PageReaderTool } from "@/config/ai-readable-pages";
-import { WHATS_NEW, whatsNewEnabled, whatsNewFor, type WhatsNewRelease } from "@/config/whats-new";
+import { WHATS_NEW, whatsNewFor, type WhatsNewRelease } from "@/config/whats-new";
+import { whatsNewVisibleFor } from "@/lib/whats-new/whats-new-access";
 import { PRODUCTION_RESOURCES } from "@/data/resources";
 import { RESOURCE_CATEGORY_LABEL } from "@/data/resource-taxonomy";
 import { VIDEO_CATEGORY_LABEL } from "@/lib/videos/categories";
@@ -965,8 +966,9 @@ export async function readWhatsNew(context: DataToolContext, input: { since?: un
   if (!hasPermission(matrix, role, READER_PERMISSION.read_whats_new)) {
     return { source: WHATS_NEW_SOURCE, refused: "This account's role does not open the What's New page. Nothing was read; say so plainly, in one line." };
   }
-  // Pau, 27 Nov 2026: hidden for everyone until it is rolled out (`whatsNewEnabled`); the page is a 404 meanwhile.
-  if (!whatsNewEnabled()) {
+  // Pau, 27 Nov 2026: hidden until it is rolled out, except for the people on WHATS_NEW_USERS (the owner: "live but on
+  // my own page only"); the same check as the page, on the loop's verified actor. The page is a 404 for everyone else.
+  if (!whatsNewVisibleFor({ email: context.actor.email, verified: context.actor.verified })) {
     return { source: WHATS_NEW_SOURCE, refused: "There is no list of updates to share yet. Nothing was read; say so plainly, in one line, and do not mention a What's New page or name any feature as new." };
   }
   const since = text(input.since);

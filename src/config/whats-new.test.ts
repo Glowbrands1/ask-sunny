@@ -88,26 +88,40 @@ describe("hidden for everyone until rolled out (Pau, 27 Nov 2026: \"hide this fo
     vi.unstubAllEnvs();
     vi.resetModules();
   });
-  const sidebarHrefs = async () => {
-    vi.resetModules();
-    const { NAV_SECTIONS } = await import("@/components/shell/navigation");
-    return NAV_SECTIONS.flatMap((section) => section.items.map((item) => item.href));
-  };
-
-  it("unset, the switch is off and the sidebar (and its search) has no What's New entry", async () => {
+  /*
+   * CHANGED ON PURPOSE (the owner, 27 Nov 2026: "live but on my own page only"). The sidebar entry used to be left out
+   * of NAV_SECTIONS while the switch was off. It is now always there, marked `whatsNew`, and the server decides per
+   * person (`whatsNewVisibleFor`: everyone with the switch on, else WHATS_NEW_USERS), handing the sidebar and search
+   * one yes/no (`useWhatsNewVisible`). Who sees it is tested in `src/lib/whats-new/whats-new-access.test.ts`.
+   */
+  it("unset, the switch is off; the sidebar's What's New entry is marked so the server decides who sees it", async () => {
     vi.stubEnv("NEXT_PUBLIC_WHATS_NEW_ENABLED", undefined);
     expect(whatsNewEnabled()).toBe(false);
-    expect(await sidebarHrefs()).not.toContain("/whats-new");
+    vi.resetModules();
+    const { NAV_SECTIONS } = await import("@/components/shell/navigation");
+    const entry = NAV_SECTIONS.flatMap((section) => section.items).find((item) => item.href === "/whats-new");
+    expect(entry?.whatsNew, "the entry must carry the server's decision, or it shows to everyone").toBe(true);
+    for (const file of ["sidebar.tsx", "global-search.tsx"]) {
+      const source = readFileSync(join(process.cwd(), "src", "components", "shell", file), "utf8");
+      expect(source, `${file} does not hide What's New from whom the server says`).toMatch(/item\.whatsNew && !whatsNewVisible/);
+    }
   });
 
-  it("turned on, the sidebar shows What's New again", async () => {
+  it("turned on, the switch is on", () => {
     vi.stubEnv("NEXT_PUBLIC_WHATS_NEW_ENABLED", "true");
     expect(whatsNewEnabled()).toBe(true);
-    expect(await sidebarHrefs()).toContain("/whats-new");
   });
 
-  it("the page itself is a 404 while it is off", () => {
+  it("the page is a 404 for anyone the server does not let see it (the verified session, never the browser)", () => {
     const page = readFileSync(join(APP, "whats-new", "page.tsx"), "utf8");
-    expect(page).toMatch(/if \(!whatsNewEnabled\(\)\) notFound\(\);/);
+    expect(page).toMatch(/if \(!whatsNewVisibleFor\(\(await pageIdentity\(\)\) \?\? \{\}\)\) notFound\(\);/);
+    const layout = readFileSync(join(APP, "layout.tsx"), "utf8");
+    expect(layout, "the layout hands the sidebar the server's yes/no").toMatch(/<WhatsNewAccessProvider visible=\{whatsNew\}>/);
+    expect(layout, "the layout must not read the list itself").not.toMatch(/process\.env\.WHATS_NEW_USERS/);
+    // The list must never reach the browser: only the server-only module reads it.
+    const provider = readFileSync(join(process.cwd(), "src", "features", "whats-new", "whats-new-access.tsx"), "utf8");
+    expect(provider).not.toMatch(/process\.env/);
+    const access = readFileSync(join(process.cwd(), "src", "lib", "whats-new", "whats-new-access.ts"), "utf8");
+    expect(access).toMatch(/^import "server-only";/);
   });
 });
