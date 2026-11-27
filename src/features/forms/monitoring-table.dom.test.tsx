@@ -911,3 +911,30 @@ describe("can u just create a multi click button and delete inside both apps so 
     expect(box("Draft B").checked).toBe(true);
   });
 });
+
+/*
+ * Pau, 26 Nov 2026, with a screenshot of the forms list: "can you put the search bar here on top of these forms
+ * instead". The employee search sits directly above the forms table: below the follow-up banner and the filter pills,
+ * not above them.
+ */
+describe("the employee search's place on the list", () => {
+  it("sits after the banner and the filter pills, directly above the forms table", () => {
+    render(
+      <MonitoringTable
+        forms={[form({ employeeName: "Wren Oakhollow" })]}
+        notice={null}
+        followUp="all"
+        today={TODAY}
+        attention={{ overdue: 1, dueThisWeek: 0, needsAttention: 1 }}
+        demo={{ deletable: 0, protected: 0 }}
+        search={<form role="search" aria-label="Find an employee's forms" />}
+      />,
+    );
+    const search = screen.getByRole("search", { name: "Find an employee's forms" });
+    const table = screen.getByRole("table");
+    const pills = screen.getAllByRole("button", { name: /^All/ })[0]!;
+    const after = (a: Node, b: Node) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+    expect(after(pills, search), "the search should come after the filter pills").toBe(true);
+    expect(after(search, table), "the search should come before the table").toBe(true);
+  });
+});

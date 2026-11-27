@@ -50,14 +50,23 @@ const FILTERS: { value: EmployeeSearchStatusFilter; label: string }[] = [
   { value: "hr_approved", label: "Approved by HR" },
 ];
 
-export function EmployeeFormSearchBox({ query, status = "all" }: { query: string; status?: EmployeeSearchStatusFilter }) {
+export function EmployeeFormSearchBox({
+  query,
+  status = "all",
+  className = "mb-4",
+}: {
+  query: string;
+  status?: EmployeeSearchStatusFilter;
+  /** Spacing around the box; empty where the surrounding list already spaces its parts. */
+  className?: string;
+}) {
   return (
     <form
       action={REGISTER_HREF}
       method="get"
       role="search"
       aria-label="Find an employee's forms"
-      className="mb-4 flex flex-wrap items-center gap-2"
+      className={`flex flex-wrap items-center gap-2 ${className}`}
     >
       <label className="relative min-w-0 flex-1 basis-64">
         <span className="sr-only">Employee name</span>
