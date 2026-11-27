@@ -15,6 +15,7 @@ import { voiceInputEnabledFor } from "@/lib/voice/voice-config";
 import { VOICE_MESSAGES, tryAgainIn, type VoiceErrorCode } from "@/lib/voice/voice-messages";
 import { voiceRouteDeps } from "@/lib/voice/voice-route-deps";
 import { transcribeVoice, type TranscribeOutcome } from "@/lib/voice/transcribe";
+import { correctSpokenNames } from "@/lib/voice/spoken-names";
 import { VoiceUploadError, declaredAudioType, openVoiceUpload, sniffAudio, type VoiceUpload } from "@/lib/voice/voice-upload";
 import { finishedAudioSeconds, voiceTraceRow, type VoiceRefusal, type VoiceSurface } from "@/lib/voice/voice-usage";
 import { MAX_BYTES, MAX_SECONDS, MIN_BYTES, MIN_SECONDS, ROUTE_MAX_SECONDS, clampClipSeconds, manilaDayStart } from "@/lib/voice/voice-limits";
@@ -313,5 +314,11 @@ async function handle(request: Request): Promise<Response> {
   );
 
   if (result.outcome !== "ok") return outcomeAnswer(result.outcome, result.retryAfterSeconds, result.status);
-  return answer(200, { text: result.text, traceId: usageId });
+  /*
+   * Names spelled as the directory spells them (the owner, 27 Nov 2026: "i said Curt, it spelled it as Kurt"): a heard
+   * word that sounds like exactly one scoped person's or salon's spelling is written that way. The list stays here; the
+   * text still goes into the box for the person to read and edit before sending.
+   */
+  const text = "vocabulary" in hints && hints.vocabulary ? correctSpokenNames(result.text, hints.vocabulary) : result.text;
+  return answer(200, { text, traceId: usageId });
 }
