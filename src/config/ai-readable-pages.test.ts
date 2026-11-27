@@ -106,6 +106,7 @@ describe("the pages the AI can read (board f039)", () => {
     expect(dataTools).toContain("READER_PERMISSION.read_reviews)");
     expect(dataTools).toContain("READER_PERMISSION.read_stats)");
     expect(dataTools).toContain("READER_PERMISSION.read_hr_approvals)");
+    expect(dataTools).toContain("READER_PERMISSION.read_whats_new)");
     const formRecords = readFileSync(join(ROOT, "src", "lib", "forms", "chat-form-records.ts"), "utf8");
     // Pau, 23 Nov 2026: the handlers read the SAVED matrix (activePermissionMatrix()), not the built-in defaults; they still check the shared constant.
     expect(formRecords.match(/hasPermission\(activePermissionMatrix\(\), actor\.role, FORM_RECORDS_PERMISSION\)/g)?.length, "find_past_forms' reads check Form Monitoring's permission").toBe(2);
