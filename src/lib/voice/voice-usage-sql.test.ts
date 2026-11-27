@@ -137,6 +137,21 @@ describe("voice_usage_reserve", () => {
     }
   });
 
+  it("only the server can call it with p_now: anon and authenticated cannot execute it (they could pass a time and dodge the caps)", async () => {
+    const signature = "public.voice_usage_reserve(text, text, text, numeric, numeric, numeric, integer, integer, numeric, numeric, numeric, timestamptz)";
+    const result = await db.query<{ role: string; can: boolean }>(
+      `select r as role, has_function_privilege(r, $1, 'execute') as can from unnest(array['anon', 'authenticated', 'service_role']) as r`,
+      [signature],
+    );
+    expect(Object.fromEntries(result.rows.map((row) => [row.role, row.can]))).toEqual({ anon: false, authenticated: false, service_role: true });
+    await db.exec("set role authenticated");
+    try {
+      await expect(db.query(`select public.voice_usage_reserve('user-x', null, 'chat', 1, 0.5, 60, 10, 120, 1800, 5400, 10800, $1)`, [NOW])).rejects.toThrow(/permission denied/);
+    } finally {
+      await db.exec("reset role");
+    }
+  });
+
   it("only the new function is left (the Manila one is dropped)", async () => {
     const result = await db.query<{ args: string }>("select pg_get_function_identity_arguments(p.oid) as args from pg_proc p where p.proname = 'voice_usage_reserve'");
     expect(result.rows).toHaveLength(1);
