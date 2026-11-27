@@ -1,12 +1,12 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { canAccessAdminConsole, DEFAULT_PERMISSION_MATRIX, hasPermission, ROLES } from "@/lib/permissions";
 
 import { AI_READABLE_PAGES } from "./ai-readable-pages";
-import { WHATS_NEW, whatsNewFor } from "./whats-new";
+import { WHATS_NEW, whatsNewEnabled, whatsNewFor } from "./whats-new";
 
 /**
  * The What's New list (Pau, 26 Nov 2026; the owner's format of 26 Nov): releases newest first with a summary; each
@@ -80,5 +80,34 @@ describe("What's New", () => {
   it("is Ask Sunny's own list: no sibling-app words", () => {
     const source = readFileSync(join(process.cwd(), "src", "config", "whats-new.ts"), "utf8");
     expect(source).not.toMatch(/Bubbles|Buff City|\bstores?\b|Forms Register/);
+  });
+});
+
+describe("hidden for everyone until rolled out (Pau, 27 Nov 2026: \"hide this for everyone, for now pls, i will roll it out later\")", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+  const sidebarHrefs = async () => {
+    vi.resetModules();
+    const { NAV_SECTIONS } = await import("@/components/shell/navigation");
+    return NAV_SECTIONS.flatMap((section) => section.items.map((item) => item.href));
+  };
+
+  it("unset, the switch is off and the sidebar (and its search) has no What's New entry", async () => {
+    vi.stubEnv("NEXT_PUBLIC_WHATS_NEW_ENABLED", undefined);
+    expect(whatsNewEnabled()).toBe(false);
+    expect(await sidebarHrefs()).not.toContain("/whats-new");
+  });
+
+  it("turned on, the sidebar shows What's New again", async () => {
+    vi.stubEnv("NEXT_PUBLIC_WHATS_NEW_ENABLED", "true");
+    expect(whatsNewEnabled()).toBe(true);
+    expect(await sidebarHrefs()).toContain("/whats-new");
+  });
+
+  it("the page itself is a 404 while it is off", () => {
+    const page = readFileSync(join(APP, "whats-new", "page.tsx"), "utf8");
+    expect(page).toMatch(/if \(!whatsNewEnabled\(\)\) notFound\(\);/);
   });
 });

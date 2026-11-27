@@ -16,7 +16,12 @@ import { lastResult, loopStandIn, type LoopView } from "./loop-stand-in";
  * cases run the real chat route with production's flags, ask in a manager's words, and assert the entries reach the
  * model: a Salon Director gets every update they may open and not the administrators' Employee Directory one; an
  * administrator gets that one too.
+ *
+ * Pau, 27 Nov 2026 ("hide this for everyone, for now pls, i will roll it out later"): What's New is hidden until
+ * NEXT_PUBLIC_WHATS_NEW_ENABLED is set, and production has it off. The first case asks as production is (nothing reaches
+ * the model, and it is told not to point at the page), then turns it on, as the rollout will, for the rest.
  */
+const ROLLOUT = "NEXT_PUBLIC_WHATS_NEW_ENABLED";
 const REPORT = "Pau, 26 Nov 2026: a What's New page of recent updates, and \"what's new in Sunny?\" answered from it (CLAUDE.md §5)";
 const FLAG = "AGENT_LOOP_ENABLED";
 const ASK = "what's new in Sunny?";
@@ -47,6 +52,11 @@ export const NOV26_WHATS_NEW_CASES: ReplayCase[] = [
       if (!t.loopOn?.() || process.env.AGENT_LOOP_LIVE === "1") return;
       t.directory(STAFF);
       t.as("salon_director", KEARNEY);
+      // As production is today: hidden for everyone.
+      const hidden = await ask(t, ASK);
+      expect(hidden.updates, "What's New reached the model while it is hidden").toEqual([]);
+      expect(hidden.output?.refused).toContain("do not mention a What's New page");
+      process.env[ROLLOUT] = "true"; // the harness restores it after the case
       const { model, output, updates } = await ask(t, ASK);
       expect(model.views[0]?.system, "the readable-pages line is not in what the model is given").toContain(readablePagesLine(AI_READABLE_PAGES)!);
       expect(model.views[0]?.system).toContain("What's New (read_whats_new)");
@@ -76,6 +86,7 @@ export const NOV26_WHATS_NEW_CASES: ReplayCase[] = [
       if (!t.loopOn?.() || process.env.AGENT_LOOP_LIVE === "1") return;
       t.directory(STAFF);
       t.as("admin", { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] });
+      process.env[ROLLOUT] = "true"; // rolled out (off in production; see the first case); the harness restores it
       const { updates } = await ask(t, "any new features this week?", { since: "2026-11-25" });
       const titles = updates.map((update) => update.title);
       expect(titles).toContain(ADMIN_ONLY);

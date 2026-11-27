@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 
-import { WHATS_NEW, whatsNewFor } from "@/config/whats-new";
+import { WHATS_NEW, whatsNewEnabled, whatsNewFor } from "@/config/whats-new";
 import { WhatsNewScreen } from "@/features/whats-new/whats-new-screen";
 import { ACTIVE_BRAND } from "@/lib/brand";
 import { requirePagePermission } from "@/lib/auth/page";
@@ -18,6 +19,8 @@ export const dynamic = "force-dynamic";
  * entries `read_whats_new` gives the AI (CLAUDE.md §5).
  */
 export default async function WhatsNewPage() {
+  // Pau, 27 Nov 2026: hidden for everyone until it is rolled out (`whatsNewEnabled`).
+  if (!whatsNewEnabled()) notFound();
   // The saved permission matrix is loaded by the gate, so the entries below are filtered on it.
   const identity = await requirePagePermission("view_overview");
   const matrix = activePermissionMatrix();

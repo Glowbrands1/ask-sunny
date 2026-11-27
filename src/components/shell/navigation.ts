@@ -23,6 +23,7 @@ import {
   REPORTS_DEFAULT_PATH,
   REPORTS_SECTION_PATH,
 } from "@/features/reports/reports-routes";
+import { whatsNewEnabled } from "@/config/whats-new";
 import type { Permission } from "@/types";
 
 export interface NavItem {
@@ -97,16 +98,14 @@ export const NAV_SECTIONS: NavSection[] = [
         icon: CalendarCheck,
         permission: "view_overview",
       },
-      {
-        /*
-         * WHAT'S NEW (Pau, 26 Nov 2026): recent updates to Sunny, from `src/config/whats-new.ts`. The managers' home, so
-         * the Overview's permission; each entry about a page is shown only to a role that may open that page.
-         */
-        label: "What's New",
-        href: "/whats-new",
-        icon: Sparkles,
-        permission: "view_overview",
-      },
+      /*
+       * WHAT'S NEW (Pau, 26 Nov 2026): recent updates to Sunny, from `src/config/whats-new.ts`. The managers' home, so
+       * the Overview's permission; each entry about a page is shown only to a role that may open that page. Hidden for
+       * everyone until rolled out (Pau, 27 Nov 2026; `whatsNewEnabled`).
+       */
+      ...(whatsNewEnabled()
+        ? [{ label: "What's New", href: "/whats-new", icon: Sparkles, permission: "view_overview" as const }]
+        : []),
     ],
   },
   {

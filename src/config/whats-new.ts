@@ -28,6 +28,18 @@ import type { Permission, Role } from "@/types";
  *
  * This is Ask Sunny's list, from Ask Sunny's own changes. The sibling app keeps its own.
  */
+
+/**
+ * NEXT_PUBLIC_WHATS_NEW_ENABLED (Pau, 27 Nov 2026: "hide this for everyone, for now pls, i will roll it out later").
+ * Off: nobody sees What's New — no sidebar entry (nor in search), the page is a 404 and read_whats_new reads nothing.
+ * Set it to `true` in Vercel and redeploy to roll it out. READ AT BUILD TIME, like `asdNoFormMonitoringEnabled`: a
+ * literal `process.env.NEXT_PUBLIC_…` Next inlines into the browser and the server alike, so the sidebar and the page
+ * never disagree. Keep adding entries below while it is off; they show the day it is turned on.
+ */
+export function whatsNewEnabled(): boolean {
+  const raw = process.env.NEXT_PUBLIC_WHATS_NEW_ENABLED;
+  return typeof raw === "string" && ["1", "true", "yes", "on"].includes(raw.trim().toLowerCase());
+}
 export type WhatsNewTag = "New" | "Improved";
 
 export interface WhatsNewEntry {
