@@ -27,7 +27,7 @@ import type { Permission } from "@/types";
  */
 
 /** The loop tools that read a page's figures. */
-export type PageReaderTool = "read_reviews" | "read_stats" | "find_past_forms" | "read_hr_approvals" | "read_follow_ups" | "read_calendar" | "read_whats_new" | "read_videos" | "read_manager_resources" | "read_ai_training";
+export type PageReaderTool = "read_reviews" | "read_stats" | "find_past_forms" | "read_hr_approvals" | "read_follow_ups" | "read_calendar" | "read_whats_new" | "read_videos" | "read_manager_resources" | "read_ai_training" | "read_knowledge_documents";
 
 export interface PageReader {
   readonly tool: PageReaderTool;
@@ -119,7 +119,7 @@ export const AI_READABLE_PAGES: readonly AiReadablePage[] = [
     notReadable: "One template's fields and versions: " + NO_LOOP_READER },
 
   { kind: "page", route: "/knowledge", title: "Knowledge Base", access: { permission: "view_knowledge", adminConsole: true },
-    notReadable: "The document list and its sync status: " + NO_LOOP_READER + " search_knowledge searches the documents' text, under the chat's permission, not this page's." },
+    reader: { tool: "read_knowledge_documents", args: {}, figures: ["each document's title, category, status, where it came from, version and when it was last updated", "why a document failed to process", "how many documents are ready, processing, need review or failed"], periods: ["now"], replayCase: "nov27-knowledge-documents-reach-the-model" } },
   { kind: "page", route: "/knowledge/document/[id]", title: "Knowledge document", access: { permission: "view_knowledge" },
     notReadable: "The document page (its details and status): " + NO_LOOP_READER + " search_knowledge searches the document's text, under the chat's permission, not this page's." },
 

@@ -48,6 +48,7 @@ ${statsLine}- read_form_deletions: administrators only: who deleted a form, when
 - read_videos: the Videos page's training videos (title, category, length, what each is about), on a topic if asked.
 - read_manager_resources: the Manager Resources page's links.
 - read_ai_training: AI Training's published lessons (track, module, week, title, summary), on a topic if asked.
+- read_knowledge_documents: administrators only: the Knowledge Base's document list (title, status, source, last updated, why one failed).
 
 How ${config.appName} fills a form (the company's rules, from real manager and HR reports):
 

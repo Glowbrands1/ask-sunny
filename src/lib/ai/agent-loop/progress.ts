@@ -71,6 +71,8 @@ export function progressStatus(tool: string, args: unknown): string {
       return "Checking manager resources…";
     case "read_ai_training":
       return "Checking AI Training…";
+    case "read_knowledge_documents":
+      return "Checking the Knowledge Base…";
     case "app_help":
       return `Checking ${appConfig().appName}'s help…`;
     default:
