@@ -1828,3 +1828,76 @@
     font-size: 16px;
   }
 }
+
+/*
+ * WHAT'S NEW, WHEN SOMETHING IS NEW (the owner, 27 Nov 2026: "create an animation for whats new when something is new
+ * like the shaking and can u create a glitter effect on the button show preview").
+ *
+ * .whats-new-shake: the sidebar's What's New entry while there is an entry this person has not seen
+ * (`useWhatsNewUnseen`): a short wiggle every few seconds, like Form Monitoring's pending-HR tab. Transform only, so
+ * nothing around it moves. .whats-new-dot is the "New" dot on it, placed absolutely (no layout shift).
+ *
+ * .whats-new-sparkle: the "Show me" link on What's New: two small four-point sparkles that twinkle at its corners, in
+ * the app's own primary and accent. Pseudo-elements only (no layout shift, nothing for a screen reader).
+ *
+ * Under reduced motion: no wiggle, no twinkle; the dot stays, still.
+ */
+@keyframes whats-new-shake {
+  0%, 14%, 100% { transform: rotate(0); }
+  2% { transform: rotate(-4deg); }
+  4% { transform: rotate(4deg); }
+  6% { transform: rotate(-3deg); }
+  8% { transform: rotate(3deg); }
+  10% { transform: rotate(-1deg); }
+}
+.whats-new-shake > svg:first-child {
+  transform-origin: 50% 20%;
+  animation: whats-new-shake 5s ease-in-out infinite;
+}
+.whats-new-dot {
+  box-shadow: 0 0 0 2px var(--sidebar, var(--background));
+}
+
+@keyframes whats-new-twinkle {
+  0%, 100% { opacity: 0.2; transform: scale(0.5) rotate(0deg); }
+  50% { opacity: 1; transform: scale(1.1) rotate(45deg); }
+}
+.whats-new-sparkle {
+  position: relative;
+}
+.whats-new-sparkle::before,
+.whats-new-sparkle::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  width: 12px;
+  height: 12px;
+  background: var(--primary);
+  filter: drop-shadow(0 0 2px var(--primary));
+  clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%);
+  animation: whats-new-twinkle 1.8s ease-in-out infinite;
+}
+.whats-new-sparkle::before {
+  top: -8px;
+  right: -14px;
+}
+.whats-new-sparkle::after {
+  bottom: -5px;
+  left: -12px;
+  width: 9px;
+  height: 9px;
+  background: var(--accent);
+  filter: drop-shadow(0 0 2px var(--accent));
+  animation-delay: 0.9s;
+}
+@media (prefers-reduced-motion: reduce) {
+  .whats-new-shake > svg:first-child,
+  .whats-new-sparkle::before,
+  .whats-new-sparkle::after {
+    animation: none;
+  }
+  .whats-new-sparkle::before,
+  .whats-new-sparkle::after {
+    opacity: 0;
+  }
+}

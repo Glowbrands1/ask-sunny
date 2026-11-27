@@ -997,6 +997,8 @@ export async function readWhatsNew(context: DataToolContext, input: { since?: un
         now: entry.now,
         how_to_use: entry.howToUse,
         ...(entry.showMe ? { show_me: { page: entry.showMe.label, link: entry.showMe.href } } : {}),
+        // A screenshot on the page (the owner, 27 Nov 2026): the model may say "the What's New page has a picture of it".
+        ...(entry.image ? { screenshot: `On the What's New page: ${entry.image.alt}` } : {}),
       })),
     })),
     ...(total > shown ? { listed: shown, of: total } : {}),
@@ -1437,7 +1439,7 @@ export function dataToolSpecs(config: AppConfig) {
   {
     name: "read_whats_new",
     description:
-      "What's new in " + config.appName + ": the What's New page's list of recent updates and new features, releases newest first (date and summary), each update with its tag (New or Improved), what it was like before, what changed now, how to use it and its Show me page, as this manager's page shows it. Use it for \"what's new?\", \"what's new in " + config.appName + "?\", \"any new features?\", \"what changed this week?\" (pass since). Never answer what's new from memory." + pagesToolLine(config.readablePages, "read_whats_new"),
+      "What's new in " + config.appName + ": the What's New page's list of recent updates and new features, releases newest first (date and summary), each update with its tag (New or Improved), what it was like before, what changed now, how to use it, its Show me page and whether the page shows a screenshot of it, as this manager's page shows it. Use it for \"what's new?\", \"what's new in " + config.appName + "?\", \"any new features?\", \"what changed this week?\" (pass since). Never answer what's new from memory." + pagesToolLine(config.readablePages, "read_whats_new"),
     input_schema: {
       type: "object",
       properties: {
