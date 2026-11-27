@@ -16,6 +16,8 @@ import {
 import { cn } from "@/lib/utils/cn";
 import { LONG_MESSAGE_LIMIT, messageLengthStatus } from "@/lib/chat/message-limit";
 import { chatLongMessageClientEnabled } from "@/lib/config/chat-quality-flags";
+import { VoiceButton } from "@/features/voice/voice-button";
+import { appendTranscript } from "@/features/voice/voice-draft";
 import { CHAT_ATTACH_ACCEPT, MAX_FILES_PER_MESSAGE, attachmentProblem } from "@/lib/attachments/file-parts";
 import type { AnswerMode } from "@/types";
 
@@ -103,6 +105,8 @@ export function Composer({
   onModeChange,
   busy,
   autoFocus,
+  conversationId,
+  onVoiceText,
   files = [],
   onFilesChange,
   fileError,
@@ -127,8 +131,14 @@ export function Composer({
    */
   busy: boolean;
   autoFocus?: boolean;
+  /** VOICE_INPUT_ENABLED: the conversation the mic's spelling hints come from, when there is one. */
+  conversationId?: string | null;
+  /** VOICE_INPUT_ENABLED: told the transcript the mic put in the box, so the send can say it came from voice. */
+  onVoiceText?: (transcript: string, traceId: string) => void;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  /* VOICE_INPUT_ENABLED: the mic's notices and errors sit where the length notice does. */
+  const [voiceSlot, setVoiceSlot] = useState<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [fileNote, setFileNote] = useState("");
   const attaching = Boolean(onFilesChange);
@@ -295,6 +305,22 @@ export function Composer({
         <SunMark className="size-[26px] shrink-0" onDark />
         <div className="flex min-w-0 flex-1 items-center">{field}</div>
         {attachButton}
+        {/*
+          VOICE_INPUT_ENABLED: the mic, only for a person voice is on for (`useVoiceAccess`); otherwise nothing is
+          rendered here. The transcript is appended to the text for the manager to check; Send is unchanged.
+        */}
+        <VoiceButton
+          surface="chat"
+          conversationId={conversationId ?? null}
+          disabled={busy}
+          messageSlot={voiceSlot}
+          onText={(transcript, { traceId }) => {
+            onChange(appendTranscript(value, transcript));
+            onVoiceText?.(transcript, traceId);
+            textareaRef.current?.focus();
+          }}
+          className="size-11 rounded-full text-muted-foreground hover:bg-hover-surface hover:text-foreground"
+        />
         {sendButton}
       </div>
 
@@ -314,6 +340,7 @@ export function Composer({
           {length.notice}
         </p>
       ) : null}
+      <div ref={setVoiceSlot} id="chat-input-voice" />
 
       {/*
         THE `.under` ROW: the mode control and one line of disclaimer, side by

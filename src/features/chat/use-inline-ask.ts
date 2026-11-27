@@ -16,6 +16,7 @@ import type { SavedFeedback } from "@/lib/feedback/types";
 import type { AnswerMode, ChatConversation, ChatMessage } from "@/types";
 import { toChatTurnError } from "./chat-error";
 import { announceFormUpdate, openedFormReference } from "./form-update-events";
+import type { VoiceSendFields } from "@/features/voice/voice-draft";
 
 /**
  * =============================================================================
@@ -136,7 +137,8 @@ export function useInlineAsk({ reportContext, onActiveChange, surface }: InlineA
   const ratingTarget = useMemo(() => conversationRatingTarget(thread), [thread]);
 
   const send = useCallback(
-    async (rawText: string) => {
+    /* `voice` (VOICE_INPUT_ENABLED): the text came from the mic; reporting only (see `AskRequest.inputMode`). */
+    async (rawText: string, extra: { voice?: VoiceSendFields } = {}) => {
       const text = rawText.trim();
       if (!text || busy) return;
 
@@ -212,6 +214,7 @@ export function useInlineAsk({ reportContext, onActiveChange, surface }: InlineA
           reportContext: reportContext ?? null,
           /* Reporting only — see `AskRequest.surface`. */
           surface,
+          ...(extra.voice ?? {}),
           /*
            * QA (16 Nov 2026, production chat_traces): which conversation this is, on every send including the first, as
            * the chat screen sends it. Without it the first turn's trace had no conversation_id and its records (a name

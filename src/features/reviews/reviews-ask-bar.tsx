@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ArrowUp, X } from "lucide-react";
 
 import { SunMark } from "@/components/brand-mark";
 import { ConversationRating } from "@/features/chat/conversation-rating";
 import { useInlineAsk } from "@/features/chat/use-inline-ask";
 import { AnswerSheet } from "@/features/dashboard/answer-sheet";
+import { VoiceButton } from "@/features/voice/voice-button";
+import { appendTranscript, useVoiceDraft, type VoiceSendFields } from "@/features/voice/voice-draft";
 
 /**
  * THE BAND'S ASK BAR, SCOPED TO THE REVIEW QUEUE.
@@ -36,10 +38,17 @@ export function ReviewsAskBar({
   const { send, busy, conversationId, exchanges, reset, ratingTarget, recordFeedback } =
     useInlineAsk({ surface: "google_reviews" });
 
-  const submit = (text: string) => {
+  /*
+   * VOICE_INPUT_ENABLED: this bar sends to /api/chat like the report bars, so it has the same mic (as a "report" box:
+   * the same access, `ask_questions`). The last transcript, the box to focus, and where its notices go.
+   */
+  const voiceDraft = useVoiceDraft();
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const [voiceSlot, setVoiceSlot] = useState<HTMLDivElement | null>(null);
+  const submit = (text: string, voice?: VoiceSendFields) => {
     const asked = text.trim() || question;
     setValue("");
-    void send(asked);
+    void send(asked, voice ? { voice } : {});
   };
 
   const newestFirst = [...exchanges].reverse();
@@ -53,6 +62,7 @@ export function ReviewsAskBar({
         </label>
         <textarea
           id="reviews-ask"
+          ref={inputRef}
           rows={1}
           value={value}
           disabled={busy}
@@ -60,7 +70,7 @@ export function ReviewsAskBar({
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) {
               event.preventDefault();
-              submit(value);
+              submit(value, voiceDraft.take(value));
             }
           }}
           placeholder={`Ask Sunny about reviews — ${question}`}
@@ -76,9 +86,21 @@ export function ReviewsAskBar({
             <X className="size-3.5" />
           </button>
         ) : null}
+        <VoiceButton
+          surface="report"
+          conversationId={conversationId}
+          disabled={busy}
+          messageSlot={voiceSlot}
+          onText={(transcript, { traceId }) => {
+            setValue((current) => appendTranscript(current, transcript));
+            voiceDraft.note(transcript, traceId);
+            inputRef.current?.focus();
+          }}
+          className="size-[34px] rounded-full text-muted-foreground hover:bg-hover-surface hover:text-foreground"
+        />
         <button
           type="button"
-          onClick={() => submit(value)}
+          onClick={() => submit(value, voiceDraft.take(value))}
           disabled={busy}
           aria-label="Ask Sunny about reviews"
           className="grid size-[34px] shrink-0 place-items-center rounded-full bg-brand-yellow text-brand-yellow-foreground transition-opacity disabled:opacity-40"
@@ -86,6 +108,7 @@ export function ReviewsAskBar({
           <ArrowUp className="size-3.5" strokeWidth={2.5} />
         </button>
       </div>
+      <div ref={setVoiceSlot} data-testid="reviews-voice-slot" />
 
       {busy ? (
         <p

@@ -102,12 +102,26 @@ export function spendUsageRows(spend: unknown): TokenUsage[] | null {
   if (!Array.isArray(spend)) return null;
   return spend
     .filter((entry): entry is Record<string, unknown> => typeof entry === "object" && entry !== null)
-    .map((entry) => ({
+    .map((entry): TokenUsage => {
+      /* VOICE_INPUT_ENABLED: a voice entry (`{ source: "voice", audio_seconds, usd_per_hour }`) has no model and no tokens. */
+      if (typeof entry.audio_seconds === "number") {
+        return {
+          model: null,
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          audioSeconds: entry.audio_seconds,
+          usdPerHour: typeof entry.usd_per_hour === "number" ? entry.usd_per_hour : null,
+        };
+      }
+      return {
       model: typeof entry.model === "string" ? entry.model : null,
       inputTokens: typeof entry.inputTokens === "number" ? entry.inputTokens : 0,
       outputTokens: typeof entry.outputTokens === "number" ? entry.outputTokens : 0,
       cacheReadTokens: typeof entry.cacheReadTokens === "number" ? entry.cacheReadTokens : 0,
       cacheWriteTokens: typeof entry.cacheWriteTokens === "number" ? entry.cacheWriteTokens : 0,
-    }));
+      };
+    });
 }
 

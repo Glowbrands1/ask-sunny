@@ -14,6 +14,8 @@ import { formatLongDate, greetingForHour } from "@/lib/utils/date";
 import { businessHour, businessToday } from "@/lib/business-date";
 import { formatNumber } from "@/lib/utils/format";
 import { useInlineAsk } from "@/features/chat/use-inline-ask";
+import { VoiceButton } from "@/features/voice/voice-button";
+import { appendTranscript, useVoiceDraft, type VoiceSendFields } from "@/features/voice/voice-draft";
 import { AnswerSheet } from "./answer-sheet";
 import { ConversationRating } from "@/features/chat/conversation-rating";
 import type { AnswerMode, ChatMessage } from "@/types";
@@ -145,11 +147,13 @@ export function AskBand({
     recordFeedback,
   } = useInlineAsk({ onActiveChange, surface: "overview" });
 
+  /* VOICE_INPUT_ENABLED: the last transcript the mic put in the box, so its send says it came from voice. */
+  const voiceDraft = useVoiceDraft();
   const submit = useCallback(
-    (text: string) => {
+    (text: string, voice?: VoiceSendFields) => {
       setValue("");
       setFocused(false);
-      void send(text);
+      void send(text, voice ? { voice } : {});
     },
     [send],
   );
@@ -255,7 +259,13 @@ export function AskBand({
           onChange={setValue}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
-          onSubmit={() => submit(value)}
+          onSubmit={() => submit(value, voiceDraft.take(value))}
+          conversationId={conversationId}
+          onVoiceText={(transcript, traceId) => {
+            setValue((current) => appendTranscript(current, transcript));
+            voiceDraft.note(transcript, traceId);
+            inputRef.current?.focus();
+          }}
           /*
            * X CLEARS THE SMALLEST THING FIRST: a half-typed question if there
            * is one, otherwise the whole inline exchange. Reversing that would
@@ -392,6 +402,8 @@ function AskCard({
   prompts,
   onPrompt,
   resettable,
+  conversationId,
+  onVoiceText,
 }: {
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
   value: string;
@@ -406,7 +418,13 @@ function AskCard({
   onPrompt: (prompt: string) => void;
   /** There is an inline exchange to clear, so offer the control. */
   resettable: boolean;
+  /** VOICE_INPUT_ENABLED: this exchange's conversation, for the mic's spelling hints. */
+  conversationId?: string | null;
+  /** VOICE_INPUT_ENABLED: the mic's transcript, for the band to append to its text. */
+  onVoiceText?: (transcript: string, traceId: string) => void;
 }) {
+  /* VOICE_INPUT_ENABLED: the mic's notices and errors, on a line directly under the card. */
+  const [voiceSlot, setVoiceSlot] = useState<HTMLDivElement | null>(null);
   /*
    * THE COMPOSER IS NEVER READ-ONLY ANY MORE.
    *
@@ -424,6 +442,7 @@ function AskCard({
   const showPlaceholderBlock = !typing && !resettable && value.length === 0;
 
   return (
+    <>
     <div
       className={cn(
         "flex gap-4 rounded-[28px] bg-surface transition-shadow duration-200",
@@ -545,6 +564,16 @@ function AskCard({
         </button>
       ) : null}
 
+      {/* VOICE_INPUT_ENABLED: the mic beside the ask button, only for a person voice is on for. */}
+      <VoiceButton
+        surface="overview"
+        conversationId={conversationId ?? null}
+        disabled={busy}
+        messageSlot={voiceSlot}
+        onText={(transcript, { traceId }) => onVoiceText?.(transcript, traceId)}
+        className={cn("size-12 rounded-full text-muted-foreground hover:bg-surface-muted hover:text-foreground", showPlaceholderBlock && "mt-0.5")}
+      />
+
       <button
         type="button"
         onClick={onSubmit}
@@ -558,5 +587,7 @@ function AskCard({
         <ArrowUp className="size-[17px]" strokeWidth={2.4} aria-hidden />
       </button>
     </div>
+    <div ref={setVoiceSlot} data-testid="band-voice-slot" />
+    </>
   );
 }

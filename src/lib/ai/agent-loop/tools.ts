@@ -1436,10 +1436,21 @@ const ALSO_ASK_ACCOUNT = "If so, tell me what happened.";
 export const FIND_STAFF_LIMIT = 10;
 
 export async function findStaff(context: ToolContext, input: { name?: unknown; person_evidence?: unknown }, effects?: ToolEffects): Promise<ToolResult> {
-  const asGiven = typeof input.name === "string" ? withoutJobTitle(input.name) : "";
-  if (asGiven === "") return { reason_code: "missing_input", error: "Give the name to look for." };
+  const titleless = typeof input.name === "string" ? withoutJobTitle(input.name) : "";
+  if (titleless === "" && !(typeof input.name === "string" && input.name.trim() !== "")) return { reason_code: "missing_input", error: "Give the name to look for." };
   if (effects) effects.staffLookedUp = true;
   const read = await rosterFor(context.actor.scope);
+  /*
+   * TYPED_EMPLOYEE_EVERY_CARD_ENABLED (the owner's scope list from QA's Ask Vicki comparison, 26 Nov 2026, item A):
+   * "Test Employee" the manager typed as the person ("…coaching form for Test Employee") was looked up as "Test" (its
+   * last word read as a job title) and find_staff answered that "Test" is no person's name and to ask who the form is
+   * for, so the coaching reply asked "Who is this form for?" and the card said Employee "Not yet". propose_form already
+   * keeps the full name (#1323); find_staff now looks it up whole too.
+   */
+  const typedEmployee = typedEmployeeEveryCardEnabled() && typeof input.name === "string" && read.kind === "read" ? typedEmployeeName(requestTurnsText(context, read.roster)) : null;
+  const passedWhole = typeof input.name === "string" ? input.name.replace(/\s+/g, " ").trim().toLowerCase() : "";
+  const asGiven = typedEmployee && [typedEmployee.toLowerCase(), typedEmployee.split(" ")[0]!.toLowerCase(), "employee"].includes(passedWhole) ? typedEmployee : titleless;
+  if (asGiven === "") return { reason_code: "missing_input", error: "Give the name to look for." };
   /* The 266-chat run's possessive names (QA, 22 Nov 2026): "<First> <Last>'s" is looked up as the name the roster matches. */
   const typed = read.kind === "read" ? possessiveRead(asGiven, read.roster) : asGiven;
   if (read.kind === "failed") return { reason_code: "roster_failed", error: ROSTER_FAILED };

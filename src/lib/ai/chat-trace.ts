@@ -3,7 +3,7 @@ import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
 import { closeStages } from "./chat-stage-timings";
-import { chatTraceDraft, runChatTrace, type ChatTraceDraft } from "./chat-trace-store";
+import { chatTraceDraft, runChatTrace, voiceInputNote, type ChatTraceDraft } from "./chat-trace-store";
 import type { TokenUsage } from "./model-prices";
 import { activeSpendMeter, takeSpend, type SpendSource } from "./spend-meter";
 
@@ -115,7 +115,7 @@ async function persistChatTrace(draft: ChatTraceDraft): Promise<void> {
       error_class: draft.errorClass,
       error_status: draft.errorStatus,
       form_in_progress: draft.formInProgress,
-      slots: withStages(withCardCheck(withDraftCheck(withFormEdit(metered ? { ...(draft.slots ?? {}), ...metered } : (draft.slots ?? {}), draft.formEdit), draft.draftCheck), draft.cardCheck), draft.stages, draft.stagesFrom ?? draft.startedAt),
+      slots: withVoiceInput(withStages(withCardCheck(withDraftCheck(withFormEdit(metered ? { ...(draft.slots ?? {}), ...metered } : (draft.slots ?? {}), draft.formEdit), draft.draftCheck), draft.cardCheck), draft.stages, draft.stagesFrom ?? draft.startedAt)),
       retryable: model?.retryable ?? false,
       retried: false,
       succeeded: draft.succeeded === true,
@@ -127,6 +127,12 @@ async function persistChatTrace(draft: ChatTraceDraft): Promise<void> {
     // migration used to drop the row with no log.
     console.warn(traceInsertWarning(error));
   }
+}
+
+/** VOICE_INPUT_ENABLED: `voice_input` ({ trace_id, edited }) when the turn's text came from the mic; absent, the slots as before. */
+function withVoiceInput(slots: Record<string, unknown>): Record<string, unknown> {
+  const note = voiceInputNote();
+  return note ? { ...slots, voice_input: { trace_id: note.trace_id, edited: note.edited } } : slots;
 }
 
 /** CHAT_STAGE_TIMINGS_ENABLED: `stages` beside the other slots, in start order; absent, the slots as before. */
