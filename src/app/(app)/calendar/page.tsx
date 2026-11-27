@@ -7,7 +7,6 @@ import { requirePagePermission } from "@/lib/auth/page";
 import { meetingDetailsFromHub } from "@/lib/calendar/hub";
 import { loadCalendarFor } from "@/lib/calendar/load.server";
 import { leadershipHubUrl } from "@/lib/config/app-switcher";
-import { canAccessAdminConsole } from "@/lib/permissions";
 import { centralToday, isMonth, monthGrid, monthOf } from "@/lib/calendar/range";
 
 export const metadata: Metadata = { title: "Calendar" };
@@ -41,9 +40,10 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
           month={month}
           today={today}
           meetings={meetings}
-          hubCalendarUrl={hub ? `${hub}/meetings/calendar` : null}
           hubUrl={hub}
-          canEditSchedules={Boolean(identity?.verified && canAccessAdminConsole(identity.role))}
+          // Every meeting the Hub lists for this person is one they attend or, as an admin, may open: they may change its
+          // time (the owner, 27 Nov 2026). The Hub checks it again on save.
+          canEditSchedules={Boolean(identity?.verified)}
         />
       ) : (
         <Notice tone="attention">Your calendar could not be loaded. Sign in again, or try again in a minute.</Notice>

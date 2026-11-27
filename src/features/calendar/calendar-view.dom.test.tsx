@@ -6,8 +6,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CalendarEvent } from "@/lib/calendar/types";
 import { CalendarView, cellSummary, dayLabel, monthLabel } from "./calendar-view";
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }));
-vi.mock("./actions", () => ({ saveReminderAction: vi.fn(), deleteReminderAction: vi.fn(), saveMeetingScheduleAction: vi.fn() }));
+const { refresh } = vi.hoisted(() => ({ refresh: vi.fn() }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh, push: vi.fn() }) }));
+vi.mock("./actions", () => ({ saveReminderAction: vi.fn(), deleteReminderAction: vi.fn(), saveMeetingScheduleAction: vi.fn(), saveMeetingOccurrenceAction: vi.fn() }));
 
 /* Invented people only. */
 const fu = (n: number, extra: Partial<CalendarEvent> = {}): CalendarEvent => ({ id: `sunny:follow-up:${n}`, source: "ask-sunny", kind: "form-follow-up", title: `Avery Sample · Coaching Form ${n}`, date: "2026-11-30", href: `/forms/monitoring?followup=open&employee=Avery%20Sample`, ...extra });
@@ -77,24 +78,27 @@ describe("Calendar (L10 details from the Leadership Hub)", () => {
     { key: "stc-dm", name: "STC DM L10", team: "STC District Managers", weekday: 1, startTime: "10:00", minutes: 90, leader: "Robin Example", attendees: ["Robin Example", "Pat Sample"] },
     { key: "stc-sd-one", name: "Example SD L10", team: null, weekday: null, startTime: null, minutes: 60, leader: "Lee Demo", attendees: ["Lee Demo"] },
   ];
-  it("a meeting opens its details, read-only, with Open the L10 and Set it in the Leadership Hub", async () => {
-    render(<CalendarView month="2026-11" today="2026-11-30" view={view()} meetings={MEETINGS} hubCalendarUrl="https://hub.example.test/meetings/calendar" save={vi.fn()} remove={vi.fn()} />);
+  // Changed on purpose (the owner, 27 Nov 2026: "need an edit here for the time not have to go inside the actual app"): the
+  // panel no longer links to the Leadership Hub to set a time; someone who may edit gets "Edit time" right here instead.
+  it("a meeting opens its details, read-only, with Open the L10 and no Leadership Hub link", async () => {
+    render(<CalendarView month="2026-11" today="2026-11-30" view={view()} meetings={MEETINGS} save={vi.fn()} remove={vi.fn()} />);
     await userEvent.click(screen.getAllByRole("button", { name: "STC DM L10: details" })[0]!);
     const panel = screen.getByRole("region", { name: "STC DM L10 details" });
     expect(panel.textContent).toMatch(/Mondays at 10:00 AM CT · 90 min/);
     expect(within(panel).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["Robin Example", "Pat Sample"]);
     expect(within(panel).getByRole("link", { name: "Open the L10" }).getAttribute("href")).toBe("/meetings/stc-dm");
-    expect(within(panel).getByRole("link", { name: "Set it in the Leadership Hub" }).getAttribute("href")).toBe("https://hub.example.test/meetings/calendar");
+    expect(within(panel).queryByRole("link", { name: /Leadership Hub/ })).toBeNull();
     expect(within(panel).queryByRole("button", { name: /Save|Edit/ })).toBeNull();
   });
   it('lists the L10s with no day set, each opening its details with "Time not set"', async () => {
-    render(<CalendarView month="2026-11" today="2026-11-30" view={view()} meetings={MEETINGS} hubCalendarUrl={null} save={vi.fn()} remove={vi.fn()} />);
+    render(<CalendarView month="2026-11" today="2026-11-30" view={view()} meetings={MEETINGS} save={vi.fn()} remove={vi.fn()} />);
     const list = screen.getByRole("region", { name: "No day set" });
     await userEvent.click(within(list).getByRole("button", { name: "Example SD L10: details" }));
     const panel = screen.getByRole("region", { name: "Example SD L10 details" });
     expect(panel.textContent).toMatch(/No day set/);
     expect(panel.textContent).toMatch(/Time not set/);
-    expect(panel.textContent).toMatch(/set in the Leadership Hub/);
+    // Changed on purpose (the owner, 27 Nov 2026): no "set it in the Leadership Hub"; who may edit it here is said instead.
+    expect(panel.textContent).toMatch(/Only this meeting's attendees and admins can change its time/);
   });
 });
 
@@ -120,12 +124,12 @@ describe("Calendar: every recurring L10 (the owner, 27 Nov 2026)", () => {
   const UNSET = "Example SD L10";
 
   it('"plot the calendar pls for all meetings recurring DM L10 etc": the Leadership, STC DM and Maintenance L10s are all on the calendar', () => {
-    render(<CalendarView month="2026-11" today="2026-11-30" view={view(ALL)} meetings={MEETINGS} hubUrl={HUB} hubCalendarUrl={`${HUB}/meetings/calendar`} save={vi.fn()} remove={vi.fn()} />);
+    render(<CalendarView month="2026-11" today="2026-11-30" view={view(ALL)} meetings={MEETINGS} hubUrl={HUB} save={vi.fn()} remove={vi.fn()} />);
     for (const name of ["Leadership L10", "STC DM L10", "Maintenance L10"]) expect(screen.getAllByRole("button", { name: `${name}: details` }).length).toBeGreaterThan(0);
   });
 
   it("a meeting this app only shows opens in the Leadership Hub, not this app's L10 tab", async () => {
-    render(<CalendarView month="2026-11" today="2026-11-30" view={view(ALL)} meetings={MEETINGS} hubUrl={HUB} hubCalendarUrl={`${HUB}/meetings/calendar`} save={vi.fn()} remove={vi.fn()} />);
+    render(<CalendarView month="2026-11" today="2026-11-30" view={view(ALL)} meetings={MEETINGS} hubUrl={HUB} save={vi.fn()} remove={vi.fn()} />);
     await userEvent.click(screen.getAllByRole("button", { name: "Leadership L10: details" })[0]!);
     const panel = screen.getByRole("region", { name: "Leadership L10 details" });
     expect(within(panel).getByRole("link", { name: "Open the L10 in the Leadership Hub" }).getAttribute("href")).toBe(`${HUB}/meetings/leadership`);
@@ -145,12 +149,14 @@ describe("Calendar: every recurring L10 (the owner, 27 Nov 2026)", () => {
     expect(screen.queryByRole("form", { name: `Set ${UNSET} day and time` })).toBeNull();
   });
 
-  it("a refused save says why, and someone who is not an admin gets no editor", async () => {
+  it("a refused save says why, and someone who may not edit gets no editor", async () => {
     const saveSchedule = vi.fn().mockResolvedValue({ ok: false, reason: "forbidden" });
     render(<CalendarView month="2026-11" today="2026-11-30" view={view(ALL)} meetings={MEETINGS} hubUrl={HUB} canEditSchedules saveSchedule={saveSchedule} save={vi.fn()} remove={vi.fn()} />);
     await userEvent.click(within(screen.getByRole("region", { name: "No day set" })).getByRole("button", { name: `Set ${UNSET} day and time` }));
     await userEvent.click(within(screen.getByRole("form", { name: `Set ${UNSET} day and time` })).getByRole("button", { name: "Save" }));
-    expect(screen.getByRole("alert").textContent).toMatch(/Only Leadership Hub admins/);
+    // Since the owner's 27 Nov 2026 request a meeting's attendees may change its time too, so the refusal names them
+    // (it said "Only Leadership Hub admins"; changed on purpose).
+    expect(screen.getByRole("alert").textContent).toMatch(/Only this meeting's attendees and admins/);
     cleanup();
     render(<CalendarView month="2026-11" today="2026-11-30" view={view(ALL)} meetings={MEETINGS} hubUrl={HUB} save={vi.fn()} remove={vi.fn()} />);
     expect(within(screen.getByRole("region", { name: "No day set" })).queryByRole("button", { name: /Set .* day and time/ })).toBeNull();
@@ -166,6 +172,120 @@ describe("Calendar: every recurring L10 (the owner, 27 Nov 2026)", () => {
     expect(chip.className).toMatch(/line-through/);
     await userEvent.click(chip);
     expect(chip.getAttribute("aria-pressed")).toBe("true");
+  });
+});
+
+/**
+ * The owner, 27 Nov 2026, on a day panel showing "Time not set · STC DM L10": "ability to edit times pls and make it
+ * recurring or just for that specific time and get people notified for time changes if they are attendee for ALL apps".
+ * Click the time to edit it; choose "Every week" or "Only this date". Who may, and who is told, is the Leadership Hub's.
+ * Invented people only.
+ */
+describe("Calendar: edit a meeting's time, every week or only this date (the owner, 27 Nov 2026)", () => {
+  const MEETING = { key: "stc-dm", name: "STC DM L10", team: null, weekday: 1, startTime: null, minutes: 90, leader: "Lee Demo", attendees: ["Lee Demo"] };
+  const DAY: CalendarEvent = { id: "hub:meeting:stc-dm:2026-11-02", source: "leadership-hub", kind: "meeting", title: "STC DM L10", date: "2026-11-02", minutes: 90, href: "/meetings/stc-dm", meetingKey: "stc-dm" };
+  const v = (events: CalendarEvent[]) => ({ from: "2026-11-01", to: "2026-12-12", events, notes: [] });
+
+  it('clicking "Time not set" on Mon, Nov 2 opens the editor; "Only this date" saves that date only', async () => {
+    const saveSchedule = vi.fn();
+    const saveOccurrence = vi.fn().mockResolvedValue({ ok: true });
+    render(<CalendarView month="2026-11" today="2026-11-02" view={v([DAY])} meetings={[MEETING]} canEditSchedules saveSchedule={saveSchedule} saveOccurrence={saveOccurrence} save={vi.fn()} remove={vi.fn()} />);
+    await userEvent.click(screen.getAllByRole("button", { name: /STC DM L10 on 2026-11-02: edit time \(Time not set\)/ })[0]!);
+    const form = screen.getByRole("form", { name: "Set STC DM L10 day and time" });
+    await userEvent.click(within(form).getByRole("radio", { name: "Only this date (Mon, Nov 2)" }));
+    await userEvent.type(form.querySelector('input[type="time"]') as HTMLInputElement, "11:30");
+    await userEvent.click(within(form).getByRole("button", { name: "Save" }));
+    expect(saveOccurrence).toHaveBeenCalledWith({ key: "stc-dm", date: "2026-11-02", time: "11:30", minutes: 90, cancelled: false });
+    expect(saveSchedule).not.toHaveBeenCalled();
+  });
+
+  it('"Every week" changes the weekly time; one date can be cancelled', async () => {
+    const saveSchedule = vi.fn().mockResolvedValue({ ok: true });
+    const saveOccurrence = vi.fn().mockResolvedValue({ ok: true });
+    render(<CalendarView month="2026-11" today="2026-11-02" view={v([DAY])} meetings={[MEETING]} canEditSchedules saveSchedule={saveSchedule} saveOccurrence={saveOccurrence} save={vi.fn()} remove={vi.fn()} />);
+    const edit = () => userEvent.click(screen.getAllByRole("button", { name: /STC DM L10 on 2026-11-02: edit time/ })[0]!);
+    await edit();
+    let form = screen.getByRole("form", { name: "Set STC DM L10 day and time" });
+    await userEvent.type(form.querySelector('input[type="time"]') as HTMLInputElement, "10:00");
+    await userEvent.click(within(form).getByRole("button", { name: "Save" }));
+    expect(saveSchedule).toHaveBeenCalledWith({ key: "stc-dm", weekday: 1, time: "10:00", minutes: 90 });
+    await edit();
+    form = screen.getByRole("form", { name: "Set STC DM L10 day and time" });
+    await userEvent.click(within(form).getByRole("radio", { name: "Only this date (Mon, Nov 2)" }));
+    await userEvent.click(within(form).getByRole("checkbox", { name: "Cancel the meeting on Mon, Nov 2" }));
+    await userEvent.click(within(form).getByRole("button", { name: "Save" }));
+    expect(saveOccurrence).toHaveBeenCalledWith({ key: "stc-dm", date: "2026-11-02", time: null, minutes: null, cancelled: true });
+  });
+
+  it("a date changed on its own says so on the day; without editing, the time is plain text", () => {
+    render(<CalendarView month="2026-11" today="2026-11-02" view={v([{ ...DAY, startTime: "11:30", oneOff: true }])} meetings={[MEETING]} canEditSchedules save={vi.fn()} remove={vi.fn()} />);
+    expect(screen.getAllByRole("button", { name: /edit time \(11:30 AM CT · 90 min\)/ })[0]!.textContent).toMatch(/this date/);
+    cleanup();
+    render(<CalendarView month="2026-11" today="2026-11-02" view={v([DAY])} meetings={[MEETING]} save={vi.fn()} remove={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: /edit time/ })).toBeNull();
+  });
+});
+
+/**
+ * The owner, 27 Nov 2026, on the STC DM L10's panel ("Time not set", "Set it in the Leadership Hub"): "need an edit here
+ * for the time not have to go inside the actual app pls so its easier and it just updates to alll". The time is edited in
+ * the panel itself, on its Time row, and saved to the Leadership Hub (which every app reads).
+ */
+describe('Calendar: edit the time in the meeting panel (the owner, 27 Nov 2026: "need an edit here for the time")', () => {
+  const STC = { key: "stc-dm", name: "STC DM L10", team: "STC District Managers", weekday: 1, startTime: null, minutes: 90, leader: "Robin Example", attendees: ["Robin Example", "Pat Sample"] };
+  it('the Time row says "Time not set" with an edit right there; no link out to the Leadership Hub; "Every week" saves to the Hub', async () => {
+    const saveSchedule = vi.fn(async () => ({ ok: true as const }));
+    render(<CalendarView month="2026-11" today="2026-11-30" view={view()} meetings={[STC]} canEditSchedules saveSchedule={saveSchedule} save={vi.fn()} remove={vi.fn()} />);
+    await userEvent.click(screen.getAllByRole("button", { name: "STC DM L10: details" })[0]!);
+    const panel = screen.getByRole("region", { name: "STC DM L10 details" });
+    const timeRow = within(panel).getByText("Time not set").closest("dd")!;
+    expect(within(panel).queryByRole("link", { name: /Leadership Hub/ })).toBeNull();
+    expect(within(panel).getByRole("link", { name: "Open the L10" })).toBeTruthy();
+    await userEvent.click(within(timeRow as HTMLElement).getByRole("button", { name: "Edit time" }));
+    const form = screen.getByRole("form", { name: "Set STC DM L10 day and time" });
+    await userEvent.type(form.querySelector('input[type="time"]') as HTMLInputElement, "10:00");
+    await userEvent.click(within(form).getByRole("button", { name: "Save" }));
+    expect(saveSchedule).toHaveBeenCalledWith({ key: "stc-dm", weekday: 1, time: "10:00", minutes: 90 });
+    // "to all that has this event" (the owner, 27 Nov 2026): this calendar reloads now; everyone else who has the meeting
+    // sees the new time on their next load in any app (each reads it from the Leadership Hub) and is told there, except the
+    // person who changed it (Leadership Hub: l10_meeting_time_edits_test.sql, l10_meeting_members_test.sql).
+    expect(refresh).toHaveBeenCalled();
+  });
+});
+
+/**
+ * The owner, 27 Nov 2026, on the SD L10s with no day set: "they should be able to edit and set time when they click on
+ * that, either for a specific day or for all recurring". Saved through the Leadership Hub (l10_one_off_any_date_test.sql).
+ */
+describe('a meeting with no day: "either for a specific day or for all recurring" (the owner, 27 Nov 2026)', () => {
+  const NO_DAY = { key: "stc-sd-one", name: "Example SD L10", team: null, weekday: null, startTime: null, minutes: 60, leader: "Lee Demo", attendees: ["Lee Demo"] };
+  const open = async () => {
+    await userEvent.click(within(screen.getByRole("region", { name: "No day set" })).getByRole("button", { name: "Example SD L10: details" }));
+    await userEvent.click(screen.getByRole("button", { name: "Add day and time" }));
+    return screen.getByRole("form", { name: "Set Example SD L10 day and time" });
+  };
+  it('"Only one date": pick the date and time; it saves that date only', async () => {
+    const saveSchedule = vi.fn();
+    const saveOccurrence = vi.fn(async () => ({ ok: true as const }));
+    render(<CalendarView month="2026-11" today="2026-11-30" view={view([])} meetings={[NO_DAY]} canEditSchedules saveSchedule={saveSchedule} saveOccurrence={saveOccurrence} save={vi.fn()} remove={vi.fn()} />);
+    const form = await open();
+    expect(within(form).getByRole("radio", { name: "Every week" })).toHaveProperty("checked", true);
+    await userEvent.click(within(form).getByRole("radio", { name: "Only one date" }));
+    await userEvent.type(within(form).getByLabelText("Date"), "2026-12-03");
+    await userEvent.type(form.querySelector('input[type="time"]') as HTMLInputElement, "14:00");
+    expect(within(form).queryByRole("checkbox")).toBeNull();
+    await userEvent.click(within(form).getByRole("button", { name: "Save" }));
+    expect(saveOccurrence).toHaveBeenCalledWith({ key: "stc-sd-one", date: "2026-12-03", time: "14:00", minutes: 60, cancelled: false });
+    expect(saveSchedule).not.toHaveBeenCalled();
+  });
+  it('"Every week": pick the weekday and time', async () => {
+    const saveSchedule = vi.fn(async () => ({ ok: true as const }));
+    render(<CalendarView month="2026-11" today="2026-11-30" view={view([])} meetings={[NO_DAY]} canEditSchedules saveSchedule={saveSchedule} saveOccurrence={vi.fn()} save={vi.fn()} remove={vi.fn()} />);
+    const form = await open();
+    await userEvent.selectOptions(within(form).getByRole("combobox"), "Thursday");
+    await userEvent.type(form.querySelector('input[type="time"]') as HTMLInputElement, "15:00");
+    await userEvent.click(within(form).getByRole("button", { name: "Save" }));
+    expect(saveSchedule).toHaveBeenCalledWith({ key: "stc-sd-one", weekday: 4, time: "15:00", minutes: 60 });
   });
 });
 

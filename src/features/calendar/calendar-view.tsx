@@ -11,8 +11,8 @@ import { cn } from "@/lib/utils/cn";
 import { monthGrid, monthOf, shiftMonth } from "@/lib/calendar/range";
 import { VISIBILITY_LABEL, type ReminderInput, type ReminderSaveResult } from "@/lib/calendar/reminders";
 import { KINDS, SOURCE_LABELS, type CalendarEvent, type CalendarKind, type CalendarView as View } from "@/lib/calendar/types";
-import { WEEKDAY_NAMES, clock, meetingHref, noDaySet, scheduleLabel, type MeetingDetails, type MeetingScheduleInput, type MeetingScheduleSaveResult } from "@/lib/calendar/meeting-details";
-import { deleteReminderAction, saveMeetingScheduleAction, saveReminderAction } from "./actions";
+import { WEEKDAY_NAMES, clock, meetingHref, noDaySet, scheduleLabel, shortDate, type MeetingDetails, type MeetingOccurrenceInput, type MeetingScheduleInput, type MeetingScheduleSaveResult } from "@/lib/calendar/meeting-details";
+import { deleteReminderAction, saveMeetingOccurrenceAction, saveMeetingScheduleAction, saveReminderAction } from "./actions";
 import { NewEvent } from "./new-event";
 
 /**
@@ -53,31 +53,34 @@ export function cellSummary(events: CalendarEvent[], shown = SHOWN_PER_DAY): { s
 
 /**
  * One L10's details (leadership-hub docs/calendar-design.md §5d, §5e): the day, Central time and length, who leads it and
- * who attends (names only), and Open the L10 (here, or in the Leadership Hub for a meeting this app only shows). An admin
- * can set the day, time and length here (the owner, 27 Nov 2026); it is stored in the Leadership Hub, which checks again
- * that they are one of its admins, so all three apps follow it. Everyone else reads it.
+ * who attends (names only), and Open the L10 (here, or in the Leadership Hub for a meeting this app only shows). Its
+ * attendees and admins change its time here, every week or only on the date it was opened from (the owner, 27 Nov 2026:
+ * "ability to edit times pls and make it recurring or just for that specific time"). It is stored in the Leadership Hub,
+ * which checks who may and tells the other attendees, so all three apps follow it.
  */
 export function MeetingPanel({
   meeting,
-  hubCalendarUrl,
   hubUrl = null,
   canEdit = false,
   startEditing = false,
   saveSchedule = saveMeetingScheduleAction,
+  saveOccurrence,
+  date = null,
   onSaved,
   onClose,
 }: {
   meeting: MeetingDetails;
-  hubCalendarUrl: string | null;
   hubUrl?: string | null;
   canEdit?: boolean;
   startEditing?: boolean;
   saveSchedule?: (input: MeetingScheduleInput) => Promise<MeetingScheduleSaveResult>;
+  saveOccurrence?: (input: MeetingOccurrenceInput) => Promise<MeetingScheduleSaveResult>;
+  /** The date this panel was opened from (a day's meeting), for "Only this date". */
+  date?: string | null;
   onSaved?: () => void;
   onClose: () => void;
 }) {
   const [editing, setEditing] = useState(canEdit && startEditing);
-  const unset = meeting.weekday === null || !meeting.startTime;
   return (
     <Card role="region" aria-label={`${meeting.name} details`} className="p-4">
       <div className="flex flex-wrap items-start gap-2">
@@ -93,7 +96,16 @@ export function MeetingPanel({
         <dt className="text-muted-foreground">When</dt>
         <dd className="m-0">{scheduleLabel(meeting)}</dd>
         <dt className="text-muted-foreground">Time</dt>
-        <dd className="m-0">{meeting.startTime ? `${clock(meeting.startTime)} Central` : "Time not set"}</dd>
+        <dd className="m-0 flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span>{meeting.startTime ? `${clock(meeting.startTime)} Central` : "Time not set"}</span>
+          {/* The owner, 27 Nov 2026, on this panel: "need an edit here for the time not have to go inside the actual app pls
+              so its easier and it just updates to alll". Saved to the Leadership Hub, so every app shows the new time. */}
+          {canEdit && !editing ? (
+            <button type="button" className="rounded-md border border-border-strong px-2 py-0.5 text-xs font-semibold" onClick={() => setEditing(true)}>
+              {meeting.weekday === null ? "Add day and time" : "Edit time"}
+            </button>
+          ) : null}
+        </dd>
         <dt className="text-muted-foreground">Length</dt>
         <dd className="m-0">{meeting.minutes ? `${meeting.minutes} min` : "Not set"}</dd>
         <dt className="text-muted-foreground">Leads it</dt>
@@ -115,25 +127,14 @@ export function MeetingPanel({
         <a href={meetingHref(meeting, hubUrl)} className="font-semibold underline">
           {meeting.opensInApp === false ? "Open the L10 in the Leadership Hub" : "Open the L10"}
         </a>
-        {canEdit && !editing ? (
-          <button type="button" className="rounded-md border border-border-strong px-3 py-1" onClick={() => setEditing(true)}>
-            {unset ? "Add day and time" : "Edit day and time"}
-          </button>
-        ) : null}
-        {!canEdit ? (
-          hubCalendarUrl ? (
-            <a href={hubCalendarUrl} className="underline" rel="noopener noreferrer">
-              Set it in the Leadership Hub
-            </a>
-          ) : (
-            <span className="text-muted-foreground">The day and time are set in the Leadership Hub.</span>
-          )
-        ) : null}
+        {!canEdit ? <span className="text-muted-foreground">Only this meeting&apos;s attendees and admins can change its time.</span> : null}
       </div>
       {canEdit && editing ? (
         <ScheduleForm
           meeting={meeting}
+          date={date}
           save={saveSchedule}
+          saveOccurrence={saveOccurrence}
           onDone={(saved) => {
             setEditing(false);
             if (saved) onSaved?.();
@@ -144,24 +145,51 @@ export function MeetingPanel({
   );
 }
 
-function ScheduleForm({ meeting, save, onDone }: { meeting: MeetingDetails; save: (input: MeetingScheduleInput) => Promise<MeetingScheduleSaveResult>; onDone: (saved: boolean) => void }) {
+function ScheduleForm({
+  meeting,
+  date,
+  save,
+  saveOccurrence,
+  onDone,
+}: {
+  meeting: MeetingDetails;
+  date: string | null;
+  save: (input: MeetingScheduleInput) => Promise<MeetingScheduleSaveResult>;
+  saveOccurrence?: (input: MeetingOccurrenceInput) => Promise<MeetingScheduleSaveResult>;
+  onDone: (saved: boolean) => void;
+}) {
+  // Both choices, always (the owner, 27 Nov 2026, on the SD L10s with no day set: "they should be able to edit and set
+  // time when they click on that, either for a specific day or for all recurring"). Opened from a day: that date; from
+  // the panel or the "No day set" list: pick one.
+  const canOneOff = Boolean(saveOccurrence);
+  const [scope, setScope] = useState<"weekly" | "date">("weekly");
   const [weekday, setWeekday] = useState(meeting.weekday === null ? "" : String(meeting.weekday));
   const [time, setTime] = useState(meeting.startTime ?? "");
   const [minutes, setMinutes] = useState(meeting.minutes ? String(meeting.minutes) : "");
+  const [cancelled, setCancelled] = useState(false);
+  const [onDate, setOnDate] = useState(date ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const oneOff = canOneOff && scope === "date";
+  // Cancelling is for a date the meeting usually falls on; any other date is simply not added.
+  const usualDate = Boolean(onDate && meeting.weekday !== null && new Date(`${onDate}T12:00:00Z`).getUTCDay() === meeting.weekday);
   const submit = async (ev: React.FormEvent) => {
     ev.preventDefault();
     const length = minutes.trim() === "" ? null : Number(minutes);
     if (length !== null && (!Number.isInteger(length) || length < 5 || length > 480)) return setError("The length must be 5 to 480 minutes.");
+    if (oneOff && !/^\d{4}-\d{2}-\d{2}$/.test(onDate)) return setError("Pick the date.");
+    if (oneOff && !cancelled && !time) return setError("Pick the start time for that date.");
     setBusy(true);
     setError(null);
-    const r = await save({ key: meeting.key, weekday: weekday === "" ? null : Number(weekday), time: time || null, minutes: length });
+    const off = cancelled && usualDate;
+    const r = oneOff
+      ? await saveOccurrence!({ key: meeting.key, date: onDate, time: off ? null : time || null, minutes: off ? null : length, cancelled: off })
+      : await save({ key: meeting.key, weekday: weekday === "" ? null : Number(weekday), time: time || null, minutes: length });
     setBusy(false);
     if (!r.ok)
       return setError(
         r.reason === "forbidden"
-          ? "Only Leadership Hub admins can change a meeting's day and time."
+          ? "Only this meeting's attendees and admins can change its time."
           : r.reason === "invalid"
             ? "Check the day, time and length."
             : r.reason === "signin"
@@ -172,31 +200,65 @@ function ScheduleForm({ meeting, save, onDone }: { meeting: MeetingDetails; save
   };
   return (
     <form onSubmit={submit} aria-label={`Set ${meeting.name} day and time`} className="mt-3 grid gap-2 rounded-md border border-border p-3 text-sm sm:grid-cols-3">
-      <label className="grid gap-1">
-        <span className="text-xs text-muted-foreground">Day</span>
-        <select value={weekday} onChange={(e) => setWeekday(e.target.value)} className="rounded border border-border-strong px-2 py-1">
-          <option value="">No day set</option>
-          {WEEKDAY_NAMES.map((d, i) => (
-            <option key={d} value={i}>
-              {d}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="grid gap-1">
-        <span className="text-xs text-muted-foreground">Start time (Central)</span>
-        <input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="rounded border border-border-strong px-2 py-1" />
-      </label>
-      <label className="grid gap-1">
-        <span className="text-xs text-muted-foreground">Length (minutes)</span>
-        <input type="number" min={5} max={480} step={5} value={minutes} onChange={(e) => setMinutes(e.target.value)} className="rounded border border-border-strong px-2 py-1" />
-      </label>
+      {canOneOff ? (
+        <fieldset className="m-0 flex flex-wrap gap-x-4 gap-y-1 border-0 p-0 sm:col-span-3">
+          <legend className="mb-1 text-xs text-muted-foreground">Change it</legend>
+          <label className="flex items-center gap-1.5">
+            <input type="radio" name="scope" checked={scope === "weekly"} onChange={() => setScope("weekly")} />
+            Every week
+          </label>
+          <label className="flex items-center gap-1.5">
+            <input type="radio" name="scope" checked={scope === "date"} onChange={() => setScope("date")} />
+            {date ? `Only this date (${shortDate(date)})` : "Only one date"}
+          </label>
+        </fieldset>
+      ) : null}
+      {oneOff ? (
+        <>
+          {date ? null : (
+            <label className="grid gap-1">
+              <span className="text-xs text-muted-foreground">Date</span>
+              <input type="date" value={onDate} onChange={(e) => setOnDate(e.target.value)} className="rounded border border-border-strong px-2 py-1" aria-label="Date" />
+            </label>
+          )}
+          {usualDate ? (
+            <label className="flex items-center gap-1.5 sm:col-span-3">
+              <input type="checkbox" checked={cancelled} onChange={(e) => setCancelled(e.target.checked)} />
+              Cancel the meeting on {shortDate(onDate)}
+            </label>
+          ) : null}
+        </>
+      ) : (
+        <label className="grid gap-1">
+          <span className="text-xs text-muted-foreground">Day</span>
+          <select value={weekday} onChange={(e) => setWeekday(e.target.value)} className="rounded border border-border-strong px-2 py-1">
+            <option value="">No day set</option>
+            {WEEKDAY_NAMES.map((d, i) => (
+              <option key={d} value={i}>
+                {d}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {oneOff && cancelled && usualDate ? null : (
+        <>
+          <label className="grid gap-1">
+            <span className="text-xs text-muted-foreground">Start time (Central)</span>
+            <input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="rounded border border-border-strong px-2 py-1" />
+          </label>
+          <label className="grid gap-1">
+            <span className="text-xs text-muted-foreground">Length (minutes)</span>
+            <input type="number" min={5} max={480} step={5} value={minutes} onChange={(e) => setMinutes(e.target.value)} className="rounded border border-border-strong px-2 py-1" />
+          </label>
+        </>
+      )}
       {error ? (
         <p role="alert" className="m-0 text-sm text-red-700 sm:col-span-3">
           {error}
         </p>
       ) : null}
-      <p className="m-0 text-xs text-muted-foreground sm:col-span-3">Saved in the Leadership Hub, so the Hub and both Ask apps show it.</p>
+      <p className="m-0 text-xs text-muted-foreground sm:col-span-3">Saved in the Leadership Hub, so the Hub and both Ask apps show it. The meeting&apos;s other attendees are told.</p>
       <div className="flex gap-2 sm:col-span-3">
         <button type="submit" disabled={busy} className="rounded-md bg-foreground px-3 py-1 font-semibold text-background disabled:opacity-60">
           {busy ? "Saving…" : "Save"}
@@ -209,13 +271,27 @@ function ScheduleForm({ meeting, save, onDone }: { meeting: MeetingDetails; save
   );
 }
 
-function EventRow({ e, onDelete, onMeeting, hasDetails }: { e: CalendarEvent; onDelete?: (e: CalendarEvent) => void; onMeeting?: (key: string) => void; hasDetails?: (key: string) => boolean }) {
+function EventRow({
+  e,
+  onDelete,
+  onMeeting,
+  hasDetails,
+  onEditTime,
+}: {
+  e: CalendarEvent;
+  onDelete?: (e: CalendarEvent) => void;
+  onMeeting?: (key: string, date?: string) => void;
+  hasDetails?: (key: string) => boolean;
+  /** Click a meeting's time to change it, every week or only this date (the owner, 27 Nov 2026). */
+  onEditTime?: (key: string, date: string) => void;
+}) {
   const when = e.startTime ? `${clockLabel(e.startTime)} CT${e.minutes ? ` · ${e.minutes} min` : ""}` : e.kind === "meeting" ? "Time not set" : "All day";
+  const editable = e.kind === "meeting" && e.meetingKey && onEditTime && hasDetails?.(e.meetingKey);
   const title =
     e.kind === "reminder" || e.kind === "holiday" ? (
       <span className="font-semibold">{e.title}</span>
     ) : e.kind === "meeting" && e.meetingKey && onMeeting && hasDetails?.(e.meetingKey) ? (
-      <button type="button" onClick={() => onMeeting(e.meetingKey!)} className="font-semibold underline-offset-2 hover:underline" aria-label={`${e.title}: details`}>
+      <button type="button" onClick={() => onMeeting(e.meetingKey!, e.date)} className="font-semibold underline-offset-2 hover:underline" aria-label={`${e.title}: details`}>
         {e.title}
       </button>
     ) : e.href.startsWith("https://") ? (
@@ -230,7 +306,19 @@ function EventRow({ e, onDelete, onMeeting, hasDetails }: { e: CalendarEvent; on
   return (
     <li className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm">
       <span aria-hidden className={cn("size-2 shrink-0 rounded-full", KIND[e.kind].dot)} />
-      <span className="w-32 shrink-0 font-mono text-xs text-muted-foreground tabular-nums">{when}</span>
+      {editable ? (
+        <button
+          type="button"
+          onClick={() => onEditTime!(e.meetingKey!, e.date)}
+          className="w-32 shrink-0 text-left font-mono text-xs text-muted-foreground tabular-nums underline decoration-dotted underline-offset-2"
+          aria-label={`${e.title} on ${e.date}: edit time (${when})`}
+        >
+          {when}
+          {e.oneOff ? " · this date" : ""}
+        </button>
+      ) : (
+        <span className="w-32 shrink-0 font-mono text-xs text-muted-foreground tabular-nums">{when}</span>
+      )}
       <span className="min-w-0 flex-1">
         {title}
         {e.location ? <span className="text-muted-foreground"> · {e.location}</span> : null}
@@ -254,10 +342,10 @@ export function CalendarView({
   month,
   today,
   meetings = [],
-  hubCalendarUrl = null,
   hubUrl = null,
   canEditSchedules = false,
   saveSchedule = saveMeetingScheduleAction,
+  saveOccurrence = saveMeetingOccurrenceAction,
   save = saveReminderAction,
   remove = deleteReminderAction,
 }: {
@@ -266,26 +354,32 @@ export function CalendarView({
   today: string;
   /** Each L10 this person may open here, with its schedule and attendees, from the Leadership Hub. */
   meetings?: MeetingDetails[];
-  /** The Leadership Hub's calendar, where a schedule is set. */
-  hubCalendarUrl?: string | null;
   /** The Leadership Hub, for the meetings this app shows but opens there. */
   hubUrl?: string | null;
-  /** An admin here may set a meeting's day and time (stored in the Hub, which checks again). */
+  /** The person may change a listed meeting's time: its attendees and admins (stored in the Hub, which checks again). */
   canEditSchedules?: boolean;
   saveSchedule?: (input: MeetingScheduleInput) => Promise<MeetingScheduleSaveResult>;
+  saveOccurrence?: (input: MeetingOccurrenceInput) => Promise<MeetingScheduleSaveResult>;
   save?: (input: ReminderInput) => Promise<ReminderSaveResult>;
   remove?: (id: string) => Promise<{ ok: boolean }>;
 }) {
   const router = useRouter();
   const [openMeeting, setOpenMeeting] = useState<string | null>(null);
   const [editOnOpen, setEditOnOpen] = useState(false);
+  // The occurrence the panel was opened from (a day's meeting), and a fresh panel on every open.
+  const [openDate, setOpenDate] = useState<string | null>(null);
+  const [opens, setOpens] = useState(0);
   const meetingByKey = useMemo(() => new Map(meetings.map((m) => [m.key, m])), [meetings]);
   const opened = openMeeting ? meetingByKey.get(openMeeting) : undefined;
   // A meeting opens its panel only when its details were read; otherwise it stays a link to the L10, as before.
-  const onMeeting = (key: string) => {
-    setEditOnOpen(false);
+  const openPanel = (key: string, date: string | null, edit: boolean) => {
+    setOpenDate(date);
+    setEditOnOpen(edit);
     setOpenMeeting(key);
+    setOpens((n) => n + 1);
   };
+  const onMeeting = (key: string, date?: string) => openPanel(key, date ?? null, false);
+  const onEditTime = (key: string, date: string) => openPanel(key, date, true);
   const hasDetails = (key: string) => meetingByKey.has(key);
   const unscheduled = noDaySet(meetings);
   useEffect(() => {
@@ -433,7 +527,7 @@ export function CalendarView({
           {pickedEvents.length ? (
             <ul className="m-0 list-none divide-y divide-border p-0">
               {pickedEvents.map((e) => (
-                <EventRow key={e.id} e={e} onDelete={onDelete} onMeeting={onMeeting} hasDetails={hasDetails} />
+                <EventRow key={e.id} e={e} onDelete={onDelete} onMeeting={onMeeting} hasDetails={hasDetails} onEditTime={canEditSchedules ? onEditTime : undefined} />
               ))}
             </ul>
           ) : (
@@ -451,7 +545,7 @@ export function CalendarView({
             </h2>
             <ul className="m-0 list-none divide-y divide-border p-0">
               {(byDay.get(d) ?? []).map((e) => (
-                <EventRow key={e.id} e={e} onDelete={onDelete} onMeeting={onMeeting} hasDetails={hasDetails} />
+                <EventRow key={e.id} e={e} onDelete={onDelete} onMeeting={onMeeting} hasDetails={hasDetails} onEditTime={canEditSchedules ? onEditTime : undefined} />
               ))}
             </ul>
           </Card>
@@ -460,9 +554,10 @@ export function CalendarView({
 
       {opened ? (
         <MeetingPanel
-          key={`${opened.key}:${editOnOpen}`}
+          key={opens}
           meeting={opened}
-          hubCalendarUrl={hubCalendarUrl}
+          date={openDate}
+          saveOccurrence={saveOccurrence}
           hubUrl={hubUrl}
           canEdit={canEditSchedules}
           startEditing={editOnOpen}
@@ -492,10 +587,7 @@ export function CalendarView({
                     type="button"
                     className="rounded-md border border-border-strong px-2 py-0.5 text-xs"
                     aria-label={`Set ${m.name} day and time`}
-                    onClick={() => {
-                      setEditOnOpen(true);
-                      setOpenMeeting(m.key);
-                    }}
+                    onClick={() => openPanel(m.key, null, true)}
                   >
                     Set day and time
                   </button>

@@ -17,6 +17,7 @@ export const DEFAULT_PREFS: NotificationPrefs = {
   item_added: true,
   item_resolved: true,
   item_archived: true,
+  schedule_changed: true,
   recap_saved: true,
   ai_suggestion: true,
   edited: false,
@@ -33,6 +34,7 @@ export const KIND_LABEL: Record<PrefKind, { title: string; hint: string }> = {
   item_added: { title: "A to-do, rock or headline is added", hint: "In a meeting you attend. If it is yours, you get the to-do or rock note instead." },
   item_resolved: { title: "A to-do or rock is done", hint: "A to-do is ticked done or a rock is marked done, in a meeting you attend." },
   item_archived: { title: "A rock is archived", hint: "In a meeting you attend." },
+  schedule_changed: { title: "A meeting's time changes", hint: "Every week or for one date, in a meeting you attend, from any of the three apps." },
   recap_saved: { title: "A recap is saved", hint: "When a meeting you attend ends and its recap is saved." },
   ai_suggestion: { title: "An assistant suggestion is waiting", hint: "Only once assistant suggestions exist; nothing is sent today." },
   edited: { title: "Someone edits something of mine", hint: "Off by default. Not sent yet." },
@@ -65,6 +67,7 @@ export function headline(n: Pick<AppNotification, "kind" | "actor_name" | "count
     item_added: `${who} added ${what}`,
     item_resolved: `${who} completed ${what}`,
     item_archived: `${who} archived ${what}`,
+    schedule_changed: `${who} changed the meeting time`,
     recap_saved: `A recap was saved`,
     ai_suggestion: `A suggestion is waiting for you`,
     edited: `${who} edited something of yours`,
@@ -76,7 +79,9 @@ export function headline(n: Pick<AppNotification, "kind" | "actor_name" | "count
 }
 
 /** The meeting page a note opens. The meeting's own access check still applies. */
-export function noteHref(n: Pick<AppNotification, "meeting_key">): string {
+export function noteHref(n: Pick<AppNotification, "meeting_key"> & { kind?: string }): string {
+  // A time change opens the Calendar, where the new time shows (the owner, 27 Nov 2026).
+  if (n.kind === "schedule_changed") return "/calendar";
   return /^[a-z][a-z-]*$/.test(n.meeting_key) ? `/meetings/${n.meeting_key}` : "/meetings";
 }
 
