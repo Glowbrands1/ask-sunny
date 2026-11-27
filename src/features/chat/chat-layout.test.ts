@@ -154,10 +154,27 @@ describe("the composer's own footprint", () => {
      */
     expect(COMPOSER_CODE).not.toMatch(/\bImagePlus\b|\bMic\b/);
     expect(COMPOSER_CODE).toMatch(/const attachButton = attaching \?/);
+    // VOICE_INPUT_ENABLED (27 Nov 2026): the composer's only voice control is the shared, gated `VoiceButton`
+    // (it renders nothing unless voice is on for this person and the browser can record). No mic icon of its own.
+    expect(COMPOSER_CODE).toContain('from "@/features/voice/voice-button"');
+  });
+
+  it("the shared mic renders nothing while voice is off for the person", () => {
+    // A gated, working mic is allowed; an always-visible one is not. `VoiceButton` returns null before anything else
+    // unless `useVoiceAccess().enabled` (decided on the server) and the browser can record.
+    const button = code(readFileSync("src/features/voice/voice-button.tsx", "utf8"));
+    expect(button).toMatch(/if \(!enabled \|\| !supported\) return null;/);
+    const access = code(readFileSync("src/features/voice/voice-access.tsx", "utf8"));
+    expect(access).toMatch(/const OFF: VoiceAccess = \{ enabled: false/);
   });
 
   it("renders no permanently mounted helper paragraph", () => {
     expect(COMPOSER_CODE).not.toContain("ANSWER_MODE_HELPER[mode]");
+    /*
+     * VOICE_INPUT_ENABLED (QA, 27 Nov 2026): the one standing line voice adds ("Voice sends your recording to AssemblyAI
+     * to make text.") is not the composer's: the gated `VoiceButton` renders it, only for a person voice is on for.
+     */
+    expect(COMPOSER_CODE).not.toContain("VOICE_HINT");
   });
 });
 
@@ -179,7 +196,11 @@ describe("no chat surface renders a dead control or a source block", () => {
     expect(CHAT_SOURCES.map((entry) => entry.name)).toContain("chat-screen.tsx");
   });
 
-  /* Changed on purpose (Pau, 26 Nov 2026): "Paperclip" and "Attach a file" left this list: the attach control works now. */
+  /*
+   * Changed on purpose (Pau, 26 Nov 2026): "Paperclip" and "Attach a file" left this list: the attach control works now.
+   * VOICE_INPUT_ENABLED (27 Nov 2026): "Mic" and "Voice input" stay: the working mic lives in `features/voice/` and is
+   * used through the gated `VoiceButton`; a mic icon or a "Voice input" label of the chat's own would be ungated.
+   */
   it.each(["ImagePlus", "Mic", "Coming later", "Voice input"])(
     "renders no %s anywhere in chat",
     (token) => {

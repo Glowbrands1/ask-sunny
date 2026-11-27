@@ -5,6 +5,9 @@
  * A model not listed is priced as the dearest one, so an unknown name can
  * only make the guard stricter.
  */
+
+import { USD_PER_HOUR as VOICE_USD_PER_HOUR } from "@/lib/voice/voice-limits";
+
 export interface ModelPrice {
   readonly input: number;
   readonly output: number;
@@ -39,10 +42,21 @@ export interface TokenUsage {
   readonly outputTokens: number | null;
   readonly cacheReadTokens: number | null;
   readonly cacheWriteTokens: number | null;
+  /**
+   * VOICE_INPUT_ENABLED: seconds of audio a speech-to-text call was billed for. An entry with it has no model and is
+   * priced by the hour (`usdPerHour`), never as a model; token entries never carry it.
+   */
+  readonly audioSeconds?: number | null;
+  /** The hourly price of `audioSeconds`, in US dollars. */
+  readonly usdPerHour?: number | null;
 }
 
-/** US dollars for one model call's usage. */
+/** US dollars for one model call's usage (or, for a voice entry, its audio). */
 export function usageCostUsd(usage: TokenUsage): number {
+  if (typeof usage.audioSeconds === "number") {
+    const hourly = typeof usage.usdPerHour === "number" && usage.usdPerHour >= 0 ? usage.usdPerHour : VOICE_USD_PER_HOUR;
+    return (Math.max(0, usage.audioSeconds) / 3600) * hourly;
+  }
   const price = priceFor(usage.model);
   return (
     ((usage.inputTokens ?? 0) * price.input +

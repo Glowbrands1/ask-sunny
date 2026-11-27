@@ -1305,6 +1305,15 @@ describe("new flags default off and wrappers are inert", () => {
           ":(exclude)src/features/calendar/calendar-view.tsx",
           ":(exclude)src/features/calendar/new-event.tsx",
           ":(exclude)src/features/calendar/reminder-card.tsx",
+          // VOICE INPUT IN EVERY AI CHAT BOX (the owner, 27 Nov 2026, Ask Sunny; behind VOICE_INPUT_ENABLED and the
+          // server-only VOICE_INPUT_USERS): one shared mic (`features/voice/`) mounted in the chat composer (above), the
+          // Overview band, the report and reviews ask bars and the L10 assistant, plus the layout's VoiceAccessProvider
+          // (above). Off, or for anybody not on the list, `VoiceButton` renders nothing and each box renders as before.
+          ":(exclude)src/features/voice/*.tsx",
+          ":(exclude)src/features/dashboard/ask-band.tsx",
+          ":(exclude)src/features/reports/ask-sunny-about-report.tsx",
+          ":(exclude)src/features/reviews/reviews-ask-bar.tsx",
+          ":(exclude)src/features/l10/assistant/AssistantPanel.tsx",
           // The named account sees every address without clicking (Pau, 26 Nov 2026: "for my access only";
           // WOVEN_ADDRESS_LIST_EMAILS): the Woven page passes the yes/no down to the directory. Admin page only.
           ":(exclude)src/app/(app)/admin/integrations/woven/[view]/page.tsx",
