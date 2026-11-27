@@ -5,6 +5,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { MAX_SECONDS, MIN_SECONDS } from "@/lib/voice/voice-limits";
 import { VOICE_MESSAGES } from "@/lib/voice/voice-messages";
 
+import { SILENT_PEAK, measurePeak, microphoneName, openMicrophone, silentMicrophoneMessage } from "./mic-choice";
+
 /**
  * ============================================================================
  * THE MIC, RECORDED IN THE BROWSER (VOICE_INPUT_ENABLED)
@@ -43,6 +45,10 @@ export interface RecorderOptions {
   readonly meetingKey?: string | null;
   readonly onText: (result: VoiceResult) => void;
   readonly onError: (message: string) => void;
+  /** The microphone chosen in this browser; the default when none (or when it is not plugged in). */
+  readonly deviceId?: string | null;
+  /** The microphone opened: the list of microphones can be read again, now with their names. */
+  readonly onMicrophoneOpened?: () => void;
 }
 
 /** Whether this browser can record at all. */
@@ -107,6 +113,9 @@ export function useVoiceRecorder(options: RecorderOptions) {
   const afterStop = useRef<"send" | "offer" | "drop">("send");
   const held = useRef<Blob | null>(null);
   const alive = useRef(true);
+  /** The microphone's peak level while recording, and its name, for the "no sound" message. */
+  const stopPeak = useRef<(() => number | null) | null>(null);
+  const heard = useRef<{ peak: number | null; name: string }>({ peak: null, name: "" });
 
   const stopTicker = () => {
     if (ticker.current) clearInterval(ticker.current);
@@ -115,6 +124,8 @@ export function useVoiceRecorder(options: RecorderOptions) {
 
   const releaseMic = useCallback(() => {
     stopTicker();
+    if (stopPeak.current) heard.current = { ...heard.current, peak: stopPeak.current() };
+    stopPeak.current = null;
     for (const track of stream.current?.getTracks() ?? []) {
       track.onended = null;
       track.onmute = null;
@@ -151,12 +162,18 @@ export function useVoiceRecorder(options: RecorderOptions) {
         const response = await fetch("/api/chat/voice", { method: "POST", body: form, signal: controller.signal, credentials: "same-origin" });
         const body = (await response.json().catch(() => null)) as { text?: unknown; traceId?: unknown; error?: unknown } | null;
         if (!alive.current || controller.signal.aborted) return;
+        /*
+         * "I did not hear anything" only when the microphone did send sound; when its level stayed at zero the
+         * microphone itself is the problem, so it is named (the owner, 27 Nov 2026: "i have usb mic not built in").
+         */
+        const silent = heard.current.peak !== null && heard.current.peak <= SILENT_PEAK;
+        const nothing = (message: string) => (silent && message === VOICE_MESSAGES.nothingHeard ? silentMicrophoneMessage(heard.current.name) : message);
         if (response.ok && body && typeof body.text === "string" && typeof body.traceId === "string") {
           if (body.text.trim()) optionsRef.current.onText({ text: body.text, traceId: body.traceId });
-          else optionsRef.current.onError(VOICE_MESSAGES.nothingHeard);
+          else optionsRef.current.onError(nothing(VOICE_MESSAGES.nothingHeard));
         } else {
           const message = body && typeof body.error === "string" && body.error.trim() ? body.error : VOICE_MESSAGES.unavailable;
-          optionsRef.current.onError(message);
+          optionsRef.current.onError(nothing(message));
         }
       } catch {
         if (!alive.current) return;
@@ -192,7 +209,7 @@ export function useVoiceRecorder(options: RecorderOptions) {
     setState({ kind: "asking" });
     let media: MediaStream;
     try {
-      media = await withTimeout(navigator.mediaDevices.getUserMedia({ audio: true }), PERMISSION_WAIT_MS);
+      media = await withTimeout(openMicrophone(optionsRef.current.deviceId), PERMISSION_WAIT_MS);
     } catch {
       if (!alive.current) return;
       setState({ kind: "idle" });
@@ -204,6 +221,9 @@ export function useVoiceRecorder(options: RecorderOptions) {
       return;
     }
     stream.current = media;
+    heard.current = { peak: null, name: microphoneName(media) };
+    stopPeak.current = measurePeak(media);
+    optionsRef.current.onMicrophoneOpened?.();
     const mimeType = pickMimeType();
     let active: MediaRecorder;
     try {

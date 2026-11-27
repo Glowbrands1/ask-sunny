@@ -9,6 +9,7 @@ import { formatCentral } from "@/features/l10/lib/when";
 import { MeetingView } from "@/features/l10/meeting/MeetingView";
 import { Card } from "@/features/l10/ui/ui";
 import { requireAuthenticatedPage } from "@/lib/auth/page";
+import { NotAttendee } from "@/features/l10/NotAttendee";
 
 export const metadata: Metadata = { title: "Version history" };
 export const dynamic = "force-dynamic";
@@ -21,7 +22,8 @@ export default async function VersionPage({ params }: { params: Promise<{ key: s
   const version = Number(raw);
   // Same gate as the meeting itself.
   const opened = await openMeeting(key);
-  if (!opened.ok && opened.reason === "forbidden") notFound();
+  // Only its attendees (and admins) open a meeting; the Hub refused this person (src/features/l10/lib/access.ts).
+  if (!opened.ok && opened.reason === "forbidden") return <NotAttendee />;
   const [old, row] = opened.ok ? await Promise.all([getVersion(key, version), listHistory(key, 1, version + 1)]) : [null, null];
   if (!opened.ok || !old?.ok || !row?.ok) {
     return (
