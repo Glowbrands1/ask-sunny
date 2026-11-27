@@ -114,7 +114,7 @@ describe("hidden for everyone until rolled out (Pau, 27 Nov 2026: \"hide this fo
 
   it("the page is a 404 for anyone the server does not let see it (the verified session, never the browser)", () => {
     const page = readFileSync(join(APP, "whats-new", "page.tsx"), "utf8");
-    expect(page).toMatch(/if \(!whatsNewVisibleFor\(\(await pageIdentity\(\)\) \?\? \{\}\)\) notFound\(\);/);
+    expect(page).toMatch(/if \(!whatsNewVisibleFor\(identity \?\? \{\}\)\) notFound\(\);/);
     const layout = readFileSync(join(APP, "layout.tsx"), "utf8");
     expect(layout, "the layout hands the sidebar the server's yes/no").toMatch(/<WhatsNewAccessProvider visible=\{whatsNew\}>/);
     expect(layout, "the layout must not read the list itself").not.toMatch(/process\.env\.WHATS_NEW_USERS/);
