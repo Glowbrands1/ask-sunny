@@ -13,6 +13,7 @@ import { hrQueueSummary } from "@/lib/forms/hr-approval";
 import { siblingHrWaiting } from "@/lib/partner/sibling-hr-waiting";
 import { voiceInputEnabledFor } from "@/lib/voice/voice-config";
 import { VoiceAccessProvider, type VoiceAccess } from "@/features/voice/voice-access";
+import { CalendarPopup } from "@/features/calendar/calendar-popup";
 
 /**
  * COUNTS, NOT HUES — the rail's overdue badge.
@@ -104,8 +105,22 @@ async function voiceForLayout(): Promise<VoiceAccess> {
   }
 }
 
+/**
+ * THE FLOATING CALENDAR (the owner, 27 Nov 2026): for the people the Calendar page itself lets in (view_overview), the
+ * pop-up's key for this person (their user id, to remember where they left it). Null: no pop-up.
+ */
+async function calendarPopupFor(): Promise<{ userKey: string } | null> {
+  try {
+    const identity = await pageIdentity();
+    if (!identity?.verified || !identity.subject || !(await pageCan("view_overview"))) return null;
+    return { userKey: identity.subject };
+  } catch {
+    return null;
+  }
+}
+
 export default async function AppLayout({ children }: { children: ReactNode }) {
-  const [overdueFollowUps, showAppSwitcherBase, showLeadershipHub, meetingTabs, bell, voice] = await Promise.all([
+  const [overdueFollowUps, showAppSwitcherBase, showLeadershipHub, meetingTabs, bell, voice, calendarPopup] = await Promise.all([
     overdueCount(),
     pageShowsAppSwitcher(),
     pageShowsLeadershipHub(),
@@ -113,6 +128,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     l10TabsForLayout(),
     bellForLayout(),
     voiceForLayout(),
+    calendarPopupFor(),
   ]);
   // A listed leader needs the menu to reach the tab, so the menu opens for them too.
   const showAppSwitcher = showAppSwitcherBase || showLeadershipHub;
@@ -126,6 +142,8 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       bell={bell}
     >
       {children}
+      {/* Mounted here so it stays open, where it was, while the person moves between pages. */}
+      {calendarPopup ? <CalendarPopup userKey={calendarPopup.userKey} /> : null}
     </AppShell>
     </VoiceAccessProvider>
   );

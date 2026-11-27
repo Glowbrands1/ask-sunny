@@ -1309,6 +1309,10 @@ describe("new flags default off and wrappers are inert", () => {
           // follow-up date in Form Monitoring's row and on the form (both files excluded above). Shown only on a form with
           // an open follow-up; it reads and writes through its own route, whose checks decide. No chat behaviour changes.
           ":(exclude)src/features/forms/follow-up-owner-picker.tsx",
+          // THE FLOATING CALENDAR (the owner, 27 Nov 2026: "can we make the calendar pop up and be resizable so anytime we
+          // go in other tabs it stays there"): a launcher button and a window over the app, mounted in the layout, showing
+          // the Calendar page's own view. No chat or form behaviour changes.
+          ":(exclude)src/features/calendar/calendar-popup.tsx",
           // VOICE INPUT IN EVERY AI CHAT BOX (the owner, 27 Nov 2026, Ask Sunny; behind VOICE_INPUT_ENABLED and the
           // server-only VOICE_INPUT_USERS): one shared mic (`features/voice/`) mounted in the chat composer (above), the
           // Overview band, the report and reviews ask bars and the L10 assistant, plus the layout's VoiceAccessProvider
