@@ -77,7 +77,6 @@ export type CalendarPopupData =
       view: CalendarViewData;
       meetings: MeetingDetails[];
       hubUrl: string | null;
-      hubCalendarUrl: string | null;
       canEditSchedules: boolean;
     }
   | { ok: false };
@@ -95,7 +94,7 @@ export async function loadCalendarPopupAction(month: string | null): Promise<Cal
   const m = month && isMonth(month) ? month : monthOf(today);
   const { from, to } = monthGrid(m);
   try {
-    const [result, details] = await Promise.all([loadCalendarFor(identity, { from, to }, { origin: "", includeHub: true }), meetingDetailsFromHub(identity.email)]);
+    const [result, details] = await Promise.all([loadCalendarFor(identity, { from, to }, { origin: "", includeHub: true, includeHolidays: true }), meetingDetailsFromHub(identity.email)]);
     if (!result.ok) return { ok: false };
     const hub = leadershipHubUrl();
     return {
@@ -105,7 +104,6 @@ export async function loadCalendarPopupAction(month: string | null): Promise<Cal
       view: result.view,
       meetings: details.state === "ok" ? details.meetings : [],
       hubUrl: hub || null,
-      hubCalendarUrl: hub ? `${hub}/meetings/calendar` : null,
       canEditSchedules: true,
     };
   } catch {
