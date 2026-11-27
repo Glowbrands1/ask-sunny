@@ -10,6 +10,7 @@ import { formatCentral } from "@/features/l10/lib/when";
 import { HistoryList } from "@/features/l10/meeting/_components/HistoryList";
 import { Card } from "@/features/l10/ui/ui";
 import { requireAuthenticatedPage } from "@/lib/auth/page";
+import { NotAttendee } from "@/features/l10/NotAttendee";
 
 export const metadata: Metadata = { title: "Version history" };
 export const dynamic = "force-dynamic";
@@ -22,7 +23,8 @@ export default async function HistoryPage({ params, searchParams }: { params: Pr
   if (!isMeetingKey(key)) notFound();
   // Same gate as the meeting itself: a meeting you cannot open here has no history page either.
   const opened = await openMeeting(key);
-  if (!opened.ok && opened.reason === "forbidden") notFound();
+  // Only its attendees (and admins) open a meeting; the Hub refused this person (src/features/l10/lib/access.ts).
+  if (!opened.ok && opened.reason === "forbidden") return <NotAttendee />;
   if (!opened.ok) return <Message meetingKey={key}>The version history could not be loaded just now. Please try again in a minute.</Message>;
   const info = opened.meeting.info;
 
