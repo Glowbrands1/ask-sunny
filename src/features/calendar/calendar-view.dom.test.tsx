@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { CalendarEvent } from "@/lib/calendar/types";
-import { CalendarView, cellSummary, dayLabel, monthLabel } from "./calendar-view";
+import { CalendarView, PEEK_DELAY_MS, cellSummary, dayLabel, monthLabel, placePopover } from "./calendar-view";
 
 const { refresh } = vi.hoisted(() => ({ refresh: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh, push: vi.fn() }) }));
@@ -345,5 +345,72 @@ describe('Calendar: a meeting the manager does not attend (the owner, 27 Nov 202
     await userEvent.click(within(day).getByRole("button", { name: "Leadership L10: details" }));
     expect(screen.getByRole("alert", { name: "Not an attendee" }).textContent).toMatch(/^You are not an attendee of this meeting/);
     expect(screen.queryByRole("region", { name: /Leadership L10 details/ })).toBeNull();
+  });
+});
+
+/**
+ * The owner, 27 Nov 2026, on a busy day that read "+1 meeting · +1 follow-up · +1 approval": "when i click can i have a
+ * small pop up or if i hover pls all apps". A day's events open in a small pop-up beside it. Invented people only.
+ */
+describe('Calendar: a day\'s pop-up ("when i click can i have a small pop up or if i hover")', () => {
+  const MEETINGS = [{ key: "stc-dm", name: "STC DM L10", team: null, weekday: 1, startTime: "10:00", minutes: 90, leader: "Robin Example", attendees: ["Robin Example"] }];
+  const popup = () => screen.getByRole("dialog", { name: "Monday, Nov 30: everything on this day" });
+
+  it("clicking a busy day lists everything on it, including what the cell only counts (+2 follow-ups, +1 approval, +2 reminders)", async () => {
+    render(<CalendarView month="2026-11" today="2026-11-30" view={view()} save={vi.fn()} remove={vi.fn()} />);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Monday, Nov 30: 7 events" }));
+    const items = within(popup()).getAllByRole("listitem");
+    expect(items).toHaveLength(7);
+    expect(popup().textContent).toMatch(/Coaching Form 3/);
+    expect(popup().textContent).toMatch(/With HR: Policy Review/);
+    expect(popup().textContent).toMatch(/Prep huddle · from Casey Example/);
+    expect(within(popup()).getByText("Overdue")).toBeTruthy();
+    expect(within(popup()).getByRole("link", { name: "STC DM L10" }).getAttribute("href")).toBe("/meetings/stc-dm");
+  });
+
+  it("stays open until ✕, Escape, a click elsewhere or a second click on the day", async () => {
+    render(<CalendarView month="2026-11" today="2026-11-30" view={view()} save={vi.fn()} remove={vi.fn()} />);
+    const cell = screen.getByRole("button", { name: "Monday, Nov 30: 7 events" });
+    await userEvent.click(cell);
+    await userEvent.click(within(popup()).getByRole("button", { name: "Close day pop-up" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await userEvent.click(cell);
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await userEvent.click(cell);
+    await userEvent.click(screen.getByRole("heading", { name: "November 2026" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await userEvent.click(cell);
+    await userEvent.click(cell);
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("hovering a day shows it after a moment and hides it when the pointer leaves; an empty day shows none", async () => {
+    render(<CalendarView month="2026-11" today="2026-11-30" view={view()} save={vi.fn()} remove={vi.fn()} />);
+    await userEvent.hover(screen.getByRole("button", { name: "Monday, Nov 30: 7 events" }));
+    expect(await screen.findByRole("dialog", { name: "Monday, Nov 30: everything on this day" }, { timeout: PEEK_DELAY_MS * 4 })).toBeTruthy();
+    await userEvent.unhover(screen.getByRole("button", { name: "Monday, Nov 30: 7 events" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await userEvent.hover(screen.getByRole("button", { name: "Sunday, Nov 29: 0 events" }));
+    await new Promise((r) => setTimeout(r, PEEK_DELAY_MS * 2));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("a meeting in the pop-up opens its details and the pop-up closes", async () => {
+    render(<CalendarView month="2026-11" today="2026-11-30" view={view()} meetings={MEETINGS} save={vi.fn()} remove={vi.fn()} />);
+    await userEvent.click(screen.getByRole("button", { name: "Monday, Nov 30: 7 events" }));
+    await userEvent.click(within(popup()).getByRole("button", { name: "STC DM L10: details" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByRole("region", { name: "STC DM L10 details" })).toBeTruthy();
+  });
+
+  it("sits under the day, flips above it near the bottom, and never leaves the window", () => {
+    const win = { width: 1000, height: 800 };
+    const size = { width: 300, height: 200 };
+    expect(placePopover({ top: 100, bottom: 200, left: 50, right: 190 }, size, win)).toEqual({ top: 204, left: 50 });
+    expect(placePopover({ top: 600, bottom: 700, left: 50, right: 190 }, size, win)).toEqual({ top: 396, left: 50 });
+    expect(placePopover({ top: 100, bottom: 200, left: 850, right: 990 }, size, win)).toEqual({ top: 204, left: 690 });
+    expect(placePopover({ top: 10, bottom: 700, left: 50, right: 190 }, size, win)).toEqual({ top: 592, left: 50 });
   });
 });
