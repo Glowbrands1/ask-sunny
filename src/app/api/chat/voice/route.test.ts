@@ -432,3 +432,61 @@ describe("a transcription", () => {
     expect(all).not.toContain("test-key-not-real");
   });
 });
+
+describe('"i said Curt, it spelled it as Kurt" (the owner, 27 Nov 2026)', () => {
+  /*
+   * The report's people are swapped for invented ones of the same shape: the directory's "Cade Holloway", heard by the
+   * provider as "Kade Holloway". The real hint builder runs here (with a fake roster), so this pins both halves: the
+   * name is SENT as a hint on the very first recording, and a mishearing that still comes back is corrected before the
+   * text reaches the box.
+   */
+  const ROSTER = [
+    { id: "e1", firstName: "Cade", lastName: "Holloway", preferredFirstName: null, salonIds: ["loc-0001"] },
+    { id: "e2", firstName: "Orla", lastName: "Fennick", preferredFirstName: null, salonIds: ["loc-0001"] },
+  ];
+
+  async function withRealHints() {
+    const { chatVoiceHints } = await import("@/lib/voice/keyterms");
+    let sent: Record<string, unknown> | null = null;
+    Object.assign(voiceRouteDeps, {
+      chatHints: (input: Parameters<typeof chatVoiceHints>[0]) =>
+        chatVoiceHints(input, {
+          ownConversation: async () => null,
+          scopedRoster: async (scope) => (scope === SCOPE ? ROSTER : []),
+          publishedFormNames: async () => ["Corrective Action Form"],
+          salonName: () => null,
+          scopedPlaces: () => [],
+        }),
+      fetch: (async (_url: string, init: RequestInit) => {
+        providerCalls += 1;
+        const config = (init.body as FormData).get("config") as Blob;
+        sent = JSON.parse(await config.text()) as Record<string, unknown>;
+        return provider();
+      }) as unknown as typeof fetch,
+    } satisfies Partial<VoiceRouteDeps>);
+    return () => sent;
+  }
+
+  it("the scoped roster is sent as hints on the first recording, before the name was ever typed", async () => {
+    const sent = await withRealHints();
+    provider = () => providerOk("Hey can you create a CA for Cade Holloway please");
+    await POST(request());
+    expect(sent()?.keyterms_prompt).toEqual(expect.arrayContaining(["Cade Holloway", "Orla Fennick", "Corrective Action Form"]));
+  });
+
+  it("i said Cade, it spelled it as Kade: the box gets the directory spelling", async () => {
+    await withRealHints();
+    provider = () => providerOk("Hey can you create a CA for Kade Holloway please");
+    const { status, body } = await read(await POST(request()));
+    expect(status).toBe(200);
+    expect(body).toMatchObject({ text: "Hey can you create a CA for Cade Holloway please" });
+  });
+
+  it("the roster never reaches the browser or a log line", async () => {
+    await withRealHints();
+    provider = () => providerOk("Kade Holloway was late");
+    const { body } = await read(await POST(request()));
+    expect(Object.keys(body as object).sort()).toEqual(["text", "traceId"]);
+    expect(lines.join("\n")).not.toMatch(/Holloway|Fennick|Cade|Kade/);
+  });
+});

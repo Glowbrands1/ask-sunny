@@ -149,7 +149,10 @@ describe("cost: Ask Sunny's spend guard comes first, and web searches are record
 
 describe("attachments: the Hub's limits, refused with the Hub's words (413)", () => {
   it.each([
-    ["a type the Hub does not take", [{ ...pdf, mediaType: "application/zip" }], "Only images and PDFs can be attached."],
+    // The Hub takes Word, Excel, CSV and text too since 27 Nov 2026 (Hub PR #128), so its refusal names them.
+    ["a type the Hub does not take", [{ ...pdf, mediaType: "application/zip" }], "Only images (PNG, JPG, GIF, WebP), PDFs, Word (.docx), Excel (.xlsx) and text files can be attached."],
+    ["an older Word file", [{ ...pdf, filename: "Plan.doc", mediaType: "application/msword", url: "data:application/msword;base64,AAAA" }], "Plan.doc is an older Word file (.doc), which can't be read. Re-save it as .docx or PDF and attach it again."],
+    ["an older Excel file", [{ ...pdf, filename: "Sales.xls", mediaType: "application/vnd.ms-excel", url: "data:application/vnd.ms-excel;base64,AAAA" }], "Sales.xls is an older Excel file (.xls), which can't be read. Re-save it as .xlsx or PDF and attach it again."],
     ["over 10 MB", [{ ...pdf, url: `data:application/pdf;base64,${"A".repeat(Math.ceil((10 * 1024 * 1024 * 1.05 * 4) / 3))}` }], "Each file must be 10 MB or smaller."],
     ["six files", Array.from({ length: 6 }, () => pdf), "Attach at most 5 files per message."],
     ["a remote address", [{ ...pdf, url: "https://elsewhere.example.test/plan.pdf" }], "Attachments must be uploaded from your device."],
@@ -171,5 +174,37 @@ describe("attachments: the Hub's limits, refused with the Hub's words (413)", ()
       ["file", "application/pdf", "Plan.pdf"],
       ["file", "image/jpeg", "board.jpg"],
     ]);
+  });
+  it("a Word document, an Excel workbook and a CSV reach the model as their text (the Hub's list since 27 Nov 2026)", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    const XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    const ExcelJS = (await import("exceljs")).default;
+    const book = new ExcelJS.Workbook();
+    book.addWorksheet("Week 47").addRow(["Location", "Guests"]);
+    book.getWorksheet("Week 47")!.addRow(["North", 120]);
+    const xlsx = Buffer.from(await book.xlsx.writeBuffer());
+    const word = readFileSync(join(process.cwd(), "src/test/fixtures/forms/coaching-form.docx"));
+    const dataUrl = (type: string, bytes: Buffer) => `data:${type};base64,${bytes.toString("base64")}`;
+    const { POST } = await import("@/app/api/l10/assistant/route");
+    const res = await POST(
+      post(
+        ask([
+          { type: "text", text: "Compare these" },
+          { type: "file", mediaType: DOCX, url: dataUrl(DOCX, word), filename: "coaching-form.docx" },
+          { type: "file", mediaType: XLSX, url: dataUrl(XLSX, xlsx), filename: "week-47.xlsx" },
+          { type: "file", mediaType: "text/csv", url: dataUrl("text/csv", Buffer.from("Location,Guests\nSouth,98")), filename: "south.csv" },
+          pdf,
+        ]),
+      ),
+    );
+    expect(res.status).toBe(200);
+    const [msg] = state.streamCalls[0].messages as { role: string; content: { type: string; mediaType?: string; text?: string }[] }[];
+    expect(msg.content.map((c) => c.type)).toEqual(["text", "text", "text", "text", "file"]);
+    expect(msg.content[1].text).toMatch(/^ATTACHED FILE: coaching-form\.docx \(Word document\)[\s\S]*Acknowledgement of Coaching/);
+    expect(msg.content[2].text).toMatch(/^ATTACHED FILE: week-47\.xlsx \(Excel workbook\)[\s\S]*Sheet: Week 47\nLocation \| Guests\nNorth \| 120/);
+    expect(msg.content[3].text).toContain("Location,Guests\nSouth,98");
+    expect(msg.content[4].mediaType).toBe("application/pdf");
   });
 });

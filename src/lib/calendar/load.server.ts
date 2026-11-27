@@ -17,7 +17,10 @@ import type { CalendarEvent, CalendarView, SourceResult } from "./types";
  *
  * - Follow-ups: the Overview's queue for this account (`pageFormsAccess` + `readFollowUpQueue`), so exactly the forms
  *   the forms pages show them, and the one overdue rule (`followUpState`).
- * - HR approvals: HR's queue for an approver; otherwise only the forms this person sent to HR (`readHrApprovalsFor`).
+ * - HR approvals: HR's queue for an approver (only the forms still waiting on HR's decision, `needsHrDecision`: a form
+ *   sent back or rejected is waiting on the manager and is off HR's calendar, as it is off HR's count and bell); for an
+ *   administrator, those same forms as "With HR" (the owner, 27 Nov 2026: "all admins and [HR] can see this and the
+ *   creator"); otherwise only the forms this person sent to HR (`readHrApprovalsFor`).
  * - Google Reviews: a weekly check per salon the person covers, only with `view_google_reviews`.
  * - Reminders: their own and their team's.
  * - L10 meetings and Hub reminders: from the Leadership Hub (`includeHub`), never stored here.
@@ -28,7 +31,8 @@ export type CalendarFor = { ok: true; view: CalendarView } | { ok: false; reason
 export async function loadCalendarFor(
   identity: AuthenticatedIdentity,
   range: { from: string; to: string },
-  options: { origin: string; includeHub: boolean; now?: Date },
+  /** includeHolidays: US holidays (src/config/holidays.ts) for this person's own calendar; never in a partner answer. */
+  options: { origin: string; includeHub: boolean; includeHolidays?: boolean; now?: Date },
 ): Promise<CalendarFor> {
   if (!validRange(range.from, range.to)) return { ok: false, reason: "invalid" };
   const matrix = activePermissionMatrix();
@@ -97,12 +101,12 @@ export async function loadCalendarFor(
   });
 
   const hr = attempt(async () => {
-    const [{ readHrApprovalsFor }, { overdueFrom, isOverdue }] = await Promise.all([import("@/lib/forms/hr-approval"), import("@/lib/forms/hr-approval-rules")]);
+    const [{ readHrApprovalsFor, listHrQueue, needsHrDecision }, { overdueFrom, isOverdue }] = await Promise.all([import("@/lib/forms/hr-approval"), import("@/lib/forms/hr-approval-rules")]);
     const read = await readHrApprovalsFor(identity.subject, identity.verified, now);
     const due = (at: string | null) => (at ? overdueFrom(new Date(at)).date : today);
     let facts: HrFact[] = [];
     if (read.kind === "hr") {
-      facts = read.queue.map((r) => ({ id: r.id, line: r.line, dueDate: due(r.requestedAt), overdue: r.overdue, locationName: r.locationName, label: "Approve" }));
+      facts = read.queue.filter(needsHrDecision).map((r) => ({ id: r.id, line: r.line, dueDate: due(r.requestedAt), overdue: r.overdue, locationName: r.locationName, label: "Approve" }));
     } else if (read.kind === "manager") {
       facts = read.forms
         .filter((r) => r.state === "pending" || r.state === "changes_requested")
@@ -113,6 +117,17 @@ export async function loadCalendarFor(
           (await mayNameEmployee(createdBy)) || !bareLine ? f : { ...f, line: bareLine, nameHidden: true },
         ),
       );
+    }
+    // An administrator who is not an HR approver sees what is waiting on HR (with the name), besides their own forms.
+    if (read.kind !== "hr" && read.kind !== "off" && identity.verified && canAccessAdminConsole(identity.role)) {
+      const queue = await listHrQueue({ id: identity.subject, role: null, verified: true, scope: null, visibility: null, hrApprover: true } as never, now);
+      const mine = new Set(facts.map((f) => f.id));
+      facts = [
+        ...facts,
+        ...queue
+          .filter((r) => needsHrDecision(r) && !mine.has(r.id))
+          .map((r) => ({ id: r.id, line: r.line, dueDate: due(r.requestedAt), overdue: r.overdue, locationName: r.locationName, label: "With HR" })),
+      ];
     }
     return hrEvents(facts, today, origin);
   });
@@ -133,6 +148,20 @@ export async function loadCalendarFor(
 
   const hub: Promise<SourceResult> = options.includeHub ? meetingEventsFromHub(identity.email, range) : Promise.resolve({ source: "leadership-hub", state: "off" });
 
-  const results = await Promise.all([followUps, hr, reviews, reminders, hub]);
+  const holidays: Promise<SourceResult> = (async () => {
+    if (!options.includeHolidays) return { source: "ask-sunny", state: "off" } as SourceResult;
+    const { holidaysBetween, holidayId, holidayTitle } = await import("./holidays");
+    const events: CalendarEvent[] = holidaysBetween(range.from, range.to).map((h) => ({
+      id: holidayId("sunny", h),
+      source: "ask-sunny",
+      kind: "holiday",
+      title: holidayTitle(h),
+      date: h.date,
+      href: `${origin}/calendar`,
+    }));
+    return { source: "ask-sunny", state: "ok", events } as SourceResult;
+  })();
+
+  const results = await Promise.all([followUps, hr, reviews, reminders, hub, holidays]);
   return { ok: true, view: mergeSources(range.from, range.to, results) };
 }

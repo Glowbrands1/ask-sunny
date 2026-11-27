@@ -35,6 +35,7 @@ import {
 import {
   awaitingHr,
   FormNotEditableNowError,
+  hiddenWhileAwaitingHr,
   isCreatorOrSender,
   isHeldForHr,
   redactHrApproval,
@@ -229,9 +230,10 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       );
       /*
        * AN OPEN REVISION THIS READER MAY NOT SEE (owner, 23 Nov 2026: no leaks). "Edit as new draft" returns the
-       * revision already open, which may be someone else's waiting for HR. It is not handed back, nor is why.
+       * revision already open, which may be someone else's waiting for HR. It is not handed back, nor is why. An
+       * administrator may open such a form by its link (owner, 27 Nov 2026: "yes admin"), but is not steered into it here.
        */
-      if (instance.id !== id && !actorMaySeeInstance(actor, instance)) throw new FormNotEditableNowError();
+      if (instance.id !== id && (!actorMaySeeInstance(actor, instance) || hiddenWhileAwaitingHr(actor, instance))) throw new FormNotEditableNowError();
       return NextResponse.json({ instance: redactHrApproval(actor, instance) });
     }
 

@@ -306,6 +306,7 @@ export function buildRulesBook(config: AppConfig): readonly RulesSection[] {
       ...(content.statsReports ? ["Report figures belong to the period and data date read_stats gives for their report (report_periods): say them with the figures, and never add, compare or combine figures of two different periods or data dates as one."] : []),
       "Which training videos there are, or one on a topic (\"is there a video on <topic>?\"), comes only from read_videos; the Manager Resources links only from read_manager_resources. Name only the videos and links they list; when they list none, say so.",
       "Which AI Training lessons there are, or one on a topic (\"is there a lesson on <topic>?\"), comes only from read_ai_training: name only the lessons it lists, by title, track and module.",
+      "Which documents the Knowledge Base holds, when one was last updated or whether one failed (\"which documents do we have?\", \"did any document fail to sync?\") comes only from read_knowledge_documents: name only the documents it lists, with their status and date. It is for administrators only: when it refuses, say so in one line and name no document. What a document says is still search_knowledge's.",
       "Who has done, is due, missed or has more time on their AI assignments (AI Training > Assignments, \"who hasn't done their AI assignment?\") comes only from read_ai_assignments: give the people and halves as it lists them. It is only for the people the tracker was set up for: when it refuses, say so in one line and give nothing from it.",
     ],
   },
