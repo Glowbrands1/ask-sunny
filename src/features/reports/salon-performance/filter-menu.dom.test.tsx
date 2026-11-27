@@ -69,11 +69,17 @@ beforeAll(() => {
   }
 });
 
-afterEach(() => {
+afterEach(async () => {
   // Explicit, because Testing Library only registers its own cleanup when
   // vitest globals are enabled. Without this the previous test's markup stays
   // in the document and every query finds two of everything.
   cleanup();
+  // An open menu's Radix FocusScope dispatches its unmount event from a
+  // setTimeout(0). After the file's last test that timer could outlive jsdom and
+  // throw "parameter 1 is not of type 'Event'" as an unhandled error, failing the
+  // whole job though every test passed (main's CI on d521261, 27 Nov 2026). Let it
+  // run while the document still exists.
+  await new Promise((resolve) => setTimeout(resolve, 0));
   vi.restoreAllMocks();
 });
 
