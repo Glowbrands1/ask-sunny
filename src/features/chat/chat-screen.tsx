@@ -1141,6 +1141,7 @@ export function ChatScreen() {
           onSubmit={() => void send(input, { files: pendingFiles, voice: voiceDraft.take(input) })}
           conversationId={activeId}
           onVoiceText={voiceDraft.note}
+          onVoiceSend={(text, traceId) => void send(text, { files: pendingFiles, voice: { inputMode: "voice", voiceTraceId: traceId, voiceEdited: false } })}
           mode={mode}
           onModeChange={setMode}
           busy={busy}

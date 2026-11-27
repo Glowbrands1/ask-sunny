@@ -5,15 +5,12 @@ import { noteSpendUser } from "@/lib/ai/spend-meter";
 import { withSpendMeter } from "@/lib/ai/spend-meter-run";
 import { assertWithinRateLimit } from "@/lib/api/respond";
 import { AiError } from "@/lib/ai/errors";
-import { authorizeRequest } from "@/lib/auth/server";
-import { AuthError } from "@/lib/auth/types";
 import { isClientConversationId } from "@/lib/chat/client-ids";
 import { isSameOriginRequest } from "@/lib/reviews/gbp/csrf";
-import { l10Viewer, listMyMeetings } from "@/features/l10/data.server";
 import { isMeetingKey } from "@/features/l10/lib/config";
-import { voiceInputEnabledFor } from "@/lib/voice/voice-config";
 import { VOICE_MESSAGES, tryAgainIn, type VoiceErrorCode } from "@/lib/voice/voice-messages";
 import { voiceRouteDeps } from "@/lib/voice/voice-route-deps";
+import { checkVoiceCaller } from "@/lib/voice/voice-caller";
 import { transcribeVoice, type TranscribeOutcome } from "@/lib/voice/transcribe";
 import { correctSpokenNames } from "@/lib/voice/spoken-names";
 import { VoiceUploadError, declaredAudioType, openVoiceUpload, sniffAudio, type VoiceUpload } from "@/lib/voice/voice-upload";
@@ -165,38 +162,13 @@ async function handle(request: Request): Promise<Response> {
   const fields = parsed.data;
   const surface: VoiceSurface = fields.surface;
 
-  /* b. The box's own access, checked again. */
-  let caller: Caller;
-  if (surface === "l10") {
-    const viewer = await l10Viewer();
-    if (!viewer) {
-      await upload.cancel();
-      return notFound();
-    }
-    const meetings = await listMyMeetings().catch(() => []);
-    if (!meetings.some((meeting) => meeting.key === fields.meetingKey)) {
-      await upload.cancel();
-      return notFound();
-    }
-    caller = { userId: viewer.userId, email: viewer.email, role: viewer.role, scope: viewer.scope };
-  } else {
-    try {
-      const context = await authorizeRequest(request, "ask_questions");
-      caller = { userId: context.identity.subject, email: context.identity.email, role: context.identity.role, scope: context.identity.scope };
-    } catch (error) {
-      await upload.cancel();
-      if (error instanceof AuthError) {
-        return refuse(error.status, error.status === 401 ? "unauthenticated" : "forbidden", error.message);
-      }
-      throw error;
-    }
-  }
-
-  /* c. Voice on for this verified email, or nothing is here. */
-  if (!voiceInputEnabledFor({ email: caller.email })) {
+  /* b, c. The box's own access, checked again, then voice on for that verified email (`voice-caller.ts`). */
+  const check = await checkVoiceCaller(request, surface, fields.meetingKey);
+  if (!check.ok) {
     await upload.cancel();
-    return notFound();
+    return check.status === 404 ? notFound() : refuse(check.status, check.code, check.message);
   }
+  const caller: Caller = check.caller;
 
   /* d. The cheap first guard, then the monthly budget (and the daily cap where it is on), as chat. */
   try {

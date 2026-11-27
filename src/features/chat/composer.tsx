@@ -108,6 +108,7 @@ export function Composer({
   autoFocus,
   conversationId,
   onVoiceText,
+  onVoiceSend,
   files = [],
   onFilesChange,
   fileError,
@@ -136,12 +137,16 @@ export function Composer({
   conversationId?: string | null;
   /** VOICE_INPUT_ENABLED: told the transcript the mic put in the box, so the send can say it came from voice. */
   onVoiceText?: (transcript: string, traceId: string) => void;
+  /** Live dictation's ✓: send this text now (whatever is typed in the box first, then the spoken words). */
+  onVoiceSend?: (text: string, traceId: string) => void;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   // Phone: one short line of placeholder, so the empty field is one row tall rather than five.
   const isPhone = useIsPhone();
   /* VOICE_INPUT_ENABLED: the mic's notices and errors sit where the length notice does. */
   const [voiceSlot, setVoiceSlot] = useState<HTMLDivElement | null>(null);
+  /* Live dictation draws the dictating box over the input row (the owner, 27 Nov 2026). */
+  const [liveSlot, setLiveSlot] = useState<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [fileNote, setFileNote] = useState("");
   const attaching = Boolean(onFilesChange);
@@ -304,7 +309,8 @@ export function Composer({
           ))}
         </ul>
       ) : null}
-      <div className="flex items-center gap-1.5 rounded-[26px] bg-surface py-1.5 pr-1.5 pl-4 shadow-ask focus-within:shadow-ask-focus sm:gap-3.5 sm:rounded-full sm:py-2.5 sm:pr-2.5 sm:pl-5">
+      <div className="relative flex items-center gap-1.5 rounded-[26px] bg-surface py-1.5 pr-1.5 pl-4 shadow-ask focus-within:shadow-ask-focus sm:gap-3.5 sm:rounded-full sm:py-2.5 sm:pr-2.5 sm:pl-5">
+        <div ref={setLiveSlot} data-testid="chat-input-live" className="absolute inset-0 z-10 rounded-[inherit] empty:hidden" />
         <SunMark className="hidden size-[26px] shrink-0 sm:block" onDark />
         <div className="flex min-w-0 flex-1 items-center">{field}</div>
         {attachButton}
@@ -317,6 +323,8 @@ export function Composer({
           conversationId={conversationId ?? null}
           disabled={busy}
           messageSlot={voiceSlot}
+          liveSlot={onVoiceSend ? liveSlot : undefined}
+          onSend={onVoiceSend ? (spoken, { traceId }) => onVoiceSend(appendTranscript(value, spoken), traceId) : undefined}
           onText={(transcript, { traceId }) => {
             onChange(appendTranscript(value, transcript));
             onVoiceText?.(transcript, traceId);
