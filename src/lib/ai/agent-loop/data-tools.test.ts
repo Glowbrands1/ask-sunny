@@ -311,8 +311,10 @@ describe("the scope rules", () => {
     // Pau, 26 Nov 2026 added read_whats_new, the What's New page's list (CLAUDE.md §5). On purpose.
     // Board f039 part 2 (26 Nov 2026) added read_videos, read_manager_resources and read_ai_training (the Videos, Manager
     // Resources and AI Training pages). On purpose.
+    // Pau, 26 Nov 2026 added read_meeting_details, each L10's day, time, length and attendees from the Leadership Hub
+    // (the Calendar's meeting panel). On purpose (CLAUDE.md §5).
     // Pau, 27 Nov 2026 added read_knowledge_documents, the Knowledge Base's document list, administrators only. On purpose.
-    expect(Object.keys(dataToolHandlers(ctx(MANAGER, "")))).toEqual(["read_reviews", "read_stats", "read_form_deletions", "read_ai_assignments", "read_hr_approvals", "read_follow_ups", "read_calendar", "propose_reminder", "read_whats_new", "read_videos", "read_manager_resources", "read_ai_training", "read_knowledge_documents"]);
+    expect(Object.keys(dataToolHandlers(ctx(MANAGER, "")))).toEqual(["read_reviews", "read_stats", "read_form_deletions", "read_ai_assignments", "read_hr_approvals", "read_follow_ups", "read_calendar", "propose_reminder", "read_meeting_details", "read_whats_new", "read_videos", "read_manager_resources", "read_ai_training", "read_knowledge_documents"]);
   });
 });
 
