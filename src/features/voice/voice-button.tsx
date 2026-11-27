@@ -24,7 +24,7 @@ import { WARN_AT_SECONDS, inAppBrowser, recordingSupported, useVoiceRecorder, ty
  *
  * Renders nothing when voice is off for this person (`useVoiceAccess`), when the browser cannot record, and in
  * Slack's, Teams' and Gmail's in-app browsers. Its notices, every error (with role="alert") and the standing hint
- * ("Voice sends your recording to AssemblyAI to make text.", shown whenever the mic is) go where the box already shows
+ * ("Voice turns your recording into text.", shown whenever the mic is) go where the box already shows
  * its own notices: `messageSlot`, an element the box renders for them; without one, beside the button.
  *
  * LIVE DICTATION (the owner, 27 Nov 2026: "it transcribes as you talk then when done, press check mark and auto
@@ -298,11 +298,12 @@ function VoiceButtonOn({ surface, meetingKey, conversationId, disabled = false, 
    * uses the mic without being told where the recording goes.
    */
   /*
-   * WHICH MICROPHONE: only when this browser has more than one. Their names show once the browser has been allowed a
-   * microphone; before that, "Microphone 1", "Microphone 2". The choice is kept in this browser.
+   * WHICH MICROPHONE: always there while voice is on (the owner: "i still cant pick a microfphone to use"). Opening it
+   * reads the list again and, when the browser still hides the names, asks for the microphone once. The choice is kept
+   * in this browser. The options are dark on light: a browser that draws its own dropdown shows them readably.
    */
   const picker =
-    microphones.microphones.length > 1 ? (
+    microphones.supported ? (
       <label className={cn("flex flex-wrap items-center gap-1.5 text-[11px] leading-snug", muted)}>
         Microphone
         <select
@@ -311,14 +312,18 @@ function VoiceButtonOn({ surface, meetingKey, conversationId, disabled = false, 
           value={microphones.chosen ?? ""}
           disabled={recording || uploading || asking || dictating}
           onChange={(event) => microphones.choose(event.target.value || null)}
+          onFocus={() => void microphones.open()}
+          onPointerDown={() => void microphones.open()}
           className={cn(
             "max-w-[16rem] truncate rounded-md px-1.5 py-0.5 text-[11px] font-semibold",
             tone === "band" ? "border border-band-pill-border bg-transparent text-brand-yellow" : "bg-white/70 text-ink ring-1 ring-white/80",
           )}
         >
-          <option value="">Default microphone</option>
+          <option value="" className="bg-white text-black">
+            Default microphone
+          </option>
           {microphones.microphones.map((microphone) => (
-            <option key={microphone.id} value={microphone.id}>
+            <option key={microphone.id} value={microphone.id} className="bg-white text-black">
               {microphone.label}
             </option>
           ))}

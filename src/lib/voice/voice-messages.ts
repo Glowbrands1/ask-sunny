@@ -24,10 +24,10 @@ export function tryAgainIn(seconds: number): string {
 
 /** The first-use notice. */
 export const VOICE_NOTICE =
-  "Voice turns your speech into text using AssemblyAI, a speech service. Your recording is sent to them, including any names you say, and the names of the people and salons you work with may be sent as spelling hints. We do not keep the recording. After you press Send, the text is stored like a typed message. Check the words before you send.";
+  "Voice turns your speech into text using a speech service. Your recording is sent to it, including any names you say, and the names of the people and salons you work with may be sent as spelling hints. We do not keep the recording. After you press Send, the text is stored like a typed message. Check the words before you send.";
 
 /** The hint under a box while voice is on. */
-export const VOICE_HINT = "Voice sends your recording to AssemblyAI to make text.";
+export const VOICE_HINT = "Voice turns your recording into text.";
 
 /** Shown once the transcript is in the box. */
 export const VOICE_CHECK = "Check the words, then press Send";

@@ -15,7 +15,7 @@ import { VoiceAccessProvider } from "@/features/voice/voice-access";
 import { acceptVoiceNotice, installFakeMic, removeFakeMic, type FakeMic } from "@/test/fake-mic";
 import { AssistantPanel } from "./AssistantPanel";
 
-const HINT = "Voice sends your recording to AssemblyAI to make text.";
+const HINT = "Voice turns your recording into text.";
 const SCOPE = "user-ada:stc-dm";
 let fake: FakeMic;
 let posts: Record<string, unknown>[];
