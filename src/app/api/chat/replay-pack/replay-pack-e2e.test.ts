@@ -72,6 +72,9 @@ const store: FakeStore = {
   form_hr_reminder_sends: [],
   app_notifications: [],
   app_users: [],
+  // The Calendar (26 Nov 2026, migration 20261127001000): personal reminders and the Hub read's nonces.
+  calendar_reminders: [],
+  calendar_partner_nonces: [],
   // Coaching answers link the closest ready training video (26 Nov 2026, `ai/coaching-video.ts`).
   training_videos: [],
 } as unknown as FakeStore;

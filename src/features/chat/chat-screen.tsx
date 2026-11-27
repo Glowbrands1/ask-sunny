@@ -398,6 +398,7 @@ export function ChatScreen() {
            * defaults. A proposal carries no field values at all.
            */
           formProposal: response.formProposal,
+          reminderProposal: response.reminderProposal,
           /*
            * The choices for a request that named no form. Data, not a decision:
            * nothing is created until the manager clicks a card, which sends an

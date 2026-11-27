@@ -1298,6 +1298,13 @@ describe("new flags default off and wrappers are inert", () => {
           // integrations page only; no chat or form behaviour changes.
           ":(exclude)src/features/admin/woven/directory-table.tsx",
           ":(exclude)src/features/admin/woven/address-button.tsx",
+          // THE CALENDAR (Pau, 26 Nov 2026: one calendar in Ask Sunny, Ask Bubbles and the Leadership Hub, "+ New event"
+          // and the chat's reminder card): a new page and its own components, reached only from the new Calendar entry.
+          // No existing screen changes; the chat bubble mounts the reminder card only when an answer carries one.
+          ":(exclude)src/app/(app)/calendar/page.tsx",
+          ":(exclude)src/features/calendar/calendar-view.tsx",
+          ":(exclude)src/features/calendar/new-event.tsx",
+          ":(exclude)src/features/calendar/reminder-card.tsx",
           // The named account sees every address without clicking (Pau, 26 Nov 2026: "for my access only";
           // WOVEN_ADDRESS_LIST_EMAILS): the Woven page passes the yes/no down to the directory. Admin page only.
           ":(exclude)src/app/(app)/admin/integrations/woven/[view]/page.tsx",

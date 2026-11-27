@@ -1,5 +1,6 @@
 "use client";
 
+import { ReminderProposalCard } from "@/features/calendar/reminder-card";
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, FilePlus2, FileText, Loader2, RotateCcw, Settings2, UserRound } from "lucide-react";
@@ -203,6 +204,8 @@ export function MessageBubble({
               onChoose={onChooseForm ?? onSuggestion}
             />
           ) : null}
+
+          {message.reminderProposal ? <ReminderProposalCard proposal={message.reminderProposal} refId={`r-${message.id}`} /> : null}
 
           {message.formProposal ? (
             <FormProposalCard
