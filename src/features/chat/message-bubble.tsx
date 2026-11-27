@@ -3,7 +3,7 @@
 import { ReminderProposalCard } from "@/features/calendar/reminder-card";
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, FilePlus2, Loader2, RotateCcw, Settings2, UserRound } from "lucide-react";
+import { AlertTriangle, FilePlus2, FileText, Loader2, RotateCcw, Settings2, UserRound } from "lucide-react";
 
 import { SunMark } from "@/components/brand-mark";
 import { RichText } from "@/components/rich-text";
@@ -110,6 +110,21 @@ export function MessageBubble({
           <p className="text-[14px] leading-relaxed font-semibold whitespace-pre-wrap">
             {message.content}
           </p>
+          {/* The files sent with this question, by name (their bytes are not kept: `features/chat/attachments.ts`). */}
+          {message.attachments && message.attachments.length > 0 ? (
+            <ul aria-label="Attached files" className="mt-2 flex flex-wrap gap-1.5">
+              {message.attachments.map((file, index) => (
+                <li
+                  key={`${file.filename}-${index}`}
+                  data-testid="sent-chat-attachment"
+                  className="inline-flex max-w-full items-center gap-1 rounded-full bg-white/70 px-2.5 py-1 text-[11.5px] font-semibold"
+                >
+                  <FileText aria-hidden className="size-3.5 shrink-0" />
+                  <span className="truncate">{file.filename}</span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
           <p className="mt-1.5 text-[9.5px] text-gold-deep">
             {formatChatTime(message.createdAt)}
           </p>

@@ -362,6 +362,14 @@ export interface ChatMessage {
   content: string;
   createdAt: string;
   /**
+   * FILES THE MANAGER ATTACHED TO THIS QUESTION, BY NAME. User messages only.
+   *
+   * Names and types, never the bytes: the file goes to the model with the turn that carried it and is not stored, here
+   * or on the server (the DM L10 panel keeps none either). A later turn, or the chat reopened from history, tells the
+   * model the file was attached and is no longer available (`features/chat/attachments.ts`).
+   */
+  attachments?: ChatAttachmentName[];
+  /**
    * THE SERVER'S NAME FOR THE TURN THIS ASSISTANT MESSAGE ANSWERED.
    *
    * `id` above is the browser's — minted by `createId("msg")` and meaningful
@@ -481,6 +489,12 @@ export interface ChatFormInstanceRef {
 }
 
 /** Who sent a user message, as the avatar beside it shows them. */
+/** An attached file as a stored message keeps it: its name and type. */
+export interface ChatAttachmentName {
+  filename: string;
+  mediaType: string;
+}
+
 export interface ChatMessageAuthor {
   userId: string;
   name: string;

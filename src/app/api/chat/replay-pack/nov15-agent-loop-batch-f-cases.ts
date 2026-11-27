@@ -219,7 +219,10 @@ export const NOV15_AGENT_LOOP_BATCH_F_CASES: ReplayCase[] = [
   },
   ...(
     [
-      ["attachments", { attachedDocumentIds: ["doc-batch-f"] }],
+      /*
+       * Changed on purpose (Pau, 26 Nov 2026): attachments are no longer a reason to skip the loop. The loop reads the
+       * files attached to a question (`nov26-chat-attachments-cases.ts`: the file reaches the loop's model).
+       */
       ["report-context", { reportContext: { family: "sales-totals" } }],
       ["pending-copy", { pendingCopyFromInstanceId: "00000000-0000-4000-8000-00000000f5f5" }],
       /*

@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { ArrowUp, Info } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowUp, FileText, Info, Paperclip, X } from "lucide-react";
 
 import { SunMark } from "@/components/brand-mark";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ import {
 import { cn } from "@/lib/utils/cn";
 import { LONG_MESSAGE_LIMIT, messageLengthStatus } from "@/lib/chat/message-limit";
 import { chatLongMessageClientEnabled } from "@/lib/config/chat-quality-flags";
+import { CHAT_ATTACH_ACCEPT, MAX_FILES_PER_MESSAGE, attachmentProblem } from "@/lib/attachments/file-parts";
 import type { AnswerMode } from "@/types";
 
 const MODES: AnswerMode[] = ["quick", "standard", "detailed"];
@@ -82,6 +83,17 @@ const MODE_OPTIONS = MODES.map((mode) => ({
  * and it is what the artifact draws. `AnswerModeControl` is exported so the
  * band header can render the same control in the empty state without a second
  * copy of the options list.
+ *
+ * ============================================================================
+ * THE ATTACH BUTTON CAME BACK WHEN IT WORKED (Pau, 26 Nov 2026)
+ * ============================================================================
+ *
+ * One paperclip inside the input pill, where the dead attach button used to sit beside it, so the dock is no taller
+ * at rest. Files waiting to be sent show as chips above the pill, each with its remove button, only while there are
+ * any. The DM L10 panel's mechanism (`features/l10/assistant/attachments.ts`): the same limits (5 files, 10 MB each),
+ * the same browser-side encoding; the main chat also takes Word, Excel and text files, which the server reads as text
+ * (an older .doc or .xls is refused by name, with how to re-save it). Paste and drop add files too, as in the panel.
+ * The row keeps room for one more round button beside it (a dictation mic, planned separately).
  */
 export function Composer({
   value,
@@ -91,10 +103,18 @@ export function Composer({
   onModeChange,
   busy,
   autoFocus,
+  files = [],
+  onFilesChange,
+  fileError,
 }: {
   value: string;
   onChange: (value: string) => void;
   onSubmit: () => void;
+  /** Files waiting to be sent with the next question. Without `onFilesChange` there is no attach button. */
+  files?: File[];
+  onFilesChange?: (files: File[]) => void;
+  /** A picked file the browser could not read when the question was sent. */
+  fileError?: string;
   mode: AnswerMode;
   onModeChange: (mode: AnswerMode) => void;
   /**
@@ -109,6 +129,26 @@ export function Composer({
   autoFocus?: boolean;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [fileNote, setFileNote] = useState("");
+  const attaching = Boolean(onFilesChange);
+  const atFileLimit = files.length >= MAX_FILES_PER_MESSAGE;
+
+  /* The panel's `addFiles`: refused files are named in one line; past the limit, the rest are left out and it says so. */
+  const addFiles = (picked: FileList | File[] | null | undefined) => {
+    if (!onFilesChange || !picked) return;
+    const problems: string[] = [];
+    const ok: File[] = [];
+    for (const file of Array.from(picked)) {
+      const problem = attachmentProblem(file, "chat");
+      if (problem) problems.push(problem);
+      else ok.push(file);
+    }
+    const room = Math.max(0, MAX_FILES_PER_MESSAGE - files.length);
+    if (ok.length > room) problems.push(`Limit of ${MAX_FILES_PER_MESSAGE} files reached.`);
+    if (room > 0 && ok.length > 0) onFilesChange([...files, ...ok.slice(0, room)]);
+    setFileNote(problems.join(" "));
+  };
 
   // Unchanged. One row at rest, grows with the content, stops at 200px and
   // scrolls inside itself from there.
@@ -129,8 +169,10 @@ export function Composer({
   const length = chatLongMessageClientEnabled() ? messageLengthStatus(value, LONG_MESSAGE_LIMIT) : null;
   const overLimit = length !== null && !length.canSend;
 
+  const hasSomething = value.trim() !== "" || files.length > 0;
   const submit = () => {
-    if (!value.trim() || busy || overLimit) return;
+    if (!hasSomething || busy || overLimit) return;
+    setFileNote("");
     onSubmit();
   };
 
@@ -149,6 +191,11 @@ export function Composer({
         autoFocus={autoFocus}
         aria-describedby={length?.notice ? "chat-input-length" : undefined}
         onChange={(event) => onChange(event.target.value)}
+        onPaste={(event) => {
+          if (!attaching || !event.clipboardData?.files?.length) return;
+          event.preventDefault();
+          addFiles(event.clipboardData.files);
+        }}
         onKeyDown={(event) => {
           if (event.key === "Enter" && !event.shiftKey) {
             event.preventDefault();
@@ -165,7 +212,7 @@ export function Composer({
     <button
       type="button"
       onClick={submit}
-      disabled={!value.trim() || busy || overLimit}
+      disabled={!hasSomething || busy || overLimit}
       aria-label="Send message"
       /*
         THE ROUND YELLOW SEND. Yellow is a fill here rather than an encoded
@@ -178,18 +225,84 @@ export function Composer({
     </button>
   );
 
+  const attachButton = attaching ? (
+    <>
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept={CHAT_ATTACH_ACCEPT}
+        className="hidden"
+        data-testid="chat-attach-input"
+        onChange={(event) => {
+          addFiles(event.target.files);
+          event.target.value = "";
+        }}
+      />
+      <button
+        type="button"
+        onClick={() => fileInputRef.current?.click()}
+        disabled={busy || atFileLimit}
+        aria-label={atFileLimit ? `Limit of ${MAX_FILES_PER_MESSAGE} files reached` : "Attach a file"}
+        title={atFileLimit ? `Limit of ${MAX_FILES_PER_MESSAGE} files reached` : "Attach a file: images, PDF, Word, Excel or text"}
+        className="grid size-9 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-hover-surface hover:text-hover-surface-foreground disabled:opacity-40"
+      >
+        <Paperclip className="size-[17px]" />
+      </button>
+    </>
+  ) : null;
+
   return (
     /*
       THE DOCK. Near-black with the 4px yellow top edge, so the page is
       bookended in dark chrome and the conversation between them reads as a
       document on paper.
     */
-    <div className="clay-band mx-3 mb-3 shrink-0 px-4 pt-4 pb-3.5 sm:px-6">
+    <div
+      className="clay-band mx-3 mb-3 shrink-0 px-4 pt-4 pb-3.5 sm:px-6"
+      onDragOver={(event) => {
+        if (attaching && event.dataTransfer?.types?.includes("Files")) event.preventDefault();
+      }}
+      onDrop={(event) => {
+        if (!attaching || !event.dataTransfer?.files?.length) return;
+        event.preventDefault();
+        addFiles(event.dataTransfer.files);
+      }}
+    >
+      {files.length > 0 ? (
+        <ul aria-label="Files to send" className="mb-2.5 flex flex-wrap gap-1.5">
+          {files.map((file, index) => (
+            <li
+              key={`${file.name}-${index}`}
+              data-testid="chat-attachment-chip"
+              className="inline-flex min-h-8 max-w-full items-center gap-1.5 rounded-full bg-surface py-0.5 pr-0.5 pl-3 text-xs font-semibold text-foreground"
+            >
+              <FileText aria-hidden className="size-3.5 shrink-0" />
+              <span className="max-w-56 truncate">{file.name}</span>
+              <button
+                type="button"
+                aria-label={`Remove ${file.name}`}
+                onClick={() => onFilesChange?.(files.filter((_, at) => at !== index))}
+                className="grid size-7 shrink-0 place-items-center rounded-full hover:bg-hover-surface"
+              >
+                <X className="size-3.5" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
       <div className="flex items-center gap-3.5 rounded-full bg-surface py-2.5 pr-2.5 pl-5 shadow-ask focus-within:shadow-ask-focus">
         <SunMark className="size-[26px] shrink-0" onDark />
         <div className="flex min-w-0 flex-1 items-center">{field}</div>
+        {attachButton}
         {sendButton}
       </div>
+
+      {fileNote || fileError ? (
+        <p role="alert" data-testid="chat-attachment-error" className="mt-2 text-[11.5px] leading-snug font-semibold text-brand-yellow">
+          {fileNote || fileError}
+        </p>
+      ) : null}
 
       {length?.notice ? (
         <p

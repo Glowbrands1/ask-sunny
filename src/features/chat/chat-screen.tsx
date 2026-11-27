@@ -38,6 +38,7 @@ import { toChatTurnError } from "./chat-error";
 import { Composer } from "./composer";
 import { writeChatAddress } from "./chat-address";
 import { ContextPanel } from "./context-panel";
+import { fileOnlyQuestion, historyWithAttachmentNotes, namesOf, toChatAttachments } from "./attachments";
 import { ConversationList } from "./conversation-list";
 import { HistoryImportButton, ImportLocalHistoryPrompt } from "./import-local-history";
 import { MessageBubble, ThinkingBubble } from "./message-bubble";
@@ -69,6 +70,9 @@ export function ChatScreen() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [draftMessages, setDraftMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
+  /* Files waiting to be sent with the next question (the composer's attach button); never stored. */
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [fileError, setFileError] = useState("");
   const [mode, setMode] = useState<AnswerMode>("standard");
   const [busy, setBusy] = useState(false);
   /* PR 6 item 5: the AI loop's latest status while it answers; screen state only, never a message. */
@@ -104,7 +108,7 @@ export function ChatScreen() {
    * is ready, the same way the ?q= effect below fires. The composer is left
    * alone while it waits: disabling the field would be a visible change.
    */
-  const queuedSend = useRef<{ text: string; fromPicker?: boolean } | null>(null);
+  const queuedSend = useRef<{ text: string; fromPicker?: boolean; files?: File[] } | null>(null);
 
   /**
    * ==========================================================================
@@ -217,9 +221,11 @@ export function ChatScreen() {
        * recorded by the function that also decides whether the turn goes out at
        * all, so a refused send cannot leave one behind.
        */
-      options: { fromPicker?: boolean } = {},
+      options: { fromPicker?: boolean; files?: readonly File[] } = {},
     ): Promise<boolean> => {
-      const text = rawText.trim();
+      const files = options.files ?? [];
+      // A question that is only files is sent in words, so the thread and the model both have the manager's turn.
+      const text = rawText.trim() || (files.length > 0 ? fileOnlyQuestion(files.length) : "");
       /*
        * REFUSED, AND THE CALLER IS TOLD. It used to return `undefined` either
        * way, so every caller treated "sent" and "dropped while a turn was in
@@ -234,9 +240,26 @@ export function ChatScreen() {
        * skipped and the turn goes out exactly as it does today.
        */
       if (sendAfterHydrateEnabled() && !storeReady) {
-        queuedSend.current = { text, fromPicker: options.fromPicker };
+        queuedSend.current = { text, fromPicker: options.fromPicker, files: [...files] };
+        setPendingFiles([]);
         return true;
       }
+
+      /*
+       * THE FILES, READ BEFORE ANYTHING ELSE CHANGES (the panel's toFilePart: images re-encoded, a PDF, Word or text file
+       * as it is). One that cannot be read stops the send with the files and the question still in the composer.
+       */
+      let attachments: Awaited<ReturnType<typeof toChatAttachments>> = [];
+      if (files.length > 0) {
+        try {
+          attachments = await toChatAttachments(files);
+        } catch (caught) {
+          setFileError(caught instanceof Error ? caught.message : "A file could not be read.");
+          return false;
+        }
+      }
+      setFileError("");
+      setPendingFiles([]);
 
       /*
        * NOTHING IS CHECKED HERE BUT THE TEXT AND THE IN-FLIGHT TURN.
@@ -260,6 +283,8 @@ export function ChatScreen() {
         content: text,
         createdAt: activityNowIso(),
         author: signedIn,
+        // The files' names only: the bytes go with this question and are not stored.
+        ...(attachments.length > 0 ? { attachments: namesOf(attachments) } : {}),
       };
 
       let conversationId = activeId;
@@ -295,7 +320,9 @@ export function ChatScreen() {
         const response = await provider.ask({
           question: text,
           mode,
-          history,
+          // An earlier question's files are named, not sent again (their bytes were not kept).
+          history: historyWithAttachmentNotes(history),
+          ...(attachments.length > 0 ? { attachments } : {}),
           // Which of the manager's own turns this answer was read from. Echoed
           // back on a form proposal as provenance; it names browser-local
           // state and confers nothing.
@@ -455,7 +482,7 @@ export function ChatScreen() {
     if (!queued) return;
     const timer = window.setTimeout(() => {
       queuedSend.current = null;
-      void send(queued.text, { fromPicker: queued.fromPicker });
+      void send(queued.text, { fromPicker: queued.fromPicker, ...(queued.files ? { files: queued.files } : {}) });
     }, 0);
     return () => window.clearTimeout(timer);
   }, [storeReady, send]);
@@ -1104,10 +1131,13 @@ export function ChatScreen() {
         <Composer
           value={input}
           onChange={setInput}
-          onSubmit={() => void send(input)}
+          onSubmit={() => void send(input, { files: pendingFiles })}
           mode={mode}
           onModeChange={setMode}
           busy={busy}
+          files={pendingFiles}
+          onFilesChange={setPendingFiles}
+          fileError={fileError}
         />
       </div>
 

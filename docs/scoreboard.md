@@ -103,6 +103,7 @@ Harness events (not case failures):
 - prompts.ts sha256, the CA_SALES exception after the metric rule (CA_SALES_POLICY_ENABLED, off by default; flags-off prompt text unchanged): `e9fa48e33d31ad1abbbccd04aff4d0af779bd62af276c8a8c0252788c1933b0c`
 - prompts.ts sha256, the blank-policy summary line (POLICY_GATE_NONBLOCKING_ENABLED, off by default; flags-off prompt text unchanged): `34663abf9ca176f6e2db172e32e3b2abdcf710c53a89016dea5d1dc5fe004eb5`
 - prompts.ts sha256, the reports guide says where to go instead (DEAD_END_SAYS_WHERE_ENABLED, on in production-flags.json; flags-off prompt text unchanged): `634736538c6d37a3734c3c728f3abcd6d73a2fa02591cf8622e69e45e25e62a1`
+- prompts.ts sha256, the coaching how-to rule after the signature-lines rule (the owner, 26 Nov 2026: coaching how-to answers are a prep package; `coaching-how-to.ts`): `3fc50a6125dbd2a84efca436d578b92fcda7bda4078ab8d17421702fff1369f0`
 - commit: `f4b261628145bc17059fa753a5bc22f96a06694e`
 - model: `claude-opus-5`
 - flag set: `INTENT_EXTRACTION_ENABLED, FEWSHOT_EXAMPLES_ENABLED, SELF_CHECK_ENABLED, QUERY_REWRITE_ENABLED, GROUNDED_ENTITIES_ENABLED, DRAFT_MERGE_ENABLED, ACTION_PLAN_SENTENCES_ENABLED, TYPED_NAME_PROCEEDS_ENABLED, ATTENDANCE_POLICY_CITATION_ENABLED, POLICY_PAGE_REQUIRED_ENABLED, MANAGER_PAYROLL_AMOUNT_ONLY_ENABLED, POLICY_GATE_NONBLOCKING_ENABLED, MANUAL_SECTION_DEDUPE_ENABLED, PRINTED_PAGE_CITATION_ENABLED, PAYROLL_AMOUNT_FIELD_ENABLED, CODE_SLOTS_ENABLED, GLOBAL_SALON_ASK_ENABLED`
