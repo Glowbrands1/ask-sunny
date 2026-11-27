@@ -107,7 +107,7 @@ beforeEach(() => {
           body.outcome === "send" ? { text: String(body.text).replace("Kade", "Cade"), traceId: "usage-1" } : { traceId: "usage-1" },
         );
       }
-      return mic.fetch(url, init);
+      return (mic.fetch as unknown as typeof fetch)(url, init);
     }),
   );
   vi.stubGlobal("WebSocket", FakeSocket);
