@@ -32,6 +32,7 @@ const KIND: Record<CalendarKind, { label: string; plural: string; dot: string }>
   "hr-approval": { label: "HR approvals", plural: "approvals", dot: "bg-[#c98a12]" },
   "google-reviews": { label: "Review reminders", plural: "review checks", dot: "bg-[#2f8f5b]" },
   reminder: { label: "Reminders", plural: "reminders", dot: "bg-[#2f6fd0]" },
+  holiday: { label: "Holidays", plural: "holidays", dot: "bg-[#d0679a]" },
 };
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -287,7 +288,7 @@ function EventRow({
   const when = e.startTime ? `${clockLabel(e.startTime)} CT${e.minutes ? ` · ${e.minutes} min` : ""}` : e.kind === "meeting" ? "Time not set" : "All day";
   const editable = e.kind === "meeting" && e.meetingKey && onEditTime && hasDetails?.(e.meetingKey);
   const title =
-    e.kind === "reminder" ? (
+    e.kind === "reminder" || e.kind === "holiday" ? (
       <span className="font-semibold">{e.title}</span>
     ) : e.nameHidden ? (
       <NameHidden title={e.title} />
