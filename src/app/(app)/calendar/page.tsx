@@ -8,12 +8,7 @@ import { meetingDetailsFromHub } from "@/lib/calendar/hub";
 import { loadCalendarFor } from "@/lib/calendar/load.server";
 import { leadershipHubUrl } from "@/lib/config/app-switcher";
 import { canAccessAdminConsole } from "@/lib/permissions";
-import {
-  centralToday,
-  isMonth,
-  monthGrid,
-  monthOf,
-} from "@/lib/calendar/range";
+import { centralToday, isMonth, monthGrid, monthOf } from "@/lib/calendar/range";
 
 export const metadata: Metadata = { title: "Calendar" };
 export const dynamic = "force-dynamic";
@@ -24,35 +19,21 @@ export const dynamic = "force-dynamic";
  * Gated like the Overview (`view_overview`): managers, DMs, RMs and admins. Each source is read as this person, with
  * the same scope as its own page. Never time off.
  */
-export default async function CalendarPage({
-  searchParams,
-}: {
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
-}) {
+export default async function CalendarPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const identity = await requirePagePermission("view_overview");
   const sp = await searchParams;
   const today = centralToday();
   const month = isMonth(sp.month) ? sp.month : monthOf(today);
   const { from, to } = monthGrid(month);
   const [result, details] = identity
-    ? await Promise.all([
-        loadCalendarFor(
-          identity,
-          { from, to },
-          { origin: "", includeHub: true },
-        ),
-        meetingDetailsFromHub(identity.email),
-      ])
+    ? await Promise.all([loadCalendarFor(identity, { from, to }, { origin: "", includeHub: true }), meetingDetailsFromHub(identity.email)])
     : [null, null];
   // The meeting panel and "No day set" need the Hub's details; without them, meetings still show and open the L10.
   const meetings = details?.state === "ok" ? details.meetings : [];
   const hub = leadershipHubUrl();
   return (
     <>
-      <PageHeader
-        title="Calendar"
-        description="Your follow-ups, HR approvals, Google Reviews checks, reminders and L10 meetings. Times are Central."
-      />
+      <PageHeader title="Calendar" description="Your follow-ups, HR approvals, Google Reviews checks, reminders and L10 meetings. Times are Central." />
       {result?.ok ? (
         <CalendarView
           key={month}
@@ -62,15 +43,10 @@ export default async function CalendarPage({
           meetings={meetings}
           hubCalendarUrl={hub ? `${hub}/meetings/calendar` : null}
           hubUrl={hub}
-          canEditSchedules={Boolean(
-            identity?.verified && canAccessAdminConsole(identity.role),
-          )}
+          canEditSchedules={Boolean(identity?.verified && canAccessAdminConsole(identity.role))}
         />
       ) : (
-        <Notice tone="attention">
-          Your calendar could not be loaded. Sign in again, or try again in a
-          minute.
-        </Notice>
+        <Notice tone="attention">Your calendar could not be loaded. Sign in again, or try again in a minute.</Notice>
       )}
     </>
   );
