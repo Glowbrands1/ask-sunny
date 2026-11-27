@@ -8,6 +8,9 @@ import { cn } from "@/lib/utils/cn";
 import { MAX_SECONDS } from "@/lib/voice/voice-limits";
 import { VOICE_CHECK, VOICE_HINT, VOICE_NOTICE } from "@/lib/voice/voice-messages";
 
+import { LiveDictationPanel } from "./live-dictation-panel";
+import { useMicrophones } from "./mic-choice";
+import { liveDictationSupported, useLiveDictation } from "./use-live-dictation";
 import { useVoiceAccess } from "./voice-access";
 import { WARN_AT_SECONDS, inAppBrowser, recordingSupported, useVoiceRecorder, type VoiceSurfaceName } from "./use-voice-recorder";
 
@@ -23,6 +26,12 @@ import { WARN_AT_SECONDS, inAppBrowser, recordingSupported, useVoiceRecorder, ty
  * Slack's, Teams' and Gmail's in-app browsers. Its notices, every error (with role="alert") and the standing hint
  * ("Voice sends your recording to AssemblyAI to make text.", shown whenever the mic is) go where the box already shows
  * its own notices: `messageSlot`, an element the box renders for them; without one, beside the button.
+ *
+ * LIVE DICTATION (the owner, 27 Nov 2026: "it transcribes as you talk then when done, press check mark and auto
+ * send"). A box that gives `onSend` and a `liveSlot` (an element laid over its input row) gets the words as they are
+ * said, in `LiveDictationPanel`, with ✓ to send (the names spelled as the directory spells them, on the server) and ✕
+ * to drop. Where the browser cannot stream, or the server will not start a stream, the same press records instead, as
+ * before, and the words go into the box to be checked. Boxes without `onSend` record, as before.
  */
 
 const CONSENT_PREFIX = "ask-sunny:voice-consent:";
@@ -69,6 +78,10 @@ export interface VoiceButtonProps {
   /** The box is busy: the mic is too. */
   readonly disabled?: boolean;
   readonly onText: (text: string, meta: { readonly traceId: string }) => void;
+  /** Live dictation's ✓: send this text now. With `liveSlot`, turns live dictation on for the box. */
+  readonly onSend?: (text: string, meta: { readonly traceId: string }) => void;
+  /** Where the dictating box is drawn: an element laid over the box's input row. */
+  readonly liveSlot?: HTMLElement | null;
   /** Where the notices and errors go (the box's own notice area). */
   readonly messageSlot?: HTMLElement | null;
   /** "band": the dark chat dock, Overview band and report bar. "light": the L10 assistant's glass panel. */
@@ -84,13 +97,17 @@ export function VoiceButton(props: VoiceButtonProps) {
   return <VoiceButtonOn {...props} />;
 }
 
-function VoiceButtonOn({ surface, meetingKey, conversationId, disabled = false, onText, messageSlot, tone = "band", className }: VoiceButtonProps) {
+function VoiceButtonOn({ surface, meetingKey, conversationId, disabled = false, onText, onSend, liveSlot, messageSlot, tone = "band", className }: VoiceButtonProps) {
   const { userKey } = useVoiceAccess();
   const [message, setMessage] = useState<Message | null>(null);
+  // The owner, 27 Nov 2026: "i think i need to choose which mic because i have usb mic not built in".
+  const microphones = useMicrophones();
   const recorder = useVoiceRecorder({
     surface,
     conversationId,
     meetingKey,
+    deviceId: microphones.chosen,
+    onMicrophoneOpened: () => void microphones.refresh(),
     onText: ({ text, traceId }) => {
       setMessage({ kind: "check" });
       onText(text, { traceId });
@@ -98,6 +115,29 @@ function VoiceButtonOn({ surface, meetingKey, conversationId, disabled = false, 
     onError: (text) => setMessage({ kind: "error", text }),
   });
   const { state } = recorder;
+  const live = useLiveDictation({
+    surface,
+    conversationId,
+    meetingKey,
+    deviceId: microphones.chosen,
+    onMicrophoneOpened: () => void microphones.refresh(),
+    onSend: (text, meta) => {
+      setMessage(null);
+      onSend?.(text, meta);
+    },
+    onText: (text, meta) => {
+      setMessage({ kind: "check" });
+      onText(text, meta);
+    },
+    onFallback: () => void recorder.start(),
+    onError: (text) => setMessage({ kind: "error", text }),
+  });
+  const liveOn = Boolean(onSend) && liveSlot !== undefined && liveDictationSupported();
+  const dictating = live.state.kind !== "idle";
+  const begin = () => {
+    if (liveOn) void live.start();
+    else void recorder.start();
+  };
 
   // Sending (the box goes busy) retires "Check the words".
   const [wasDisabled, setWasDisabled] = useState(disabled);
@@ -115,13 +155,13 @@ function VoiceButtonOn({ surface, meetingKey, conversationId, disabled = false, 
       recorder.stop();
       return;
     }
-    if (uploading || asking) return;
+    if (uploading || asking || dictating) return;
     if (!readConsent(userKey)) {
       setMessage({ kind: "notice" });
       return;
     }
     setMessage(null);
-    void recorder.start();
+    begin();
   };
 
   const label = recording ? "Stop recording" : uploading ? "Transcribing your recording" : asking ? "Waiting for the microphone" : "Speak your message";
@@ -131,7 +171,7 @@ function VoiceButtonOn({ surface, meetingKey, conversationId, disabled = false, 
     <button
       type="button"
       onClick={onPress}
-      disabled={idleDisabled || uploading || asking}
+      disabled={idleDisabled || uploading || asking || dictating}
       aria-label={label}
       data-voice-state={state.kind}
       className={cn(
@@ -184,7 +224,7 @@ function VoiceButtonOn({ surface, meetingKey, conversationId, disabled = false, 
             onClick={() => {
               saveConsent(userKey, "accepted");
               setMessage(null);
-              void recorder.start();
+              begin();
             }}
           >
             OK, use voice
@@ -257,18 +297,62 @@ function VoiceButtonOn({ surface, meetingKey, conversationId, disabled = false, 
    * The hint is always there while voice is on for this person (whenever the mic shows), under any notice, so nobody
    * uses the mic without being told where the recording goes.
    */
+  /*
+   * WHICH MICROPHONE: only when this browser has more than one. Their names show once the browser has been allowed a
+   * microphone; before that, "Microphone 1", "Microphone 2". The choice is kept in this browser.
+   */
+  const picker =
+    microphones.microphones.length > 1 ? (
+      <label className={cn("flex flex-wrap items-center gap-1.5 text-[11px] leading-snug", muted)}>
+        Microphone
+        <select
+          aria-label="Microphone"
+          data-testid="voice-microphone"
+          value={microphones.chosen ?? ""}
+          disabled={recording || uploading || asking || dictating}
+          onChange={(event) => microphones.choose(event.target.value || null)}
+          className={cn(
+            "max-w-[16rem] truncate rounded-md px-1.5 py-0.5 text-[11px] font-semibold",
+            tone === "band" ? "border border-band-pill-border bg-transparent text-brand-yellow" : "bg-white/70 text-ink ring-1 ring-white/80",
+          )}
+        >
+          <option value="">Default microphone</option>
+          {microphones.microphones.map((microphone) => (
+            <option key={microphone.id} value={microphone.id}>
+              {microphone.label}
+            </option>
+          ))}
+        </select>
+      </label>
+    ) : null;
+
   const messages = (
     <div data-testid="voice-message" className="mt-2 space-y-1">
       {line}
+      {picker}
       <p data-testid="voice-hint" className={cn("m-0 text-[11px] leading-snug", muted)}>
         {VOICE_HINT}
       </p>
     </div>
   );
 
+  const panel =
+    dictating && liveSlot ? (
+      <LiveDictationPanel
+        text={live.state.kind === "live" || live.state.kind === "finishing" ? live.state.text : ""}
+        levels={live.levels}
+        seconds={live.state.kind === "live" ? live.state.seconds : 0}
+        connecting={live.state.kind === "connecting"}
+        finishing={live.state.kind === "finishing"}
+        onCancel={() => void live.cancel()}
+        onSend={() => void live.send()}
+      />
+    ) : null;
+
   return (
     <>
       {button}
+      {panel && liveSlot ? createPortal(panel, liveSlot) : null}
       {messageSlot ? createPortal(messages, messageSlot) : messageSlot === undefined ? messages : null}
     </>
   );

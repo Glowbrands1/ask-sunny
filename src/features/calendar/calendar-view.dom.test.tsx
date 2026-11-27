@@ -7,7 +7,7 @@ import type { CalendarEvent } from "@/lib/calendar/types";
 import { CalendarView, cellSummary, dayLabel, monthLabel } from "./calendar-view";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }));
-vi.mock("./actions", () => ({ saveReminderAction: vi.fn(), deleteReminderAction: vi.fn() }));
+vi.mock("./actions", () => ({ saveReminderAction: vi.fn(), deleteReminderAction: vi.fn(), saveMeetingScheduleAction: vi.fn() }));
 
 /* Invented people only. */
 const fu = (n: number, extra: Partial<CalendarEvent> = {}): CalendarEvent => ({ id: `sunny:follow-up:${n}`, source: "ask-sunny", kind: "form-follow-up", title: `Avery Sample · Coaching Form ${n}`, date: "2026-11-30", href: `/forms/monitoring?followup=open&employee=Avery%20Sample`, ...extra });
@@ -95,6 +95,77 @@ describe("Calendar (L10 details from the Leadership Hub)", () => {
     expect(panel.textContent).toMatch(/No day set/);
     expect(panel.textContent).toMatch(/Time not set/);
     expect(panel.textContent).toMatch(/set in the Leadership Hub/);
+  });
+});
+
+/**
+ * The owner, 27 Nov 2026, on the live Calendar as an admin with only the STC DM L10 plotted: "can u ask it to plot the
+ * calendar pls for all meetings recurring DM L10 etc". The Leadership Hub now sends the Leadership and Maintenance L10s
+ * too, marked opensInApp false: they are plotted and open in the Hub. The SD L10s with no day are listed as "day not
+ * set", and an admin sets their day and time here (saved in the Hub). Invented people only.
+ */
+describe("Calendar: every recurring L10 (the owner, 27 Nov 2026)", () => {
+  const HUB = "https://hub.example.test";
+  const ALL: CalendarEvent[] = [
+    { id: "hub:meeting:leadership:2026-11-30", source: "leadership-hub", kind: "meeting", title: "Leadership L10", date: "2026-11-30", startTime: "09:00", minutes: 90, href: `${HUB}/meetings/leadership`, meetingKey: "leadership" },
+    { id: "hub:meeting:stc-dm:2026-11-30", source: "leadership-hub", kind: "meeting", title: "STC DM L10", date: "2026-11-30", minutes: 90, href: "/meetings/stc-dm", meetingKey: "stc-dm" },
+    { id: "hub:meeting:maintenance:2026-11-25", source: "leadership-hub", kind: "meeting", title: "Maintenance L10", date: "2026-11-25", minutes: 60, href: `${HUB}/meetings/maintenance`, meetingKey: "maintenance" },
+  ];
+  const MEETINGS = [
+    { key: "leadership", name: "Leadership L10", team: "Executive Team", weekday: 1, startTime: "09:00", minutes: 90, leader: "Robin Example", attendees: ["Robin Example"], opensInApp: false },
+    { key: "maintenance", name: "Maintenance L10", team: "Maintenance Crew", weekday: 3, startTime: null, minutes: 60, leader: "Pat Sample", attendees: ["Pat Sample"], opensInApp: false },
+    { key: "stc-dm", name: "STC DM L10", team: "STC District Managers", weekday: 1, startTime: null, minutes: 90, leader: "Lee Demo", attendees: ["Lee Demo"] },
+    { key: "stc-sd-one", name: "Example SD L10", team: null, weekday: null, startTime: null, minutes: 60, leader: "Casey Example", attendees: ["Casey Example"] },
+  ];
+  const UNSET = "Example SD L10";
+
+  it('"plot the calendar pls for all meetings recurring DM L10 etc": the Leadership, STC DM and Maintenance L10s are all on the calendar', () => {
+    render(<CalendarView month="2026-11" today="2026-11-30" view={view(ALL)} meetings={MEETINGS} hubUrl={HUB} hubCalendarUrl={`${HUB}/meetings/calendar`} save={vi.fn()} remove={vi.fn()} />);
+    for (const name of ["Leadership L10", "STC DM L10", "Maintenance L10"]) expect(screen.getAllByRole("button", { name: `${name}: details` }).length).toBeGreaterThan(0);
+  });
+
+  it("a meeting this app only shows opens in the Leadership Hub, not this app's L10 tab", async () => {
+    render(<CalendarView month="2026-11" today="2026-11-30" view={view(ALL)} meetings={MEETINGS} hubUrl={HUB} hubCalendarUrl={`${HUB}/meetings/calendar`} save={vi.fn()} remove={vi.fn()} />);
+    await userEvent.click(screen.getAllByRole("button", { name: "Leadership L10: details" })[0]!);
+    const panel = screen.getByRole("region", { name: "Leadership L10 details" });
+    expect(within(panel).getByRole("link", { name: "Open the L10 in the Leadership Hub" }).getAttribute("href")).toBe(`${HUB}/meetings/leadership`);
+  });
+
+  it('an admin sets a meeting\'s day and time from "day not set"; it is saved in the Hub and the calendar reloads', async () => {
+    const saveSchedule = vi.fn().mockResolvedValue({ ok: true });
+    render(<CalendarView month="2026-11" today="2026-11-30" view={view(ALL)} meetings={MEETINGS} hubUrl={HUB} canEditSchedules saveSchedule={saveSchedule} save={vi.fn()} remove={vi.fn()} />);
+    const list = screen.getByRole("region", { name: "No day set" });
+    expect(list.textContent).toMatch(/day not set/);
+    await userEvent.click(within(list).getByRole("button", { name: `Set ${UNSET} day and time` }));
+    const form = screen.getByRole("form", { name: `Set ${UNSET} day and time` });
+    await userEvent.selectOptions(within(form).getByRole("combobox"), "Tuesday");
+    await userEvent.type(form.querySelector('input[type="time"]') as HTMLInputElement, "10:30");
+    await userEvent.click(within(form).getByRole("button", { name: "Save" }));
+    expect(saveSchedule).toHaveBeenCalledWith({ key: MEETINGS[3]!.key, weekday: 2, time: "10:30", minutes: 60 });
+    expect(screen.queryByRole("form", { name: `Set ${UNSET} day and time` })).toBeNull();
+  });
+
+  it("a refused save says why, and someone who is not an admin gets no editor", async () => {
+    const saveSchedule = vi.fn().mockResolvedValue({ ok: false, reason: "forbidden" });
+    render(<CalendarView month="2026-11" today="2026-11-30" view={view(ALL)} meetings={MEETINGS} hubUrl={HUB} canEditSchedules saveSchedule={saveSchedule} save={vi.fn()} remove={vi.fn()} />);
+    await userEvent.click(within(screen.getByRole("region", { name: "No day set" })).getByRole("button", { name: `Set ${UNSET} day and time` }));
+    await userEvent.click(within(screen.getByRole("form", { name: `Set ${UNSET} day and time` })).getByRole("button", { name: "Save" }));
+    expect(screen.getByRole("alert").textContent).toMatch(/Only Leadership Hub admins/);
+    cleanup();
+    render(<CalendarView month="2026-11" today="2026-11-30" view={view(ALL)} meetings={MEETINGS} hubUrl={HUB} save={vi.fn()} remove={vi.fn()} />);
+    expect(within(screen.getByRole("region", { name: "No day set" })).queryByRole("button", { name: /Set .* day and time/ })).toBeNull();
+  });
+
+  it("a struck-through filter chip is only toggled off: it starts on, hides its events when pressed, and shows them again", async () => {
+    render(<CalendarView month="2026-11" today="2026-11-30" view={view()} save={vi.fn()} remove={vi.fn()} />);
+    const chip = screen.getByRole("button", { name: /Form follow-ups/ });
+    expect(chip.getAttribute("aria-pressed")).toBe("true");
+    expect(chip.className).not.toMatch(/line-through/);
+    await userEvent.click(chip);
+    expect(chip.getAttribute("aria-pressed")).toBe("false");
+    expect(chip.className).toMatch(/line-through/);
+    await userEvent.click(chip);
+    expect(chip.getAttribute("aria-pressed")).toBe("true");
   });
 });
 

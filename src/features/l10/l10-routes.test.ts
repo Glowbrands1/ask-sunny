@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { NotAttendee } from "@/features/l10/NotAttendee";
 
 /*
  * The DM L10 routes refuse everyone the Leadership Hub refuses, with the same "not found" as a missing page, and the
@@ -56,9 +57,19 @@ describe("pages: a meeting the Hub refuses is not found", () => {
   const params = (key: string) => Promise.resolve({ key });
   const search = Promise.resolve({});
 
-  it.each(["stc-dm", "leadership", "bcs-dm", "nonsense"])("/meetings/%s for someone the Hub refuses", async (key) => {
+  /*
+   * The owner, 27 Nov 2026: "make sure only attendees of that meeting can access that page, if not attendee it will
+   * show "you are not an attendee of this meeting"". A real meeting the Hub refuses shows exactly that (it was "not
+   * found"; changed on purpose); a key that is no meeting is still not found.
+   */
+  it.each(["stc-dm", "leadership", "bcs-dm"])("/meetings/%s for someone the Hub refuses says \"You are not an attendee of this meeting\"", async (key) => {
     const { default: MeetingPage } = await import("@/app/(app)/meetings/[key]/page");
-    await expect(MeetingPage({ params: params(key), searchParams: search })).rejects.toSatisfy(isNotFound);
+    expect(await MeetingPage({ params: params(key), searchParams: search })).toMatchObject({ type: NotAttendee });
+  });
+
+  it("/meetings/nonsense is still not found", async () => {
+    const { default: MeetingPage } = await import("@/app/(app)/meetings/[key]/page");
+    await expect(MeetingPage({ params: params("nonsense"), searchParams: search })).rejects.toSatisfy(isNotFound);
   });
 
   it.each(["business-plan", "accountability"])("/meetings/stc-dm?view=%s is not found, even for someone who may open the meeting", async (view) => {
@@ -68,15 +79,15 @@ describe("pages: a meeting the Hub refuses is not found", () => {
     await expect(MeetingPage({ params: params("stc-dm"), searchParams: Promise.resolve({ view }) })).rejects.toSatisfy(isNotFound);
   });
 
-  it("the history, version, report and past meetings pages too", async () => {
+  it("the history, version and past meetings pages too say \"You are not an attendee of this meeting\"; the report page is still not found", async () => {
     const { default: History } = await import("@/app/(app)/meetings/[key]/history/page");
     const { default: Version } = await import("@/app/(app)/meetings/[key]/history/[version]/page");
     const { default: Report } = await import("@/app/(app)/meetings/[key]/report/page");
     const { default: Past } = await import("@/app/(app)/meetings/[key]/past/page");
-    await expect(History({ params: params("leadership"), searchParams: Promise.resolve({}) })).rejects.toSatisfy(isNotFound);
-    await expect(Version({ params: Promise.resolve({ key: "leadership", version: "1" }) })).rejects.toSatisfy(isNotFound);
+    expect(await History({ params: params("leadership"), searchParams: Promise.resolve({}) })).toMatchObject({ type: NotAttendee });
+    expect(await Version({ params: Promise.resolve({ key: "leadership", version: "1" }) })).toMatchObject({ type: NotAttendee });
     await expect(Report({ params: params("leadership") })).rejects.toSatisfy(isNotFound);
-    await expect(Past({ params: params("leadership") })).rejects.toSatisfy(isNotFound);
+    expect(await Past({ params: params("leadership") })).toMatchObject({ type: NotAttendee });
     await expect(Past({ params: params("nonsense") })).rejects.toSatisfy(isNotFound);
   });
 

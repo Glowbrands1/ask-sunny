@@ -7,6 +7,7 @@ import { requirePagePermission } from "@/lib/auth/page";
 import { meetingDetailsFromHub } from "@/lib/calendar/hub";
 import { loadCalendarFor } from "@/lib/calendar/load.server";
 import { leadershipHubUrl } from "@/lib/config/app-switcher";
+import { canAccessAdminConsole } from "@/lib/permissions";
 import { centralToday, isMonth, monthGrid, monthOf } from "@/lib/calendar/range";
 
 export const metadata: Metadata = { title: "Calendar" };
@@ -34,7 +35,16 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
     <>
       <PageHeader title="Calendar" description="Your follow-ups, HR approvals, Google Reviews checks, reminders and L10 meetings. Times are Central." />
       {result?.ok ? (
-        <CalendarView key={month} view={result.view} month={month} today={today} meetings={meetings} hubCalendarUrl={hub ? `${hub}/meetings/calendar` : null} />
+        <CalendarView
+          key={month}
+          view={result.view}
+          month={month}
+          today={today}
+          meetings={meetings}
+          hubCalendarUrl={hub ? `${hub}/meetings/calendar` : null}
+          hubUrl={hub}
+          canEditSchedules={Boolean(identity?.verified && canAccessAdminConsole(identity.role))}
+        />
       ) : (
         <Notice tone="attention">Your calendar could not be loaded. Sign in again, or try again in a minute.</Notice>
       )}

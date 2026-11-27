@@ -10,6 +10,7 @@ import { businessDate } from "@/features/l10/lib/dueStatus";
 import { MeetingView } from "@/features/l10/meeting/MeetingView";
 import { Card } from "@/features/l10/ui/ui";
 import { requireAuthenticatedPage } from "@/lib/auth/page";
+import { NotAttendee } from "@/features/l10/NotAttendee";
 
 /** The page title: the tab's name ("DM L10"), or "SD L10" for the three district meetings (the Hub names each). */
 const titleFor = (key: string) => L10_TAB_LABELS[key] ?? (isStcSd(key) ? "SD L10" : "L10");
@@ -40,7 +41,8 @@ export default async function MeetingPage({ params, searchParams }: { params: Pr
   if (initialView && !hasReference(key)) notFound();
 
   const opened = await openMeeting(key);
-  if (!opened.ok && opened.reason === "forbidden") notFound();
+  // Only its attendees (and admins) open a meeting; the Hub refused this person (src/features/l10/lib/access.ts).
+  if (!opened.ok && opened.reason === "forbidden") return <NotAttendee />;
   if (!opened.ok) {
     return (
       <L10Frame meetingKey={key} assistant={false}>

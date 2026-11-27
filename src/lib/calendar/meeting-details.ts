@@ -16,6 +16,8 @@ const DETAILS = z.object({
   minutes: z.number().int().min(1).max(1440).nullable(),
   leader: z.string().max(200).nullable().optional(),
   attendees: z.array(z.string().min(1).max(200)).max(100),
+  /** False when this app shows the meeting but opens it in the Leadership Hub (the Leadership and Maintenance L10s). */
+  opensInApp: z.boolean().optional(),
 });
 export type MeetingDetails = z.infer<typeof DETAILS>;
 
@@ -58,3 +60,21 @@ export function pickMeetings(meetings: readonly MeetingDetails[], named?: string
   const exact = meetings.filter((m) => squash(m.key) === q || squash(m.name) === q);
   return exact.length ? exact : meetings.filter((m) => squash(m.name).includes(q) || squash(m.key).includes(q));
 }
+
+/** Where "Open the L10" goes: this app's L10 tab, or the Leadership Hub's meeting page for one this app cannot open. */
+export function meetingHref(m: { key: string; opensInApp?: boolean }, hubUrl: string | null): string {
+  return m.opensInApp === false && hubUrl ? `${hubUrl}/meetings/${m.key}` : `/meetings/${m.key}`;
+}
+
+/**
+ * A day, Central time and length set from this app (the owner, 27 Nov 2026). Stored in the Leadership Hub (the partner
+ * API's "set-meeting-schedule" op), so the Hub and both apps follow it; the Hub allows it for its admins only.
+ */
+export const MEETING_SCHEDULE_INPUT = z.object({
+  key: z.string().regex(/^[a-z][a-z-]{0,40}$/),
+  weekday: z.number().int().min(0).max(6).nullable(),
+  time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullable(),
+  minutes: z.number().int().min(5).max(480).nullable(),
+});
+export type MeetingScheduleInput = z.infer<typeof MEETING_SCHEDULE_INPUT>;
+export type MeetingScheduleSaveResult = { ok: true } | { ok: false; reason: "forbidden" | "invalid" | "unavailable" | "signin" };
