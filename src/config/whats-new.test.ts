@@ -1,9 +1,11 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { canAccessAdminConsole, DEFAULT_PERMISSION_MATRIX, hasPermission, ROLES } from "@/lib/permissions";
+
+import { mayReadHomeAddress } from "@/lib/employees/woven/home-address-access";
 
 import { AI_READABLE_PAGES } from "./ai-readable-pages";
 import { WHATS_NEW, whatsNewEnabled, whatsNewFor } from "./whats-new";
@@ -75,6 +77,32 @@ describe("What's New", () => {
     expect(whatsNewFor("admin", can).flatMap((release) => release.entries.map((entry) => entry.title))).toContain("Employee address in the Employee Directory");
     // A Regional Manager holds View AI usage but does not open the admin console: not told about the admin's AI-readable pages screen.
     expect(whatsNewFor("regional_manager", can).flatMap((release) => release.entries.map((entry) => entry.title))).not.toContain("The list of pages Sunny can read");
+  });
+
+  it("the exit form's address entry is seen by exactly the roles that get the address (mayReadHomeAddress)", () => {
+    const entry = ENTRIES.find((candidate) => candidate.title === "The exit form fills in the Permanent Address");
+    expect(entry, "the exit form's address entry is missing").toBeDefined();
+    for (const role of ROLES) {
+      const told = whatsNewFor(role, can).some((release) => release.entries.includes(entry!));
+      expect(told, `${role}: told about the exit form's address ${told ? "but does not get it" : "but gets it"}`).toBe(mayReadHomeAddress(role));
+    }
+    // The Employee Directory's "Show address" is the admin console roles' only.
+    const directory = ENTRIES.find((candidate) => candidate.title === "Employee address in the Employee Directory")!;
+    for (const role of ROLES.filter((r) => whatsNewFor(r, can).some((release) => release.entries.includes(directory)))) expect(canAccessAdminConsole(role), role).toBe(true);
+  });
+
+  it("a screenshot is a file under public/whats-new/<its release's date>/, small, with alt text", () => {
+    for (const release of WHATS_NEW) {
+      for (const entry of release.entries) {
+        if (!entry.image) continue;
+        expect(entry.image.src, entry.title).toMatch(new RegExp(`^/whats-new/${release.date}/[a-z0-9-]+\\.(webp|png)$`));
+        const file = join(process.cwd(), "public", ...entry.image.src.split("/").filter(Boolean));
+        expect(existsSync(file), `${entry.title}: ${file} is missing`).toBe(true);
+        expect(statSync(file).size, `${entry.title}: keep a screenshot under 200 KB`).toBeLessThan(200 * 1024);
+        expect(entry.image.alt.trim().length, `${entry.title}: say what the screenshot shows`).toBeGreaterThan(15);
+        expect(entry.image.alt, entry.title).not.toMatch(CODE_WORDS);
+      }
+    }
   });
 
   it("is Ask Sunny's own list: no sibling-app words", () => {

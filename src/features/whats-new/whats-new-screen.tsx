@@ -7,6 +7,8 @@ import { EmptyState } from "@/components/ui/feedback";
 import { PageHeader, PageShell } from "@/components/ui/layout";
 import type { WhatsNewRelease } from "@/config/whats-new";
 
+import { MarkWhatsNewSeen, WhatsNewScreenshot } from "./whats-new-client";
+
 /** "2026-11-26" → "Nov 26, 2026" (a calendar day, so read at noon UTC: no time zone moves it). */
 export function whatsNewDate(date: string): string {
   return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }).format(new Date(`${date}T12:00:00Z`));
@@ -16,6 +18,7 @@ export function whatsNewDate(date: string): string {
 export function WhatsNewScreen({ releases, appName }: { releases: readonly WhatsNewRelease[]; appName: string }) {
   return (
     <PageShell>
+      <MarkWhatsNewSeen latest={releases[0]?.date ?? null} />
       <PageHeader eyebrow="Updates" title="What's New" description={`Recent updates and new features in ${appName}, newest first.`} />
       {releases.length === 0 ? (
         <EmptyState title="Nothing new yet" description="New features will be listed here as they arrive." />
@@ -42,12 +45,15 @@ export function WhatsNewScreen({ releases, appName }: { releases: readonly Whats
                           <dt className="font-medium text-foreground">Before:</dt>
                           <dd className="text-muted-foreground">{entry.before}</dd>
                           <dt className="font-medium text-foreground">Now:</dt>
-                          <dd className="text-muted-foreground">{entry.now}</dd>
+                          <dd className="text-muted-foreground">
+                            {entry.now}
+                            {entry.image ? <WhatsNewScreenshot src={entry.image.src} alt={entry.image.alt} /> : null}
+                          </dd>
                           <dt className="font-medium text-foreground">How to use it:</dt>
                           <dd className="text-muted-foreground">{entry.howToUse}</dd>
                         </dl>
                         {entry.showMe && entry.showMe.href !== "/whats-new" ? (
-                          <Link href={entry.showMe.href} className="mt-1 inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
+                          <Link href={entry.showMe.href} className="whats-new-sparkle mt-1 inline-flex items-center gap-1 self-start rounded-full text-sm font-medium text-primary hover:underline">
                             Show me: {entry.showMe.label} <ArrowRight aria-hidden className="size-3.5" />
                           </Link>
                         ) : null}

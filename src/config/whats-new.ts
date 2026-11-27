@@ -1,4 +1,5 @@
-import { canAccessAdminConsole } from "@/lib/permissions";
+import { HOME_ADDRESS_MANAGER_ROLES } from "@/lib/employees/woven/home-address-access";
+import { ADMIN_CONSOLE_ROLES, canAccessAdminConsole } from "@/lib/permissions";
 import type { Permission, Role } from "@/types";
 
 /**
@@ -51,6 +52,8 @@ export interface WhatsNewEntry {
   readonly showMe?: { readonly href: string; readonly label: string };
   readonly permission?: Permission;
   readonly adminConsole?: true;
+  readonly roles?: readonly Role[];
+  readonly image?: { readonly src: string; readonly alt: string };
 }
 
 export interface WhatsNewRelease {
@@ -62,7 +65,7 @@ export interface WhatsNewRelease {
 export const WHATS_NEW: readonly WhatsNewRelease[] = [
   {
     date: "2026-11-27",
-    summary: "One calendar for follow-ups and every L10, talking to Sunny, attaching files, a better phone layout, and the Knowledge Base for administrators.",
+    summary: "One calendar for follow-ups and every L10, talking to Sunny, attaching files, the exit form's address, a better phone layout, and the Knowledge Base for administrators.",
     entries: [
       {
         tag: "New",
@@ -72,6 +75,7 @@ export const WHATS_NEW: readonly WhatsNewRelease[] = [
         howToUse: "Open Calendar from the sidebar, or ask Sunny \"what's on my calendar this week?\".",
         showMe: { href: "/calendar", label: "Calendar" },
         permission: "view_overview",
+        image: { src: "/whats-new/2026-11-27/calendar.webp", alt: "The Calendar for November with follow-ups, an HR approval, a Google Reviews check, a holiday and weekly L10s, and the chosen day listed below it." },
       },
       {
         tag: "Improved",
@@ -90,6 +94,7 @@ export const WHATS_NEW: readonly WhatsNewRelease[] = [
         howToUse: "Press an L10 on the Calendar, then press Edit time on its Time row.",
         showMe: { href: "/calendar", label: "Calendar" },
         permission: "view_overview",
+        image: { src: "/whats-new/2026-11-27/meeting-edit-time.webp", alt: "An L10 opened from the Calendar, with its day, time, length and attendees, and Edit time open with Every week or Only this date." },
       },
       {
         tag: "New",
@@ -108,15 +113,17 @@ export const WHATS_NEW: readonly WhatsNewRelease[] = [
         howToUse: "Press the microphone, speak, then press the check mark to send or the cross to cancel.",
         showMe: { href: "/chat", label: "Ask Sunny" },
         permission: "ask_questions",
+        image: { src: "/whats-new/2026-11-27/microphone.webp", alt: "The chat box with the microphone button and the Microphone list for choosing which microphone to use." },
       },
       {
         tag: "New",
         title: "Attach files in the chat",
         before: "To ask about a file you had to copy its contents into the chat.",
-        now: "Attach up to five files of 10 MB each: Word, Excel, PDF, text, CSV or pictures. Sunny reads them and checks the numbers in a report. The DM L10 assistant reads Word, Excel, CSV and text files too.",
-        howToUse: "Press the paperclip in the chat box, or drop a file on it, then ask your question. Re-save an old .doc or .xls file as .docx or PDF first.",
+        now: "Attach up to five files, 10 MB each, and ask about them. Pictures: Sunny reads what is in them, text included, so a photo of a handwritten note or a screenshot of a sales report works; large photos are made smaller first. PDFs, scanned pages included. Word documents, tables included. Excel workbooks, each sheet read as a table. CSV, text and Markdown files are read as they are. Sunny reads about the first 120,000 characters of each file. The DM L10 assistant takes the same files.",
+        howToUse: "Press the paperclip in the chat box, or drop files on it, then ask, for example \"what does this note say?\". Re-save an old .doc or .xls file as .docx, .xlsx or PDF first, and double-check any total that matters.",
         showMe: { href: "/chat", label: "Ask Sunny" },
         permission: "ask_questions",
+        image: { src: "/whats-new/2026-11-27/attach-files.webp", alt: "The chat box with a sample sales report attached and a question about it, ready to send." },
       },
       {
         tag: "Improved",
@@ -124,6 +131,15 @@ export const WHATS_NEW: readonly WhatsNewRelease[] = [
         before: "On a phone the chat showed only a small part of the conversation, and the Overview's buttons were too big.",
         now: "The whole conversation fits on the screen, the app is more compact, and the Overview's suggestion buttons are smaller.",
         howToUse: "Open Ask Sunny on your phone and chat as usual.",
+        image: { src: "/whats-new/2026-11-27/phone.webp", alt: "Ask Sunny on a phone: the question, the start of the answer and the chat box all fit on the screen." },
+      },
+      {
+        tag: "New",
+        title: "The exit form fills in the Permanent Address",
+        before: "You typed the employee's home address on the Resignation/Exit form yourself.",
+        now: "On the Resignation/Exit form, the employee's Permanent Address now fills in automatically from their Woven employee record. If an employee has no address on file, the line stays blank for you to fill in by hand.",
+        howToUse: "Start a Resignation/Exit form for the employee and check the Permanent Address line before you finalize.",
+        roles: [...ADMIN_CONSOLE_ROLES, ...HOME_ADDRESS_MANAGER_ROLES],
       },
       {
         tag: "Improved",
@@ -199,10 +215,12 @@ export const WHATS_NEW: readonly WhatsNewRelease[] = [
         tag: "New",
         title: "Employee address in the Employee Directory",
         before: "An employee's home address was only in Woven.",
-        now: "Administrators can see one person's home address from Woven in the Employee Directory. Nothing is saved.",
-        howToUse: "In the Employee Directory, press \"Show address\" on the person's row.",
-        showMe: { href: "/admin/integrations/woven", label: "Woven integration" },
+        now: "Administrators can see an employee's home address from Woven in the Employee Directory. It is read from Woven each time and never saved in Ask Sunny.",
+        howToUse: "Open Integrations, then Woven Employee Sync, then the Employee Directory tab, and press \"Show address\" on the person's row.",
+        showMe: { href: "/admin/integrations/woven", label: "Woven Employee Sync" },
         permission: "manage_integrations",
+        roles: ADMIN_CONSOLE_ROLES,
+        image: { src: "/whats-new/2026-11-26/employee-directory.webp", alt: "The Employee Directory tab of Woven Employee Sync, with sample employees and a Home address column." },
       },
       {
         tag: "Improved",
@@ -221,6 +239,7 @@ export const WHATS_NEW: readonly WhatsNewRelease[] = [
         howToUse: "Ask Sunny \"how do I coach someone who keeps showing up late?\".",
         showMe: { href: "/chat", label: "Ask Sunny" },
         permission: "ask_questions",
+        image: { src: "/whats-new/2026-11-26/coaching-answer.webp", alt: "A coaching answer in the chat: how to prepare, the shape of the conversation, and a next step to take." },
       },
       {
         tag: "Improved",
@@ -259,7 +278,7 @@ export const WHATS_NEW: readonly WhatsNewRelease[] = [
   },
   {
     date: "2026-11-24",
-    summary: "HR approval of forms, a Notifications bar, and the Google Reviews leaderboard by period.",
+    summary: "HR approval of forms, a Notifications bar, a bell for your L10s, and the Google Reviews leaderboard by period.",
     entries: [
       {
         tag: "New",
@@ -274,8 +293,17 @@ export const WHATS_NEW: readonly WhatsNewRelease[] = [
         tag: "New",
         title: "Notifications bar",
         before: "There was no one place that told you what happened to your forms.",
-        now: "A Notifications bar under Overview tells you when your form went to HR, when HR left a note, sent it back or approved it.",
-        howToUse: "Open the Notifications bar; mark a notice as unread to keep it at the top.",
+        now: "A Notifications bar under Overview keeps everything in one list: a form's follow-up that is due or overdue (mark it Completed or extend it right there), your form going to HR, HR's notes, a form sent back or approved, HR's reminders, and new AI Training lessons and modules. HR is told when a form is waiting for approval, and AI Training reviewers when someone submits a lesson.",
+        howToUse: "Open the Notifications bar and press a notice to go to it. Mark one as unread to come back to it, press × to remove one, or Clear all.",
+        image: { src: "/whats-new/2026-11-24/notifications.webp", alt: "The Notifications bar opened: a follow-up due today, an HR approval, a new AI Training lesson and an HR note, with Mark all as read and Clear all." },
+      },
+      {
+        tag: "New",
+        title: "A bell just for your L10 meetings",
+        before: "You found out what changed in an L10 only by opening the meeting.",
+        now: "The DM L10 has its own bell in its top bar, separate from the Notifications bar and only for the meetings you attend. It tells you when someone mentions you, gives you a To-Do, adds or solves an Issue, adds or changes a Rock, or changes the meeting's time.",
+        howToUse: "In the DM L10, press the bell at the top to see what changed.",
+        image: { src: "/whats-new/2026-11-24/meeting-bell.webp", alt: "The DM L10 bell opened: a mention, a To-Do given to you, a new Issue and a changed meeting time." },
       },
       {
         tag: "Improved",
@@ -392,10 +420,11 @@ export const WHATS_NEW: readonly WhatsNewRelease[] = [
         tag: "New",
         title: "AI Training",
         before: "The AI Training program lived outside Ask Sunny.",
-        now: "AI Training is a tab in Ask Sunny, with its tracks, modules and lessons.",
-        howToUse: "Open AI Training from the sidebar.",
+        now: "AI Training is in the sidebar: tracks of short lessons on using AI at work. Each lesson ends with an assignment; submit your response and a reviewer approves it or asks for changes. Your submissions are listed on the lesson. Administrators manage the lessons and see a monthly tracker of who has done their assignments.",
+        howToUse: "Open AI Training from the sidebar, pick a lesson, and press Submit when you have done its assignment.",
         showMe: { href: "/ai-training", label: "AI Training" },
         permission: "view_ai_training",
+        image: { src: "/whats-new/2026-11-18/ai-training.webp", alt: "AI Training: the announcement, the Claude and ChatGPT tracks, and a module of lessons to open." },
       },
       {
         tag: "Improved",
@@ -430,6 +459,6 @@ export const WHATS_NEW: readonly WhatsNewRelease[] = [
 export function whatsNewFor(role: Role | null, can: (role: Role, permission: Permission) => boolean, releases: readonly WhatsNewRelease[] = WHATS_NEW): WhatsNewRelease[] {
   return [...releases]
     .sort((a, b) => b.date.localeCompare(a.date))
-    .map((release) => ({ ...release, entries: release.entries.filter((entry) => role === null || ((!entry.permission || can(role, entry.permission)) && (!entry.adminConsole || canAccessAdminConsole(role)))) }))
+    .map((release) => ({ ...release, entries: release.entries.filter((entry) => role === null || ((!entry.permission || can(role, entry.permission)) && (!entry.adminConsole || canAccessAdminConsole(role)) && (!entry.roles || entry.roles.includes(role)))) }))
     .filter((release) => release.entries.length > 0);
 }
