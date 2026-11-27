@@ -46,3 +46,37 @@ describe("the notice's contact line", () => {
     expect(document.body.innerHTML).not.toMatch(/@glowbrands\.com|mailto:/);
   });
 });
+
+describe("the phone banner stays off the chat", () => {
+  // Reported 27 Nov 2026 with a phone screenshot of the chat: "for the chat in sunny and bubble its too weird,
+  // pls adjust so we can see whole chat". The banner pushed the composer's bottom row below the fold.
+  function phone(matches: boolean) {
+    window.matchMedia = ((query: string) => ({
+      matches,
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    })) as unknown as typeof window.matchMedia;
+  }
+
+  it("shows the banner on a phone elsewhere, and nothing on the chat", () => {
+    phone(true);
+    const elsewhere = render(<UpdateNotice today="2026-12-02" />);
+    expect(screen.getByRole("status", { name: "Chat update notice" })).toBeTruthy();
+    elsewhere.unmount();
+    render(<UpdateNotice today="2026-12-02" phoneBanner={false} />);
+    expect(screen.queryByRole("status", { name: "Chat update notice" })).toBeNull();
+  });
+
+  it("the shell turns the banner off on /chat only", async () => {
+    const { readFileSync } = await import("node:fs");
+    const shell = readFileSync("src/components/shell/app-shell.tsx", "utf8");
+    expect(shell).toMatch(/<UpdateNotice phoneBanner=\{!pathname\?\.startsWith\("\/chat"\)\} \/>/);
+  });
+
+  it("the chat field is 16px on a phone, so iOS does not zoom the page when you tap it", async () => {
+    const { readFileSync } = await import("node:fs");
+    const composer = readFileSync("src/features/chat/composer.tsx", "utf8");
+    expect(composer).toMatch(/id="chat-input"[\s\S]*?className="[^"]*\btext-\[16px\][^"]*\bsm:text-\[14px\]/);
+  });
+});

@@ -23,6 +23,7 @@
  */
 
 import type {
+  DocumentSource,
   DocumentStatus,
   KnowledgeCategory,
 } from "@/types";
@@ -109,4 +110,16 @@ export const DOCUMENT_STATUS_LABEL: Record<DocumentStatus, string> = {
   needs_review: "Needs review",
   failed: "Failed",
   superseded: "Superseded",
+};
+
+/**
+ * Where a document came from, in the Knowledge Base source badge's words (`SOURCE_LABEL` in
+ * `features/knowledge/document-status.tsx`, a UI file the flags-off guard holds), so the AI's read_knowledge_documents
+ * says the same words as the page. `knowledge-taxonomy.test.ts` keeps the two equal.
+ */
+export const DOCUMENT_SOURCE_LABEL: Record<DocumentSource, string> = {
+  upload: "Uploaded",
+  sharepoint: "SharePoint",
+  woven: "Woven",
+  system: "Seeded",
 };

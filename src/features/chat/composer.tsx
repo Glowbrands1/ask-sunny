@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowUp, FileText, Info, Paperclip, X } from "lucide-react";
 
 import { SunMark } from "@/components/brand-mark";
+import { useIsPhone } from "@/components/shell/update-notice";
 import { Button } from "@/components/ui/button";
 import { SegmentedControl } from "@/components/ui/controls";
 import { Tooltip } from "@/components/ui/overlays";
@@ -137,6 +138,8 @@ export function Composer({
   onVoiceText?: (transcript: string, traceId: string) => void;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // Phone: one short line of placeholder, so the empty field is one row tall rather than five.
+  const isPhone = useIsPhone();
   /* VOICE_INPUT_ENABLED: the mic's notices and errors sit where the length notice does. */
   const [voiceSlot, setVoiceSlot] = useState<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -212,8 +215,8 @@ export function Composer({
             submit();
           }
         }}
-        placeholder="Ask about policy, coaching, operations or performance — or ask Sunny to draft a form"
-        className="scroll-slim max-h-50 w-full resize-none bg-transparent text-[14px] leading-relaxed text-foreground placeholder:text-placeholder-foreground focus-visible:outline-none"
+        placeholder={isPhone ? "Ask Sunny or draft a form" : "Ask about policy, coaching, operations or performance — or ask Sunny to draft a form"}
+        className="scroll-slim max-h-36 w-full resize-none bg-transparent text-[16px] leading-snug sm:max-h-50 sm:text-[14px] sm:leading-relaxed text-foreground placeholder:text-placeholder-foreground focus-visible:outline-none"
       />
     </>
   );
@@ -269,7 +272,7 @@ export function Composer({
       document on paper.
     */
     <div
-      className="clay-band mx-3 mb-3 shrink-0 px-4 pt-4 pb-3.5 sm:px-6"
+      className="clay-band mx-3 mb-3 shrink-0 px-3 pt-3 pb-2.5 sm:px-6 sm:pt-4 sm:pb-3.5"
       onDragOver={(event) => {
         if (attaching && event.dataTransfer?.types?.includes("Files")) event.preventDefault();
       }}
@@ -301,8 +304,8 @@ export function Composer({
           ))}
         </ul>
       ) : null}
-      <div className="flex items-center gap-3.5 rounded-full bg-surface py-2.5 pr-2.5 pl-5 shadow-ask focus-within:shadow-ask-focus">
-        <SunMark className="size-[26px] shrink-0" onDark />
+      <div className="flex items-center gap-1.5 rounded-[26px] bg-surface py-1.5 pr-1.5 pl-4 shadow-ask focus-within:shadow-ask-focus sm:gap-3.5 sm:rounded-full sm:py-2.5 sm:pr-2.5 sm:pl-5">
+        <SunMark className="hidden size-[26px] shrink-0 sm:block" onDark />
         <div className="flex min-w-0 flex-1 items-center">{field}</div>
         {attachButton}
         {/*
@@ -353,7 +356,7 @@ export function Composer({
         accepting questions. Both are gone: rating is a passive action at the
         foot of the conversation and nothing in the composer consults it.
       */}
-      <div className="mt-2.5 flex flex-wrap items-center gap-3.5">
+      <div className="mt-2 flex flex-wrap items-center gap-x-3.5 gap-y-1.5 sm:mt-2.5">
         <AnswerModeControl mode={mode} onModeChange={onModeChange} />
         <p className="min-w-50 flex-1 text-[10.5px] leading-snug text-band-label">
           {MANAGER_NOTE_SHORT}
