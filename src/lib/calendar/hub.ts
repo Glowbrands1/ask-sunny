@@ -2,6 +2,7 @@ import "server-only";
 
 import { callHub } from "@/features/l10/partner/client.server";
 import { leadershipHubUrl } from "@/lib/config/app-switcher";
+import { parseMeetingDetails, type MeetingDetailsResult } from "./meeting-details";
 import type { CalendarEvent, SourceResult } from "./types";
 
 /**
@@ -23,4 +24,17 @@ export async function meetingEventsFromHub(email: string | null | undefined, ran
     return e;
   });
   return { source: "leadership-hub", state: "ok", events };
+}
+
+/**
+ * Each L10 this person may open here, with its day, Central time, length, leader and attendees: the partner API's
+ * "meeting-schedules" op. Read-only: a schedule is set in the Leadership Hub. An unknown person is an empty list.
+ */
+export async function meetingDetailsFromHub(email: string | null | undefined, call: typeof callHub = callHub): Promise<MeetingDetailsResult> {
+  if (!email) return { state: "off" };
+  const answer = await call("meeting-schedules", email);
+  if (answer.status === 0 && answer.body.error === "not_configured") return { state: "off" };
+  if (answer.status === 404) return { state: "ok", meetings: [] };
+  if (answer.status !== 200 || answer.body.ok !== true || !Array.isArray(answer.body.meetings)) return { state: "failed" };
+  return { state: "ok", meetings: parseMeetingDetails(answer.body.meetings) };
 }
