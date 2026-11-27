@@ -313,7 +313,7 @@ export const DEFAULT_DATA_TOOL_DEPS: DataToolDeps = {
   loadCalendar: async ({ subject, email, displayName, verified, role, scope, from, to }) => {
     if (!verified || !subject || !scope) return null;
     const { loadCalendarFor } = await import("@/lib/calendar/load.server");
-    const r = await loadCalendarFor({ subject, email, displayName, role, scope, verified: true }, { from, to }, { origin: "", includeHub: true });
+    const r = await loadCalendarFor({ subject, email, displayName, role, scope, verified: true }, { from, to }, { origin: "", includeHub: true, includeHolidays: true });
     return r.ok ? r.view : null;
   },
   loadMeetingDetails: async ({ email, verified }) => {
@@ -1112,7 +1112,7 @@ export async function readCalendar(context: DataToolContext, input: Record<strin
     ...(view.events.length > listed.length ? { listed: listed.length, of: view.events.length } : {}),
     ...(view.notes.length ? { not_loaded: view.notes } : {}),
     note:
-      "This is the manager's Calendar page for these dates (Central time). what: meeting = an L10 from the Leadership Hub (time_ct null means the Hub has no start time set yet: say so, never guess one); form-follow-up and hr-approval use the same overdue rule as the Overview and the forms pages; google-reviews = the weekly check of a " + place + "'s Google Reviews; reminder = a personal or team reminder. " +
+      "This is the manager's Calendar page for these dates (Central time). what: meeting = an L10 from the Leadership Hub (time_ct null means the Hub has no start time set yet: say so, never guess one); form-follow-up and hr-approval use the same overdue rule as the Overview and the forms pages; google-reviews = the weekly check of a " + place + "'s Google Reviews; reminder = a personal or team reminder. holiday = a US holiday (federal; '(observed)' is the weekday a weekend federal holiday is observed; '(observance)' is a common day such as Christmas Eve or Black Friday, not a federal holiday): it says nothing about whether a " + place + " is open or its hours, so never state opening hours or closures from it. " +
       (view.notes.length ? "not_loaded lists sources that did not answer: say which, and never say there is nothing from them. " : "") +
       "Time off is never on the calendar. To ADD a reminder use propose_reminder.",
   };
@@ -1388,7 +1388,7 @@ export function dataToolSpecs(config: AppConfig) {
   {
     name: "read_calendar",
     description:
-      "The manager's Calendar: their form follow-ups and HR approvals by due date, the weekly Google Reviews check for each of their " + places + ", their reminders and their team's, and their L10 meetings (day and Central time) from the Leadership Hub. from/to are YYYY-MM-DD (default today and the next 13 days, at most 62 days). Use it for \"what's on my calendar this week?\", \"when is my next L10?\", \"what do I have on Friday?\". Time off is never on it." + pagesToolLine(config.readablePages, "read_calendar"),
+      "The manager's Calendar: their form follow-ups and HR approvals by due date, the weekly Google Reviews check for each of their " + places + ", their reminders and their team's, their L10 meetings (day and Central time) from the Leadership Hub, and US holidays (federal, observed days and common observances such as Christmas Eve and Black Friday). from/to are YYYY-MM-DD (default today and the next 13 days, at most 62 days). Use it for \"what's on my calendar this week?\", \"when is my next L10?\", \"what do I have on Friday?\", \"what holidays are in December?\", \"when is Thanksgiving?\". Time off is never on it." + pagesToolLine(config.readablePages, "read_calendar"),
     input_schema: {
       type: "object",
       properties: {

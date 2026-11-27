@@ -28,7 +28,8 @@ export type CalendarFor = { ok: true; view: CalendarView } | { ok: false; reason
 export async function loadCalendarFor(
   identity: AuthenticatedIdentity,
   range: { from: string; to: string },
-  options: { origin: string; includeHub: boolean; now?: Date },
+  /** includeHolidays: US holidays (src/config/holidays.ts) for this person's own calendar; never in a partner answer. */
+  options: { origin: string; includeHub: boolean; includeHolidays?: boolean; now?: Date },
 ): Promise<CalendarFor> {
   if (!validRange(range.from, range.to)) return { ok: false, reason: "invalid" };
   const matrix = activePermissionMatrix();
@@ -93,6 +94,20 @@ export async function loadCalendarFor(
 
   const hub: Promise<SourceResult> = options.includeHub ? meetingEventsFromHub(identity.email, range) : Promise.resolve({ source: "leadership-hub", state: "off" });
 
-  const results = await Promise.all([followUps, hr, reviews, reminders, hub]);
+  const holidays: Promise<SourceResult> = (async () => {
+    if (!options.includeHolidays) return { source: "ask-sunny", state: "off" } as SourceResult;
+    const { holidaysBetween, holidayId, holidayTitle } = await import("./holidays");
+    const events: CalendarEvent[] = holidaysBetween(range.from, range.to).map((h) => ({
+      id: holidayId("sunny", h),
+      source: "ask-sunny",
+      kind: "holiday",
+      title: holidayTitle(h),
+      date: h.date,
+      href: `${origin}/calendar`,
+    }));
+    return { source: "ask-sunny", state: "ok", events } as SourceResult;
+  })();
+
+  const results = await Promise.all([followUps, hr, reviews, reminders, hub, holidays]);
   return { ok: true, view: mergeSources(range.from, range.to, results) };
 }
