@@ -46,7 +46,7 @@ export async function loadCalendarFor(
   };
 
   /**
-   * WHO SEES THE EMPLOYEE'S NAME on a calendar entry for a form (the owner, 27 Nov 2026: "all admins and colene can see this
+   * WHO SEES THE EMPLOYEE'S NAME on a calendar entry for a form (the owner, 27 Nov 2026: "all admins and wren can see this
    * and the creator but for others they wont see the name"): admins (canAccessAdminConsole), HR approvers (an unrevoked row
    * in form_hr_approvers, resolveHrApprover) and the person who created the form. Everyone else gets the entry without the
    * name, without a link that would show it (Form Monitoring lists names), and marked nameHidden. Decided here, on the

@@ -11,14 +11,14 @@ import { lastResult, loopStandIn, type LoopView } from "./loop-stand-in";
  * ============================================================================
  *
  * The owner, on a day panel showing "Approve: Resignation/Exit Form for <employee> at NE Grand Island": "all admins and
- * colene can see this and the creator but for others they wont see the name". Colene is HR: the rule is admins, HR
+ * wren can see this and the creator but for others they wont see the name". Wren (invented here) is HR: the rule is admins, HR
  * approvers (form_hr_approvers) and the form's creator. Through the real chat route: a Salon Director files a coaching
  * form with a follow-up date; then read_calendar, for the week of the follow-up, gives
  *   - another manager of the same salon: the entry without the employee's name, marked employee_name_hidden;
  *   - the manager who created it, an admin, and HR: the name.
  * Invented people only.
  */
-const REPORT = 'The owner, 27 Nov 2026: "all admins and colene can see this and the creator but for others they wont see the name"';
+const REPORT = 'The owner, 27 Nov 2026: "all admins and wren can see this and the creator but for others they wont see the name"';
 const FLAG = "AGENT_LOOP_ENABLED";
 const CREATOR = "qa-manager";
 const OTHER = "qa-other-manager";
@@ -65,7 +65,7 @@ async function followUpAs(t: ReplayContext, role: string, subject: string) {
 export const NOV27_CALENDAR_EMPLOYEE_NAMES_CASES: ReplayCase[] = [
   {
     id: "nov27-calendar-employee-name-only-admins-hr-creator",
-    title: `"all admins and colene can see this and the creator but for others they wont see the name" — another manager's calendar gives the follow-up without the employee's name; the creator, an admin and HR get it`,
+    title: `"all admins and wren can see this and the creator but for others they wont see the name" — another manager's calendar gives the follow-up without the employee's name; the creator, an admin and HR get it`,
     report: REPORT,
     status: "fixed",
     fixFlags: [FLAG],
