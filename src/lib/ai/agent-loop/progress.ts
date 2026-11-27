@@ -61,6 +61,8 @@ export function progressStatus(tool: string, args: unknown): string {
       return "Checking your calendar…";
     case "propose_reminder":
       return "Preparing a reminder card…";
+    case "set_follow_up_owner":
+      return "Handing over the follow-up…";
     case "read_meeting_details":
       return "Checking your L10s…";
     case "read_whats_new":

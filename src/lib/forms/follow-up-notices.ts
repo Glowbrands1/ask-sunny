@@ -3,6 +3,7 @@ import "server-only";
 import { businessToday } from "@/lib/business-date";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
+import { followUpRecipients } from "./follow-up-owner-rules";
 import { accountEmail } from "./hr-approval-approvers";
 import { ringBells } from "./hr-approval-bells";
 import { isDemoInstance, listAllOutstandingFollowUps, type InstanceRow } from "./instances";
@@ -19,6 +20,10 @@ import { configuredExcludedNames, isProductionRecord } from "./production-record
  * marked followed up gets nothing more. Only the live finalized version counts (a revised form's follow-up is carried
  * by its revision; a draft has not been issued). Test records (`isProductionRecord`) and demo forms are left out, as
  * they are from the follow-up counts.
+ *
+ * FOLLOW-UP OWNER (the owner, 27 Nov 2026): when the creator handed the follow-up to someone else
+ * (`form_instances.follow_up_owner`, `follow-up-owner.ts`), that person gets each bell first and the creator still gets
+ * it (`followUpRecipients`). One claim per form, stage and date covers both, so neither is rung twice.
  */
 export const FOLLOW_UP_DUE_KIND = "form_follow_up_due";
 export const FOLLOW_UP_OVERDUE_KIND = "form_follow_up_overdue";
@@ -108,17 +113,19 @@ export async function runFollowUpNotices(now: Date = new Date(), deps: FollowUpN
     const stage = followUpNoticeStage(form, today);
     if (!stage || !form.followUpDate || isDemoInstance(form)) continue;
     if (!isProductionRecord({ employeeName: form.employeeName, locationName: form.locationName, locationId: form.locationId }, { excludedNames })) continue;
-    const email = await deps.emailOf(form.createdBy);
-    if (!email) {
+    const emails = [
+      ...new Set((await Promise.all(followUpRecipients(form).map((account) => deps.emailOf(account)))).filter((email): email is string => Boolean(email))),
+    ];
+    if (emails.length === 0) {
       outcome.noRecipient += 1;
       continue;
     }
-    if (!(await deps.claim({ instanceId: form.id, stage, followUpDate: form.followUpDate, recipientEmail: email }))) {
+    if (!(await deps.claim({ instanceId: form.id, stage, followUpDate: form.followUpDate, recipientEmail: emails[0]! }))) {
       outcome.alreadySent += 1;
       continue;
     }
     const notice = followUpNotice(form, stage);
-    await deps.ring([{ recipientEmail: email, ...notice }]);
+    await deps.ring(emails.map((recipientEmail) => ({ recipientEmail, ...notice })));
     outcome[stage] += 1;
   }
   return outcome;

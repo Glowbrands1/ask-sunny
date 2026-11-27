@@ -264,3 +264,15 @@ describe("Calendar: a form entry without the employee's name", () => {
     expect(within(day).getByRole("note").textContent).toBe("Only admins, HR and the person who created this form can see who it is for.");
   });
 });
+
+describe("Calendar: a follow-up handed to someone else (the owner, 27 Nov 2026: \"assign Addy's follow-up to <DM>\")", () => {
+  it("the owner's day panel says it is assigned to them; the creator's says who owns it", () => {
+    const mine = fu(1, { date: "2026-11-30", title: "Addy Example · Coaching Form", ownedBy: "Tobin Marsh", yours: true });
+    render(<CalendarView month="2026-11" today="2026-11-30" view={view([mine])} save={vi.fn()} remove={vi.fn()} />);
+    expect(screen.getAllByText(/assigned to you/).length).toBeGreaterThan(0);
+    cleanup();
+    const theirs = fu(2, { date: "2026-11-30", title: "Addy Example · Coaching Form", ownedBy: "Tobin Marsh" });
+    render(<CalendarView month="2026-11" today="2026-11-30" view={view([theirs])} save={vi.fn()} remove={vi.fn()} />);
+    expect(screen.getAllByText(/owner: Tobin Marsh/).length).toBeGreaterThan(0);
+  });
+});

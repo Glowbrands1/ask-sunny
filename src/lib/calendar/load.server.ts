@@ -51,6 +51,10 @@ export async function loadCalendarFor(
    * in form_hr_approvers, resolveHrApprover) and the person who created the form. Everyone else gets the entry without the
    * name, without a link that would show it (Form Monitoring lists names), and marked nameHidden. Decided here, on the
    * server, before anything reaches a page or the AI.
+   *
+   * And the follow-up's OWNER (the owner, 27 Nov 2026): someone the creator handed the follow-up to sees the name on
+   * that follow-up (`namedFollowUpOwner`); they were offered only because they may already open the form
+   * (`follow-up-owner.ts`), and the queue below lists it for them only while they still may.
    */
   const seesEveryName = (async () => {
     if (canAccessAdminConsole(identity.role)) return true;
@@ -69,6 +73,9 @@ export async function loadCalendarFor(
     const readsExit = hasPermission(matrix, identity.role, "create_exit_form");
     const queue = await readFollowUpQueue(access, { readsExit, today });
     const everyName = await seesEveryName;
+    const { namedFollowUpOwner } = await import("@/lib/forms/follow-up-owner-rules");
+    const handed = queue.forms.filter((f) => f.followUpOwner);
+    const ownerNames = handed.length > 0 ? await (await import("@/lib/forms/follow-up-owner")).accountNames(handed.map((f) => f.followUpOwner)) : new Map<string, string>();
     const facts: FollowUpFact[] = queue.forms.flatMap((f) =>
       f.followUpDate
         ? [
@@ -79,7 +86,9 @@ export async function loadCalendarFor(
               locationName: f.locationName,
               followUpDate: f.followUpDate,
               overdue: followUpState(f, today) === "overdue",
-              ...(everyName || f.createdBy === identity.subject ? {} : { nameHidden: true }),
+              ...(everyName || f.createdBy === identity.subject || namedFollowUpOwner(identity.subject, f) ? {} : { nameHidden: true }),
+              ...(f.followUpOwner ? { ownedBy: ownerNames.get(f.followUpOwner) ?? "another manager" } : {}),
+              ...(namedFollowUpOwner(identity.subject, f) ? { yours: true } : {}),
             },
           ]
         : [],

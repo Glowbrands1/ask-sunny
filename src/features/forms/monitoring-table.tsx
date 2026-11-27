@@ -45,6 +45,7 @@ import { useSession } from "@/lib/session/session-context";
 import { cn } from "@/lib/utils/cn";
 import { formatDate } from "@/lib/utils/date";
 import { downloadFormPdf, formsFetch } from "./forms-fetch";
+import { FollowUpOwnerPicker } from "./follow-up-owner-picker";
 import { RegisterRowActions } from "@/form-revisions/register-row-actions";
 
 /**
@@ -94,6 +95,9 @@ export interface MonitoredForm {
   isDemo: boolean;
   /** HR approved it, shown only to its creator, its senders and HR (the page decides, `mayReadHrDecision`). */
   hrApproved?: boolean;
+  /** The creator handed the follow-up to this account (the owner, 27 Nov 2026); null: the creator does it. */
+  followUpOwner?: string | null;
+  followUpOwnerName?: string | null;
   updatedAt: string;
 }
 
@@ -842,6 +846,19 @@ export function MonitoringTable({
                           ) : (
                             <span className="text-subtle-foreground">—</span>
                           )}
+                          {/* WHO DOES IT (the owner, 27 Nov 2026): hand the follow-up to someone with access to this salon. */}
+                          {form.followUpDate && !form.followedUpAt ? (
+                            <FollowUpOwnerPicker
+                              formId={form.id}
+                              ownerName={form.followUpOwnerName ?? null}
+                              send={call}
+                              disabled={working || !mayTrack}
+                              onChanged={(name) => {
+                                setMessage(name ? `${name} now owns the follow-up for ${form.employeeName}.` : `The follow-up for ${form.employeeName} is back with the form's creator.`);
+                                router.refresh();
+                              }}
+                            />
+                          ) : null}
                         </td>
 
                         <td className="px-2.5 py-2">

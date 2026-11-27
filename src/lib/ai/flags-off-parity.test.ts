@@ -1305,6 +1305,10 @@ describe("new flags default off and wrappers are inert", () => {
           ":(exclude)src/features/calendar/calendar-view.tsx",
           ":(exclude)src/features/calendar/new-event.tsx",
           ":(exclude)src/features/calendar/reminder-card.tsx",
+          // WHO OWNS A FORM'S FOLLOW-UP (the owner, 27 Nov 2026, approved "ok to all", both apps): the owner control under a
+          // follow-up date in Form Monitoring's row and on the form (both files excluded above). Shown only on a form with
+          // an open follow-up; it reads and writes through its own route, whose checks decide. No chat behaviour changes.
+          ":(exclude)src/features/forms/follow-up-owner-picker.tsx",
           // VOICE INPUT IN EVERY AI CHAT BOX (the owner, 27 Nov 2026, Ask Sunny; behind VOICE_INPUT_ENABLED and the
           // server-only VOICE_INPUT_USERS): one shared mic (`features/voice/`) mounted in the chat composer (above), the
           // Overview band, the report and reviews ask bars and the L10 assistant, plus the layout's VoiceAccessProvider

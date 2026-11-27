@@ -118,6 +118,11 @@ export interface InstanceRow {
   hrApprovalRequestedBy: string | null;
   /** Everyone who has ever sent it to HR, first send first; each keeps seeing it while it waits. */
   hrApprovalSenders: string[];
+  /**
+   * Who does the follow-up, when the creator handed it to someone else (the owner, 27 Nov 2026; migration
+   * 20261127003000). Null: the creator, as before. See `follow-up-owner.ts`.
+   */
+  followUpOwner?: string | null;
 }
 
 export interface InstanceValueRow {
@@ -167,6 +172,7 @@ function mapInstance(row: Record<string, unknown>): InstanceRow {
     hrApprovalRequestedAt: (row.hr_approval_requested_at as string | null | undefined) ?? null,
     hrApprovalRequestedBy: (row.hr_approval_requested_by as string | null | undefined) ?? null,
     hrApprovalSenders: Array.isArray(row.hr_approval_senders) ? (row.hr_approval_senders as unknown[]).map(String) : [],
+    followUpOwner: typeof row.follow_up_owner === "string" && row.follow_up_owner.length > 0 ? row.follow_up_owner : null,
   };
 }
 
@@ -1443,6 +1449,8 @@ export async function reviseInstance(
       follow_up_date: loaded.instance.followUpDate,
       followed_up_at: loaded.instance.followedUpAt,
       followed_up_by: loaded.instance.followedUpBy,
+      // And its owner, only when one was named (the column exists once 20261127003000 is applied).
+      ...(loaded.instance.followUpOwner ? { follow_up_owner: loaded.instance.followUpOwner } : {}),
     })
     .select("id")
     .single();
@@ -1944,6 +1952,25 @@ export async function setFollowUpDate(
     actor,
     { from: before.followUpDate, to: date },
   );
+  return readInstance(id);
+}
+
+/**
+ * Hands the follow-up to someone else, or back to the creator (`ownerId` null). Who may own it is decided by the
+ * caller (`assignFollowUpOwner` in `follow-up-owner.ts`, the one path the route and the AI take); this only writes it
+ * and records `follow_up_owner_changed` with the accounts before and after. Naming the creator stores null: the
+ * creator is the owner when nobody else is.
+ */
+export async function setFollowUpOwner(id: string, ownerId: string | null, actor: string): Promise<InstanceRow> {
+  const before = await readInstance(id);
+  const next = ownerId && ownerId !== before.createdBy ? ownerId : null;
+  if (before.followUpOwner === next) return before;
+
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("form_instances").update({ follow_up_owner: next }).eq("id", id);
+  if (error) throw new Error(`Could not set who owns the follow-up: ${error.message}`);
+
+  await recordEvent(id, "follow_up_owner_changed", actor, { from: before.followUpOwner, to: next });
   return readInstance(id);
 }
 

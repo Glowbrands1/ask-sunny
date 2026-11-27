@@ -324,6 +324,8 @@ function EventRow({
         {title}
         {e.location ? <span className="text-muted-foreground"> · {e.location}</span> : null}
         {e.kind === "reminder" ? <span className="text-muted-foreground"> · {e.by ? `from ${e.by}` : VISIBILITY_LABEL[e.visibility ?? "only_me"]}</span> : null}
+        {/* A follow-up handed to someone else (the owner, 27 Nov 2026). */}
+        {e.kind === "form-follow-up" && e.ownedBy ? <span className="text-muted-foreground"> · {e.yours ? "assigned to you" : `owner: ${e.ownedBy}`}</span> : null}
       </span>
       <span className="flex items-center gap-2 text-xs text-muted-foreground">
         {e.source !== "ask-sunny" ? <span>{SOURCE_LABELS[e.source]}</span> : null}
