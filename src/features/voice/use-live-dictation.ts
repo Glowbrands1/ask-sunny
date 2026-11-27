@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { VOICE_MESSAGES } from "@/lib/voice/voice-messages";
 
+import { SILENT_PEAK, microphoneName, openMicrophone, silentMicrophoneMessage } from "./mic-choice";
+
 import type { VoiceSurfaceName } from "./use-voice-recorder";
 
 /**
@@ -43,6 +45,8 @@ export interface LiveDictationOptions {
   readonly onText: (text: string, meta: { readonly traceId: string }) => void;
   readonly onFallback: () => void;
   readonly onError: (message: string) => void;
+  /** The microphone opened: the list of microphones can be read again, now with their names. */
+  readonly onMicrophoneOpened?: () => void;
 }
 
 const FRAME_SAMPLES = 800; // 50 ms at 16 kHz
@@ -107,6 +111,9 @@ interface Session {
   startedAt: number;
   ended: boolean;
   termination: ((seconds: number | null) => void) | null;
+  /** The loudest level heard (RMS), for "no sound came from your microphone". */
+  peak: number;
+  microphone: string;
 }
 
 async function post(body: Record<string, unknown>): Promise<{ ok: boolean; status: number; data: Record<string, unknown> }> {
@@ -250,7 +257,8 @@ export function useLiveDictation(options: LiveDictationOptions) {
       if (!text.trim()) {
         void post({ action: "finish", ...where(), session: current.handle, outcome: "discard", text: "", seconds }).catch(() => undefined);
         reset();
-        optionsRef.current.onError(VOICE_MESSAGES.nothingHeard);
+        // The microphone itself sent no sound (a quiet one still does): name it, so another can be picked.
+        optionsRef.current.onError(current.peak <= SILENT_PEAK ? silentMicrophoneMessage(current.microphone) : VOICE_MESSAGES.nothingHeard);
         return;
       }
       try {
@@ -343,14 +351,15 @@ export function useLiveDictation(options: LiveDictationOptions) {
       startedAt: Date.now(),
       ended: false,
       termination: null,
+      peak: 0,
+      microphone: "",
     };
     session.current = current;
 
     try {
-      const deviceId = optionsRef.current.deviceId;
-      current.stream = await navigator.mediaDevices.getUserMedia({
-        audio: { ...(deviceId ? { deviceId: { exact: deviceId } } : {}), echoCancellation: true, noiseSuppression: true, channelCount: 1 },
-      });
+      current.stream = await openMicrophone(optionsRef.current.deviceId, { echoCancellation: true, noiseSuppression: true, channelCount: 1 });
+      current.microphone = microphoneName(current.stream);
+      optionsRef.current.onMicrophoneOpened?.();
     } catch (error) {
       current.ended = true;
       session.current = null;
@@ -433,16 +442,19 @@ export function useLiveDictation(options: LiveDictationOptions) {
       else setState((previous) => (previous.kind === "live" ? { ...previous, seconds } : previous));
     }, 250);
 
-    const samples = new Uint8Array(current.analyser?.fftSize ?? 512);
+    // Float samples, not bytes: 8-bit levels round a quiet microphone down to zero.
+    const samples = new Float32Array(current.analyser?.fftSize ?? 512);
     let last = 0;
     const tick = (now: number) => {
       if (current.ended || !current.analyser) return;
       if (now - last > 60) {
         last = now;
-        current.analyser.getByteTimeDomainData(samples);
+        current.analyser.getFloatTimeDomainData(samples);
         let sum = 0;
-        for (const value of samples) sum += ((value - 128) / 128) ** 2;
-        const level = Math.min(1, Math.sqrt(sum / samples.length) * 4);
+        for (const value of samples) sum += value * value;
+        const rms = Math.sqrt(sum / samples.length);
+        current.peak = Math.max(current.peak, rms);
+        const level = Math.min(1, rms * 4);
         setLevels((previous) => [...previous.slice(1), level]);
       }
       frame.current = requestAnimationFrame(tick);
