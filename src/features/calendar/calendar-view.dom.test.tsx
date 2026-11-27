@@ -252,3 +252,39 @@ describe('Calendar: edit the time in the meeting panel (the owner, 27 Nov 2026: 
     expect(refresh).toHaveBeenCalled();
   });
 });
+
+/**
+ * The owner, 27 Nov 2026, on the SD L10s with no day set: "they should be able to edit and set time when they click on
+ * that, either for a specific day or for all recurring". Saved through the Leadership Hub (l10_one_off_any_date_test.sql).
+ */
+describe('a meeting with no day: "either for a specific day or for all recurring" (the owner, 27 Nov 2026)', () => {
+  const NO_DAY = { key: "stc-sd-one", name: "Example SD L10", team: null, weekday: null, startTime: null, minutes: 60, leader: "Lee Demo", attendees: ["Lee Demo"] };
+  const open = async () => {
+    await userEvent.click(within(screen.getByRole("region", { name: "No day set" })).getByRole("button", { name: "Example SD L10: details" }));
+    await userEvent.click(screen.getByRole("button", { name: "Add day and time" }));
+    return screen.getByRole("form", { name: "Set Example SD L10 day and time" });
+  };
+  it('"Only one date": pick the date and time; it saves that date only', async () => {
+    const saveSchedule = vi.fn();
+    const saveOccurrence = vi.fn(async () => ({ ok: true as const }));
+    render(<CalendarView month="2026-11" today="2026-11-30" view={view([])} meetings={[NO_DAY]} canEditSchedules saveSchedule={saveSchedule} saveOccurrence={saveOccurrence} save={vi.fn()} remove={vi.fn()} />);
+    const form = await open();
+    expect(within(form).getByRole("radio", { name: "Every week" })).toHaveProperty("checked", true);
+    await userEvent.click(within(form).getByRole("radio", { name: "Only one date" }));
+    await userEvent.type(within(form).getByLabelText("Date"), "2026-12-03");
+    await userEvent.type(form.querySelector('input[type="time"]') as HTMLInputElement, "14:00");
+    expect(within(form).queryByRole("checkbox")).toBeNull();
+    await userEvent.click(within(form).getByRole("button", { name: "Save" }));
+    expect(saveOccurrence).toHaveBeenCalledWith({ key: "stc-sd-one", date: "2026-12-03", time: "14:00", minutes: 60, cancelled: false });
+    expect(saveSchedule).not.toHaveBeenCalled();
+  });
+  it('"Every week": pick the weekday and time', async () => {
+    const saveSchedule = vi.fn(async () => ({ ok: true as const }));
+    render(<CalendarView month="2026-11" today="2026-11-30" view={view([])} meetings={[NO_DAY]} canEditSchedules saveSchedule={saveSchedule} saveOccurrence={vi.fn()} save={vi.fn()} remove={vi.fn()} />);
+    const form = await open();
+    await userEvent.selectOptions(within(form).getByRole("combobox"), "Thursday");
+    await userEvent.type(form.querySelector('input[type="time"]') as HTMLInputElement, "15:00");
+    await userEvent.click(within(form).getByRole("button", { name: "Save" }));
+    expect(saveSchedule).toHaveBeenCalledWith({ key: "stc-sd-one", weekday: 4, time: "15:00", minutes: 60 });
+  });
+});

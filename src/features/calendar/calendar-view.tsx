@@ -157,24 +157,32 @@ function ScheduleForm({
   saveOccurrence?: (input: MeetingOccurrenceInput) => Promise<MeetingScheduleSaveResult>;
   onDone: (saved: boolean) => void;
 }) {
-  // "Only this date" is offered when the panel was opened from a date the meeting falls on.
-  const canOneOff = Boolean(date && saveOccurrence && meeting.weekday !== null);
+  // Both choices, always (the owner, 27 Nov 2026, on the SD L10s with no day set: "they should be able to edit and set
+  // time when they click on that, either for a specific day or for all recurring"). Opened from a day: that date; from
+  // the panel or the "No day set" list: pick one.
+  const canOneOff = Boolean(saveOccurrence);
   const [scope, setScope] = useState<"weekly" | "date">("weekly");
   const [weekday, setWeekday] = useState(meeting.weekday === null ? "" : String(meeting.weekday));
   const [time, setTime] = useState(meeting.startTime ?? "");
   const [minutes, setMinutes] = useState(meeting.minutes ? String(meeting.minutes) : "");
   const [cancelled, setCancelled] = useState(false);
+  const [onDate, setOnDate] = useState(date ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const oneOff = canOneOff && scope === "date";
+  // Cancelling is for a date the meeting usually falls on; any other date is simply not added.
+  const usualDate = Boolean(onDate && meeting.weekday !== null && new Date(`${onDate}T12:00:00Z`).getUTCDay() === meeting.weekday);
   const submit = async (ev: React.FormEvent) => {
     ev.preventDefault();
     const length = minutes.trim() === "" ? null : Number(minutes);
     if (length !== null && (!Number.isInteger(length) || length < 5 || length > 480)) return setError("The length must be 5 to 480 minutes.");
+    if (oneOff && !/^\d{4}-\d{2}-\d{2}$/.test(onDate)) return setError("Pick the date.");
+    if (oneOff && !cancelled && !time) return setError("Pick the start time for that date.");
     setBusy(true);
     setError(null);
+    const off = cancelled && usualDate;
     const r = oneOff
-      ? await saveOccurrence!({ key: meeting.key, date: date!, time: cancelled ? null : time || null, minutes: cancelled ? null : length, cancelled })
+      ? await saveOccurrence!({ key: meeting.key, date: onDate, time: off ? null : time || null, minutes: off ? null : length, cancelled: off })
       : await save({ key: meeting.key, weekday: weekday === "" ? null : Number(weekday), time: time || null, minutes: length });
     setBusy(false);
     if (!r.ok)
@@ -200,15 +208,25 @@ function ScheduleForm({
           </label>
           <label className="flex items-center gap-1.5">
             <input type="radio" name="scope" checked={scope === "date"} onChange={() => setScope("date")} />
-            Only this date ({shortDate(date!)})
+            {date ? `Only this date (${shortDate(date)})` : "Only one date"}
           </label>
         </fieldset>
       ) : null}
       {oneOff ? (
-        <label className="flex items-center gap-1.5 sm:col-span-3">
-          <input type="checkbox" checked={cancelled} onChange={(e) => setCancelled(e.target.checked)} />
-          Cancel the meeting on {shortDate(date!)}
-        </label>
+        <>
+          {date ? null : (
+            <label className="grid gap-1">
+              <span className="text-xs text-muted-foreground">Date</span>
+              <input type="date" value={onDate} onChange={(e) => setOnDate(e.target.value)} className="rounded border border-border-strong px-2 py-1" aria-label="Date" />
+            </label>
+          )}
+          {usualDate ? (
+            <label className="flex items-center gap-1.5 sm:col-span-3">
+              <input type="checkbox" checked={cancelled} onChange={(e) => setCancelled(e.target.checked)} />
+              Cancel the meeting on {shortDate(onDate)}
+            </label>
+          ) : null}
+        </>
       ) : (
         <label className="grid gap-1">
           <span className="text-xs text-muted-foreground">Day</span>
@@ -222,7 +240,7 @@ function ScheduleForm({
           </select>
         </label>
       )}
-      {oneOff && cancelled ? null : (
+      {oneOff && cancelled && usualDate ? null : (
         <>
           <label className="grid gap-1">
             <span className="text-xs text-muted-foreground">Start time (Central)</span>
