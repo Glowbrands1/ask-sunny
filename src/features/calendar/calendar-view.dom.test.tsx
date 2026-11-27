@@ -221,3 +221,21 @@ describe("Calendar: edit a meeting's time, every week or only this date (the own
     expect(screen.queryByRole("button", { name: /edit time/ })).toBeNull();
   });
 });
+
+/**
+ * The owner, 27 Nov 2026, choosing "B": someone who does not attend a meeting sees it on the calendar by its name and day
+ * (and time, if set) only; opening it says only "You are not an attendee of this meeting" — no attendees, no leader, no
+ * edit controls, no link into its content. Invented people only.
+ */
+describe('Calendar: a meeting the manager does not attend (the owner, 27 Nov 2026: "B")', () => {
+  const LEAD: CalendarEvent = { id: "hub:meeting:leadership:2026-11-30", source: "leadership-hub", kind: "meeting", title: "Leadership L10", date: "2026-11-30", startTime: "09:00", minutes: 90, href: "/meetings/leadership", meetingKey: "leadership", attending: false };
+  it('shows by name and time; opening it says only "You are not an attendee of this meeting"', async () => {
+    render(<CalendarView month="2026-11" today="2026-11-30" view={view([LEAD])} meetings={[]} canEditSchedules save={vi.fn()} remove={vi.fn()} />);
+    const day = screen.getByRole("region", { name: dayLabel("2026-11-30") });
+    expect(day.textContent).toMatch(/9:00 AM CT/);
+    expect(within(day).queryByRole("button", { name: /edit time/ })).toBeNull();
+    await userEvent.click(within(day).getByRole("button", { name: "Leadership L10: details" }));
+    expect(screen.getByRole("alert", { name: "Not an attendee" }).textContent).toMatch(/^You are not an attendee of this meeting/);
+    expect(screen.queryByRole("region", { name: /Leadership L10 details/ })).toBeNull();
+  });
+});

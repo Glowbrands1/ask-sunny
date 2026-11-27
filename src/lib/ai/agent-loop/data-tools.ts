@@ -1021,12 +1021,13 @@ export async function readCalendar(context: DataToolContext, input: Record<strin
       ...(e.location ? { [place]: e.location } : {}),
       ...(e.kind === "reminder" ? { who_can_see: e.visibility ?? "only_me", made_by: e.by ?? "you" } : {}),
       ...(e.oneOff ? { changed_for_this_date_only: true } : {}),
+      ...(e.kind === "meeting" && e.attending === false ? { you_attend: false } : {}),
       app: e.source,
     })),
     ...(view.events.length > listed.length ? { listed: listed.length, of: view.events.length } : {}),
     ...(view.notes.length ? { not_loaded: view.notes } : {}),
     note:
-      "This is the manager's Calendar page for these dates (Central time). what: meeting = an L10 from the Leadership Hub (time_ct null means the Hub has no start time set yet: say so, never guess one; changed_for_this_date_only means that date's time was changed for that date only, and its weekly time is unchanged; a cancelled date is not listed); form-follow-up and hr-approval use the same overdue rule as the Overview and the forms pages; google-reviews = the weekly check of a " + place + "'s Google Reviews; reminder = a personal or team reminder. " +
+      "This is the manager's Calendar page for these dates (Central time). what: meeting = an L10 from the Leadership Hub (time_ct null means the Hub has no start time set yet: say so, never guess one; changed_for_this_date_only means that date's time was changed for that date only, and its weekly time is unchanged; a cancelled date is not listed; you_attend false means the manager does not attend that meeting: say only that it exists and when, never who attends, who leads it or what it covers); form-follow-up and hr-approval use the same overdue rule as the Overview and the forms pages; google-reviews = the weekly check of a " + place + "'s Google Reviews; reminder = a personal or team reminder. " +
       (view.notes.length ? "not_loaded lists sources that did not answer: say which, and never say there is nothing from them. " : "") +
       "Time off is never on the calendar. To ADD a reminder use propose_reminder.",
   };

@@ -14,6 +14,7 @@ import { KINDS, SOURCE_LABELS, type CalendarEvent, type CalendarKind, type Calen
 import { WEEKDAY_NAMES, clock, meetingHref, noDaySet, scheduleLabel, shortDate, type MeetingDetails, type MeetingOccurrenceInput, type MeetingScheduleInput, type MeetingScheduleSaveResult } from "@/lib/calendar/meeting-details";
 import { deleteReminderAction, saveMeetingOccurrenceAction, saveMeetingScheduleAction, saveReminderAction } from "./actions";
 import { NewEvent } from "./new-event";
+import { NOT_ATTENDEE } from "@/features/l10/lib/access";
 
 /**
  * THE CALENDAR (Pau, 26 Nov 2026; the same page as the Leadership Hub's and Ask Bubbles', from one design:
@@ -265,6 +266,7 @@ function EventRow({
   onMeeting,
   hasDetails,
   onEditTime,
+  onNotAttendee,
 }: {
   e: CalendarEvent;
   onDelete?: (e: CalendarEvent) => void;
@@ -272,12 +274,18 @@ function EventRow({
   hasDetails?: (key: string) => boolean;
   /** Click a meeting's time to change it, every week or only this date (the owner, 27 Nov 2026). */
   onEditTime?: (key: string, date: string) => void;
+  /** A meeting the person does not attend: opening it says only "You are not an attendee of this meeting". */
+  onNotAttendee?: () => void;
 }) {
   const when = e.startTime ? `${clockLabel(e.startTime)} CT${e.minutes ? ` · ${e.minutes} min` : ""}` : e.kind === "meeting" ? "Time not set" : "All day";
   const editable = e.kind === "meeting" && e.meetingKey && onEditTime && hasDetails?.(e.meetingKey);
   const title =
     e.kind === "reminder" ? (
       <span className="font-semibold">{e.title}</span>
+    ) : e.kind === "meeting" && e.attending === false && onNotAttendee ? (
+      <button type="button" onClick={onNotAttendee} className="font-semibold underline-offset-2 hover:underline" aria-label={`${e.title}: details`}>
+        {e.title}
+      </button>
     ) : e.kind === "meeting" && e.meetingKey && onMeeting && hasDetails?.(e.meetingKey) ? (
       <button type="button" onClick={() => onMeeting(e.meetingKey!, e.date)} className="font-semibold underline-offset-2 hover:underline" aria-label={`${e.title}: details`}>
         {e.title}
@@ -367,6 +375,8 @@ export function CalendarView({
   const goMonth = (m: string) => (onMonth ? onMonth(m) : router.push(`?month=${m}`));
   const [openMeeting, setOpenMeeting] = useState<string | null>(null);
   const [editOnOpen, setEditOnOpen] = useState(false);
+  // A meeting the person does not attend, opened: the owner's words and nothing else (the owner, 27 Nov 2026: "B").
+  const [notAttendee, setNotAttendee] = useState(false);
   // The occurrence the panel was opened from (a day's meeting), and a fresh panel on every open.
   const [openDate, setOpenDate] = useState<string | null>(null);
   const [opens, setOpens] = useState(0);
@@ -544,7 +554,7 @@ export function CalendarView({
           {pickedEvents.length ? (
             <ul className="m-0 list-none divide-y divide-border p-0">
               {pickedEvents.map((e) => (
-                <EventRow key={e.id} e={e} onDelete={onDelete} onMeeting={onMeeting} hasDetails={hasDetails} onEditTime={canEditSchedules ? onEditTime : undefined} />
+                <EventRow key={e.id} e={e} onDelete={onDelete} onMeeting={onMeeting} hasDetails={hasDetails} onEditTime={canEditSchedules ? onEditTime : undefined} onNotAttendee={() => setNotAttendee(true)} />
               ))}
             </ul>
           ) : (
@@ -562,12 +572,23 @@ export function CalendarView({
             </h2>
             <ul className="m-0 list-none divide-y divide-border p-0">
               {(byDay.get(d) ?? []).map((e) => (
-                <EventRow key={e.id} e={e} onDelete={onDelete} onMeeting={onMeeting} hasDetails={hasDetails} onEditTime={canEditSchedules ? onEditTime : undefined} />
+                <EventRow key={e.id} e={e} onDelete={onDelete} onMeeting={onMeeting} hasDetails={hasDetails} onEditTime={canEditSchedules ? onEditTime : undefined} onNotAttendee={() => setNotAttendee(true)} />
               ))}
             </ul>
           </Card>
         ))}
       </div>
+
+      {notAttendee ? (
+        <Card role="alert" aria-label="Not an attendee" className="p-4">
+          <div className="flex items-start gap-2">
+            <p className="m-0 flex-1 text-sm font-semibold">{NOT_ATTENDEE}</p>
+            <button type="button" onClick={() => setNotAttendee(false)} className="rounded px-2 py-1 text-sm" aria-label="Close">
+              ✕
+            </button>
+          </div>
+        </Card>
+      ) : null}
 
       {opened ? (
         <MeetingPanel
