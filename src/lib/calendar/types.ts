@@ -14,7 +14,8 @@ export const SOURCE_LABELS: Record<CalendarSource, string> = {
   "ask-bubbles": "Ask Bubbles",
 };
 
-export const KINDS = ["meeting", "form-follow-up", "hr-approval", "google-reviews", "reminder"] as const;
+// "holiday" is worked out in each app (src/config/holidays.ts) and never sent between apps.
+export const KINDS = ["meeting", "form-follow-up", "hr-approval", "google-reviews", "reminder", "holiday"] as const;
 export type CalendarKind = (typeof KINDS)[number];
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
