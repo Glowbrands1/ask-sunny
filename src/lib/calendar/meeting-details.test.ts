@@ -98,3 +98,15 @@ describe('"make it recurring or just for that specific time" (the owner, 27 Nov 
     expect(shortDate("2026-11-02")).toBe("Mon, Nov 2");
   });
 });
+
+describe('a meeting the manager does not attend (the owner, 27 Nov 2026: "B")', () => {
+  it("keeps its name, day and time, marked attending false, and opens this app's page (which says they are not an attendee)", async () => {
+    const call = vi.fn(async () => ({
+      status: 200,
+      body: { ok: true, events: [{ id: "hub:meeting:leadership:2026-11-30", source: "leadership-hub", kind: "meeting", title: "Leadership L10", date: "2026-11-30", startTime: "09:00", href: "/meetings/leadership", meetingKey: "leadership", opensInApp: false, attending: false }] },
+    }));
+    const r = await meetingEventsFromHub("pat@example.test", { from: "2026-11-29", to: "2026-12-05" }, call as never);
+    const e = r.state === "ok" ? r.events[0] : undefined;
+    expect(e).toMatchObject({ title: "Leadership L10", startTime: "09:00", attending: false, href: "/meetings/leadership" });
+  });
+});

@@ -47,6 +47,11 @@ export const CALENDAR_EVENT = z.object({
   meetingKey: z.string().regex(/^[a-z][a-z-]{0,40}$/).optional(),
   /** Meetings only: this date's time was changed for this date only, in the Leadership Hub. */
   oneOff: z.boolean().optional(),
+  /**
+   * Meetings only: false when the person does not attend it (and is not an admin). They see its name, day and time,
+   * nothing else; opening it says only "You are not an attendee of this meeting" (the owner, 27 Nov 2026: "B").
+   */
+  attending: z.boolean().optional(),
   /** Reminders only: "only_me" or "my_team", whether the viewer made it (and may delete it), and who did if not. */
   visibility: z.enum(["only_me", "my_team"]).optional(),
   mine: z.boolean().optional(),
