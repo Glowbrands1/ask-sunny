@@ -9,11 +9,16 @@
 -- service role, only after the route's own access check has passed.
 --
 -- voice_usage_reserve: in one step (serialised by a transaction advisory lock, so two overlapping requests cannot
--- both take the last place), counts the pending and succeeded rows for the person, their salon and the company since
--- Manila midnight, and the person's in the last 60 seconds, and when every cap has room inserts a pending row and
--- returns its id. A pending row counts as the clip length the browser reported (clamped by the caller's minimum and
--- maximum) until it is finished, and it is never released, so a crash still counts. A finished row counts as the
--- audio length the provider reported.
+-- both take the last place), counts the person's requests in the last 60 seconds and since Manila midnight, and the
+-- audio seconds of the person, their salon and the company since Manila midnight, and when every cap has room inserts
+-- a pending row and returns its id.
+--
+-- Requests: EVERY row the person started counts (pending, succeeded and failed): each one was a call to AssemblyAI.
+-- Audio seconds: a pending row counts as the clip length the browser reported (clamped by the caller's minimum and
+-- maximum) and is never released, so a crash still counts. A finished row counts coalesce(audio_seconds,
+-- clip_seconds): the app writes the provider's length on success, 0 only after a clear provider rejection (HTTP 400,
+-- 401, 413 or 415: nothing was transcribed), and leaves it null on any other failure (no answer, 429, 5xx, a bad
+-- answer), so a request the provider may have processed and charged for keeps its clip length.
 
 create table public.voice_usage (
   id uuid primary key default extensions.gen_random_uuid(),
@@ -80,7 +85,6 @@ begin
     into v_minute_count, v_minute_oldest
     from public.voice_usage u
    where u.user_id = p_user_id
-     and u.status in ('pending', 'succeeded')
      and u.created_at > now() - interval '60 seconds';
   if v_minute_count >= p_per_minute then
     return query select null::uuid, 'user_minute'::text,
@@ -89,11 +93,10 @@ begin
   end if;
 
   select count(*),
-         coalesce(sum(case when u.status = 'succeeded' and u.audio_seconds is not null then u.audio_seconds else u.clip_seconds end), 0)
+         coalesce(sum(case when u.status = 'pending' then u.clip_seconds else coalesce(u.audio_seconds, u.clip_seconds) end), 0)
     into v_user_count, v_user_seconds
     from public.voice_usage u
    where u.user_id = p_user_id
-     and u.status in ('pending', 'succeeded')
      and u.created_at >= v_day_start;
   if v_user_count >= p_per_day or v_user_seconds + v_clip > p_user_audio_seconds then
     return query select null::uuid, 'user_day'::text, null::integer;
@@ -101,11 +104,10 @@ begin
   end if;
 
   if p_salon_id is not null then
-    select coalesce(sum(case when u.status = 'succeeded' and u.audio_seconds is not null then u.audio_seconds else u.clip_seconds end), 0)
+    select coalesce(sum(case when u.status = 'pending' then u.clip_seconds else coalesce(u.audio_seconds, u.clip_seconds) end), 0)
       into v_salon_seconds
       from public.voice_usage u
      where u.salon_id = p_salon_id
-       and u.status in ('pending', 'succeeded')
        and u.created_at >= v_day_start;
     if v_salon_seconds + v_clip > p_salon_audio_seconds then
       return query select null::uuid, 'salon_day'::text, null::integer;
@@ -113,11 +115,10 @@ begin
     end if;
   end if;
 
-  select coalesce(sum(case when u.status = 'succeeded' and u.audio_seconds is not null then u.audio_seconds else u.clip_seconds end), 0)
+  select coalesce(sum(case when u.status = 'pending' then u.clip_seconds else coalesce(u.audio_seconds, u.clip_seconds) end), 0)
     into v_company_seconds
     from public.voice_usage u
-   where u.status in ('pending', 'succeeded')
-     and u.created_at >= v_day_start;
+   where u.created_at >= v_day_start;
   if v_company_seconds + v_clip > p_company_audio_seconds then
     return query select null::uuid, 'company_day'::text, null::integer;
     return;

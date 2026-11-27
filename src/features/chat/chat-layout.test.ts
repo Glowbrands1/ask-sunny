@@ -170,6 +170,11 @@ describe("the composer's own footprint", () => {
 
   it("renders no permanently mounted helper paragraph", () => {
     expect(COMPOSER_CODE).not.toContain("ANSWER_MODE_HELPER[mode]");
+    /*
+     * VOICE_INPUT_ENABLED (QA, 27 Nov 2026): the one standing line voice adds ("Voice sends your recording to AssemblyAI
+     * to make text.") is not the composer's: the gated `VoiceButton` renders it, only for a person voice is on for.
+     */
+    expect(COMPOSER_CODE).not.toContain("VOICE_HINT");
   });
 });
 

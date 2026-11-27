@@ -18,7 +18,7 @@ import {
   clampClipSeconds,
   manilaDayStart,
 } from "./voice-limits";
-import { memoryVoiceUsageStore, type VoiceReserveInput, type VoiceSurface } from "./voice-usage";
+import { finishedAudioSeconds, memoryVoiceUsageStore, type VoiceReserveInput, type VoiceSurface } from "./voice-usage";
 
 /*
  * VOICE_INPUT_ENABLED: the caps, shared by the four chat boxes, with day windows from Manila midnight (UTC+8). The
@@ -124,15 +124,53 @@ describe("the day caps", () => {
     expect(await store.reserve(ada({ clipSeconds: 5, salonId: null }))).toEqual({ ok: false, refused: "user_day" });
   });
 
-  it("a failed clip does not count", async () => {
+  it("a failed clip with no clear rejection (no answer, 429, 5xx) keeps its clip length", async () => {
     const clock = clockAt("2026-11-27T00:00:00Z");
     const store = memoryVoiceUsageStore({ now: clock.now });
     for (let i = 0; i < 30; i += 1) {
       const reservation = await store.reserve(ada({ clipSeconds: 60, salonId: null }));
-      if (reservation.ok) await store.finish(reservation.id, { status: "failed", audioSeconds: null });
+      expect(reservation.ok).toBe(true);
+      if (reservation.ok) await store.finish(reservation.id, { status: "failed", audioSeconds: finishedAudioSeconds({ processed: false, providerStatus: i % 2 ? null : 503, audioSeconds: null, clampedClip: 60 }) });
+      clock.advance(7_000);
+    }
+    expect(await store.reserve(ada({ clipSeconds: 5, salonId: null }))).toEqual({ ok: false, refused: "user_day" });
+  });
+
+  it("a clear provider rejection (415) frees its seconds, but still counts as a request", async () => {
+    const clock = clockAt("2026-11-27T00:00:00Z");
+    const store = memoryVoiceUsageStore({ now: clock.now });
+    for (let i = 0; i < 30; i += 1) {
+      const reservation = await store.reserve(ada({ clipSeconds: 60, salonId: null }));
+      if (reservation.ok) await store.finish(reservation.id, { status: "failed", audioSeconds: finishedAudioSeconds({ processed: false, providerStatus: 415, audioSeconds: null, clampedClip: 60 }) });
       clock.advance(7_000);
     }
     expect((await store.reserve(ada({ clipSeconds: 60, salonId: null }))).ok).toBe(true);
+    expect(store.rows.filter((row) => row.status === "failed").every((row) => row.audioSeconds === 0)).toBe(true);
+  });
+
+  it("failed requests count toward the minute and the day request caps", async () => {
+    const clock = clockAt("2026-11-27T00:00:00Z");
+    const store = memoryVoiceUsageStore({ now: clock.now });
+    for (let i = 0; i < PER_USER_PER_MINUTE; i += 1) {
+      const reservation = await store.reserve(ada({ clipSeconds: 1, salonId: null }));
+      if (reservation.ok) await store.finish(reservation.id, { status: "failed", audioSeconds: 0 });
+    }
+    expect((await store.reserve(ada({ clipSeconds: 1, salonId: null }))).ok).toBe(false);
+    clock.advance(61_000);
+    for (let i = PER_USER_PER_MINUTE; i < PER_USER_PER_DAY; i += 1) {
+      const reservation = await store.reserve(ada({ clipSeconds: 1, salonId: null }));
+      expect(reservation.ok).toBe(true);
+      if (reservation.ok) await store.finish(reservation.id, { status: "failed", audioSeconds: 0 });
+      clock.advance(7_000);
+    }
+    expect(await store.reserve(ada({ clipSeconds: 1, salonId: null }))).toEqual({ ok: false, refused: "user_day" });
+  });
+
+  it("what a finished call writes: the provider's length; 0 after 400, 401, 413, 415; nothing otherwise", () => {
+    expect(finishedAudioSeconds({ processed: true, providerStatus: 200, audioSeconds: 4.1, clampedClip: 5 })).toBe(4.1);
+    expect(finishedAudioSeconds({ processed: true, providerStatus: 200, audioSeconds: null, clampedClip: 5 })).toBe(5);
+    for (const status of [400, 401, 413, 415]) expect(finishedAudioSeconds({ processed: false, providerStatus: status, audioSeconds: null, clampedClip: 5 })).toBe(0);
+    for (const status of [null, 429, 500, 503, 504, 200]) expect(finishedAudioSeconds({ processed: false, providerStatus: status, audioSeconds: null, clampedClip: 5 })).toBeNull();
   });
 
   it("90 minutes of audio a day per salon, whoever is speaking", async () => {

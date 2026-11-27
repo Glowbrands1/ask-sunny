@@ -20,8 +20,9 @@ import { WARN_AT_SECONDS, inAppBrowser, recordingSupported, useVoiceRecorder, ty
  * checks it and presses Send as usual. Nothing is sent to the AI from here.
  *
  * Renders nothing when voice is off for this person (`useVoiceAccess`), when the browser cannot record, and in
- * Slack's, Teams' and Gmail's in-app browsers. Its notices and every error (with role="alert") go where the box
- * already shows its own notices: `messageSlot`, an element the box renders for them; without one, beside the button.
+ * Slack's, Teams' and Gmail's in-app browsers. Its notices, every error (with role="alert") and the standing hint
+ * ("Voice sends your recording to AssemblyAI to make text.", shown whenever the mic is) go where the box already shows
+ * its own notices: `messageSlot`, an element the box renders for them; without one, beside the button.
  */
 
 const CONSENT_PREFIX = "ask-sunny:voice-consent:";
@@ -202,7 +203,6 @@ function VoiceButtonOn({ surface, meetingKey, conversationId, disabled = false, 
             `Recording ${clock(state.seconds)}. Tap the mic again to stop.`
           )}
         </p>
-        <p className="m-0">{VOICE_HINT}</p>
       </div>
     );
   } else if (uploading) {
@@ -214,7 +214,6 @@ function VoiceButtonOn({ surface, meetingKey, conversationId, disabled = false, 
         <button type="button" className={action} onClick={recorder.cancel}>
           Cancel
         </button>
-        <p className="m-0 w-full">{VOICE_HINT}</p>
       </div>
     );
   } else if (state.kind === "cut") {
@@ -254,16 +253,23 @@ function VoiceButtonOn({ surface, meetingKey, conversationId, disabled = false, 
     );
   }
 
-  const messages = line ? (
-    <div data-testid="voice-message" className="mt-2">
+  /*
+   * The hint is always there while voice is on for this person (whenever the mic shows), under any notice, so nobody
+   * uses the mic without being told where the recording goes.
+   */
+  const messages = (
+    <div data-testid="voice-message" className="mt-2 space-y-1">
       {line}
+      <p data-testid="voice-hint" className={cn("m-0 text-[11px] leading-snug", muted)}>
+        {VOICE_HINT}
+      </p>
     </div>
-  ) : null;
+  );
 
   return (
     <>
       {button}
-      {messages ? (messageSlot ? createPortal(messages, messageSlot) : messageSlot === undefined ? messages : null) : null}
+      {messageSlot ? createPortal(messages, messageSlot) : messageSlot === undefined ? messages : null}
     </>
   );
 }

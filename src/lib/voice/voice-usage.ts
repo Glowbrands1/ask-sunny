@@ -23,7 +23,9 @@ import {
  *
  * The counters live in `voice_usage` (supabase/migrations/20261127001000_voice_usage.sql). One RPC,
  * `voice_usage_reserve`, counts and inserts the pending row in one step, before AssemblyAI is called; the row is
- * finished after the call. A pending row is never released, so a crash still counts against the caps. Any failure
+ * finished after the call. Every row counts as a request (failed ones too). A pending row is never released, so a
+ * crash still counts against the caps; a failed row keeps its clip length unless the provider clearly rejected it
+ * (`finishedAudioSeconds`). Any failure
  * to read the counts or write the pending row THROWS, and the route refuses (fails closed).
  *
  * The caps are shared by the four AI chat boxes: one person's minute, day and audio-seconds caps cover all of them.
@@ -72,13 +74,33 @@ export interface VoiceUsageRow {
   audioSeconds: number | null;
 }
 
+/**
+ * The audio seconds a row counts for. Pending: the clamped clip. Finished: the seconds written at `finish` (the
+ * provider's length on success, 0 after a clear rejection), or the clamped clip when none was written (any other
+ * failure: the provider may have processed and charged for it).
+ */
 function counted(row: VoiceUsageRow): number {
-  return row.status === "succeeded" && row.audioSeconds !== null ? row.audioSeconds : row.clipSeconds;
+  return row.status === "pending" ? row.clipSeconds : (row.audioSeconds ?? row.clipSeconds);
+}
+
+/** Provider answers that clearly rejected the clip without transcribing it: its seconds count 0. */
+const CLEAR_REJECTIONS = new Set([400, 401, 413, 415]);
+
+/**
+ * What to write at `finish` for a call that ended with this provider status and outcome: the provider's length on
+ * success; 0 after a clear rejection (HTTP 400, 401, 413, 415); null (counted as the clamped clip) on any other
+ * failure (no answer, 429, 5xx, a bad answer).
+ */
+export function finishedAudioSeconds(input: { readonly processed: boolean; readonly providerStatus: number | null; readonly audioSeconds: number | null; readonly clampedClip: number }): number | null {
+  if (input.processed) return input.audioSeconds ?? input.clampedClip;
+  if (input.providerStatus !== null && CLEAR_REJECTIONS.has(input.providerStatus)) return 0;
+  return null;
 }
 
 /** Whether one more clip fits under every cap, given the rows already written. */
 export function evaluateVoiceCaps(rows: readonly VoiceUsageRow[], input: VoiceReserveInput, now: Date): VoiceReservation | { ok: true; id: null } {
-  const live = rows.filter((row) => row.status === "pending" || row.status === "succeeded");
+  /* Every row the person started counts as a request (pending, succeeded and failed): each one was a provider call. */
+  const live = rows;
   const clip = clampClipSeconds(input.clipSeconds);
   const minuteAgo = now.getTime() - 60_000;
   const minute = live.filter((row) => row.userId === input.userId && row.createdAt.getTime() > minuteAgo);

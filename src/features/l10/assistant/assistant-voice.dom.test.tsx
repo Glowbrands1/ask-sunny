@@ -15,6 +15,7 @@ import { VoiceAccessProvider } from "@/features/voice/voice-access";
 import { acceptVoiceNotice, installFakeMic, removeFakeMic, type FakeMic } from "@/test/fake-mic";
 import { AssistantPanel } from "./AssistantPanel";
 
+const HINT = "Voice sends your recording to AssemblyAI to make text.";
 const SCOPE = "user-ada:stc-dm";
 let fake: FakeMic;
 let posts: Record<string, unknown>[];
@@ -67,6 +68,7 @@ describe("box D: the L10 Leadership Assistant", () => {
   it("no mic when voice is off", async () => {
     await openPanel(false);
     expect(mic()).toBeNull();
+    expect(screen.queryByText(HINT)).toBeNull();
     expect(screen.getByRole("button", { name: "Attach images or PDFs" })).toBeTruthy();
   });
 
@@ -85,6 +87,7 @@ describe("box D: the L10 Leadership Assistant", () => {
     const user = userEvent.setup();
     await openPanel(true, "stc-sd-two");
     await user.type(box(), "notes:");
+    expect(screen.getByText(HINT)).toBeTruthy();
     await speak(user);
     expect(box().value).toBe("notes: spoken words from ada");
     expect(document.activeElement).toBe(box());

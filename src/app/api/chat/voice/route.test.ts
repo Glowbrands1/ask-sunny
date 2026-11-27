@@ -335,8 +335,16 @@ describe("a transcription", () => {
     const { status, body } = await read(await POST(request()));
     expect(status).toBe(415);
     expect(body).toEqual({ error: VOICE_MESSAGES.badAudio, code: "bad_audio" });
-    expect(traces[0]).toMatchObject({ succeeded: false, error_status: 415, error_class: "unsupported_media_type" });
-    expect(store.rows[0]!.status).toBe("failed");
+    expect(traces[0]).toMatchObject({ succeeded: false, error_status: 415, error_class: "unsupported_media_type", slots: { spend: [{ audio_seconds: 0 }] } });
+    // A clear rejection: the row is failed and its seconds are freed (it still counts as a request).
+    expect(store.rows[0]).toMatchObject({ status: "failed", audioSeconds: 0 });
+  });
+
+  it("no answer or a 5xx: the row keeps its clip length, and the trace bills it", async () => {
+    provider = () => new Response("{}", { status: 503 });
+    await POST(request({ clipSeconds: "7.5" }));
+    expect(store.rows[0]).toMatchObject({ status: "failed", audioSeconds: null, clipSeconds: 7.5 });
+    expect(traces[0]).toMatchObject({ slots: { spend: [{ audio_seconds: 7.5 }] } });
   });
 
   it("the provider rejects the key: 'Voice is not available right now' and a log line without text", async () => {

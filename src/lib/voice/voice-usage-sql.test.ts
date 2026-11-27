@@ -99,10 +99,22 @@ describe("voice_usage_reserve", () => {
     expect((await reserve("user-late", "loc-0005", 5)).refused).toBe("company_day");
   });
 
-  it("failed rows do not count; yesterday's (before Manila midnight) do not count", async () => {
-    await db.exec(`insert into public.voice_usage (user_id, surface, status, clip_seconds, created_at) select 'user-ada', 'chat', 'failed', 60, now() - interval '10 minutes' from generate_series(1, 40)`);
-    expect((await reserve("user-ada", null, 60)).refused).toBeNull();
+  it("failed rows count toward the minute and the day request caps", async () => {
+    await db.exec(`insert into public.voice_usage (user_id, surface, status, clip_seconds, audio_seconds) select 'user-ada', 'chat', 'failed', 1, 0 from generate_series(1, 10)`);
+    expect((await reserve("user-ada", null, 1)).refused).toBe("user_minute");
     await db.exec("truncate public.voice_usage");
+    await db.exec(`insert into public.voice_usage (user_id, surface, status, clip_seconds, audio_seconds, created_at) select 'user-ada', 'chat', 'failed', 1, 0, now() - interval '10 minutes' from generate_series(1, 120)`);
+    expect((await reserve("user-ada", null, 1)).refused).toBe("user_day");
+  });
+
+  it("a failed row with no seconds written (no answer, 429, 5xx) keeps its clip length; a clear rejection (0) frees it", async () => {
+    await db.exec(`insert into public.voice_usage (user_id, surface, status, clip_seconds, audio_seconds, created_at) select 'user-ada', 'chat', 'failed', 60, null, now() - interval '10 minutes' from generate_series(1, 30)`);
+    expect((await reserve("user-ada", null, 5)).refused).toBe("user_day");
+    await db.exec("update public.voice_usage set audio_seconds = 0");
+    expect((await reserve("user-ada", null, 60)).refused).toBeNull();
+  });
+
+  it("yesterday's rows (before Manila midnight) do not count", async () => {
     await insertFinished(30, () => "user-ada", () => null, 60, "(date_trunc('day', now() at time zone 'Asia/Manila') at time zone 'Asia/Manila') - interval '1 second'");
     expect((await reserve("user-ada", null, 60)).refused).toBeNull();
     await db.exec("truncate public.voice_usage");

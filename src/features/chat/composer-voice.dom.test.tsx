@@ -65,6 +65,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+const HINT = "Voice sends your recording to AssemblyAI to make text.";
 const screenWith = (enabled: boolean) =>
   render(
     <VoiceAccessProvider enabled={enabled} userKey="user-ada">
@@ -89,6 +90,7 @@ describe("box A: the main chat composer", () => {
     screenWith(false);
     await input();
     expect(mic()).toBeNull();
+    expect(screen.queryByText(HINT)).toBeNull();
   });
 
   it("a mic in the input pill when on; the transcript is appended; Send says it came from voice, unedited", async () => {
@@ -96,6 +98,7 @@ describe("box A: the main chat composer", () => {
     screenWith(true);
     const box = await input();
     await user.type(box, "quick one:");
+    expect(screen.getByText(HINT)).toBeTruthy();
     await speak(user);
     expect(box.value).toBe("quick one: spoken words from ada");
     expect(document.activeElement).toBe(box);

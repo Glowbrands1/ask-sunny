@@ -93,6 +93,14 @@ describe("when the mic shows", () => {
     }
   });
 
+  it("the hint shows the whole time the mic does, and never without it", () => {
+    renderOn(<Host />);
+    expect(screen.getByTestId("voice-hint").textContent).toBe(VOICE_HINT);
+    cleanup();
+    renderOn(<Host />, false);
+    expect(screen.queryByText(VOICE_HINT)).toBeNull();
+  });
+
   it("disabled when the box says so", () => {
     renderOn(<Host disabled />);
     expect((mic() as HTMLButtonElement).disabled).toBe(true);

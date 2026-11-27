@@ -16,7 +16,7 @@ import { VOICE_MESSAGES, tryAgainIn, type VoiceErrorCode } from "@/lib/voice/voi
 import { voiceRouteDeps } from "@/lib/voice/voice-route-deps";
 import { transcribeVoice, type TranscribeOutcome } from "@/lib/voice/transcribe";
 import { VoiceUploadError, declaredAudioType, openVoiceUpload, sniffAudio, type VoiceUpload } from "@/lib/voice/voice-upload";
-import { voiceTraceRow, type VoiceRefusal, type VoiceSurface } from "@/lib/voice/voice-usage";
+import { finishedAudioSeconds, voiceTraceRow, type VoiceRefusal, type VoiceSurface } from "@/lib/voice/voice-usage";
 import { MAX_BYTES, MAX_SECONDS, MIN_BYTES, MIN_SECONDS, ROUTE_MAX_SECONDS, clampClipSeconds, manilaDayStart } from "@/lib/voice/voice-limits";
 import type { AccessScope, Role } from "@/types";
 
@@ -279,8 +279,10 @@ async function handle(request: Request): Promise<Response> {
 
   const processed = result.outcome === "ok" || result.outcome === "empty";
   const clamped = clampClipSeconds(fields.clipSeconds);
+  /* The provider's length on success; 0 only after a clear rejection (400, 401, 413, 415); otherwise the clip counts. */
+  const finishedSeconds = finishedAudioSeconds({ processed, providerStatus: result.status, audioSeconds: result.audioSeconds, clampedClip: clamped });
   try {
-    await deps.store.finish(usageId, { status: processed ? "succeeded" : "failed", audioSeconds: result.audioSeconds ?? (processed ? clamped : null) });
+    await deps.store.finish(usageId, { status: processed ? "succeeded" : "failed", audioSeconds: finishedSeconds });
   } catch {
     console.warn(`voice: ${surface} usage_update_failed`);
   }
@@ -295,7 +297,7 @@ async function handle(request: Request): Promise<Response> {
       errorStatus: result.outcome === "ok" ? null : result.status,
       errorClass: result.errorClass ?? (result.outcome === "empty" ? "empty_transcript" : null),
       audioSeconds: result.audioSeconds,
-      billedSeconds: result.audioSeconds ?? (processed || result.outcome === "timeout" ? clamped : 0),
+      billedSeconds: finishedSeconds ?? clamped,
       bytes,
       mime: sniffed,
       keytermCount: hints.keyterms.length,

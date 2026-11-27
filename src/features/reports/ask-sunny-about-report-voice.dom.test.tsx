@@ -63,6 +63,7 @@ function useFakeStore() {
 }
 vi.mock("@/lib/store/app-store", () => ({ useAppStore: () => useFakeStore(), useOptionalAppStore: () => useFakeStore() }));
 
+const HINT = "Voice sends your recording to AssemblyAI to make text.";
 const asks: ClientAskRequest[] = [];
 let hold: Promise<void> | null = null;
 vi.mock("@/lib/ai", () => ({
@@ -124,12 +125,14 @@ describe("box C: the report ask bar", () => {
   it("no mic when voice is off", () => {
     band(false);
     expect(mic()).toBeNull();
+    expect(screen.queryByText(HINT)).toBeNull();
   });
 
   it("a mic when on; the transcript lands in the bar's text; Send says it came from voice, unedited", async () => {
     const user = userEvent.setup();
     band();
     expect(mic()).not.toBeNull();
+    expect(screen.getByText(HINT)).toBeTruthy();
     await speak(user);
     expect(box().value).toBe("spoken words from ada");
     expect(fake.lastForm()!.get("surface")).toBe("report");
