@@ -32,6 +32,7 @@ const KIND: Record<CalendarKind, { label: string; plural: string; dot: string }>
   "hr-approval": { label: "HR approvals", plural: "approvals", dot: "bg-[#c98a12]" },
   "google-reviews": { label: "Review reminders", plural: "review checks", dot: "bg-[#2f8f5b]" },
   reminder: { label: "Reminders", plural: "reminders", dot: "bg-[#2f6fd0]" },
+  holiday: { label: "Holidays", plural: "holidays", dot: "bg-[#d0679a]" },
 };
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -211,7 +212,7 @@ function ScheduleForm({ meeting, save, onDone }: { meeting: MeetingDetails; save
 function EventRow({ e, onDelete, onMeeting, hasDetails }: { e: CalendarEvent; onDelete?: (e: CalendarEvent) => void; onMeeting?: (key: string) => void; hasDetails?: (key: string) => boolean }) {
   const when = e.startTime ? `${clockLabel(e.startTime)} CT${e.minutes ? ` · ${e.minutes} min` : ""}` : e.kind === "meeting" ? "Time not set" : "All day";
   const title =
-    e.kind === "reminder" ? (
+    e.kind === "reminder" || e.kind === "holiday" ? (
       <span className="font-semibold">{e.title}</span>
     ) : e.kind === "meeting" && e.meetingKey && onMeeting && hasDetails?.(e.meetingKey) ? (
       <button type="button" onClick={() => onMeeting(e.meetingKey!)} className="font-semibold underline-offset-2 hover:underline" aria-label={`${e.title}: details`}>

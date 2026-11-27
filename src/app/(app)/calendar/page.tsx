@@ -26,7 +26,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   const month = isMonth(sp.month) ? sp.month : monthOf(today);
   const { from, to } = monthGrid(month);
   const [result, details] = identity
-    ? await Promise.all([loadCalendarFor(identity, { from, to }, { origin: "", includeHub: true }), meetingDetailsFromHub(identity.email)])
+    ? await Promise.all([loadCalendarFor(identity, { from, to }, { origin: "", includeHub: true, includeHolidays: true }), meetingDetailsFromHub(identity.email)])
     : [null, null];
   // The meeting panel and "No day set" need the Hub's details; without them, meetings still show and open the L10.
   const meetings = details?.state === "ok" ? details.meetings : [];

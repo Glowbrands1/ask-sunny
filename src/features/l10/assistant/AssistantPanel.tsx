@@ -15,7 +15,7 @@ import { ChatMentionText, ChatPeople, useChatPeople, useMentionPicker } from "./
 import { artifactTitle, collectCitations, isArtifactWorthy, toolLabel } from "./citations";
 import { ArtifactContext, useArtifacts, type ArtifactDoc } from "./artifact-context";
 import { ArtifactPane } from "./ArtifactPane";
-import { ATTACH_ACCEPT, MAX_FILES_PER_MESSAGE, attachmentProblem as fileProblem, toFilePart } from "./attachments";
+import { CHAT_ATTACH_ACCEPT, MAX_FILES_PER_MESSAGE, attachmentProblem as fileProblem, toFilePart } from "./attachments";
 import { NoteCard } from "./NoteCard";
 import { SourceViewer } from "./SourceViewer";
 import { isNoteDraft } from "./notes";
@@ -293,7 +293,7 @@ function Chat({ meetingKey, scope, deep, onDeepChange }: { meetingKey: string; s
     },
   });
   const [draft, setDraft] = useState("");
-  // Attachments waiting to be sent (the Hub's composer: attach, paste or drop; images and PDFs; ≤ 5, ≤ 10 MB each).
+  // Attachments waiting to be sent (the Hub's composer: attach, paste or drop; images, PDFs, Word, Excel, CSV and text; ≤ 5, ≤ 10 MB each).
   const [files, setFiles] = useState<File[]>([]);
   const [fileNote, setFileNote] = useState("");
   const [dragging, setDragging] = useState(false);
@@ -304,7 +304,7 @@ function Chat({ meetingKey, scope, deep, onDeepChange }: { meetingKey: string; s
     const problems: string[] = [];
     const ok: File[] = [];
     for (const f of picked) {
-      const problem = fileProblem(f);
+      const problem = fileProblem(f, "chat");
       if (problem) problems.push(problem);
       else ok.push(f);
     }
@@ -465,7 +465,7 @@ function Chat({ meetingKey, scope, deep, onDeepChange }: { meetingKey: string; s
               ref={picker}
               type="file"
               multiple
-              accept={ATTACH_ACCEPT}
+              accept={CHAT_ATTACH_ACCEPT}
               className="hidden"
               data-testid="attach-input"
               onChange={(e) => {

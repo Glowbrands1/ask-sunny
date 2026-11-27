@@ -168,3 +168,20 @@ describe("Calendar: every recurring L10 (the owner, 27 Nov 2026)", () => {
     expect(chip.getAttribute("aria-pressed")).toBe("true");
   });
 });
+
+/** The owner, 27 Nov 2026: "can you also add holidays in the calendar in all apps pls US holiday". */
+describe("Calendar: US holidays", () => {
+  const XMAS: CalendarEvent = { id: "sunny:holiday:2026-12-25:christmas-day", source: "ask-sunny", kind: "holiday", title: "Christmas Day", date: "2026-12-25", href: "/calendar" };
+  const EVE: CalendarEvent = { id: "sunny:holiday:2026-12-24:christmas-eve", source: "ask-sunny", kind: "holiday", title: "Christmas Eve (observance)", date: "2026-12-24", href: "/calendar" };
+  it("shows them all day with their own Holidays chip; an entry is its name only, opening nothing", async () => {
+    render(<CalendarView month="2026-12" today="2026-12-25" view={{ from: "2026-11-29", to: "2027-01-09", events: [XMAS, EVE], notes: [] }} meetings={[]} save={vi.fn()} remove={vi.fn()} />);
+    const chip = screen.getByRole("button", { name: /Holidays/ });
+    expect(chip.getAttribute("aria-pressed")).toBe("true");
+    const day = screen.getByRole("region", { name: dayLabel("2026-12-25") });
+    expect(day.textContent).toMatch(/All day/);
+    expect(day.textContent).toMatch(/Christmas Day/);
+    expect(within(day).queryByRole("link")).toBeNull();
+    await userEvent.click(chip);
+    expect(screen.getByRole("region", { name: dayLabel("2026-12-25") }).textContent).not.toMatch(/Christmas Day/);
+  });
+});
