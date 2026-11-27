@@ -244,7 +244,7 @@ describe("HR approval, filed to decided, with production's flags", () => {
     expect(PRODUCTION).toContain("FORMS_HR_APPROVAL_ENABLED");
   });
 
-  it("a Resignation/Exit Form reaches HR's queue and bell, sits on HR's calendar on its due day, opens to the form, and leaves both once approved", async () => {
+  it("a Resignation/Exit Form reaches HR's queue and bell, sits on HR's calendar on its due day, opens to the form for HR and admins only, and leaves both once approved", async () => {
     const id = await fileExitForm();
     await fillEveryRequiredLine(id);
 
@@ -286,9 +286,16 @@ describe("HR approval, filed to decided, with production's flags", () => {
     const hrRead = await send("hr", id, "GET");
     expect(hrRead.status).toBe(200);
     expect(hrRead.body.instance).toMatchObject({ id, employeeName: "Marisol Quenby", hrApprovalState: "pending" });
-    // Nobody else is led to it.
-    await expect(as("admin", () => hrPage({ params: Promise.resolve({ id }) }))).rejects.toThrow();
-    expect((await send("admin", id, "GET")).status).toBe(404);
+    // An administrator opens it too (owner, 27 Nov 2026: "yes admin"), without HR's notes or decision.
+    const adminPage = await as("admin", () => hrPage({ params: Promise.resolve({ id }) }));
+    expect((adminPage as { props: { instanceId: string } }).props.instanceId).toBe(id);
+    const adminRead = await send("admin", id, "GET");
+    expect(adminRead.status).toBe(200);
+    expect(adminRead.body.instance).toMatchObject({ id, employeeName: "Marisol Quenby" });
+    expect(adminRead.body.hrApproval).toBeUndefined();
+    // A manager who is not its creator, sender, HR or an administrator is led nowhere: the same 404 as a missing form.
+    await expect(as("dm", () => hrPage({ params: Promise.resolve({ id }) }))).rejects.toThrow(/404/);
+    expect((await send("dm", id, "GET")).status).toBe(404);
 
     // 4. HR APPROVES: finalized, gone from the queue, the count, the calendar; HR's bell item cleared; the manager told.
     const approved = await send("hr", id, "POST", { action: "hr_approve" });
