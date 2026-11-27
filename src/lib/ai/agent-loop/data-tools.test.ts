@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /* The business zone is read when business-date.ts loads: production is Central. */
 vi.hoisted(() => {
@@ -484,6 +484,9 @@ describe("read_follow_ups", () => {
 });
 
 describe("read_whats_new (Pau, 26 Nov 2026)", () => {
+  // Rolled out for these cases; hidden for everyone by default (Pau, 27 Nov 2026), see the last case.
+  beforeEach(() => vi.stubEnv("NEXT_PUBLIC_WHATS_NEW_ENABLED", "true"));
+  afterEach(() => vi.unstubAllEnvs());
   const entry = (title: string, permission?: "manage_integrations" | "view_google_reviews") =>
     ({ tag: "New" as const, title, before: "What it was like before.", now: "What it does now.", howToUse: "Ask Sunny about it.", ...(permission ? { permission, showMe: { href: "/reviews", label: "Google Reviews" } } : {}) });
   const RELEASES = [
@@ -511,6 +514,13 @@ describe("read_whats_new (Pau, 26 Nov 2026)", () => {
     const out = (await readWhatsNew(ctx(MANAGER, "what's new?", "employee"), {}, RELEASES)) as Out;
     expect(out.refused).toBeTruthy();
     expect(out.releases).toBeUndefined();
+  });
+
+  it("Pau, 27 Nov 2026 (\"hide this for everyone, for now pls, i will roll it out later\"): off, even an administrator reads nothing and is told not to point at the page", async () => {
+    vi.stubEnv("NEXT_PUBLIC_WHATS_NEW_ENABLED", undefined);
+    const out = (await readWhatsNew(ctx(ADMIN, "what's new?", "admin"), {}, RELEASES)) as Out;
+    expect(out.releases).toBeUndefined();
+    expect(out.refused).toContain("do not mention a What's New page");
   });
 });
 

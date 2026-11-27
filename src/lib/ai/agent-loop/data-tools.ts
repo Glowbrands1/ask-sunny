@@ -7,7 +7,7 @@ import { readSalonMentions } from "@/lib/forms/salon-mention";
 import { DAILY_STATS_INTERPRETATION_FRAMEWORK } from "@/lib/knowledge/document-roles";
 import type { RoleGroundingResult } from "@/lib/knowledge/role-grounding";
 import { pagesToolLine, type PageReaderTool } from "@/config/ai-readable-pages";
-import { WHATS_NEW, whatsNewFor, type WhatsNewRelease } from "@/config/whats-new";
+import { WHATS_NEW, whatsNewEnabled, whatsNewFor, type WhatsNewRelease } from "@/config/whats-new";
 import { PRODUCTION_RESOURCES } from "@/data/resources";
 import { RESOURCE_CATEGORY_LABEL } from "@/data/resource-taxonomy";
 import { VIDEO_CATEGORY_LABEL } from "@/lib/videos/categories";
@@ -964,6 +964,10 @@ export async function readWhatsNew(context: DataToolContext, input: { since?: un
   const role = context.actor.role;
   if (!hasPermission(matrix, role, READER_PERMISSION.read_whats_new)) {
     return { source: WHATS_NEW_SOURCE, refused: "This account's role does not open the What's New page. Nothing was read; say so plainly, in one line." };
+  }
+  // Pau, 27 Nov 2026: hidden for everyone until it is rolled out (`whatsNewEnabled`); the page is a 404 meanwhile.
+  if (!whatsNewEnabled()) {
+    return { source: WHATS_NEW_SOURCE, refused: "There is no list of updates to share yet. Nothing was read; say so plainly, in one line, and do not mention a What's New page or name any feature as new." };
   }
   const since = text(input.since);
   const from = since && /^\d{4}-\d{2}-\d{2}$/.test(since) ? since : null;
