@@ -212,6 +212,8 @@ export interface VoiceTraceInput {
   readonly keytermCount: number;
   readonly retried: boolean;
   readonly outcome: string;
+  /** "sync" for a recording (the default); "streaming" for live dictation, billed by how long the socket was open. */
+  readonly endpoint?: "sync" | "streaming";
 }
 
 /** The chat_traces row for one voice transcription. Never audio, never text, never the hints; no e2e_latency_ms. */
@@ -231,7 +233,7 @@ export function voiceTraceRow(input: VoiceTraceInput): Record<string, unknown> {
     slots: {
       voice: {
         provider: "assemblyai",
-        endpoint: "sync",
+        endpoint: input.endpoint ?? "sync",
         surface: input.surface,
         audio_seconds: input.audioSeconds,
         bytes: input.bytes,
