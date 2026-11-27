@@ -466,3 +466,18 @@ export function isMultiWordSalonName(candidate: string): boolean {
 export function rosterSalonName(id: string): string | null {
   return PRODUCTION_SALONS.find((salon: ProductionSalon) => salon.id === id)?.name ?? null;
 }
+
+/**
+ * The names a manager says a salon by, for voice input's spelling hints (VOICE_INPUT_ENABLED): its name without the
+ * state prefix ("Lincoln O Street"), then the reviewed short names for it ("O St Lincoln", "St Joe"). Empty for an id
+ * the roster does not have.
+ */
+export function spokenSalonNames(id: string): string[] {
+  const salon = PRODUCTION_SALONS.find((entry: ProductionSalon) => entry.id === id);
+  if (!salon) return [];
+  const title = (phrase: string) => phrase.replace(/\b\p{L}/gu, (letter) => letter.toUpperCase());
+  const short = Object.entries(SHORT_NAMES)
+    .filter(([, salonNumber]) => salonNumber === salon.salonNumber)
+    .map(([phrase]) => title(phrase));
+  return [...new Set([salon.name.slice(3).trim(), ...short])];
+}

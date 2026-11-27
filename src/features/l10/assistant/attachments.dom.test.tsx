@@ -45,6 +45,23 @@ async function openPanel() {
 }
 
 describe("attachments in the composer", () => {
+  it("takes Word, Excel, CSV and Markdown files as chips too (a .md with no type is read by its extension)", async () => {
+    const input = await openPanel();
+    fireEvent.change(input, {
+      target: {
+        files: [
+          new File(["x"], "notes.docx", { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }),
+          new File(["x"], "week.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
+          new File(["a,b"], "south.csv", { type: "text/csv" }),
+          new File(["# x"], "agenda.md", { type: "" }),
+        ],
+      },
+    });
+    expect(screen.getAllByTestId("attachment-chip").map((c) => c.textContent)).toEqual(["notes.docx", "week.xlsx", "south.csv", "agenda.md"]);
+    expect(screen.queryByTestId("attachment-error")).toBeNull();
+    expect(input.getAttribute("accept")).toContain(".docx");
+  });
+
   it("takes images and PDFs as chips that can be removed", async () => {
     const input = await openPanel();
     fireEvent.change(input, { target: { files: [pdf(), new File(["x"], "board.png", { type: "image/png" })] } });
@@ -53,10 +70,11 @@ describe("attachments in the composer", () => {
     expect(screen.getAllByTestId("attachment-chip")).toHaveLength(1);
   });
 
-  it("refuses a wrong type and a file over 10 MB in the browser, with the Hub's words", async () => {
+  // Since 27 Nov 2026 the panel takes Word, Excel, CSV and text as the Hub does (Hub PR #128); .doc/.xls are refused by name.
+  it("refuses a wrong type, an older Word file and a file over 10 MB in the browser", async () => {
     const input = await openPanel();
-    fireEvent.change(input, { target: { files: [new File(["x"], "notes.docx", { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }), pdf("Big.pdf", 10 * 1024 * 1024 + 1)] } });
-    expect(screen.getByTestId("attachment-error").textContent).toBe("notes.docx: only images (PNG, JPG, GIF, WebP) and PDFs can be attached. Big.pdf is larger than 10 MB.");
+    fireEvent.change(input, { target: { files: [new File(["x"], "clip.zip", { type: "application/zip" }), new File(["x"], "Plan.doc", { type: "application/msword" }), pdf("Big.pdf", 10 * 1024 * 1024 + 1)] } });
+    expect(screen.getByTestId("attachment-error").textContent).toBe("clip.zip: only images (PNG, JPG, GIF, WebP), PDFs, Word (.docx), Excel (.xlsx) and text files can be attached. Plan.doc is an older Word file (.doc), which can't be read. Re-save it as .docx or PDF and attach it again. Big.pdf is larger than 10 MB.");
     expect(screen.queryAllByTestId("attachment-chip")).toHaveLength(0);
   });
 
