@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -337,6 +337,8 @@ export function CalendarView({
   saveOccurrence = saveMeetingOccurrenceAction,
   save = saveReminderAction,
   remove = deleteReminderAction,
+  onMonth,
+  onRefresh,
 }: {
   view: View;
   month: string;
@@ -353,8 +355,16 @@ export function CalendarView({
   saveOccurrence?: (input: MeetingOccurrenceInput) => Promise<MeetingScheduleSaveResult>;
   save?: (input: ReminderInput) => Promise<ReminderSaveResult>;
   remove?: (id: string) => Promise<{ ok: boolean }>;
+  /**
+   * The floating Calendar (calendar-popup.tsx) moves between months and reloads in place: with these, the month buttons
+   * and every reload call them instead of changing the page's address. The Calendar page leaves them out.
+   */
+  onMonth?: (month: string) => void;
+  onRefresh?: () => void;
 }) {
   const router = useRouter();
+  const reload = useCallback(() => (onRefresh ? onRefresh() : router.refresh()), [onRefresh, router]);
+  const goMonth = (m: string) => (onMonth ? onMonth(m) : router.push(`?month=${m}`));
   const [openMeeting, setOpenMeeting] = useState<string | null>(null);
   const [editOnOpen, setEditOnOpen] = useState(false);
   // The occurrence the panel was opened from (a day's meeting), and a fresh panel on every open.
@@ -374,15 +384,14 @@ export function CalendarView({
   const hasDetails = (key: string) => meetingByKey.has(key);
   const unscheduled = noDaySet(meetings);
   useEffect(() => {
-    const refresh = () => router.refresh();
-    const timer = setInterval(refresh, REFRESH_MS);
-    const onFocus = () => document.visibilityState === "visible" && refresh();
+    const timer = setInterval(reload, REFRESH_MS);
+    const onFocus = () => document.visibilityState === "visible" && reload();
     document.addEventListener("visibilitychange", onFocus);
     return () => {
       clearInterval(timer);
       document.removeEventListener("visibilitychange", onFocus);
     };
-  }, [router]);
+  }, [reload]);
 
   const [hidden, setHidden] = useState<ReadonlySet<CalendarKind>>(new Set());
   const [removed, setRemoved] = useState<ReadonlySet<string>>(new Set());
@@ -412,7 +421,7 @@ export function CalendarView({
     const r = await remove(e.reminderId);
     if (!r.ok) return setDeleteError("The reminder couldn't be deleted just now. Try again in a minute.");
     setRemoved((s) => new Set(s).add(e.id));
-    router.refresh();
+    reload();
   };
   const pickedEvents = picked ? (byDay.get(picked) ?? []) : [];
   const monthDays = [...byDay.keys()].filter((d) => monthOf(d) === month).sort();
@@ -427,23 +436,40 @@ export function CalendarView({
       ))}
 
       <div className="flex flex-wrap items-center gap-2">
-        <Link href={`?month=${shiftMonth(month, -1)}`} aria-label="Previous month" className="rounded-md border border-border px-3 py-1.5 text-sm">
-          ‹
-        </Link>
-        <h2 className="m-0 min-w-44 text-center text-lg font-semibold">{monthLabel(month)}</h2>
-        <Link href={`?month=${shiftMonth(month, 1)}`} aria-label="Next month" className="rounded-md border border-border px-3 py-1.5 text-sm">
-          ›
-        </Link>
-        <Link href={`?month=${monthOf(today)}`} className="rounded-md px-3 py-1.5 text-sm font-semibold">
-          Today
-        </Link>
+        {onMonth ? (
+          <>
+            <button type="button" onClick={() => goMonth(shiftMonth(month, -1))} aria-label="Previous month" className="rounded-md border border-border px-3 py-1.5 text-sm">
+              ‹
+            </button>
+            <h2 className="m-0 min-w-44 text-center text-lg font-semibold">{monthLabel(month)}</h2>
+            <button type="button" onClick={() => goMonth(shiftMonth(month, 1))} aria-label="Next month" className="rounded-md border border-border px-3 py-1.5 text-sm">
+              ›
+            </button>
+            <button type="button" onClick={() => goMonth(monthOf(today))} className="rounded-md px-3 py-1.5 text-sm font-semibold">
+              Today
+            </button>
+          </>
+        ) : (
+          <>
+            <Link href={`?month=${shiftMonth(month, -1)}`} aria-label="Previous month" className="rounded-md border border-border px-3 py-1.5 text-sm">
+              ‹
+            </Link>
+            <h2 className="m-0 min-w-44 text-center text-lg font-semibold">{monthLabel(month)}</h2>
+            <Link href={`?month=${shiftMonth(month, 1)}`} aria-label="Next month" className="rounded-md border border-border px-3 py-1.5 text-sm">
+              ›
+            </Link>
+            <Link href={`?month=${monthOf(today)}`} className="rounded-md px-3 py-1.5 text-sm font-semibold">
+              Today
+            </Link>
+          </>
+        )}
         <NewEvent
           today={today}
           save={save}
           onSaved={(d) => {
             setPicked(d);
-            if (monthOf(d) !== month) router.push(`?month=${monthOf(d)}`);
-            else router.refresh();
+            if (monthOf(d) !== month) goMonth(monthOf(d));
+            else reload();
           }}
         />
         <div role="group" aria-label="Show event types" className="flex flex-wrap gap-2 sm:ml-auto">
@@ -554,7 +580,7 @@ export function CalendarView({
           canEdit={canEditSchedules}
           startEditing={editOnOpen}
           saveSchedule={saveSchedule}
-          onSaved={() => router.refresh()}
+          onSaved={reload}
           onClose={() => setOpenMeeting(null)}
         />
       ) : null}
