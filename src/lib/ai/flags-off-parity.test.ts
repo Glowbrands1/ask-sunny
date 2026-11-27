@@ -1305,6 +1305,10 @@ describe("new flags default off and wrappers are inert", () => {
           ":(exclude)src/features/calendar/calendar-view.tsx",
           ":(exclude)src/features/calendar/new-event.tsx",
           ":(exclude)src/features/calendar/reminder-card.tsx",
+          // THE FLOATING CALENDAR (the owner, 27 Nov 2026: "can we make the calendar pop up and be resizable so anytime we
+          // go in other tabs it stays there"): a launcher button and a window over the app, mounted in the layout, showing
+          // the Calendar page's own view. No chat or form behaviour changes.
+          ":(exclude)src/features/calendar/calendar-popup.tsx",
           // VOICE INPUT IN EVERY AI CHAT BOX (the owner, 27 Nov 2026, Ask Sunny; behind VOICE_INPUT_ENABLED and the
           // server-only VOICE_INPUT_USERS): one shared mic (`features/voice/`) mounted in the chat composer (above), the
           // Overview band, the report and reviews ask bars and the L10 assistant, plus the layout's VoiceAccessProvider

@@ -5,8 +5,12 @@ import { activePermissionMatrix, hasPermission } from "@/lib/permissions";
 import { reportingScopeOf } from "@/lib/reporting/scope/authorized-salons";
 import { REMINDER_INPUT, type ReminderInput, type ReminderSaveResult } from "@/lib/calendar/reminders";
 import { deleteReminderAs, saveReminderAs } from "@/lib/calendar/reminders.server";
-import { MEETING_OCCURRENCE_INPUT, MEETING_SCHEDULE_INPUT, type MeetingOccurrenceInput, type MeetingScheduleInput, type MeetingScheduleSaveResult } from "@/lib/calendar/meeting-details";
-import { setMeetingOccurrenceInHub, setMeetingScheduleInHub } from "@/lib/calendar/hub";
+import { MEETING_OCCURRENCE_INPUT, MEETING_SCHEDULE_INPUT, type MeetingDetails, type MeetingOccurrenceInput, type MeetingScheduleInput, type MeetingScheduleSaveResult } from "@/lib/calendar/meeting-details";
+import { meetingDetailsFromHub, setMeetingOccurrenceInHub, setMeetingScheduleInHub } from "@/lib/calendar/hub";
+import { loadCalendarFor } from "@/lib/calendar/load.server";
+import { centralToday, isMonth, monthGrid, monthOf } from "@/lib/calendar/range";
+import type { CalendarView as CalendarViewData } from "@/lib/calendar/types";
+import { leadershipHubUrl } from "@/lib/config/app-switcher";
 import { revalidatePath } from "next/cache";
 
 /**
@@ -62,4 +66,47 @@ export async function saveMeetingOccurrenceAction(input: MeetingOccurrenceInput)
   const result = await setMeetingOccurrenceInHub(identity.email, parsed.data);
   if (result.ok) revalidatePath("/calendar");
   return result;
+}
+
+/** One month of the floating Calendar (calendar-popup.tsx): the Calendar page's own read, as the signed-in person. */
+export type CalendarPopupData =
+  | {
+      ok: true;
+      month: string;
+      today: string;
+      view: CalendarViewData;
+      meetings: MeetingDetails[];
+      hubUrl: string | null;
+      canEditSchedules: boolean;
+    }
+  | { ok: false };
+
+/**
+ * The floating Calendar's month (the owner, 27 Nov 2026: "can we make the calendar pop up and be resizable so anytime we
+ * go in other tabs it stays there"). Exactly what the Calendar page reads, with the same gate (view_overview) and the
+ * same scope: this person's follow-ups, HR approvals, Google Reviews checks, reminders, and the L10s the Leadership Hub
+ * lists for them (attendees and admins only).
+ */
+export async function loadCalendarPopupAction(month: string | null): Promise<CalendarPopupData> {
+  const identity = await pageIdentity();
+  if (!identity?.verified || !hasPermission(activePermissionMatrix(), identity.role, "view_overview")) return { ok: false };
+  const today = centralToday();
+  const m = month && isMonth(month) ? month : monthOf(today);
+  const { from, to } = monthGrid(m);
+  try {
+    const [result, details] = await Promise.all([loadCalendarFor(identity, { from, to }, { origin: "", includeHub: true, includeHolidays: true }), meetingDetailsFromHub(identity.email)]);
+    if (!result.ok) return { ok: false };
+    const hub = leadershipHubUrl();
+    return {
+      ok: true,
+      month: m,
+      today,
+      view: result.view,
+      meetings: details.state === "ok" ? details.meetings : [],
+      hubUrl: hub || null,
+      canEditSchedules: true,
+    };
+  } catch {
+    return { ok: false };
+  }
 }
