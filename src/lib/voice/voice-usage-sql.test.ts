@@ -51,7 +51,19 @@ async function backdate(interval: string) {
   await db.exec(`update public.voice_usage set created_at = created_at - interval '${interval}'`);
 }
 
-async function insertFinished(rows: number, user: (i: number) => string, salon: (i: number) => string | null, seconds: number, at = "now() - interval '10 minutes'") {
+/*
+ * The caps' day starts at midnight in Manila (16:00 UTC). A row written "10 minutes ago", or pushed back two minutes,
+ * falls into yesterday when the suite runs just after 16:00 UTC, and the day's totals then miss it: main's CI on
+ * 27 Nov 2026 ran this file at 16:10 UTC and "the person's audio for the day" was not refused. Rows meant to be today
+ * are kept at or after the day's start.
+ */
+const DAY_START = "(date_trunc('day', now() at time zone 'Asia/Manila') at time zone 'Asia/Manila')";
+
+async function backdateWithinToday(interval: string) {
+  await db.exec(`update public.voice_usage set created_at = greatest(created_at - interval '${interval}', ${DAY_START})`);
+}
+
+async function insertFinished(rows: number, user: (i: number) => string, salon: (i: number) => string | null, seconds: number, at = `greatest(now() - interval '10 minutes', ${DAY_START})`) {
   for (let i = 0; i < rows; i += 1) {
     await db.query(
       `insert into public.voice_usage (user_id, salon_id, surface, status, clip_seconds, audio_seconds, created_at) values ($1, $2, 'report', 'succeeded', $3, $3, ${at})`,
@@ -86,7 +98,7 @@ describe("voice_usage_reserve", () => {
   it("the person's audio for the day, pending rows included", async () => {
     await insertFinished(29, () => "user-ada", () => null, 60);
     for (let i = 0; i < 5; i += 1) await reserve("user-ada", null, 10); // pending, 50 s
-    await backdate("2 minutes");
+    await backdateWithinToday("2 minutes");
     expect((await reserve("user-ada", null, 20)).refused).toBe("user_day");
     expect((await reserve("user-ada", null, 10)).refused).toBeNull();
   });
