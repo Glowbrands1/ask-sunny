@@ -72,6 +72,8 @@ const store: FakeStore = {
   form_hr_reminder_sends: [],
   app_notifications: [],
   app_users: [],
+  // Coaching answers link the closest ready training video (26 Nov 2026, `ai/coaching-video.ts`).
+  training_videos: [],
 } as unknown as FakeStore;
 
 // As production builds the role table when the ASD may create forms (NEXT_PUBLIC_, read once at load).
