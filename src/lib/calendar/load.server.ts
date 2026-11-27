@@ -49,6 +49,20 @@ export async function loadCalendarFor(
     }
   };
 
+  /**
+   * WHO SEES THE EMPLOYEE'S NAME on a calendar entry for a form (the owner, 27 Nov 2026: "all admins and wren can see this
+   * and the creator but for others they wont see the name"): admins (canAccessAdminConsole), HR approvers (an unrevoked row
+   * in form_hr_approvers, resolveHrApprover) and the person who created the form. Everyone else gets the entry without the
+   * name, without a link that would show it (Form Monitoring lists names), and marked nameHidden. Decided here, on the
+   * server, before anything reaches a page or the AI.
+   */
+  const seesEveryName = (async () => {
+    if (canAccessAdminConsole(identity.role)) return true;
+    const { resolveHrApprover } = await import("@/lib/forms/hr-approval-approvers");
+    return resolveHrApprover(identity.subject);
+  })().catch(() => false);
+  const mayNameEmployee = async (createdBy: string | null | undefined) => (createdBy && createdBy === identity.subject) || (await seesEveryName);
+
   const followUps = attempt(async () => {
     const [{ pageFormsAccess }, { readFollowUpQueue }, { followUpState }] = await Promise.all([
       import("@/lib/forms/page-scope"),
@@ -58,9 +72,20 @@ export async function loadCalendarFor(
     const access = await pageFormsAccess(identity);
     const readsExit = hasPermission(matrix, identity.role, "create_exit_form");
     const queue = await readFollowUpQueue(access, { readsExit, today });
+    const everyName = await seesEveryName;
     const facts: FollowUpFact[] = queue.forms.flatMap((f) =>
       f.followUpDate
-        ? [{ id: f.id, employeeName: f.employeeName, templateName: f.templateName, locationName: f.locationName, followUpDate: f.followUpDate, overdue: followUpState(f, today) === "overdue" }]
+        ? [
+            {
+              id: f.id,
+              employeeName: f.employeeName,
+              templateName: f.templateName,
+              locationName: f.locationName,
+              followUpDate: f.followUpDate,
+              overdue: followUpState(f, today) === "overdue",
+              ...(everyName || f.createdBy === identity.subject ? {} : { nameHidden: true }),
+            },
+          ]
         : [],
     );
     return followUpEvents(facts, today, origin);
@@ -76,7 +101,13 @@ export async function loadCalendarFor(
     } else if (read.kind === "manager") {
       facts = read.forms
         .filter((r) => r.state === "pending" || r.state === "changes_requested")
-        .map((r) => ({ id: r.id, line: r.line, dueDate: due(r.requestedAt), overdue: r.state === "pending" && isOverdue(r.requestedAt, now), label: r.state === "pending" ? "With HR" : "Changes requested" }));
+        .map((r) => ({ id: r.id, line: r.line, bareLine: r.bareLine, createdBy: r.createdBy, dueDate: due(r.requestedAt), overdue: r.state === "pending" && isOverdue(r.requestedAt, now), label: r.state === "pending" ? "With HR" : "Changes requested" }));
+      // Someone HR sent it to who did not create it (and is no admin) sees it without the name.
+      facts = await Promise.all(
+        facts.map(async ({ bareLine, createdBy, ...f }: HrFact & { bareLine?: string; createdBy?: string | null }) =>
+          (await mayNameEmployee(createdBy)) || !bareLine ? f : { ...f, line: bareLine, nameHidden: true },
+        ),
+      );
     }
     // An administrator who is not an HR approver sees what is waiting on HR (with the name), besides their own forms.
     if (read.kind !== "hr" && read.kind !== "off" && identity.verified && canAccessAdminConsole(identity.role)) {

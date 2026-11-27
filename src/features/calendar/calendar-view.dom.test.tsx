@@ -253,6 +253,18 @@ describe('Calendar: edit the time in the meeting panel (the owner, 27 Nov 2026: 
   });
 });
 
+/** The owner, 27 Nov 2026: "all admins and wren can see this and the creator but for others they wont see the name". */
+describe("Calendar: a form entry without the employee's name", () => {
+  it("shows the form and place; opening it says who can see the name and links nowhere", async () => {
+    const hidden: CalendarEvent = { id: "sunny:hr-approval:h1", source: "ask-sunny", kind: "hr-approval", title: "With HR: Resignation/Exit Form · Example Salon", date: "2026-11-30", status: "upcoming", href: "https://app.test/calendar", nameHidden: true };
+    render(<CalendarView month="2026-11" today="2026-11-30" view={view([hidden])} meetings={[]} save={vi.fn()} remove={vi.fn()} />);
+    const day = screen.getByRole("region", { name: dayLabel("2026-11-30") });
+    expect(within(day).queryByRole("link", { name: /Resignation/ })).toBeNull();
+    await userEvent.click(within(day).getByRole("button", { name: "With HR: Resignation/Exit Form · Example Salon" }));
+    expect(within(day).getByRole("note").textContent).toBe("Only admins, HR and the person who created this form can see who it is for.");
+  });
+});
+
 /**
  * The owner, 27 Nov 2026, on the SD L10s with no day set: "they should be able to edit and set time when they click on
  * that, either for a specific day or for all recurring". Saved through the Leadership Hub (l10_one_off_any_date_test.sql).

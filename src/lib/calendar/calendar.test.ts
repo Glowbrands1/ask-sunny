@@ -133,3 +133,21 @@ describe("POST /api/partner/calendar (the Hub's signed read)", () => {
     expect((await handlePartnerCalendar(ok.headers, ok.text, deps({ rateLimited: () => true }))).status).toBe(429);
   });
 });
+
+describe('a form entry for someone who may not see the employee\'s name (the owner, 27 Nov 2026: "for others they wont see the name")', () => {
+  it("a follow-up keeps its form and place, leaves the name out of its title and its link, and is marked nameHidden", () => {
+    const [e] = followUpEvents([{ id: "f1", employeeName: "Quill Example", templateName: "Coaching Form", locationName: "Example Salon", followUpDate: "2026-12-03", overdue: false, nameHidden: true }], "2026-11-27", "https://app.test");
+    expect(e).toMatchObject({ title: "Coaching Form", location: "Example Salon", href: "https://app.test/calendar", nameHidden: true });
+    expect(JSON.stringify(e)).not.toContain("Quill");
+  });
+  it("an HR entry with a nameless line does not open the form", () => {
+    const [e] = hrEvents([{ id: "h1", line: "Resignation/Exit Form · Example Salon", dueDate: "2026-11-25", overdue: false, label: "With HR", nameHidden: true }], "2026-11-27", "https://app.test");
+    expect(e).toMatchObject({ title: "With HR: Resignation/Exit Form · Example Salon", href: "https://app.test/calendar", nameHidden: true });
+  });
+  it("without nameHidden nothing changes", () => {
+    const [e] = followUpEvents([{ id: "f1", employeeName: "Quill Example", templateName: "Coaching Form", locationName: null, followUpDate: "2026-12-03", overdue: true }], "2026-11-27", "https://app.test");
+    expect(e!.title).toBe("Quill Example · Coaching Form");
+    expect(e!.href).toContain("employee=Quill%20Example");
+    expect(e!.nameHidden).toBeUndefined();
+  });
+});

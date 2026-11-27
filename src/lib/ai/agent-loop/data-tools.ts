@@ -1107,13 +1107,14 @@ export async function readCalendar(context: DataToolContext, input: Record<strin
       ...(e.status ? { status: e.status } : {}),
       ...(e.location ? { [place]: e.location } : {}),
       ...(e.kind === "reminder" ? { who_can_see: e.visibility ?? "only_me", made_by: e.by ?? "you" } : {}),
+      ...(e.nameHidden ? { employee_name_hidden: true } : {}),
       ...(e.oneOff ? { changed_for_this_date_only: true } : {}),
       app: e.source,
     })),
     ...(view.events.length > listed.length ? { listed: listed.length, of: view.events.length } : {}),
     ...(view.notes.length ? { not_loaded: view.notes } : {}),
     note:
-      "This is the manager's Calendar page for these dates (Central time). what: meeting = an L10 from the Leadership Hub (time_ct null means the Hub has no start time set yet: say so, never guess one; changed_for_this_date_only means that date's time was changed for that date only, and its weekly time is unchanged; a cancelled date is not listed); form-follow-up and hr-approval use the same overdue rule as the Overview and the forms pages; google-reviews = the weekly check of a " + place + "'s Google Reviews; reminder = a personal or team reminder. holiday = a US holiday (federal; '(observed)' is the weekday a weekend federal holiday is observed; '(observance)' is a common day such as Christmas Eve or Black Friday, not a federal holiday): it says nothing about whether a " + place + " is open or its hours, so never state opening hours or closures from it. " +
+      "This is the manager's Calendar page for these dates (Central time). what: meeting = an L10 from the Leadership Hub (time_ct null means the Hub has no start time set yet: say so, never guess one; changed_for_this_date_only means that date's time was changed for that date only, and its weekly time is unchanged; a cancelled date is not listed); form-follow-up and hr-approval use the same overdue rule as the Overview and the forms pages; google-reviews = the weekly check of a " + place + "'s Google Reviews; reminder = a personal or team reminder. holiday = a US holiday (federal; '(observed)' is the weekday a weekend federal holiday is observed; '(observance)' is a common day such as Christmas Eve or Black Friday, not a federal holiday): it says nothing about whether a " + place + " is open or its hours, so never state opening hours or closures from it. employee_name_hidden means only admins, HR and the person who created that form may see who it is for: never guess or look up the name, and say exactly that if asked. " +
       (view.notes.length ? "not_loaded lists sources that did not answer: say which, and never say there is nothing from them. " : "") +
       "Time off is never on the calendar. To ADD a reminder use propose_reminder.",
   };

@@ -676,6 +676,10 @@ export async function hrQueueSummary(actor: FormsActor, now: Date = new Date()):
 export interface MyHrFormRow {
   id: string;
   line: string;
+  /** The same line without the employee's name, for someone who may not see it (the calendar). */
+  bareLine?: string;
+  /** Who created the form (an account id). */
+  createdBy?: string | null;
   state: HrApprovalState;
   label: string;
   requestedAt: string | null;
@@ -689,7 +693,7 @@ export async function listMyFormsWithHr(actor: FormsActor): Promise<MyHrFormRow[
   if (!hrApprovalEnabled() || !actor.verified || !SAFE_ID.test(actor.id)) return [];
   const { data, error } = await getSupabaseAdmin()
     .from("form_instance_overview")
-    .select("id, template_name, employee_name, location_name, hr_approval_state, hr_approval_requested_at")
+    .select("id, template_name, employee_name, location_name, hr_approval_state, hr_approval_requested_at, created_by")
     .or(`created_by.eq."${actor.id}",hr_approval_senders.cs.{"${actor.id}"}`)
     .in("hr_approval_state", ["pending", "changes_requested", "rejected"])
     .eq("status", "draft")
@@ -703,9 +707,12 @@ export async function listMyFormsWithHr(actor: FormsActor): Promise<MyHrFormRow[
     location_name: string | null;
     hr_approval_state: HrApprovalState;
     hr_approval_requested_at: string | null;
+    created_by?: string | null;
   }[]).map((row) => ({
     id: row.id,
     line: formLine({ templateName: row.template_name ?? "", employeeName: row.employee_name, locationName: row.location_name }),
+    bareLine: [row.template_name ?? "Form", row.location_name].filter(Boolean).join(" · "),
+    createdBy: row.created_by ?? null,
     state: row.hr_approval_state,
     label: HR_STATE_LABEL[row.hr_approval_state],
     requestedAt: row.hr_approval_requested_at,
@@ -777,7 +784,7 @@ export async function readHrApprovalsFor(subject: string, verified: boolean, now
   const since = new Date(now.getTime() - 30 * 86_400_000).toISOString();
   const approved = await supabase
     .from("form_instance_overview")
-    .select("id, template_name, employee_name, location_name, hr_approval_state, hr_approval_requested_at")
+    .select("id, template_name, employee_name, location_name, hr_approval_state, hr_approval_requested_at, created_by")
     .or(`created_by.eq."${subject}",hr_approval_senders.cs.{"${subject}"}`)
     .eq("hr_approval_state", "approved")
     .gte("updated_at", since)

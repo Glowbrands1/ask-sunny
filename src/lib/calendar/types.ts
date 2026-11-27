@@ -32,6 +32,11 @@ export const CALENDAR_EVENT = z.object({
   status: z.enum(["due", "overdue", "upcoming"]).optional(),
   location: z.string().max(200).optional(),
   href: z.string().min(1).max(2000),
+  /**
+   * Forms only: the employee's name is left out for this person (only admins, HR approvers and the form's creator see it;
+   * the owner, 27 Nov 2026). The entry does not open the form; it says who can see the name.
+   */
+  nameHidden: z.boolean().optional(),
   /** Meetings only: the Hub's meeting key, so a partner app can link to its own L10 tab instead of the Hub. */
   meetingKey: z.string().regex(/^[a-z][a-z-]{0,40}$/).optional(),
   /** Meetings only: this date's time was changed for this date only, in the Leadership Hub. */
