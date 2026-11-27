@@ -3,8 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("@/features/l10/partner/client.server", () => ({ callHub: vi.fn() }));
 
 import { leadershipHubUrl } from "@/lib/config/app-switcher";
-import { meetingDetailsFromHub, meetingEventsFromHub, setMeetingScheduleInHub } from "./hub";
-import { meetingHref, noDaySet, parseMeetingDetails, pickMeetings, scheduleLabel, type MeetingDetails } from "./meeting-details";
+import { meetingDetailsFromHub, meetingEventsFromHub, setMeetingOccurrenceInHub, setMeetingScheduleInHub } from "./hub";
+import { meetingHref, noDaySet, parseMeetingDetails, pickMeetings, scheduleLabel, shortDate, type MeetingDetails } from "./meeting-details";
 
 /* Invented people only. */
 const STC: MeetingDetails = { key: "stc-dm", name: "STC DM L10", team: "STC District Managers", weekday: 1, startTime: null, minutes: 90, leader: "Robin Example", attendees: ["Robin Example", "Pat Sample"] };
@@ -84,5 +84,17 @@ describe("every recurring L10 (the owner, 27 Nov 2026)", () => {
     expect(await setMeetingScheduleInHub("p@example.test", input, refused as never)).toEqual({ ok: false, reason: "forbidden" });
     expect(await setMeetingScheduleInHub("p@example.test", input, (async () => ({ status: 503, body: {} })) as never)).toEqual({ ok: false, reason: "unavailable" });
     expect(await setMeetingScheduleInHub(null, input, call as never)).toEqual({ ok: false, reason: "signin" });
+  });
+});
+
+describe('"make it recurring or just for that specific time" (the owner, 27 Nov 2026)', () => {
+  it("one date's time goes to the Hub as set-meeting-occurrence; a refusal says why", async () => {
+    const call = vi.fn(async () => ({ status: 200, body: { ok: true } }));
+    const input = { key: "stc-dm", date: "2026-11-02", time: "11:30", minutes: null, cancelled: false };
+    expect(await setMeetingOccurrenceInHub("owner@example.test", input, call as never)).toEqual({ ok: true });
+    expect(call).toHaveBeenCalledWith("set-meeting-occurrence", "owner@example.test", input);
+    expect(await setMeetingOccurrenceInHub("p@example.test", input, (async () => ({ status: 200, body: { ok: false, reason: "invalid" } })) as never)).toEqual({ ok: false, reason: "invalid" });
+    expect(await setMeetingOccurrenceInHub(null, input, call as never)).toEqual({ ok: false, reason: "signin" });
+    expect(shortDate("2026-11-02")).toBe("Mon, Nov 2");
   });
 });

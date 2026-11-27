@@ -67,8 +67,9 @@ export function meetingHref(m: { key: string; opensInApp?: boolean }, hubUrl: st
 }
 
 /**
- * A day, Central time and length set from this app (the owner, 27 Nov 2026). Stored in the Leadership Hub (the partner
- * API's "set-meeting-schedule" op), so the Hub and both apps follow it; the Hub allows it for its admins only.
+ * A weekly day, Central time and length set from this app (the owner, 27 Nov 2026). Stored in the Leadership Hub (the
+ * partner API's "set-meeting-schedule" op), so the Hub and both apps follow it; the Hub allows the meeting's attendees and
+ * its admins, and tells the other attendees.
  */
 export const MEETING_SCHEDULE_INPUT = z.object({
   key: z.string().regex(/^[a-z][a-z-]{0,40}$/),
@@ -78,3 +79,22 @@ export const MEETING_SCHEDULE_INPUT = z.object({
 });
 export type MeetingScheduleInput = z.infer<typeof MEETING_SCHEDULE_INPUT>;
 export type MeetingScheduleSaveResult = { ok: true } | { ok: false; reason: "forbidden" | "invalid" | "unavailable" | "signin" };
+
+/**
+ * "Only this date" (the owner, 27 Nov 2026: "make it recurring or just for that specific time"): one occurrence's Central
+ * time and length, or cancelled; no time, no length and not cancelled puts the date back on the weekly schedule. Stored
+ * in the Leadership Hub ("set-meeting-occurrence"), which tells the meeting's other attendees.
+ */
+export const MEETING_OCCURRENCE_INPUT = z.object({
+  key: z.string().regex(/^[a-z][a-z-]{0,40}$/),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullable(),
+  minutes: z.number().int().min(5).max(480).nullable(),
+  cancelled: z.boolean(),
+});
+export type MeetingOccurrenceInput = z.infer<typeof MEETING_OCCURRENCE_INPUT>;
+
+/** "Mon, Nov 2" for a YYYY-MM-DD date. */
+export function shortDate(iso: string): string {
+  return new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(`${iso}T00:00:00Z`));
+}

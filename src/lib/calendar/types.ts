@@ -33,6 +33,8 @@ export const CALENDAR_EVENT = z.object({
   href: z.string().min(1).max(2000),
   /** Meetings only: the Hub's meeting key, so a partner app can link to its own L10 tab instead of the Hub. */
   meetingKey: z.string().regex(/^[a-z][a-z-]{0,40}$/).optional(),
+  /** Meetings only: this date's time was changed for this date only, in the Leadership Hub. */
+  oneOff: z.boolean().optional(),
   /** Reminders only: "only_me" or "my_team", whether the viewer made it (and may delete it), and who did if not. */
   visibility: z.enum(["only_me", "my_team"]).optional(),
   mine: z.boolean().optional(),

@@ -5,9 +5,8 @@ import { activePermissionMatrix, hasPermission } from "@/lib/permissions";
 import { reportingScopeOf } from "@/lib/reporting/scope/authorized-salons";
 import { REMINDER_INPUT, type ReminderInput, type ReminderSaveResult } from "@/lib/calendar/reminders";
 import { deleteReminderAs, saveReminderAs } from "@/lib/calendar/reminders.server";
-import { MEETING_SCHEDULE_INPUT, type MeetingScheduleInput, type MeetingScheduleSaveResult } from "@/lib/calendar/meeting-details";
-import { setMeetingScheduleInHub } from "@/lib/calendar/hub";
-import { canAccessAdminConsole } from "@/lib/permissions";
+import { MEETING_OCCURRENCE_INPUT, MEETING_SCHEDULE_INPUT, type MeetingOccurrenceInput, type MeetingScheduleInput, type MeetingScheduleSaveResult } from "@/lib/calendar/meeting-details";
+import { setMeetingOccurrenceInHub, setMeetingScheduleInHub } from "@/lib/calendar/hub";
 import { revalidatePath } from "next/cache";
 
 /**
@@ -41,16 +40,26 @@ export async function deleteReminderAction(id: string): Promise<{ ok: boolean }>
 }
 
 /**
- * An L10's day, Central time and length, set from the Calendar's meeting panel (the owner, 27 Nov 2026). As the verified
- * signed-in admin only; the Leadership Hub stores it and checks again that they are one of its admins.
+ * An L10's weekly day, Central time and length, set from the Calendar (the owner, 27 Nov 2026). As the verified signed-in
+ * person; the Leadership Hub stores it only for the meeting's attendees and its admins, and tells the other attendees.
  */
 export async function saveMeetingScheduleAction(input: MeetingScheduleInput): Promise<MeetingScheduleSaveResult> {
   const parsed = MEETING_SCHEDULE_INPUT.safeParse(input);
   if (!parsed.success) return { ok: false, reason: "invalid" };
   const identity = await pageIdentity();
   if (!identity?.verified || !identity.email) return { ok: false, reason: "signin" };
-  if (!canAccessAdminConsole(identity.role)) return { ok: false, reason: "forbidden" };
   const result = await setMeetingScheduleInHub(identity.email, parsed.data);
+  if (result.ok) revalidatePath("/calendar");
+  return result;
+}
+
+/** "Only this date": one occurrence's time and length, or cancelled; the Leadership Hub decides who may and tells the attendees. */
+export async function saveMeetingOccurrenceAction(input: MeetingOccurrenceInput): Promise<MeetingScheduleSaveResult> {
+  const parsed = MEETING_OCCURRENCE_INPUT.safeParse(input);
+  if (!parsed.success) return { ok: false, reason: "invalid" };
+  const identity = await pageIdentity();
+  if (!identity?.verified || !identity.email) return { ok: false, reason: "signin" };
+  const result = await setMeetingOccurrenceInHub(identity.email, parsed.data);
   if (result.ok) revalidatePath("/calendar");
   return result;
 }

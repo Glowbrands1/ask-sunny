@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_PREFS, headline, isPrefKind, parseNotifications } from "./logic";
+import { DEFAULT_PREFS, headline, isPrefKind, noteHref, parseNotifications } from "./logic";
 import { VISIBLE_PREF_KINDS } from "./types";
 
 // Paulyne, 23 Nov 2026: "can we get notifications for all people attendees when someone resolve or add or archived
@@ -24,5 +24,14 @@ describe("meeting activity notes in the L10 bell", () => {
       expect(isPrefKind(k)).toBe(true);
       expect(VISIBLE_PREF_KINDS).toContain(k);
     }
+  });
+});
+
+describe("a meeting time change note from the Leadership Hub (the owner, 27 Nov 2026: \"get people notified for time changes if they are attendee\")", () => {
+  it("says who changed the time, opens the Calendar, and is on by default", () => {
+    expect(headline({ kind: "schedule_changed", actor_name: "Pat Example", count: 1 })).toBe("Pat Example changed the meeting time");
+    expect(noteHref({ kind: "schedule_changed", meeting_key: "stc-dm" })).toBe("/calendar");
+    expect(noteHref({ meeting_key: "stc-dm" })).toBe("/meetings/stc-dm");
+    expect(DEFAULT_PREFS.schedule_changed).toBe(true);
   });
 });
