@@ -44,7 +44,7 @@ function subscribePhone(onChange: () => void) {
   return () => media.removeEventListener("change", onChange);
 }
 
-function useIsPhone(): boolean {
+export function useIsPhone(): boolean {
   return useSyncExternalStore(
     subscribePhone,
     () => (typeof window !== "undefined" && window.matchMedia ? window.matchMedia(PHONE_QUERY).matches : false),
@@ -68,7 +68,14 @@ function NoticeBody({ name }: { name: string }) {
   );
 }
 
-export function UpdateNotice({ today }: { today?: string } = {}) {
+/**
+ * `phoneBanner={false}` keeps the phone banner off a screen that needs every
+ * row of height (the chat: on a 390x664 phone the banner left the conversation
+ * about 150px and pushed the composer's bottom row below the fold). It still
+ * shows on every other page until OK; desktop's dialog takes no layout space
+ * and is unaffected.
+ */
+export function UpdateNotice({ today, phoneBanner = true }: { today?: string; phoneBanner?: boolean } = {}) {
   const { user } = useSession();
   const key = noticeKey(user?.id ?? "");
   const day = today ?? businessToday();
@@ -87,6 +94,7 @@ export function UpdateNotice({ today }: { today?: string } = {}) {
   const name = user?.isSalonAccount ? "" : greetingName(user?.name);
 
   if (isPhone) {
+    if (!phoneBanner) return null;
     return (
       <div
         role="status"

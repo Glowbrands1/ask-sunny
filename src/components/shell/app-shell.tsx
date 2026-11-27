@@ -171,7 +171,7 @@ export function AppShell({
       </div>
 
       {/* Once-a-day "we're updating the chat" notice: dialog on desktop, banner on phones. */}
-      <UpdateNotice />
+      <UpdateNotice phoneBanner={!pathname?.startsWith("/chat")} />
 
       {/*
         THE SHORTCUTS LIVE IN THE CHROME. All six already exist in the left
