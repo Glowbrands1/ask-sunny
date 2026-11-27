@@ -107,6 +107,11 @@ export interface CallClaudeInput {
   /** Summary of turns outside that budget. Used only when historyPolicy is "budget". */
   readonly priorSummary?: string | null;
   readonly question: string;
+  /**
+   * The files attached to this question, as Messages API blocks (`lib/chat/attachments.server.ts`), put ahead of the
+   * turn's text. Absent: the message is exactly as before.
+   */
+  readonly attachments?: readonly import("@/lib/chat/attachments.server").AnthropicAttachmentBlock[];
   readonly maxTokens: number;
   /**
    * The pinned policy-manual block, cached on its own when prompt caching
@@ -280,6 +285,15 @@ function parseToolJson(json: string): unknown {
   }
 }
 
+/** The attached files ahead of the turn's text (documents before the question); no files, the content as it was. */
+export function withAttachmentBlocks<T extends { type: "text"; text: string }>(
+  content: string | T[],
+  files: CallClaudeInput["attachments"],
+): string | (T | NonNullable<CallClaudeInput["attachments"]>[number])[] {
+  if (!files || files.length === 0) return content;
+  return [...files, ...(typeof content === "string" ? [{ type: "text" as const, text: content } as T] : content)];
+}
+
 export async function callClaude(input: CallClaudeInput): Promise<string> {
   const client = getAnthropicClient();
 
@@ -333,7 +347,7 @@ export async function callClaude(input: CallClaudeInput): Promise<string> {
         // Every context block and then the question, in that order: the
         // question last is what keeps a long briefing from burying it.
         // The manual block is its own cached part only when that flag is on.
-        content: cachedUserContent(userText, input.manualBlock),
+        content: withAttachmentBlocks(cachedUserContent(userText, input.manualBlock), input.attachments),
       },
     ],
     ...(input.formEditTool

@@ -82,7 +82,7 @@ One line per behavior: the flag(s), what is missing, and a suggested fix.
 
 A turn carrying one of these goes to today's path, and the trace says why (`slots.agent_loop_skipped`; `agent-loop/switch.ts` `agentLoopSkipReason`). Each is a TODO, to support in the loop later:
 
-- [ ] **attachments** (`attachedDocumentIds`): the documents the manager attached to the question. TODO: pass them to search_knowledge as a scoped read.
+- [x] **attachments** — DONE (Pau, 26 Nov 2026): the composer's attach button sends this turn's files (`attachments`: images, PDFs, Word and text, the DM L10 panel's mechanism), and the loop reads them on the manager's message (`lib/chat/attachments.server.ts`, `run.ts` withAttachedFiles; rules book "Attached files"). No longer a skip reason. `attachedDocumentIds` was never sent by the browser and is not read by the loop. Replay: `nov26-chat-attachments-cases.ts`.
 - [ ] **report context** (`reportContext`): the report the manager was looking at when they asked. TODO: pass it to read_stats as its default report, salons and period.
 - [ ] **pending copy** (`pendingCopyFromInstanceId`, SAME_FORM_COPY_NEW_PERSON): "the same form for a new person" after the app offered the copy. TODO: let propose_form take the copied form (see gap 28).
 - [ ] **answer mode** (`mode` quick / detailed): the manager's chosen answer length. TODO: pass it to the prompt as a reply-length line.

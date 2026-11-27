@@ -322,6 +322,8 @@ export interface AgentTurnInput {
   readonly onProgress?: (status: string) => void;
   /** ANSWER_MODE_ON_LOOP: the answer mode the manager chose; Quick and Detailed add a length line, Detailed more room. */
   readonly answerMode?: "quick" | "standard" | "detailed";
+  /** The files attached to this question (checked by the route); the model reads them with the manager's message. */
+  readonly attachments?: readonly import("../types").ChatFileAttachment[];
 }
 
 const count = (value: unknown): number => (typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0);
@@ -477,6 +479,13 @@ function conversationOf(history: readonly ChatMessage[], question: string, quest
     else merged.push({ ...turn });
   }
   return merged;
+}
+
+/** The manager's message with the files they attached to it, the files first (Claude reads documents best ahead of the question). */
+export function withAttachedFiles(messages: { role: "user" | "assistant"; content: unknown }[], parts: readonly unknown[]): { role: "user" | "assistant"; content: unknown }[] {
+  const last = messages.at(-1);
+  if (parts.length === 0 || !last || last.role !== "user") return messages;
+  return [...messages.slice(0, -1), { role: "user", content: [...parts, { type: "text", text: String(last.content) }] }];
 }
 
 const object = (properties: Record<string, unknown>, required: string[] = []) => ({ type: "object" as const, properties, required, additionalProperties: false });
@@ -1084,6 +1093,15 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     ...(input.answerMode && input.answerMode !== "standard" ? { answerMode: input.answerMode } : {}),
   });
 
+  /*
+   * THE FILES ATTACHED TO THIS QUESTION (Pau, 26 Nov 2026), read once and put on the manager's message in every call of
+   * the turn (the loop's, a step asked again, the self-check), ahead of their words: images and PDFs as they are, Word
+   * and text as text (`lib/chat/attachments.server.ts`). Never in the trace.
+   */
+  const attached = input.attachments && input.attachments.length > 0 ? await import("@/lib/chat/attachments.server") : null;
+  const attachedRead = attached ? await attached.readAttachments(input.attachments) : [];
+  const conversation = () => withAttachedFiles(conversationOf(input.history, input.question, input.questionMessageId, cards), attached && attachedRead.length > 0 ? [...attached.attachmentModelParts(attachedRead), { type: "text", text: attached.attachmentsLead(attachedRead) }] : []);
+
   const { jsonSchema, streamText, tool } = await import("ai");
   const model = modelForTests ?? (await import("@ai-sdk/anthropic")).createAnthropic({ apiKey: requireEnv("ANTHROPIC_API_KEY") })(CLAUDE_MODEL);
   let stepNumber = 1;
@@ -1168,7 +1186,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
           { role: "system", content: agentLoopRules(), providerOptions: EPHEMERAL },
           { role: "system", content: dynamic },
         ],
-        messages: conversationOf(input.history, input.question, input.questionMessageId, cards) as never,
+        messages: conversation() as never,
         tools,
         /* PR 6 item 3: the loop stops when its steps and the tools' own model calls reach the limit. */
         stopWhen: ({ steps: done }) => done.length + hiddenCalls >= limit,
@@ -1253,7 +1271,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
             { role: "system", content: agentLoopRules(), providerOptions: EPHEMERAL },
             { role: "system", content: dynamic },
           ],
-          messages: [...(conversationOf(input.history, input.question, input.questionMessageId, cards) as never[]), ...(turn as never[])],
+          messages: [...(conversation() as never[]), ...(turn as never[])],
           ...(cutWhileThinking
             ? {
                 tools,
@@ -1307,7 +1325,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
             { role: "system", content: agentLoopRules(), providerOptions: EPHEMERAL },
             { role: "system", content: dynamic },
           ],
-          messages: [...(conversationOf(input.history, input.question, input.questionMessageId, cards) as never[]), ...(turnSoFar as never[]), { role: "user", content: note } as never],
+          messages: [...(conversation() as never[]), ...(turnSoFar as never[]), { role: "user", content: note } as never],
           tools,
           stopWhen: ({ steps: done }) => done.length + (hiddenCalls - hiddenBefore) >= Math.min(4, left),
           /*
