@@ -1,6 +1,5 @@
 import { expect, vi } from "vitest";
 
-import { finalizeInstance, saveInstanceValues } from "@/lib/forms/instances";
 import { KEARNEY, STAFF, type ReplayCase } from "./cases";
 import { lastResult, loopStandIn, type LoopView } from "./loop-stand-in";
 
@@ -95,8 +94,15 @@ export const NOV27_CALENDAR_ALL_MEETINGS_CASES: ReplayCase[] = [
       const setup = t.thread();
       await setup.say(`coaching form for ${STAFF[0]!.firstName} ${STAFF[0]!.lastName}, late to open`);
       const id = await setup.create();
-      await saveInstanceValues(id, { values: {}, checked: { coaching_type: ["underperformance"], coaching_topics: ["store_tours"] } }, "replay-manager");
-      await finalizeInstance(id, "replay-manager", "2026-12-03", { acknowledgeUnverifiedPolicy: true } as never);
+      // The manager ticks the form's two required boxes and files it with a follow-up date, through the form page's own
+      // routes (PATCH to save, POST "finalize").
+      const route = await import("@/app/api/forms/instances/[id]/route");
+      const params = { params: Promise.resolve({ id }) };
+      const json = { "content-type": "application/json" };
+      const saved = await route.PATCH(new Request(`https://app.test/api/forms/instances/${id}`, { method: "PATCH", headers: json, body: JSON.stringify({ values: {}, checked: { coaching_type: ["underperformance"], coaching_topics: ["store_tours"] } }) }), params);
+      expect(saved.status, await saved.clone().text()).toBe(200);
+      const filed = await route.POST(new Request(`https://app.test/api/forms/instances/${id}`, { method: "POST", headers: json, body: JSON.stringify({ action: "finalize", followUpDate: "2026-12-03", acknowledgeUnverifiedPolicy: true }) }), params);
+      expect(filed.status, await filed.clone().text()).toBe(200);
       const row = (t.forms() as unknown as Record<string, unknown>[]).find((r) => r.id === id)!;
       expect(row.status).toBe("finalized");
       expect(row.follow_up_date).toBe("2026-12-03");
