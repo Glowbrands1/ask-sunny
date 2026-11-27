@@ -99,10 +99,11 @@ describe("agentLoopSkipReason: answer modes (ANSWER_MODE_ON_LOOP; the owner, 26 
     expect(agentLoopSkipReason({ mode: "standard" })).toBeNull();
   });
 
-  it("on: every mode goes to the loop; attachments and report context still go to today's path", () => {
+  it("on: every mode goes to the loop; report context still goes to today's path", () => {
     process.env.ANSWER_MODE_ON_LOOP_ENABLED = "1";
     for (const mode of ["quick", "standard", "detailed"]) expect(agentLoopSkipReason({ mode }), mode).toBeNull();
-    expect(agentLoopSkipReason({ mode: "quick", attachedDocumentIds: ["doc"] })).toBe("attachments");
+    /* Changed on purpose (Pau, 26 Nov 2026): attachments are no longer a skip reason; the loop reads the files (`attachments.server.ts`). */
+    expect(agentLoopSkipReason({ mode: "quick", attachments: [{ filename: "plan.pdf", mediaType: "application/pdf", url: "data:application/pdf;base64,AA==" }] } as never)).toBeNull();
     expect(agentLoopSkipReason({ mode: "detailed", reportContext: { family: "sales-totals" } })).toBe("report_context");
   });
 });

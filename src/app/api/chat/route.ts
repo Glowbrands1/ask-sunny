@@ -100,6 +100,7 @@ import { activeKnowledgeCorpus } from "@/lib/knowledge/corpus";
 import { CONTINUATION_KEY_MAX } from "@/lib/forms/proposal-continuation";
 import { answersWhichFormOnFile, mayAskToReopen } from "@/lib/forms/reopen-cue";
 import { parseChatReportContext } from "@/lib/reporting/read/chat-report-context";
+import { parseChatAttachments } from "@/lib/chat/attachments.server";
 import { businessToday } from "@/lib/business-date";
 import { isClientConversationId } from "@/lib/chat/client-ids";
 import type { AskRequest, AskResponse } from "@/lib/ai/types";
@@ -252,8 +253,9 @@ async function postChat(request: Request, progress?: ProgressChannel) {
      * browser saves is the model's own. Off (or not a listed user), this branch is never taken.
      */
     /*
-     * AGENT_LOOP_SKIPPED (QA, batch F5): a turn carrying something the loop does not take yet (attachments, report
-     * context, a pending copy, an answer mode) goes to today's path, and the trace says why (`agent-loop/switch.ts`).
+     * AGENT_LOOP_SKIPPED (QA, batch F5): a turn carrying something the loop does not take yet (report context, a
+     * pending copy, an answer mode with its flag off) goes to today's path, and the trace says why (`agent-loop/switch.ts`).
+     * Attached files are no longer one (Pau, 26 Nov 2026): the loop reads them (`attachments` below).
      */
     if (agentLoopFor(context.identity.email)) {
       const loopSkip = agentLoopSkipReason(parseAskRequest(body));
@@ -277,6 +279,8 @@ async function postChat(request: Request, progress?: ProgressChannel) {
           openFormId: parsedForLoop.activeFormInstanceId ?? null,
           /* ANSWER_MODE_ON_LOOP: a Quick or Detailed turn reaches the loop only with the flag on (`agentLoopSkipReason`). */
           answerMode: parsedForLoop.mode,
+          /* The files attached to this question: the model reads them with it (`lib/chat/attachments.server.ts`). */
+          ...(parsedForLoop.attachments ? { attachments: parsedForLoop.attachments } : {}),
           onTools: (tools) => {
             loopTools = tools;
           },
@@ -289,7 +293,9 @@ async function postChat(request: Request, progress?: ProgressChannel) {
         /* PR 4: the loop's turn is logged by the tools it actually called (never by the message text). */
         const { loopTurnCategory } = await import("@/lib/ai/agent-loop/turn-category");
         await closeTurn(turnId, { category: loopTurnCategory(loopTools, looped), succeeded: true, latencyMs: Date.now() - askedAt });
-        return NextResponse.json({ ...looped, turnId });
+        /* The owner, 26 Nov 2026: a coaching how-to answer names the closest ready training video, or none (`ai/coaching-video.ts`). */
+        const withVideo = await (await import("@/lib/ai/coaching-video")).withCoachingVideo(looped, { question: parsedForLoop.question, history: parsedForLoop.history, role: context.identity.role });
+        return NextResponse.json({ ...withVideo, turnId });
       } catch (error) {
         await closeTurn(turnId, { category: "unclassified", succeeded: false, latencyMs: Date.now() - askedAt });
         throw error;
@@ -1204,6 +1210,11 @@ async function postChat(request: Request, progress?: ProgressChannel) {
         : null;
       if (note) answer = { ...answer, content: outline.withPolicyKeptNote(answer.content, note) };
     }
+    /* The owner, 26 Nov 2026: a coaching how-to answer names the closest ready training video, or none (`ai/coaching-video.ts`). */
+    {
+      const turn = (() => { try { return parseAskRequest(body); } catch { return null; } })();
+      if (turn) answer = await (await import("@/lib/ai/coaching-video")).withCoachingVideo(answer, { question: turn.question, history: turn.history, role: context.identity.role });
+    }
     // FINAL_REPLY_MARKER_GUARD_ENABLED: no bare source tag reaches the manager, whatever path answered. See `ai/source-note.ts`.
     return NextResponse.json({ ...finalReplyWithoutMarkers(answer), turnId });
   } catch (error) {
@@ -1294,6 +1305,8 @@ function parseAskRequest(body: Partial<AskRequest>): AskRequest {
      * change no decision and are never an `agentLoopSkipReason`.
      */
     ...voiceInputFields(body),
+    // The composer's attached files, checked (types, count, size, inline data only): `lib/chat/attachments.server.ts`.
+    attachments: parseChatAttachments(body.attachments),
     attachedDocumentIds: Array.isArray(body.attachedDocumentIds)
       ? body.attachedDocumentIds
           .filter((id): id is string => typeof id === "string")

@@ -64,15 +64,17 @@ export function agentLoopStepLimit(): number {
  * most of the loop's card follow-ups ("make it a written", the payroll answer) to today's path, so it is only noted
  * (`loopCarriedOnly`), never a reason to skip.
  */
-export type AgentLoopSkipReason = "attachments" | "report_context" | "pending_copy" | "answer_mode";
+/*
+ * NOT ATTACHMENTS (Pau, 26 Nov 2026): the loop reads the files attached to a question (the route passes them to
+ * `runAgentTurn`, `lib/chat/attachments.server.ts`), so a turn with files is answered by the loop like any other.
+ */
+export type AgentLoopSkipReason = "report_context" | "pending_copy" | "answer_mode";
 
 export function agentLoopSkipReason(request: {
-  readonly attachedDocumentIds?: readonly string[];
   readonly reportContext?: unknown;
   readonly pendingCopyFromInstanceId?: string;
   readonly mode?: string;
 }): AgentLoopSkipReason | null {
-  if ((request.attachedDocumentIds?.length ?? 0) > 0) return "attachments";
   if (request.reportContext) return "report_context";
   if (request.pendingCopyFromInstanceId) return "pending_copy";
   /* ANSWER_MODE_ON_LOOP (the owner, 26 Nov 2026): Quick and Detailed are answered by the loop too, with the mode as a length line. */

@@ -92,6 +92,13 @@ export interface AskRequest {
   scopeId: string;
   attachedDocumentIds?: string[];
   /**
+   * FILES ATTACHED TO THIS QUESTION (the composer's attach button): images, PDFs, Word and text, as data URLs.
+   *
+   * This turn's only; checked again by `/api/chat` (`lib/chat/attachments.server.ts`: types, count, size, inline data
+   * only) and read by the model on both paths. Never stored, never logged.
+   */
+  attachments?: ChatFileAttachment[];
+  /**
    * Browser-local id of the message carrying `question`.
    *
    * PROVENANCE, NOT AUTHORITY — the same status as the ids on `history`. It
@@ -364,3 +371,11 @@ export interface AIProvider {
  * `enforceResponsibilities` and `AI_WRITABLE` in `lib/forms/responsibility.ts`,
  * which work over the stored document model and are what the live path runs.
  */
+
+/** One attached file as the browser sends it (the AI SDK's file part, without its `type`). */
+export interface ChatFileAttachment {
+  readonly filename: string;
+  readonly mediaType: string;
+  /** `data:<mediaType>;base64,…` — never a remote address. */
+  readonly url: string;
+}

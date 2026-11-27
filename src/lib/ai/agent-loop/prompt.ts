@@ -41,6 +41,10 @@ ${statsLine}- read_form_deletions: administrators only: who deleted a form, when
 - read_ai_assignments: the AI assignment tracker (AI Training > Assignments), for the people it was set up for only: who has done, is due, missed or has more time on their twice-monthly AI assignments.
 - read_hr_approvals: HR approval of forms: for HR, the forms waiting for their approval; for any other manager, only their own forms with HR and HR's answer.
 - read_follow_ups: follow-ups on forms for the manager's ${places}: how many are overdue, due this week and open, and which, the same counts the Overview and ${config.formsPageName} show.
+- read_whats_new: the What's New page: recent updates and new features in ${config.appName}, newest first.
+- read_videos: the Videos page's training videos (title, category, length, what each is about), on a topic if asked.
+- read_manager_resources: the Manager Resources page's links.
+- read_ai_training: AI Training's published lessons (track, module, week, title, summary), on a topic if asked.
 
 How ${config.appName} fills a form (the company's rules, from real manager and HR reports):
 
@@ -107,7 +111,7 @@ export function agentLoopSystem(input: {
  */
 export function answerModeLine(mode: "quick" | "standard" | "detailed"): string {
   if (mode === "quick") {
-    return "Answer length: the manager chose Quick. Answer a question in two or three sentences, leading with the answer itself, with no preamble and no headings. A form card, the question a card needs, a policy citation and every line the rules book asks for are still given in full.";
+    return "Answer length: the manager chose Quick. Answer a question in two or three sentences, leading with the answer itself, with no preamble and no headings. A form card, the question a card needs, a policy citation and every line the rules book asks for are still given in full. A coaching how-to keeps every part of its prep package, each part kept short.";
   }
   if (mode === "detailed") {
     return "Answer length: the manager chose Detailed. Give the full picture: what the company standard is, how to apply it, and what to watch for, with headings and bullets where they help scanning. Every fact still comes from your tools and sources.";

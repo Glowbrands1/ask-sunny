@@ -144,12 +144,18 @@ describe("the composer's own footprint", () => {
     expect(modeRow).toBeGreaterThan(textareaAt);
   });
 
-  it("imports no attachment, image or microphone icon", () => {
+  it("imports no image or microphone icon", () => {
     // Dormant code is allowed by the brief; a dead control is not. Nothing is
     // left importing one.
+    /*
+     * Changed on purpose (Pau, 26 Nov 2026): the attach button came back because it works (the composer's header,
+     * `composer-attachments.dom.test.tsx`), so its Paperclip is allowed; it renders only when the screen passes
+     * `onFilesChange`, which the chat screen does (asserted below). Image and microphone controls are still dead here.
+     */
+    expect(COMPOSER_CODE).not.toMatch(/\bImagePlus\b|\bMic\b/);
+    expect(COMPOSER_CODE).toMatch(/const attachButton = attaching \?/);
     // VOICE_INPUT_ENABLED (27 Nov 2026): the composer's only voice control is the shared, gated `VoiceButton`
-    // (it renders nothing unless voice is on for this person and the browser can record). No icon of its own.
-    expect(COMPOSER_CODE).not.toMatch(/\bPaperclip\b|\bImagePlus\b|\bMic\b/);
+    // (it renders nothing unless voice is on for this person and the browser can record). No mic icon of its own.
     expect(COMPOSER_CODE).toContain('from "@/features/voice/voice-button"');
   });
 
@@ -186,11 +192,11 @@ describe("no chat surface renders a dead control or a source block", () => {
   });
 
   /*
-   * VOICE_INPUT_ENABLED (27 Nov 2026): still none of these in the chat feature itself. The working mic lives in
-   * `features/voice/` and is used through `VoiceButton`, which is gated (see the composer's test above); a "Mic" icon
-   * or a "Voice input" label of the chat's own would be a second, ungated control.
+   * Changed on purpose (Pau, 26 Nov 2026): "Paperclip" and "Attach a file" left this list: the attach control works now.
+   * VOICE_INPUT_ENABLED (27 Nov 2026): "Mic" and "Voice input" stay: the working mic lives in `features/voice/` and is
+   * used through the gated `VoiceButton`; a mic icon or a "Voice input" label of the chat's own would be ungated.
    */
-  it.each(["Paperclip", "ImagePlus", "Mic", "Coming later", "Attach a file", "Voice input"])(
+  it.each(["ImagePlus", "Mic", "Coming later", "Voice input"])(
     "renders no %s anywhere in chat",
     (token) => {
       for (const entry of CHAT_SOURCES) {
@@ -198,6 +204,14 @@ describe("no chat surface renders a dead control or a source block", () => {
       }
     },
   );
+
+  it("the attach control is in the composer only, and the chat screen wires it (never a dead button)", () => {
+    for (const entry of CHAT_SOURCES.filter((source) => source.name !== "composer.tsx")) {
+      expect(entry.code, `${entry.name} renders a Paperclip`).not.toContain("Paperclip");
+    }
+    const screen = CHAT_SOURCES.find((entry) => entry.name === "chat-screen.tsx")!.code;
+    expect(screen).toMatch(/onFilesChange=\{setPendingFiles\}/);
+  });
 
   it("renders no source card or source heading anywhere in chat", () => {
     for (const entry of CHAT_SOURCES) {

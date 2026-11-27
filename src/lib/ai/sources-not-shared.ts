@@ -57,15 +57,16 @@ export interface SharedSourceTurn {
 /**
  * Whether the manager's own turns carry a paste: a long turn, a turn of
  * several lines, a quoted block, or words saying something is attached or
- * pasted. Chat has no attachment system of its own (`attachedDocumentIds` is
- * always empty), so pasted text is the one way a manager can share a source.
+ * pasted, or files attached with the composer's attach button (`attachments`).
  */
 export function managerPastedSomething(input: {
   readonly question: string;
   readonly history: readonly SharedSourceTurn[];
   readonly attachedDocumentIds?: readonly string[] | null;
+  readonly attachments?: readonly unknown[] | null;
 }): boolean {
   if ((input.attachedDocumentIds?.length ?? 0) > 0) return true;
+  if ((input.attachments?.length ?? 0) > 0) return true;
   const turns = [...input.history.filter((turn) => turn.role === "user").map((turn) => turn.content), input.question];
   return turns.some((text) => {
     const body = (text ?? "").trim();
@@ -94,6 +95,7 @@ export function withoutSharedSourceClaims(
     readonly question: string;
     readonly history: readonly SharedSourceTurn[];
     readonly attachedDocumentIds?: readonly string[] | null;
+    readonly attachments?: readonly unknown[] | null;
   },
 ): SharedSourceCheck {
   if (!content || managerPastedSomething(input)) return { content, changed: false };

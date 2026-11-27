@@ -95,6 +95,8 @@ export interface ReplayContext {
   reviewsOnFile?(): void;
   /** The FORMS ON FILE block the answering model was last given (empty when none): FORMS_ON_FILE_DATE_RANGE, 18 Nov 2026. */
   lastFormRecords?(): string;
+  /** The attached files the answering model (the older path) was last given, as content blocks (none: []). Chat attachments, 26 Nov 2026. */
+  lastAttachments?(): readonly unknown[];
   /** What the revision model writes on the next revision. */
   revisionWrites(values: Record<string, string>): void;
   /** What the answering model says on its next turns (null: the default answer). */

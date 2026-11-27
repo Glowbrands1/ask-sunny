@@ -2046,8 +2046,14 @@ async function answerQuestionUntraced(
   let written: string;
   try {
     markStage("answer_model");
+    // The files attached to this question (the composer's attach button), read for the model: `lib/chat/attachments.server.ts`.
+    const attachedFiles = request.attachments && request.attachments.length > 0 ? await import("@/lib/chat/attachments.server") : null;
+    const attachedRead = attachedFiles ? await attachedFiles.readAttachments(request.attachments) : [];
     written = await callClaude({
       system,
+      ...(attachedFiles && attachedRead.length > 0
+        ? { attachments: [...attachedFiles.attachmentAnthropicBlocks(attachedRead), { type: "text" as const, text: attachedFiles.attachmentsLead(attachedRead) }] }
+        : {}),
       grounding: dataAddition.help ? `${groundingText}\n\n${dataAddition.help}` : groundingText,
       reportData: reviewBlock
         ? [reportText, reviewBlock.text, dataAddition.data].filter((part) => part && part.length > 0).join("\n\n")
@@ -2187,6 +2193,7 @@ async function answerQuestionUntraced(
     question: request.question,
     history: request.history,
     attachedDocumentIds: request.attachedDocumentIds,
+    attachments: request.attachments,
   }).content;
 
   // SOURCE_NOTE_GUARD_ENABLED: a bracketed note about a source ("[S1 doesn't actually cover …]") is removed (`source-note.ts`). Off, as before.

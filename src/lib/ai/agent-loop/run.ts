@@ -38,6 +38,8 @@ import { replyWithShortName } from "@/lib/forms/short-name";
 import { agentLoopRules, agentLoopSystem } from "./prompt";
 import { generatedId, identifiedTurns, messageIdTag, withoutMessageIdTags } from "./evidence";
 import { agentLoopStepLimit } from "./switch";
+import { asksCoachingHowTo, coachingAnswerShape, coachingHowToNote, completeShape, partsOf } from "@/lib/ai/coaching-how-to";
+
 import { adviceNotForm, onlyAsksWho } from "./advice-not-form";
 import { createFormButtonNoCardNote, isCreateFormButtonTurn } from "./create-form-button";
 import { formAskedOutsideLibrary, saysNoSuchForm, withLibraryForms } from "./form-not-in-library";
@@ -320,6 +322,8 @@ export interface AgentTurnInput {
   readonly onProgress?: (status: string) => void;
   /** ANSWER_MODE_ON_LOOP: the answer mode the manager chose; Quick and Detailed add a length line, Detailed more room. */
   readonly answerMode?: "quick" | "standard" | "detailed";
+  /** The files attached to this question (checked by the route); the model reads them with the manager's message. */
+  readonly attachments?: readonly import("../types").ChatFileAttachment[];
 }
 
 const count = (value: unknown): number => (typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0);
@@ -475,6 +479,13 @@ function conversationOf(history: readonly ChatMessage[], question: string, quest
     else merged.push({ ...turn });
   }
   return merged;
+}
+
+/** The manager's message with the files they attached to it, the files first (Claude reads documents best ahead of the question). */
+export function withAttachedFiles(messages: { role: "user" | "assistant"; content: unknown }[], parts: readonly unknown[]): { role: "user" | "assistant"; content: unknown }[] {
+  const last = messages.at(-1);
+  if (parts.length === 0 || !last || last.role !== "user") return messages;
+  return [...messages.slice(0, -1), { role: "user", content: [...parts, { type: "text", text: String(last.content) }] }];
 }
 
 const object = (properties: Record<string, unknown>, required: string[] = []) => ({ type: "object" as const, properties, required, additionalProperties: false });
@@ -855,6 +866,8 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
   const noop = input.openFormId ? await import("@/lib/forms/form-noop-reply") : null;
   const openBefore = noop && input.openFormId ? await noop.formBeforeTurn(input.openFormId, input.request) : null;
   const steps: AgentLoopStep[] = [];
+  /* The turn's tool steps under a name no inner `steps` shadows (the coaching check reads whether search_knowledge ran). */
+  const turnSteps = steps;
   /*
    * Board f111 (QA, 23 Nov 2026): the words the loop searched with, for later checks: find_staff's name, find_past_forms'
    * person, form and dates, read_policy's heading, search_knowledge's query. A slot of their own
@@ -1080,6 +1093,15 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     ...(input.answerMode && input.answerMode !== "standard" ? { answerMode: input.answerMode } : {}),
   });
 
+  /*
+   * THE FILES ATTACHED TO THIS QUESTION (Pau, 26 Nov 2026), read once and put on the manager's message in every call of
+   * the turn (the loop's, a step asked again, the self-check), ahead of their words: images and PDFs as they are, Word
+   * and text as text (`lib/chat/attachments.server.ts`). Never in the trace.
+   */
+  const attached = input.attachments && input.attachments.length > 0 ? await import("@/lib/chat/attachments.server") : null;
+  const attachedRead = attached ? await attached.readAttachments(input.attachments) : [];
+  const conversation = () => withAttachedFiles(conversationOf(input.history, input.question, input.questionMessageId, cards), attached && attachedRead.length > 0 ? [...attached.attachmentModelParts(attachedRead), { type: "text", text: attached.attachmentsLead(attachedRead) }] : []);
+
   const { jsonSchema, streamText, tool } = await import("ai");
   const model = modelForTests ?? (await import("@ai-sdk/anthropic")).createAnthropic({ apiKey: requireEnv("ANTHROPIC_API_KEY") })(CLAUDE_MODEL);
   let stepNumber = 1;
@@ -1164,7 +1186,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
           { role: "system", content: agentLoopRules(), providerOptions: EPHEMERAL },
           { role: "system", content: dynamic },
         ],
-        messages: conversationOf(input.history, input.question, input.questionMessageId, cards) as never,
+        messages: conversation() as never,
         tools,
         /* PR 6 item 3: the loop stops when its steps and the tools' own model calls reach the limit. */
         stopWhen: ({ steps: done }) => done.length + hiddenCalls >= limit,
@@ -1249,7 +1271,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
             { role: "system", content: agentLoopRules(), providerOptions: EPHEMERAL },
             { role: "system", content: dynamic },
           ],
-          messages: [...(conversationOf(input.history, input.question, input.questionMessageId, cards) as never[]), ...(turn as never[])],
+          messages: [...(conversation() as never[]), ...(turn as never[])],
           ...(cutWhileThinking
             ? {
                 tools,
@@ -1303,7 +1325,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
             { role: "system", content: agentLoopRules(), providerOptions: EPHEMERAL },
             { role: "system", content: dynamic },
           ],
-          messages: [...(conversationOf(input.history, input.question, input.questionMessageId, cards) as never[]), ...(turnSoFar as never[]), { role: "user", content: note } as never],
+          messages: [...(conversation() as never[]), ...(turnSoFar as never[]), { role: "user", content: note } as never],
           tools,
           stopWhen: ({ steps: done }) => done.length + (hiddenCalls - hiddenBefore) >= Math.min(4, left),
           /*
@@ -1599,6 +1621,21 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
         if (stoppedAt === "reply" && !effects.proposal && onlyAsksWho(text) && adviceNotForm(input.question, input.history)) {
           const again = await handBack("[app check] The manager asked for advice, not a form, and your reply only asks who a form is for. Answer the question itself now: practical steps, a short checklist, a sample script or role-play where it helps, citing the manual where a policy applies. Never ask who a form is for; you may offer the form in one closing line.");
           if (again && !onlyAsksWho(again)) text = again;
+        }
+        /*
+         * Owner, 26 Nov 2026: a coaching / hard-conversation how-to answer is a prep package: a numbered outline, a quoted
+         * script the manager can say, a role-play and a measurable action plan among its parts (`coaching-how-to.ts`, the
+         * rules book's coachingHowToRule). A reply on such a turn with no card that lacks one goes back once; the answer
+         * it returns is kept only when it is no worse.
+         */
+        if (stoppedAt === "reply" && !effects.proposal && !effects.formOpened && !effects.formUpdate && adviceNotForm(input.question, input.history) && asksCoachingHowTo(input.question)) {
+          const shape = coachingAnswerShape(text);
+          /* The owner, 26 Nov 2026: the company's own coaching guidance first; an answer written without a knowledge search goes back once too. */
+          const searched = turnSteps.some((step) => step.tool === "search_knowledge");
+          if (!completeShape(shape) || !searched) {
+            const again = await handBack(coachingHowToNote(shape, searched));
+            if (again && !onlyAsksWho(again) && partsOf(coachingAnswerShape(again)) >= partsOf(shape)) text = again;
+          }
         }
         /*
          * QA (24 Nov 2026, live): "Draft a vacation request form" was answered "There's no \"Vacation Request Form\" in the
