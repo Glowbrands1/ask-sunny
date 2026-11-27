@@ -18,7 +18,7 @@ import {
  * route passes. The same rule as `evaluateVoiceCaps`, checked in SQL.
  */
 
-const MIGRATION = readFileSync("supabase/migrations/20261127001000_voice_usage.sql", "utf8");
+const MIGRATION = readFileSync("supabase/migrations/20261127002000_voice_usage.sql", "utf8");
 let db: PGlite;
 
 beforeAll(async () => {

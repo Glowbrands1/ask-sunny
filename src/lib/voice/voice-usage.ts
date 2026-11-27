@@ -21,7 +21,7 @@ import {
  * THE VOICE LIMITS' COUNTERS, AND THE VOICE TRACE ROW (VOICE_INPUT_ENABLED)
  * ============================================================================
  *
- * The counters live in `voice_usage` (supabase/migrations/20261127001000_voice_usage.sql). One RPC,
+ * The counters live in `voice_usage` (supabase/migrations/20261127002000_voice_usage.sql). One RPC,
  * `voice_usage_reserve`, counts and inserts the pending row in one step, before AssemblyAI is called; the row is
  * finished after the call. Every row counts as a request (failed ones too). A pending row is never released, so a
  * crash still counts against the caps; a failed row keeps its clip length unless the provider clearly rejected it
