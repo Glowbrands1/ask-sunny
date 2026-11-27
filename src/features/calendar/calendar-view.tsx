@@ -11,8 +11,8 @@ import { cn } from "@/lib/utils/cn";
 import { monthGrid, monthOf, shiftMonth } from "@/lib/calendar/range";
 import { VISIBILITY_LABEL, type ReminderInput, type ReminderSaveResult } from "@/lib/calendar/reminders";
 import { KINDS, SOURCE_LABELS, type CalendarEvent, type CalendarKind, type CalendarView as View } from "@/lib/calendar/types";
-import { clock, noDaySet, scheduleLabel, type MeetingDetails } from "@/lib/calendar/meeting-details";
-import { deleteReminderAction, saveReminderAction } from "./actions";
+import { WEEKDAY_NAMES, clock, meetingHref, noDaySet, scheduleLabel, type MeetingDetails, type MeetingScheduleInput, type MeetingScheduleSaveResult } from "@/lib/calendar/meeting-details";
+import { deleteReminderAction, saveMeetingScheduleAction, saveReminderAction } from "./actions";
 import { NewEvent } from "./new-event";
 
 /**
@@ -52,10 +52,32 @@ export function cellSummary(events: CalendarEvent[], shown = SHOWN_PER_DAY): { s
 }
 
 /**
- * One L10's details (leadership-hub docs/calendar-design.md §5d): the day, Central time and length, who leads it and
- * who attends (names only), Open the L10, and where the schedule is set: the Leadership Hub. Read-only here.
+ * One L10's details (leadership-hub docs/calendar-design.md §5d, §5e): the day, Central time and length, who leads it and
+ * who attends (names only), and Open the L10 (here, or in the Leadership Hub for a meeting this app only shows). An admin
+ * can set the day, time and length here (the owner, 27 Nov 2026); it is stored in the Leadership Hub, which checks again
+ * that they are one of its admins, so all three apps follow it. Everyone else reads it.
  */
-export function MeetingPanel({ meeting, hubCalendarUrl, onClose }: { meeting: MeetingDetails; hubCalendarUrl: string | null; onClose: () => void }) {
+export function MeetingPanel({
+  meeting,
+  hubCalendarUrl,
+  hubUrl = null,
+  canEdit = false,
+  startEditing = false,
+  saveSchedule = saveMeetingScheduleAction,
+  onSaved,
+  onClose,
+}: {
+  meeting: MeetingDetails;
+  hubCalendarUrl: string | null;
+  hubUrl?: string | null;
+  canEdit?: boolean;
+  startEditing?: boolean;
+  saveSchedule?: (input: MeetingScheduleInput) => Promise<MeetingScheduleSaveResult>;
+  onSaved?: () => void;
+  onClose: () => void;
+}) {
+  const [editing, setEditing] = useState(canEdit && startEditing);
+  const unset = meeting.weekday === null || !meeting.startTime;
   return (
     <Card role="region" aria-label={`${meeting.name} details`} className="p-4">
       <div className="flex flex-wrap items-start gap-2">
@@ -90,18 +112,100 @@ export function MeetingPanel({ meeting, hubCalendarUrl, onClose }: { meeting: Me
         </dd>
       </dl>
       <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
-        <Link href={`/meetings/${meeting.key}`} className="font-semibold underline">
-          Open the L10
-        </Link>
-        {hubCalendarUrl ? (
-          <a href={hubCalendarUrl} className="underline" rel="noopener noreferrer">
-            Set it in the Leadership Hub
-          </a>
-        ) : (
-          <span className="text-muted-foreground">The day and time are set in the Leadership Hub.</span>
-        )}
+        <a href={meetingHref(meeting, hubUrl)} className="font-semibold underline">
+          {meeting.opensInApp === false ? "Open the L10 in the Leadership Hub" : "Open the L10"}
+        </a>
+        {canEdit && !editing ? (
+          <button type="button" className="rounded-md border border-border-strong px-3 py-1" onClick={() => setEditing(true)}>
+            {unset ? "Add day and time" : "Edit day and time"}
+          </button>
+        ) : null}
+        {!canEdit ? (
+          hubCalendarUrl ? (
+            <a href={hubCalendarUrl} className="underline" rel="noopener noreferrer">
+              Set it in the Leadership Hub
+            </a>
+          ) : (
+            <span className="text-muted-foreground">The day and time are set in the Leadership Hub.</span>
+          )
+        ) : null}
       </div>
+      {canEdit && editing ? (
+        <ScheduleForm
+          meeting={meeting}
+          save={saveSchedule}
+          onDone={(saved) => {
+            setEditing(false);
+            if (saved) onSaved?.();
+          }}
+        />
+      ) : null}
     </Card>
+  );
+}
+
+function ScheduleForm({ meeting, save, onDone }: { meeting: MeetingDetails; save: (input: MeetingScheduleInput) => Promise<MeetingScheduleSaveResult>; onDone: (saved: boolean) => void }) {
+  const [weekday, setWeekday] = useState(meeting.weekday === null ? "" : String(meeting.weekday));
+  const [time, setTime] = useState(meeting.startTime ?? "");
+  const [minutes, setMinutes] = useState(meeting.minutes ? String(meeting.minutes) : "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const submit = async (ev: React.FormEvent) => {
+    ev.preventDefault();
+    const length = minutes.trim() === "" ? null : Number(minutes);
+    if (length !== null && (!Number.isInteger(length) || length < 5 || length > 480)) return setError("The length must be 5 to 480 minutes.");
+    setBusy(true);
+    setError(null);
+    const r = await save({ key: meeting.key, weekday: weekday === "" ? null : Number(weekday), time: time || null, minutes: length });
+    setBusy(false);
+    if (!r.ok)
+      return setError(
+        r.reason === "forbidden"
+          ? "Only Leadership Hub admins can change a meeting's day and time."
+          : r.reason === "invalid"
+            ? "Check the day, time and length."
+            : r.reason === "signin"
+              ? "Sign in again, then try once more."
+              : "It couldn't be saved just now. Try again in a minute.",
+      );
+    onDone(true);
+  };
+  return (
+    <form onSubmit={submit} aria-label={`Set ${meeting.name} day and time`} className="mt-3 grid gap-2 rounded-md border border-border p-3 text-sm sm:grid-cols-3">
+      <label className="grid gap-1">
+        <span className="text-xs text-muted-foreground">Day</span>
+        <select value={weekday} onChange={(e) => setWeekday(e.target.value)} className="rounded border border-border-strong px-2 py-1">
+          <option value="">No day set</option>
+          {WEEKDAY_NAMES.map((d, i) => (
+            <option key={d} value={i}>
+              {d}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="grid gap-1">
+        <span className="text-xs text-muted-foreground">Start time (Central)</span>
+        <input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="rounded border border-border-strong px-2 py-1" />
+      </label>
+      <label className="grid gap-1">
+        <span className="text-xs text-muted-foreground">Length (minutes)</span>
+        <input type="number" min={5} max={480} step={5} value={minutes} onChange={(e) => setMinutes(e.target.value)} className="rounded border border-border-strong px-2 py-1" />
+      </label>
+      {error ? (
+        <p role="alert" className="m-0 text-sm text-red-700 sm:col-span-3">
+          {error}
+        </p>
+      ) : null}
+      <p className="m-0 text-xs text-muted-foreground sm:col-span-3">Saved in the Leadership Hub, so the Hub and both Ask apps show it.</p>
+      <div className="flex gap-2 sm:col-span-3">
+        <button type="submit" disabled={busy} className="rounded-md bg-foreground px-3 py-1 font-semibold text-background disabled:opacity-60">
+          {busy ? "Saving…" : "Save"}
+        </button>
+        <button type="button" onClick={() => onDone(false)} className="rounded-md px-3 py-1">
+          Cancel
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -151,6 +255,9 @@ export function CalendarView({
   today,
   meetings = [],
   hubCalendarUrl = null,
+  hubUrl = null,
+  canEditSchedules = false,
+  saveSchedule = saveMeetingScheduleAction,
   save = saveReminderAction,
   remove = deleteReminderAction,
 }: {
@@ -161,15 +268,24 @@ export function CalendarView({
   meetings?: MeetingDetails[];
   /** The Leadership Hub's calendar, where a schedule is set. */
   hubCalendarUrl?: string | null;
+  /** The Leadership Hub, for the meetings this app shows but opens there. */
+  hubUrl?: string | null;
+  /** An admin here may set a meeting's day and time (stored in the Hub, which checks again). */
+  canEditSchedules?: boolean;
+  saveSchedule?: (input: MeetingScheduleInput) => Promise<MeetingScheduleSaveResult>;
   save?: (input: ReminderInput) => Promise<ReminderSaveResult>;
   remove?: (id: string) => Promise<{ ok: boolean }>;
 }) {
   const router = useRouter();
   const [openMeeting, setOpenMeeting] = useState<string | null>(null);
+  const [editOnOpen, setEditOnOpen] = useState(false);
   const meetingByKey = useMemo(() => new Map(meetings.map((m) => [m.key, m])), [meetings]);
   const opened = openMeeting ? meetingByKey.get(openMeeting) : undefined;
   // A meeting opens its panel only when its details were read; otherwise it stays a link to the L10, as before.
-  const onMeeting = (key: string) => setOpenMeeting(key);
+  const onMeeting = (key: string) => {
+    setEditOnOpen(false);
+    setOpenMeeting(key);
+  };
   const hasDetails = (key: string) => meetingByKey.has(key);
   const unscheduled = noDaySet(meetings);
   useEffect(() => {
@@ -342,21 +458,48 @@ export function CalendarView({
         ))}
       </div>
 
-      {opened ? <MeetingPanel meeting={opened} hubCalendarUrl={hubCalendarUrl} onClose={() => setOpenMeeting(null)} /> : null}
+      {opened ? (
+        <MeetingPanel
+          key={`${opened.key}:${editOnOpen}`}
+          meeting={opened}
+          hubCalendarUrl={hubCalendarUrl}
+          hubUrl={hubUrl}
+          canEdit={canEditSchedules}
+          startEditing={editOnOpen}
+          saveSchedule={saveSchedule}
+          onSaved={() => router.refresh()}
+          onClose={() => setOpenMeeting(null)}
+        />
+      ) : null}
 
       {unscheduled.length ? (
         <Card role="region" aria-label="No day set" className="p-4">
           <h2 className="m-0 text-sm font-semibold">No day set</h2>
-          <p className="m-0 mt-1 text-xs text-muted-foreground">These L10s are not on the calendar until their day is set in the Leadership Hub.</p>
+          <p className="m-0 mt-1 text-xs text-muted-foreground">
+            {canEditSchedules ? "These L10s are not on the calendar until a day is set. Set one here; it is saved in the Leadership Hub." : "These L10s are not on the calendar until their day is set in the Leadership Hub."}
+          </p>
           <ul className="m-0 mt-2 list-none divide-y divide-border p-0">
             {unscheduled.map((m) => (
               <li key={m.key} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm">
-                <button type="button" onClick={() => setOpenMeeting(m.key)} className="font-semibold underline-offset-2 hover:underline" aria-label={`${m.name}: details`}>
+                <button type="button" onClick={() => onMeeting(m.key)} className="font-semibold underline-offset-2 hover:underline" aria-label={`${m.name}: details`}>
                   {m.name}
                 </button>
                 <span className="text-muted-foreground">
-                  {m.attendees.length} {m.attendees.length === 1 ? "attendee" : "attendees"}
+                  {m.attendees.length} {m.attendees.length === 1 ? "attendee" : "attendees"} · day not set
                 </span>
+                {canEditSchedules ? (
+                  <button
+                    type="button"
+                    className="rounded-md border border-border-strong px-2 py-0.5 text-xs"
+                    aria-label={`Set ${m.name} day and time`}
+                    onClick={() => {
+                      setEditOnOpen(true);
+                      setOpenMeeting(m.key);
+                    }}
+                  >
+                    Set day and time
+                  </button>
+                ) : null}
               </li>
             ))}
           </ul>
