@@ -12,7 +12,7 @@ import {
 } from "./instances";
 import { authorizeLocation, authorizedSalonIds } from "./location-scope";
 import { hiddenAsPrivate } from "./private-creators";
-import { hiddenWhileAwaitingHr, hrApprovalEnabled } from "./hr-approval-rules";
+import { awaitingHr, hiddenWhileAwaitingHr, hrApprovalEnabled } from "./hr-approval-rules";
 import { getTemplateByKey } from "./repository";
 import type { Permission } from "@/types";
 
@@ -92,6 +92,13 @@ export function actorMaySeeInstance(
   if (hiddenAsPrivate(actor, instance, options)) return false;
   // HR APPROVAL: a form HR has not approved exists only for its creator and HR — administrators and preview included.
   if (hiddenWhileAwaitingHr(actor, instance)) return false;
+  /*
+   * HR opens every form in their queue, whatever its salon (task H, 27 Nov 2026). The queue, the bell and the calendar
+   * list every form waiting for HR with no salon limit (`listHrQueue`), but opening one went through the reader's salon
+   * scope: an approver whose account covers no salon, or not that one, got a 404 from the very link the bell and the
+   * calendar gave them. Only while the form is with HR, only for an account on `form_hr_approvers`, only with the flag on.
+   */
+  if (actor.hrApprover === true && hrApprovalEnabled() && awaitingHr(instance.hrApprovalState)) return true;
   // Demo: unverified identity, no scope, no enforcement. See `location-scope`.
   const visibility = actor.visibility;
   if (!visibility) return true;
