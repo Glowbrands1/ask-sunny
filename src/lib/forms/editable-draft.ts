@@ -2,7 +2,7 @@ import "server-only";
 
 import type { AskResponse } from "@/lib/ai/types";
 
-import { FormNotEditableNowError } from "./hr-approval-rules";
+import { FormNotEditableNowError, hiddenWhileAwaitingHr } from "./hr-approval-rules";
 import { actorMaySeeInstance, authorizeInstance } from "./instance-scope";
 import { findOpenRevision, type LoadedInstance } from "./instances";
 import { reviseFinalizedForm, RevisionReasonRequiredError } from "./revision-chain";
@@ -87,9 +87,10 @@ export async function openEditableDraft(
       if (open) {
         /*
          * An open revision this reader may not see (someone else's, waiting for HR) is neither opened nor described:
-         * one answer that names nobody (owner, 23 Nov 2026: no leaks).
+         * one answer that names nobody (owner, 23 Nov 2026: no leaks). An administrator may open such a form by its link
+         * (owner, 27 Nov 2026: "yes admin"), but an edit of the finalized form is never steered into it.
          */
-        if (!actorMaySeeInstance(actor, open)) throw new FormNotEditableNowError();
+        if (!actorMaySeeInstance(actor, open) || hiddenWhileAwaitingHr(actor, open)) throw new FormNotEditableNowError();
         id = open.id;
         continue;
       }
