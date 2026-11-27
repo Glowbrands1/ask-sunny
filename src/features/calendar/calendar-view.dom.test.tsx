@@ -6,7 +6,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CalendarEvent } from "@/lib/calendar/types";
 import { CalendarView, cellSummary, dayLabel, monthLabel } from "./calendar-view";
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }));
+const { refresh } = vi.hoisted(() => ({ refresh: vi.fn() }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh, push: vi.fn() }) }));
 vi.mock("./actions", () => ({ saveReminderAction: vi.fn(), deleteReminderAction: vi.fn(), saveMeetingScheduleAction: vi.fn(), saveMeetingOccurrenceAction: vi.fn() }));
 
 /* Invented people only. */
@@ -245,5 +246,9 @@ describe('Calendar: edit the time in the meeting panel (the owner, 27 Nov 2026: 
     await userEvent.type(form.querySelector('input[type="time"]') as HTMLInputElement, "10:00");
     await userEvent.click(within(form).getByRole("button", { name: "Save" }));
     expect(saveSchedule).toHaveBeenCalledWith({ key: "stc-dm", weekday: 1, time: "10:00", minutes: 90 });
+    // "to all that has this event" (the owner, 27 Nov 2026): this calendar reloads now; everyone else who has the meeting
+    // sees the new time on their next load in any app (each reads it from the Leadership Hub) and is told there, except the
+    // person who changed it (Leadership Hub: l10_meeting_time_edits_test.sql, l10_meeting_members_test.sql).
+    expect(refresh).toHaveBeenCalled();
   });
 });
