@@ -182,7 +182,7 @@ export function attachmentProblem(messages: UIMessage[], limits: { maxFiles: num
 
 /**
  * Word, Excel, CSV and text files reach the model as text, read by the main chat's reader (`readAttachments`, with its
- * 60,000-character cap per file); images and PDFs stay file parts (Claude reads them natively). Nothing is stored.
+ * 120,000-character cap per file, as in the Hub); images and PDFs stay file parts (Claude reads them natively). Nothing is stored.
  */
 export async function filesAsText(messages: UIMessage[]): Promise<UIMessage[]> {
   return Promise.all(

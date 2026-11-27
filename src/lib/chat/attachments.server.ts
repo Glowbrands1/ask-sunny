@@ -23,8 +23,12 @@ import { DOCX_TYPE, MAX_FILE_BYTES, MAX_FILES_PER_MESSAGE, XLSX_TYPE, olderOffic
 const IMAGE = /^image\/(png|jpeg|gif|webp)$/;
 const TEXT = /^text\/(plain|csv|markdown)$/;
 const PDF = "application/pdf";
-/** Characters of one Word or text file the model is given; the rest is left out, and the model is told so. */
-export const ATTACHMENT_TEXT_LIMIT = 60_000;
+/**
+ * Characters of one Word, Excel or text file the model is given; the rest is left out, and the model is told so.
+ * 120,000 to match the Leadership Hub's assistant (the owner, 27 Nov 2026: "make it match 120,000 chars"); it was 60,000.
+ * The monthly spend guard still counts every token.
+ */
+export const ATTACHMENT_TEXT_LIMIT = 120_000;
 const NAME_LIMIT = 200;
 
 export function isAcceptedAttachmentType(mediaType: string): boolean {

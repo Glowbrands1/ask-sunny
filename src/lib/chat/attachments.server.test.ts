@@ -93,7 +93,7 @@ describe("how each file is read for the model", () => {
 
   it("a very long text file is cut, and the model is told so", async () => {
     const [read] = await readAttachments([{ filename: "log.txt", mediaType: "text/plain", url: data("text/plain", "x".repeat(ATTACHMENT_TEXT_LIMIT + 10)) }]);
-    expect(read!.kind === "text" && read!.text).toMatch(/\[The rest of log\.txt was left out: it is longer than 60,000 characters\.\]$/);
+    expect(read!.kind === "text" && read!.text).toMatch(/\[The rest of log\.txt was left out: it is longer than 120,000 characters\.\]$/);
   });
 
   it("the loop's parts and the older path's blocks carry the same files", async () => {
