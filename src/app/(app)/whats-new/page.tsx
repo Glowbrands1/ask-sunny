@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
-import { WHATS_NEW, whatsNewEnabled, whatsNewFor } from "@/config/whats-new";
+import { WHATS_NEW, whatsNewFor } from "@/config/whats-new";
 import { WhatsNewScreen } from "@/features/whats-new/whats-new-screen";
 import { ACTIVE_BRAND } from "@/lib/brand";
 import { requirePagePermission } from "@/lib/auth/page";
 import { activePermissionMatrix, hasPermission } from "@/lib/permissions";
+import { whatsNewVisibleFor } from "@/lib/whats-new/whats-new-access";
 
 export const metadata: Metadata = {
   title: "What's New",
@@ -19,10 +20,12 @@ export const dynamic = "force-dynamic";
  * entries `read_whats_new` gives the AI (CLAUDE.md §5).
  */
 export default async function WhatsNewPage() {
-  // Pau, 27 Nov 2026: hidden for everyone until it is rolled out (`whatsNewEnabled`).
-  if (!whatsNewEnabled()) notFound();
-  // The saved permission matrix is loaded by the gate, so the entries below are filtered on it.
+  // The page's gate first (every page awaits its guard before anything else, `page.test.ts`). The saved permission
+  // matrix is loaded by the gate, so the entries below are filtered on it.
   const identity = await requirePagePermission("view_overview");
+  // Pau, 27 Nov 2026: hidden until it is rolled out, except for the people on WHATS_NEW_USERS (the owner: "live but on
+  // my own page only"), checked against the gate's verified identity; a 404 for everyone else.
+  if (!whatsNewVisibleFor(identity ?? {})) notFound();
   const matrix = activePermissionMatrix();
   const releases = whatsNewFor(identity?.role ?? null, (role, permission) => hasPermission(matrix, role, permission), WHATS_NEW);
   return <WhatsNewScreen releases={releases} appName={ACTIVE_BRAND.productName} />;

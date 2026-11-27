@@ -18,6 +18,7 @@ import { VIDEO_CATEGORY_LABEL } from "@/lib/videos/categories";
 import { useAppStore } from "@/lib/store/app-store";
 import { useHidesFormMonitoring } from "./hides-form-monitoring";
 import { NAV_SECTIONS } from "./navigation";
+import { useWhatsNewVisible } from "@/features/whats-new/whats-new-access";
 
 interface Hit {
   id: string;
@@ -49,6 +50,8 @@ export function GlobalSearch() {
   const { documents, videos, forms: storeForms } = useAppStore();
   // ASD_NO_FORM_MONITORING: form hits and the screen open Form Monitoring, so a reader without it gets neither.
   const hidesMonitoring = useHidesFormMonitoring();
+  // What's New: searchable only by whom the server says, as the sidebar (the owner, 27 Nov 2026).
+  const whatsNewVisible = useWhatsNewVisible();
   const forms = hidesMonitoring ? NO_FORMS : storeForms;
   const [query, setQuery] = useState("");
 
@@ -57,7 +60,7 @@ export function GlobalSearch() {
     if (q.length < 2) return [];
 
     const screens: Hit[] = NAV_SECTIONS.flatMap((section) =>
-      section.items.filter((item) => !(hidesMonitoring && item.permission === "view_form_monitoring")).map((item) => ({
+      section.items.filter((item) => !(hidesMonitoring && item.permission === "view_form_monitoring") && !(item.whatsNew && !whatsNewVisible)).map((item) => ({
         id: `screen-${item.href}`,
         label: item.label,
         detail: section.label,
@@ -124,7 +127,7 @@ export function GlobalSearch() {
           hit.label.toLowerCase().includes(q) || hit.detail.toLowerCase().includes(q),
       )
       .slice(0, 24);
-  }, [query, documents, videos, forms, hidesMonitoring]);
+  }, [query, documents, videos, forms, hidesMonitoring, whatsNewVisible]);
 
   return (
     <div>
