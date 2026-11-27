@@ -8,6 +8,7 @@ import { pastMeetings } from "@/features/l10/lib/past";
 import { PastMeetings } from "@/features/l10/meeting/_components/PastMeetings";
 import { Card } from "@/features/l10/ui/ui";
 import { requireAuthenticatedPage } from "@/lib/auth/page";
+import { NotAttendee } from "@/features/l10/NotAttendee";
 
 export const metadata: Metadata = { title: "Past meetings" };
 export const dynamic = "force-dynamic";
@@ -19,7 +20,8 @@ export default async function PastMeetingsPage({ params }: { params: Promise<{ k
   if (!isMeetingKey(key)) notFound();
   // Same gate as the meeting itself: a meeting you cannot open here has no past meetings page either.
   const opened = await openMeeting(key);
-  if (!opened.ok && opened.reason === "forbidden") notFound();
+  // Only its attendees (and admins) open a meeting; the Hub refused this person (src/features/l10/lib/access.ts).
+  if (!opened.ok && opened.reason === "forbidden") return <NotAttendee />;
   const recaps = opened.ok ? await listRecaps(key) : null;
   if (!opened.ok || !recaps?.ok) {
     return (

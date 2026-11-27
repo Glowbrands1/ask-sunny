@@ -56,8 +56,10 @@ export const NOV26_WHATS_NEW_CASES: ReplayCase[] = [
         expect(titles, `${title} did not reach the model`).toContain(title);
       }
       expect(titles, "an administrators-only update reached a Salon Director").not.toContain(ADMIN_ONLY);
+      // Newest first. A newer release than 26 Nov holds only an administrators' entry (27 Nov: the Knowledge Base list),
+      // so a Salon Director's newest is still 26 Nov; the summary is that release's, found by its date, not by position.
       expect(output?.releases?.[0]?.date, "newest first").toBe("Nov 26, 2026");
-      expect(output?.releases?.[0]?.summary, "the release's summary").toBe(WHATS_NEW[0]!.summary);
+      expect(output?.releases?.[0]?.summary, "the release's summary").toBe(WHATS_NEW.find((release) => release.date === "2026-11-26")!.summary);
       // The owner's format: tag, Before / Now / How to use it, and the Show me page, so the answer can say how to use it.
       const missing = updates.find((update) => update.title === "Missing fields explained at Finalize")!;
       const entry = WHATS_NEW.flatMap((release) => release.entries).find((candidate) => candidate.title === missing.title)!;

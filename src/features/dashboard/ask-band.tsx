@@ -191,7 +191,7 @@ export function AskBand({
                 the greeting on a phone. */}
             <SunnyMascot className="hidden w-[96px] shrink-0 sm:block" />
             <div className="min-w-0">
-            <h1 className="display text-[26px] text-band-foreground sm:text-[32px]">
+            <h1 className="display text-[22px] text-band-foreground sm:text-[32px]">
               {greeting},{" "}
               <span className="text-brand-yellow">{greetingName}</span>
             </h1>
@@ -478,10 +478,10 @@ function AskCard({
       <div className="min-w-0 flex-1">
         {showPlaceholderBlock ? (
           <label htmlFor="band-ask" className="block cursor-text">
-            <span className="display mb-0.5 block text-[18px] text-foreground">
+            <span className="display mb-0.5 block text-[16px] text-foreground sm:text-[18px]">
               Ask Sunny anything about running your salon
             </span>
-            <span className="block text-[15px] text-placeholder-foreground">
+            <span className="block text-[13px] leading-snug text-placeholder-foreground sm:text-[15px]">
               Policy, coaching, operations, performance, training — with the
               source shown every time.
             </span>
@@ -532,7 +532,7 @@ function AskCard({
             the words above them — not to the card's outer edge. They stay
             reachable while typing, which is the point of putting them here. */}
         {prompts.length > 0 ? (
-          <div className="mt-3 flex flex-wrap gap-2">
+          <div className="mt-2.5 flex flex-wrap gap-1.5 sm:mt-3 sm:gap-2">
             {prompts.map((prompt) => (
               <button
                 key={prompt}
@@ -544,7 +544,7 @@ function AskCard({
                   event.preventDefault();
                   onPrompt(prompt);
                 }}
-                className="rounded-full bg-surface-muted px-3.5 py-1.5 text-[11.5px] font-bold text-foreground shadow-dent transition-colors hover:bg-brand-yellow-soft disabled:opacity-50"
+                className="rounded-[14px] bg-surface-muted px-2.5 py-1 text-left text-[11px] leading-snug font-semibold text-foreground shadow-dent sm:rounded-full sm:px-3.5 sm:py-1.5 sm:text-[11.5px] sm:font-bold transition-colors hover:bg-brand-yellow-soft disabled:opacity-50"
               >
                 {prompt}
               </button>

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { chatVoiceHints, l10VoiceHints } from "./keyterms";
+import { mintStreamingToken } from "./streaming";
 import { supabaseVoiceUsageStore, writeVoiceTrace, type VoiceUsageStore } from "./voice-usage";
 
 /**
@@ -13,6 +14,8 @@ export interface VoiceRouteDeps {
   writeTrace: (row: Record<string, unknown>) => Promise<void>;
   chatHints: typeof chatVoiceHints;
   l10Hints: typeof l10VoiceHints;
+  /** Live dictation's short-lived AssemblyAI token (`streaming.ts`). */
+  streamingToken: typeof mintStreamingToken;
 }
 
 export const voiceRouteDeps: VoiceRouteDeps = {
@@ -21,4 +24,5 @@ export const voiceRouteDeps: VoiceRouteDeps = {
   writeTrace: writeVoiceTrace,
   chatHints: chatVoiceHints,
   l10Hints: l10VoiceHints,
+  streamingToken: mintStreamingToken,
 };

@@ -19,7 +19,8 @@ const OK = /^(image\/(png|jpe?g|gif|webp)|application\/pdf)$/;
  * THE MAIN CHAT TAKES THE SAME FILES, PLUS WORD AND PLAIN TEXT (Pau, 26 Nov 2026: managers attach files in the main
  * chat, "just like the Leadership Hub assistant"). Same limits and the same encoding as the panel's; the server reads a
  * .docx and a text file as text (`lib/chat/attachments.server.ts`), because Claude reads only images and PDFs natively.
- * The panel's list (ATTACH_ACCEPT) is the Hub's and is unchanged.
+ * The DM L10 panel takes the same list since 27 Nov 2026, as the Hub's assistant now does (Leadership Hub PR #128):
+ * its route reads the files with this app's reader (`readAttachments`). ATTACH_ACCEPT is the images-and-PDFs base.
  */
 export const DOCX_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 /* Excel (the owner, 26 Nov 2026: "PDFs, images, Word (.docx) and Excel"), read on the server as text, sheet by sheet. */

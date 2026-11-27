@@ -746,7 +746,7 @@ export function ChatScreen() {
      * `overflow-y-auto` on the message list never engages and the composer is
      * pushed off-screen by a long answer.
      */
-    <div className="flex h-[calc(100dvh-5rem)] min-h-0">
+    <div className="flex h-[calc(100dvh-5rem)] min-h-0 max-sm:h-[calc(100dvh-var(--spacing)*20)]">
       {/*
         ==================================================================
         CHAT HISTORY IS CLOSED UNTIL SOMEBODY ASKS FOR IT
@@ -835,8 +835,10 @@ export function ChatScreen() {
         */}
         <div
           className={cn(
-            "clay-band mx-3 mt-2 flex shrink-0 flex-wrap items-center justify-between gap-3 px-4 sm:px-6",
-            isEmpty ? "py-5" : "py-3.5",
+            // Phone: tighter padding and gaps so the band is one short row once
+            // a thread starts and the conversation keeps the screen.
+            "clay-band mx-3 mt-2 flex shrink-0 flex-wrap items-center justify-between gap-x-2 gap-y-1.5 px-3 sm:gap-3 sm:px-6",
+            isEmpty ? "py-3.5 sm:py-5" : "py-2 sm:py-3.5",
           )}
           style={isEmpty ? { backgroundImage: "var(--band-glow)" } : undefined}
         >
@@ -861,7 +863,7 @@ export function ChatScreen() {
                   the Overview greeting carries: the display face at 30px with
                   the assistant's name in yellow.
                 */}
-                <h1 className="display text-[26px] text-band-foreground sm:text-[30px]">
+                <h1 className="display text-[21px] text-band-foreground sm:text-[30px]">
                   How can{" "}
                   <span className="text-brand-yellow">{brand.assistantName}</span>{" "}
                   help today?
@@ -872,7 +874,7 @@ export function ChatScreen() {
                   — "Salon Director — MO Kansas City Wornall" — so concatenating it
                   with the location rendered the salon twice.
                 */}
-                <p className="mt-1.5 text-[12px] text-band-muted-foreground">
+                <p className="mt-1 text-[11.5px] text-band-muted-foreground sm:mt-1.5 sm:text-[12px]">
                   {managerDisplayName.includes(primaryLocationName)
                     ? managerDisplayName
                     : `${primaryLocationName} · ${managerDisplayName}`}
@@ -895,7 +897,7 @@ export function ChatScreen() {
               </span>
             ) : null}
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             {/* The connection line, moved out of the composer stack. */}
             <span className="hidden items-center gap-1.5 text-[10px] font-bold whitespace-nowrap text-band-label sm:flex">
               <span
@@ -1139,6 +1141,7 @@ export function ChatScreen() {
           onSubmit={() => void send(input, { files: pendingFiles, voice: voiceDraft.take(input) })}
           conversationId={activeId}
           onVoiceText={voiceDraft.note}
+          onVoiceSend={(text, traceId) => void send(text, { files: pendingFiles, voice: { inputMode: "voice", voiceTraceId: traceId, voiceEdited: false } })}
           mode={mode}
           onModeChange={setMode}
           busy={busy}

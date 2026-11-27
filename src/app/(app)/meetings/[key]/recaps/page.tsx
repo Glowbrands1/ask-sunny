@@ -15,6 +15,7 @@ import { DeleteRecapButton } from "@/features/l10/meeting/_components/DeleteReca
 import { PrintButton } from "@/features/l10/meeting/_components/PrintButton";
 import { Card, PageHeader } from "@/features/l10/ui/ui";
 import { requireAuthenticatedPage } from "@/lib/auth/page";
+import { NotAttendee } from "@/features/l10/NotAttendee";
 
 export const metadata: Metadata = { title: "Meeting recaps" };
 export const dynamic = "force-dynamic";
@@ -29,7 +30,8 @@ export default async function RecapsPage({ params, searchParams }: { params: Pro
   if (!isMeetingKey(key)) notFound();
   // Same gate as the meeting itself: a meeting you cannot open here has no recaps page either.
   const opened = await openMeeting(key);
-  if (!opened.ok && opened.reason === "forbidden") notFound();
+  // Only its attendees (and admins) open a meeting; the Hub refused this person (src/features/l10/lib/access.ts).
+  if (!opened.ok && opened.reason === "forbidden") return <NotAttendee />;
   const all = opened.ok ? await listRecaps(key) : null;
   if (!opened.ok || !all?.ok) {
     return (

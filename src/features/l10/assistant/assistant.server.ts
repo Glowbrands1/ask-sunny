@@ -7,6 +7,8 @@ import { helperTimeoutMs } from "@/lib/config/ai-timeouts";
 
 import { persistSpendRow } from "@/lib/ai/chat-trace";
 import type { TokenUsage } from "@/lib/ai/model-prices";
+import { isAcceptedAttachmentType, readAttachments } from "@/lib/chat/attachments.server";
+import { olderOfficeFileProblem } from "@/lib/attachments/file-parts";
 
 import { callHub, type HubAnswer } from "../partner/client.server";
 import type { AppToolsViewer } from "./app-tools.server";
@@ -147,21 +149,30 @@ export function validMessages(raw: unknown): UIMessage[] | null {
   return raw as UIMessage[];
 }
 
+const ONLY_THESE_FILES = "Only images (PNG, JPG, GIF, WebP), PDFs, Word (.docx), Excel (.xlsx) and text files can be attached.";
+
+const NATIVE = /^(image\/(png|jpe?g|gif|webp)|application\/pdf)$/;
+
 /**
- * The Hub route's attachment guard, word for word: images and PDFs only, at most `maxFiles` per message and `maxBytes`
- * each (the Hub's 5 and 10 MB, from its config), inline data URLs only. Only a person's own messages may carry files.
+ * The Hub route's attachment guard: images, PDFs, Word (.docx), Excel (.xlsx), CSV and text/Markdown (the Hub's list since
+ * 27 Nov 2026, the main chat's here), at most `maxFiles` per message and `maxBytes` each (the Hub's 5 and 10 MB, from its
+ * config), inline data URLs only. An older .doc or .xls is refused with how to re-save it. Only a person's own messages may
+ * carry files.
  */
 export function attachmentProblem(messages: UIMessage[], limits: { maxFiles: number; maxBytes: number } = HUB_DEFAULTS.attachments): string | undefined {
   for (const m of messages) {
     const files = m.parts.filter((p) => p?.type === "file");
     if (m.role !== "user") {
-      if (files.length) return "Only images and PDFs can be attached.";
+      if (files.length) return ONLY_THESE_FILES;
       continue;
     }
     if (files.length > limits.maxFiles) return `Attach at most ${limits.maxFiles} files per message.`;
     for (const f of files) {
       if (f.type !== "file") continue;
-      if (typeof f.mediaType !== "string" || !/^(image\/(png|jpe?g|gif|webp)|application\/pdf)$/.test(f.mediaType)) return "Only images and PDFs can be attached.";
+      if (typeof f.mediaType !== "string") return ONLY_THESE_FILES;
+      const older = olderOfficeFileProblem(typeof f.filename === "string" && f.filename ? f.filename : "This file", f.mediaType);
+      if (older) return older;
+      if (!isAcceptedAttachmentType(f.mediaType)) return ONLY_THESE_FILES;
       // Only inline data URLs: a remote URL would make the server or model provider fetch an address the client chose.
       if (typeof f.url !== "string" || !f.url.startsWith("data:")) return "Attachments must be uploaded from your device.";
       if ((f.url.length * 3) / 4 > limits.maxBytes * 1.02) return "Each file must be 10 MB or smaller.";
@@ -169,6 +180,26 @@ export function attachmentProblem(messages: UIMessage[], limits: { maxFiles: num
   }
 }
 
+/**
+ * Word, Excel, CSV and text files reach the model as text, read by the main chat's reader (`readAttachments`, with its
+ * 60,000-character cap per file); images and PDFs stay file parts (Claude reads them natively). Nothing is stored.
+ */
+export async function filesAsText(messages: UIMessage[]): Promise<UIMessage[]> {
+  return Promise.all(
+    messages.map(async (m) => {
+      if (m.role !== "user" || !m.parts.some((p) => p?.type === "file" && typeof p.url === "string" && p.url.startsWith("data:") && !NATIVE.test(p.mediaType))) return m;
+      const parts = await Promise.all(
+        m.parts.map(async (p) => {
+          if (p?.type !== "file" || typeof p.url !== "string" || !p.url.startsWith("data:") || NATIVE.test(p.mediaType)) return p;
+          const filename = (p.filename ?? "").replace(/[\r\n\t]+/g, " ").trim().slice(0, 200) || "attachment";
+          const [read] = await readAttachments([{ filename, mediaType: p.mediaType, url: p.url }]);
+          return read.kind === "text" ? { type: "text" as const, text: read.text } : p;
+        }),
+      );
+      return { ...m, parts } as UIMessage;
+    }),
+  );
+}
 /** Web searches the answer made, from Anthropic's raw usage of each step (server_tool_use.web_search_requests). */
 export function webSearchCount(steps: readonly { usage?: LanguageModelUsage }[]): number {
   let n = 0;
@@ -272,8 +303,9 @@ export async function streamHubAssistant(input: { config: HubAssistantConfig; me
   const result = streamText({
     model: anthropic(modelId),
     system,
-    // Images and PDFs the person attached go to the model as file parts (Claude reads PDFs natively), as in the Hub.
-    messages: await modelMessages(input.messages),
+    // Images and PDFs the person attached go to the model as file parts (Claude reads PDFs natively), as in the Hub;
+    // Word, Excel, CSV and text files go as their text.
+    messages: await modelMessages(await filesAsText(input.messages)),
     tools: { ...webTools(config), ...hubTools(config, input.email, input.meetingKey), ...(app && input.viewer ? app.appTools(input.viewer, app.lastQuestion(input.messages)) : {}) },
     stopWhen: stepCountIs(config.maxSteps),
     maxOutputTokens: config.maxOutputTokens,
