@@ -20,6 +20,10 @@ export async function meetingEventsFromHub(email: string | null | undefined, ran
   if (answer.status !== 200 || answer.body.ok !== true || !Array.isArray(answer.body.events)) return { source: "leadership-hub", state: "failed" };
   const hub = leadershipHubUrl();
   const events = (answer.body.events as CalendarEvent[]).map((e) => {
+    // A meeting the person does not attend (attending false: name, day and time only) opens this app's own meeting page,
+    // which says "You are not an attendee of this meeting".
+    if (e && typeof e === "object" && e.kind === "meeting" && typeof e.meetingKey === "string" && (e as { attending?: boolean }).attending === false)
+      return { ...e, href: `/meetings/${e.meetingKey}`, opensInApp: undefined };
     if (e && typeof e === "object" && e.kind === "meeting" && typeof e.meetingKey === "string")
       return { ...e, href: (e as { opensInApp?: boolean }).opensInApp === false ? `${hub}/meetings/${e.meetingKey}` : `/meetings/${e.meetingKey}` };
     if (e && typeof e === "object" && typeof e.href === "string" && e.href.startsWith("/")) return { ...e, href: `${hub}${e.href}`, reminderId: undefined };
