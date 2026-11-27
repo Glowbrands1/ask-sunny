@@ -9,6 +9,7 @@ import { MAX_SECONDS } from "@/lib/voice/voice-limits";
 import { VOICE_CHECK, VOICE_HINT, VOICE_NOTICE } from "@/lib/voice/voice-messages";
 
 import { LiveDictationPanel } from "./live-dictation-panel";
+import { useMicrophones } from "./mic-choice";
 import { liveDictationSupported, useLiveDictation } from "./use-live-dictation";
 import { useVoiceAccess } from "./voice-access";
 import { WARN_AT_SECONDS, inAppBrowser, recordingSupported, useVoiceRecorder, type VoiceSurfaceName } from "./use-voice-recorder";
@@ -99,10 +100,14 @@ export function VoiceButton(props: VoiceButtonProps) {
 function VoiceButtonOn({ surface, meetingKey, conversationId, disabled = false, onText, onSend, liveSlot, messageSlot, tone = "band", className }: VoiceButtonProps) {
   const { userKey } = useVoiceAccess();
   const [message, setMessage] = useState<Message | null>(null);
+  // The owner, 27 Nov 2026: "i think i need to choose which mic because i have usb mic not built in".
+  const microphones = useMicrophones();
   const recorder = useVoiceRecorder({
     surface,
     conversationId,
     meetingKey,
+    deviceId: microphones.chosen,
+    onMicrophoneOpened: () => void microphones.refresh(),
     onText: ({ text, traceId }) => {
       setMessage({ kind: "check" });
       onText(text, { traceId });
@@ -114,6 +119,8 @@ function VoiceButtonOn({ surface, meetingKey, conversationId, disabled = false, 
     surface,
     conversationId,
     meetingKey,
+    deviceId: microphones.chosen,
+    onMicrophoneOpened: () => void microphones.refresh(),
     onSend: (text, meta) => {
       setMessage(null);
       onSend?.(text, meta);
@@ -290,9 +297,39 @@ function VoiceButtonOn({ surface, meetingKey, conversationId, disabled = false, 
    * The hint is always there while voice is on for this person (whenever the mic shows), under any notice, so nobody
    * uses the mic without being told where the recording goes.
    */
+  /*
+   * WHICH MICROPHONE: only when this browser has more than one. Their names show once the browser has been allowed a
+   * microphone; before that, "Microphone 1", "Microphone 2". The choice is kept in this browser.
+   */
+  const picker =
+    microphones.microphones.length > 1 ? (
+      <label className={cn("flex flex-wrap items-center gap-1.5 text-[11px] leading-snug", muted)}>
+        Microphone
+        <select
+          aria-label="Microphone"
+          data-testid="voice-microphone"
+          value={microphones.chosen ?? ""}
+          disabled={recording || uploading || asking || dictating}
+          onChange={(event) => microphones.choose(event.target.value || null)}
+          className={cn(
+            "max-w-[16rem] truncate rounded-md px-1.5 py-0.5 text-[11px] font-semibold",
+            tone === "band" ? "border border-band-pill-border bg-transparent text-brand-yellow" : "bg-white/70 text-ink ring-1 ring-white/80",
+          )}
+        >
+          <option value="">Default microphone</option>
+          {microphones.microphones.map((microphone) => (
+            <option key={microphone.id} value={microphone.id}>
+              {microphone.label}
+            </option>
+          ))}
+        </select>
+      </label>
+    ) : null;
+
   const messages = (
     <div data-testid="voice-message" className="mt-2 space-y-1">
       {line}
+      {picker}
       <p data-testid="voice-hint" className={cn("m-0 text-[11px] leading-snug", muted)}>
         {VOICE_HINT}
       </p>

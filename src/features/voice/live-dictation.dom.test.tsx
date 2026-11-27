@@ -53,7 +53,7 @@ class FakeAudioContext {
     return { connect: vi.fn() };
   }
   createAnalyser() {
-    return { fftSize: 512, connect: vi.fn(), disconnect: vi.fn(), getByteTimeDomainData: (array: Uint8Array) => array.fill(128) };
+    return { fftSize: 512, connect: vi.fn(), disconnect: vi.fn(), getFloatTimeDomainData: (array: Float32Array) => array.fill(level) };
   }
   close = vi.fn(async () => undefined);
 }
@@ -64,6 +64,8 @@ class FakeWorkletNode {
 }
 
 let routeCalls: Record<string, unknown>[];
+/** What the fake microphone sends: a quiet voice by default. */
+let level = 0.004;
 let startAnswer: () => Response;
 
 function Host({ onSend }: { onSend: (text: string, traceId: string) => void }) {
@@ -89,6 +91,7 @@ function Host({ onSend }: { onSend: (text: string, traceId: string) => void }) {
 }
 
 beforeEach(() => {
+  level = 0.004;
   window.localStorage.clear();
   const mic = installFakeMic();
   acceptVoiceNotice();
@@ -113,7 +116,13 @@ beforeEach(() => {
   vi.stubGlobal("WebSocket", FakeSocket);
   vi.stubGlobal("AudioContext", FakeAudioContext);
   vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
-  vi.stubGlobal("requestAnimationFrame", () => 1);
+  // A few animation frames run, so the level is measured; then they stop.
+  let frames = 0;
+  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+    frames += 1;
+    if (frames <= 4) setTimeout(() => callback(frames * 100), 0);
+    return frames;
+  });
   vi.stubGlobal("cancelAnimationFrame", () => undefined);
   FakeSocket.last = null;
 });
