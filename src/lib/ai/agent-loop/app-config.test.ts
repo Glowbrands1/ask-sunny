@@ -361,9 +361,10 @@ const FAKE_CONTENT: AppConfig["content"] = ({ place }) => ({
 });
 
 describe("app config: another company's content in the rules book (Phase 1 of the loop port)", () => {
+  // ("Spa Engagement figures": the last of the reports list since board f039 part 2, 26 Nov 2026; it was "Comp figures".)
   // Sunny's rulings, metrics, reports, time zone, approver, page name and example phrases (src/config/company/agent-loop.ts).
   const SUNNY_CONTENT_WORDS = [
-    "Under Performance", "Club Close", "PPTA", "LPSVA", "tans", "Daily Stats", "Sales Totals", "Comp figures", "DM/HR",
+    "Under Performance", "Club Close", "PPTA", "LPSVA", "tans", "Daily Stats", "Sales Totals", "Spa Engagement figures", "DM/HR",
     "Central", "CT)", "Form Monitoring", "Must See", "sanitation", "EFT", "animals in the workplace", "key holdr",
     "Dodge", "No tanning", "Employee Discounts", "tanning consultants", "beds between clients", "Attendance Policy",
     "Late Opening", "Time Records", "Animals in the Workplace", "Handling Theft", "doctor's note", "the reviews SOP",
@@ -430,7 +431,8 @@ describe("app config: tool-description examples and the prompt's reports (Phase 
   it("Sunny's own descriptions keep its examples and the read_stats line", () => {
     const described = JSON.stringify(agentLoopTools().map((tool) => tool.input_schema));
     expect(described).toContain("getting rooms ready between guests");
-    expect(agentLoopRules()).toContain("- read_stats: Daily Stats, Sales Totals and Comp figures for the manager's salons");
+    // Board f039 part 2 (26 Nov 2026): read_stats also reads the bed and spa reports. Changed on purpose.
+    expect(agentLoopRules()).toContain("- read_stats: Daily Stats, Sales Totals, Comp, Bed Usage, Spa Wellness and Spa Engagement figures for the manager's salons");
   });
 });
 

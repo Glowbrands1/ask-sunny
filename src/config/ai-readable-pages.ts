@@ -27,7 +27,7 @@ import type { Permission } from "@/types";
  */
 
 /** The loop tools that read a page's figures. */
-export type PageReaderTool = "read_reviews" | "read_stats" | "find_past_forms" | "read_hr_approvals" | "read_follow_ups" | "read_calendar";
+export type PageReaderTool = "read_reviews" | "read_stats" | "find_past_forms" | "read_hr_approvals" | "read_follow_ups" | "read_calendar" | "read_whats_new" | "read_videos" | "read_manager_resources" | "read_ai_training";
 
 export interface PageReader {
   readonly tool: PageReaderTool;
@@ -70,9 +70,7 @@ const REVIEWS_READER: PageReader = {
 const NO_LOOP_READER = "no tool of the chat or the agent loop reads it.";
 const ADMIN = "An admin console page: ";
 const MEETINGS = "Meeting docs: Sunny's chat and agent loop have no reader (the meeting page's own assistant, /api/l10/assistant, reads them there).";
-const TRAINING = "AI training lessons and their management: " + NO_LOOP_READER;
-const UNNAMED_REPORT =
-  "read_stats's report list and its description name only Daily Stats, Sales Totals and Comp. A question may still be routed to this report's family by its words, but no description tells the model it can ask, and no replay case proves the figures reach it.";
+const TRAINING_EDITOR = "The AI Training editors' console (drafts, the archive, editing), for the editor list only: an admin console; " + NO_LOOP_READER;
 
 export const AI_READABLE_PAGES: readonly AiReadablePage[] = [
   /*
@@ -86,6 +84,9 @@ export const AI_READABLE_PAGES: readonly AiReadablePage[] = [
   /* Pau, 26 Nov 2026: one calendar with the Leadership Hub and Ask Bubbles; read_calendar is the page's own read. */
   { kind: "page", route: "/calendar", title: "Calendar", access: { permission: "view_overview" },
     reader: { tool: "read_calendar", args: {}, figures: ["each follow-up, HR approval, Google Reviews check, reminder and L10 meeting by day and Central time", "which are overdue or due today", "who can see a reminder"], periods: ["this week", "next week", "a day", "a date range"], replayCase: "nov26-calendar-whats-on-my-calendar-this-week" } },
+  /* Pau, 26 Nov 2026: recent updates, from `src/config/whats-new.ts`; an entry about a page only for a role that may open it. */
+  { kind: "page", route: "/whats-new", title: "What's New", access: { permission: "view_overview" },
+    reader: { tool: "read_whats_new", args: {}, figures: ["each release's date and summary", "each update's tag (New or Improved), before, now and how to use it", "its Show me page"], periods: ["newest first", "since a day"], replayCase: "nov26-whats-new-reaches-the-model" } },
   { kind: "page", route: "/chat", title: "Chat", access: { permission: "ask_questions" }, notReadable: "The chat itself: nothing on it to read." },
 
   { kind: "page", route: "/reviews", title: "Google Reviews", access: { permission: "view_google_reviews" }, reader: REVIEWS_READER },
@@ -98,9 +99,13 @@ export const AI_READABLE_PAGES: readonly AiReadablePage[] = [
     reader: { tool: "read_stats", args: { report: "comp" }, figures: ["the Comp report's measures per salon, as the page labels them", "how current the report is"], periods: ["month to date", "year to date"], replayCase: "nov15-agent-loop-daily-stats-own-salons" } },
   { kind: "page", route: "/reports/salon-performance/[salon]", title: "Salon Performance for one salon", access: { permission: "view_reports" },
     reader: { tool: "read_stats", args: { report: "comp", salon: "<the salon>" }, figures: ["one salon's Comp measures"], periods: ["month to date", "year to date"], replayCase: "nov15-agent-loop-daily-stats-own-salons" } },
-  { kind: "page", route: "/reports/bed-usage", title: "Bed Usage", access: { permission: "view_reports" }, notReadable: UNNAMED_REPORT },
-  { kind: "page", route: "/reports/spa-engagement", title: "Spa Engagement", access: { permission: "view_reports" }, notReadable: UNNAMED_REPORT },
-  { kind: "page", route: "/reports/spa-wellness", title: "Spa Wellness", access: { permission: "view_reports" }, notReadable: UNNAMED_REPORT },
+  /* Pau, 26 Nov 2026 (CLAUDE.md §5): the bed and spa reports, through read_stats, each its own report family. */
+  { kind: "page", route: "/reports/bed-usage", title: "Bed Usage", access: { permission: "view_reports" },
+    reader: { tool: "read_stats", args: { report: "bed usage" }, figures: ["total tans, bed quantity and tans per bed per salon and equipment level", "performance against the chain", "how current the report is"], periods: ["month to date"], replayCase: "nov26-f039-bed-usage-reaches-the-model" } },
+  { kind: "page", route: "/reports/spa-engagement", title: "Spa Engagement", access: { permission: "view_reports" },
+    reader: { tool: "read_stats", args: { report: "spa engagement" }, figures: ["spa sessions, unique tanners and unique spa tanners per salon", "spa beds, sessions per bed and the published ranks", "how current the report is"], periods: ["month to date"], replayCase: "nov26-f039-spa-engagement-reaches-the-model" } },
+  { kind: "page", route: "/reports/spa-wellness", title: "Spa Wellness", access: { permission: "view_reports" },
+    reader: { tool: "read_stats", args: { report: "spa wellness" }, figures: ["spa sessions by equipment type against peers with the same equipment", "first and last use dates", "how current the report is"], periods: ["month to date", "year to date", "last twelve months"], replayCase: "nov26-f039-spa-wellness-reaches-the-model" } },
 
   { kind: "page", route: "/forms/monitoring", title: "Form Monitoring", access: { permission: "view_form_monitoring" },
     reader: { tool: "find_past_forms", args: {}, figures: ["the forms on file per person, form and date", "their counts", "each form's status"], periods: ["a date", "a date range", "this month"], replayCase: "nov20-f081-c-month-list-counts" } },
@@ -126,13 +131,22 @@ export const AI_READABLE_PAGES: readonly AiReadablePage[] = [
   { kind: "page", route: "/meetings/[key]/recaps", title: "Meeting recaps", access: { signedIn: true, note: "then the meeting's own open check" }, notReadable: MEETINGS },
   { kind: "page", route: "/meetings/[key]/report", title: "Meeting report", access: { signedIn: true, note: "then the meeting's own open check" }, notReadable: MEETINGS },
 
-  { kind: "page", route: "/videos", title: "Videos", access: { permission: "view_videos" }, notReadable: "The video library: " + NO_LOOP_READER },
-  { kind: "page", route: "/resources", title: "Manager resources", access: { permission: "view_manager_resources" }, notReadable: "The manager resources links: " + NO_LOOP_READER },
-  { kind: "page", route: "/ai-training", title: "AI training", access: { permission: "view_ai_training" }, notReadable: TRAINING },
-  { kind: "page", route: "/ai-training/[track]/[slug]", title: "AI training lesson", access: { permission: "view_ai_training" }, notReadable: TRAINING },
-  { kind: "page", route: "/ai-training/manage", title: "Manage AI training", access: { permission: "view_ai_training" }, notReadable: TRAINING },
-  { kind: "page", route: "/ai-training/manage/lessons/[id]", title: "Edit AI training lesson", access: { permission: "view_ai_training" }, notReadable: TRAINING },
+  /* Board f039 part 2 (26 Nov 2026): the video library and the manager resources links. */
+  { kind: "page", route: "/videos", title: "Videos", access: { permission: "view_videos" },
+    reader: { tool: "read_videos", args: {}, figures: ["each video's title, category, length, who posted it and when", "what it is about", "the videos on a topic"], periods: ["newest first"], replayCase: "nov26-f039-videos-reach-the-model" } },
+  { kind: "page", route: "/resources", title: "Manager resources", access: { permission: "view_manager_resources" },
+    reader: { tool: "read_manager_resources", args: {}, figures: ["each link's name, what it is, category and link", "that none are listed yet, when the page has none"], periods: ["now"], replayCase: "nov26-f039-manager-resources-reach-the-model" } },
+  /* Board f039 part 2 (26 Nov 2026): the published lessons, as a reader who is not an editor sees them. */
+  { kind: "page", route: "/ai-training", title: "AI training", access: { permission: "view_ai_training" },
+    reader: { tool: "read_ai_training", args: {}, figures: ["each published lesson's track, module, week, title and summary", "when each was posted", "the lessons on a topic"], periods: ["in course order"], replayCase: "nov26-f039-ai-training-reaches-the-model" } },
+  { kind: "page", route: "/ai-training/[track]/[slug]", title: "AI training lesson", access: { permission: "view_ai_training" },
+    reader: { tool: "read_ai_training", args: {}, figures: ["the lesson's title, summary, track, module and week (its full text stays on the page)"], periods: ["in course order"], replayCase: "nov26-f039-ai-training-reaches-the-model" } },
+  { kind: "page", route: "/ai-training/manage", title: "Manage AI training", access: { permission: "view_ai_training" }, notReadable: TRAINING_EDITOR },
+  { kind: "page", route: "/ai-training/manage/lessons/[id]", title: "Edit AI training lesson", access: { permission: "view_ai_training" }, notReadable: TRAINING_EDITOR },
 
+  /* QA, 24 Nov 2026: this list, shown to admins in the app (generated from it, so it cannot drift). */
+  { kind: "page", route: "/admin/ai-readable-pages", title: "AI-readable pages", access: { permission: "view_ai_usage", adminConsole: true },
+    notReadable: ADMIN + "this list of pages itself; the AI is given it as its rules book's page line and its tools' descriptions, not as a page to read." },
   { kind: "page", route: "/admin/ai-usage", title: "AI usage", access: { permission: "view_ai_usage" }, notReadable: ADMIN + "AI usage and spend figures; " + NO_LOOP_READER },
   { kind: "page", route: "/admin/analytics", title: "Analytics", access: { permission: "view_analytics" }, notReadable: ADMIN + "chat analytics figures; " + NO_LOOP_READER },
   { kind: "page", route: "/admin/analytics/[view]", title: "Analytics view", access: { permission: "view_analytics" }, notReadable: ADMIN + "chat analytics figures; " + NO_LOOP_READER },
