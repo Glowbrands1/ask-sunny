@@ -251,6 +251,7 @@ export function useInlineAsk({ reportContext, onActiveChange, surface }: InlineA
             recommendedVideoIds: response.recommendedVideoIds,
             followUpSuggestions: response.followUpSuggestions,
             formProposal: response.formProposal,
+            reminderProposal: response.reminderProposal,
             formSelection: response.formSelection,
             // A form on file this turn opened; see `openedFormReference`.
             formInstanceRef: openedFormReference(response.formOpened),

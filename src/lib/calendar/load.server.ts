@@ -1,0 +1,98 @@
+import "server-only";
+
+import type { AuthenticatedIdentity } from "@/lib/auth/types";
+import { activePermissionMatrix, hasPermission } from "@/lib/permissions";
+import { reportingScopeOf } from "@/lib/reporting/scope/authorized-salons";
+import { salonByNumber } from "@/data/salons";
+import { meetingEventsFromHub } from "./hub";
+import { mergeSources } from "./merge";
+import { validRange } from "./range";
+import { followUpEvents, hrEvents, reminderEvents, reviewsEvents, reviewsSchedule, type FollowUpFact, type HrFact } from "./sources";
+import { listVisibleReminders } from "./reminders.server";
+import type { CalendarEvent, CalendarView, SourceResult } from "./types";
+
+/**
+ * ONE PERSON'S CALENDAR, for the /calendar page, the AI's read_calendar and the Leadership Hub's signed read
+ * (POST /api/partner/calendar). Everything is read at call time from where it already lives, as this person:
+ *
+ * - Follow-ups: the Overview's queue for this account (`pageFormsAccess` + `readFollowUpQueue`), so exactly the forms
+ *   the forms pages show them, and the one overdue rule (`followUpState`).
+ * - HR approvals: HR's queue for an approver; otherwise only the forms this person sent to HR (`readHrApprovalsFor`).
+ * - Google Reviews: a weekly check per salon the person covers, only with `view_google_reviews`.
+ * - Reminders: their own and their team's.
+ * - L10 meetings and Hub reminders: from the Leadership Hub (`includeHub`), never stored here.
+ * A source that fails adds a note and the others still show. Never time off; never Ask Bubbles' data.
+ */
+export type CalendarFor = { ok: true; view: CalendarView } | { ok: false; reason: "forbidden" | "invalid" };
+
+export async function loadCalendarFor(
+  identity: AuthenticatedIdentity,
+  range: { from: string; to: string },
+  options: { origin: string; includeHub: boolean; now?: Date },
+): Promise<CalendarFor> {
+  if (!validRange(range.from, range.to)) return { ok: false, reason: "invalid" };
+  const matrix = activePermissionMatrix();
+  if (!identity.verified || !hasPermission(matrix, identity.role, "view_overview")) return { ok: false, reason: "forbidden" };
+  const now = options.now ?? new Date();
+  const today = now.toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+  const { origin } = options;
+
+  const attempt = async (read: () => Promise<CalendarEvent[]>): Promise<SourceResult> => {
+    try {
+      return { source: "ask-sunny", state: "ok", events: await read() };
+    } catch {
+      return { source: "ask-sunny", state: "failed" };
+    }
+  };
+
+  const followUps = attempt(async () => {
+    const [{ pageFormsAccess }, { readFollowUpQueue }, { followUpState }] = await Promise.all([
+      import("@/lib/forms/page-scope"),
+      import("@/lib/forms/follow-up-queue"),
+      import("@/lib/forms/follow-up"),
+    ]);
+    const access = await pageFormsAccess(identity);
+    const readsExit = hasPermission(matrix, identity.role, "create_exit_form");
+    const queue = await readFollowUpQueue(access, { readsExit, today });
+    const facts: FollowUpFact[] = queue.forms.flatMap((f) =>
+      f.followUpDate
+        ? [{ id: f.id, employeeName: f.employeeName, templateName: f.templateName, locationName: f.locationName, followUpDate: f.followUpDate, overdue: followUpState(f, today) === "overdue" }]
+        : [],
+    );
+    return followUpEvents(facts, today, origin);
+  });
+
+  const hr = attempt(async () => {
+    const [{ readHrApprovalsFor }, { overdueFrom, isOverdue }] = await Promise.all([import("@/lib/forms/hr-approval"), import("@/lib/forms/hr-approval-rules")]);
+    const read = await readHrApprovalsFor(identity.subject, identity.verified, now);
+    const due = (at: string | null) => (at ? overdueFrom(new Date(at)).date : today);
+    let facts: HrFact[] = [];
+    if (read.kind === "hr") {
+      facts = read.queue.map((r) => ({ id: r.id, line: r.line, dueDate: due(r.requestedAt), overdue: r.overdue, locationName: r.locationName, label: "Approve" }));
+    } else if (read.kind === "manager") {
+      facts = read.forms
+        .filter((r) => r.state === "pending" || r.state === "changes_requested")
+        .map((r) => ({ id: r.id, line: r.line, dueDate: due(r.requestedAt), overdue: r.state === "pending" && isOverdue(r.requestedAt, now), label: r.state === "pending" ? "With HR" : "Changes requested" }));
+    }
+    return hrEvents(facts, today, origin);
+  });
+
+  const scope = reportingScopeOf(identity.scope);
+  const reviews = attempt(async () => {
+    if (!hasPermission(matrix, identity.role, "view_google_reviews")) return [];
+    const salons = scope.unrestricted
+      ? ({ all: true } as const)
+      : ({ all: false, salons: scope.salonNumbers.map((n) => ({ number: n, name: salonByNumber(n)?.name ?? `Salon ${n}` })) } as const);
+    return reviewsEvents(salons, range.from, range.to, reviewsSchedule(process.env), origin);
+  });
+
+  const reminders = attempt(async () => {
+    const rows = await listVisibleReminders({ subject: identity.subject, coverage: scope.unrestricted ? null : scope.salonNumbers, manager: true }, range);
+    return reminderEvents(rows, identity.subject, origin);
+  });
+
+  const hub: Promise<SourceResult> = options.includeHub ? meetingEventsFromHub(identity.email, range) : Promise.resolve({ source: "leadership-hub", state: "off" });
+
+  const results = await Promise.all([followUps, hr, reviews, reminders, hub]);
+  return { ok: true, view: mergeSources(range.from, range.to, results) };
+}
