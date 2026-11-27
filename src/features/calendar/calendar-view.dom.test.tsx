@@ -70,3 +70,30 @@ describe("Calendar (month view)", () => {
     expect(cellSummary(EVENTS.slice(0, 2)).more).toEqual([]);
   });
 });
+
+describe("Calendar (L10 details from the Leadership Hub)", () => {
+  /* Invented people only. */
+  const MEETINGS = [
+    { key: "stc-dm", name: "STC DM L10", team: "STC District Managers", weekday: 1, startTime: "10:00", minutes: 90, leader: "Robin Example", attendees: ["Robin Example", "Pat Sample"] },
+    { key: "stc-sd-one", name: "Example SD L10", team: null, weekday: null, startTime: null, minutes: 60, leader: "Lee Demo", attendees: ["Lee Demo"] },
+  ];
+  it("a meeting opens its details, read-only, with Open the L10 and Set it in the Leadership Hub", async () => {
+    render(<CalendarView month="2026-11" today="2026-11-30" view={view()} meetings={MEETINGS} hubCalendarUrl="https://hub.example.test/meetings/calendar" save={vi.fn()} remove={vi.fn()} />);
+    await userEvent.click(screen.getAllByRole("button", { name: "STC DM L10: details" })[0]!);
+    const panel = screen.getByRole("region", { name: "STC DM L10 details" });
+    expect(panel.textContent).toMatch(/Mondays at 10:00 AM CT · 90 min/);
+    expect(within(panel).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["Robin Example", "Pat Sample"]);
+    expect(within(panel).getByRole("link", { name: "Open the L10" }).getAttribute("href")).toBe("/meetings/stc-dm");
+    expect(within(panel).getByRole("link", { name: "Set it in the Leadership Hub" }).getAttribute("href")).toBe("https://hub.example.test/meetings/calendar");
+    expect(within(panel).queryByRole("button", { name: /Save|Edit/ })).toBeNull();
+  });
+  it('lists the L10s with no day set, each opening its details with "Time not set"', async () => {
+    render(<CalendarView month="2026-11" today="2026-11-30" view={view()} meetings={MEETINGS} hubCalendarUrl={null} save={vi.fn()} remove={vi.fn()} />);
+    const list = screen.getByRole("region", { name: "No day set" });
+    await userEvent.click(within(list).getByRole("button", { name: "Example SD L10: details" }));
+    const panel = screen.getByRole("region", { name: "Example SD L10 details" });
+    expect(panel.textContent).toMatch(/No day set/);
+    expect(panel.textContent).toMatch(/Time not set/);
+    expect(panel.textContent).toMatch(/set in the Leadership Hub/);
+  });
+});

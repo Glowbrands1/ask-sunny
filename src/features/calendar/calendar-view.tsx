@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils/cn";
 import { monthGrid, monthOf, shiftMonth } from "@/lib/calendar/range";
 import { VISIBILITY_LABEL, type ReminderInput, type ReminderSaveResult } from "@/lib/calendar/reminders";
 import { KINDS, SOURCE_LABELS, type CalendarEvent, type CalendarKind, type CalendarView as View } from "@/lib/calendar/types";
+import { clock, noDaySet, scheduleLabel, type MeetingDetails } from "@/lib/calendar/meeting-details";
 import { deleteReminderAction, saveReminderAction } from "./actions";
 import { NewEvent } from "./new-event";
 
@@ -49,11 +50,69 @@ export function cellSummary(events: CalendarEvent[], shown = SHOWN_PER_DAY): { s
   return { shown: events.slice(0, shown), more: KINDS.map((kind) => ({ kind, count: rest.filter((e) => e.kind === kind).length })).filter((m) => m.count > 0) };
 }
 
-function EventRow({ e, onDelete }: { e: CalendarEvent; onDelete?: (e: CalendarEvent) => void }) {
+/**
+ * One L10's details (leadership-hub docs/calendar-design.md §5d): the day, Central time and length, who leads it and
+ * who attends (names only), Open the L10, and where the schedule is set: the Leadership Hub. Read-only here.
+ */
+export function MeetingPanel({ meeting, hubCalendarUrl, onClose }: { meeting: MeetingDetails; hubCalendarUrl: string | null; onClose: () => void }) {
+  return (
+    <Card role="region" aria-label={`${meeting.name} details`} className="p-4">
+      <div className="flex flex-wrap items-start gap-2">
+        <div className="min-w-0 flex-1">
+          <h2 className="m-0 text-base font-semibold">{meeting.name}</h2>
+          {meeting.team ? <p className="m-0 text-xs text-muted-foreground">{meeting.team}</p> : null}
+        </div>
+        <button type="button" onClick={onClose} className="rounded px-2 py-1 text-sm" aria-label="Close meeting details">
+          ✕
+        </button>
+      </div>
+      <dl className="m-0 mt-3 grid grid-cols-[7rem_1fr] gap-x-3 gap-y-1.5 text-sm">
+        <dt className="text-muted-foreground">When</dt>
+        <dd className="m-0">{scheduleLabel(meeting)}</dd>
+        <dt className="text-muted-foreground">Time</dt>
+        <dd className="m-0">{meeting.startTime ? `${clock(meeting.startTime)} Central` : "Time not set"}</dd>
+        <dt className="text-muted-foreground">Length</dt>
+        <dd className="m-0">{meeting.minutes ? `${meeting.minutes} min` : "Not set"}</dd>
+        <dt className="text-muted-foreground">Leads it</dt>
+        <dd className="m-0">{meeting.leader ?? "Not listed"}</dd>
+        <dt className="text-muted-foreground">Attendees</dt>
+        <dd className="m-0">
+          {meeting.attendees.length ? (
+            <ul aria-label={`${meeting.name} attendees`} className="m-0 flex list-none flex-wrap gap-x-3 gap-y-0.5 p-0">
+              {meeting.attendees.map((a) => (
+                <li key={a}>{a}</li>
+              ))}
+            </ul>
+          ) : (
+            "None listed"
+          )}
+        </dd>
+      </dl>
+      <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
+        <Link href={`/meetings/${meeting.key}`} className="font-semibold underline">
+          Open the L10
+        </Link>
+        {hubCalendarUrl ? (
+          <a href={hubCalendarUrl} className="underline" rel="noopener noreferrer">
+            Set it in the Leadership Hub
+          </a>
+        ) : (
+          <span className="text-muted-foreground">The day and time are set in the Leadership Hub.</span>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function EventRow({ e, onDelete, onMeeting, hasDetails }: { e: CalendarEvent; onDelete?: (e: CalendarEvent) => void; onMeeting?: (key: string) => void; hasDetails?: (key: string) => boolean }) {
   const when = e.startTime ? `${clockLabel(e.startTime)} CT${e.minutes ? ` · ${e.minutes} min` : ""}` : e.kind === "meeting" ? "Time not set" : "All day";
   const title =
     e.kind === "reminder" ? (
       <span className="font-semibold">{e.title}</span>
+    ) : e.kind === "meeting" && e.meetingKey && onMeeting && hasDetails?.(e.meetingKey) ? (
+      <button type="button" onClick={() => onMeeting(e.meetingKey!)} className="font-semibold underline-offset-2 hover:underline" aria-label={`${e.title}: details`}>
+        {e.title}
+      </button>
     ) : e.href.startsWith("https://") ? (
       <a href={e.href} className="font-semibold underline-offset-2 hover:underline" rel="noopener noreferrer">
         {e.title}
@@ -89,16 +148,29 @@ export function CalendarView({
   view,
   month,
   today,
+  meetings = [],
+  hubCalendarUrl = null,
   save = saveReminderAction,
   remove = deleteReminderAction,
 }: {
   view: View;
   month: string;
   today: string;
+  /** Each L10 this person may open here, with its schedule and attendees, from the Leadership Hub. */
+  meetings?: MeetingDetails[];
+  /** The Leadership Hub's calendar, where a schedule is set. */
+  hubCalendarUrl?: string | null;
   save?: (input: ReminderInput) => Promise<ReminderSaveResult>;
   remove?: (id: string) => Promise<{ ok: boolean }>;
 }) {
   const router = useRouter();
+  const [openMeeting, setOpenMeeting] = useState<string | null>(null);
+  const meetingByKey = useMemo(() => new Map(meetings.map((m) => [m.key, m])), [meetings]);
+  const opened = openMeeting ? meetingByKey.get(openMeeting) : undefined;
+  // A meeting opens its panel only when its details were read; otherwise it stays a link to the L10, as before.
+  const onMeeting = (key: string) => setOpenMeeting(key);
+  const hasDetails = (key: string) => meetingByKey.has(key);
+  const unscheduled = noDaySet(meetings);
   useEffect(() => {
     const refresh = () => router.refresh();
     const timer = setInterval(refresh, REFRESH_MS);
@@ -244,7 +316,7 @@ export function CalendarView({
           {pickedEvents.length ? (
             <ul className="m-0 list-none divide-y divide-border p-0">
               {pickedEvents.map((e) => (
-                <EventRow key={e.id} e={e} onDelete={onDelete} />
+                <EventRow key={e.id} e={e} onDelete={onDelete} onMeeting={onMeeting} hasDetails={hasDetails} />
               ))}
             </ul>
           ) : (
@@ -262,12 +334,33 @@ export function CalendarView({
             </h2>
             <ul className="m-0 list-none divide-y divide-border p-0">
               {(byDay.get(d) ?? []).map((e) => (
-                <EventRow key={e.id} e={e} onDelete={onDelete} />
+                <EventRow key={e.id} e={e} onDelete={onDelete} onMeeting={onMeeting} hasDetails={hasDetails} />
               ))}
             </ul>
           </Card>
         ))}
       </div>
+
+      {opened ? <MeetingPanel meeting={opened} hubCalendarUrl={hubCalendarUrl} onClose={() => setOpenMeeting(null)} /> : null}
+
+      {unscheduled.length ? (
+        <Card role="region" aria-label="No day set" className="p-4">
+          <h2 className="m-0 text-sm font-semibold">No day set</h2>
+          <p className="m-0 mt-1 text-xs text-muted-foreground">These L10s are not on the calendar until their day is set in the Leadership Hub.</p>
+          <ul className="m-0 mt-2 list-none divide-y divide-border p-0">
+            {unscheduled.map((m) => (
+              <li key={m.key} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm">
+                <button type="button" onClick={() => setOpenMeeting(m.key)} className="font-semibold underline-offset-2 hover:underline" aria-label={`${m.name}: details`}>
+                  {m.name}
+                </button>
+                <span className="text-muted-foreground">
+                  {m.attendees.length} {m.attendees.length === 1 ? "attendee" : "attendees"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      ) : null}
 
       <p className="m-0 text-xs text-muted-foreground">Times are Central. Pick a day to see everything on it. Time-off requests are not shown here.</p>
     </div>
