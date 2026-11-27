@@ -40,7 +40,6 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
           month={month}
           today={today}
           meetings={meetings}
-          hubCalendarUrl={hub ? `${hub}/meetings/calendar` : null}
           hubUrl={hub}
           // Every meeting the Hub lists for this person is one they attend or, as an admin, may open: they may change its
           // time (the owner, 27 Nov 2026). The Hub checks it again on save.

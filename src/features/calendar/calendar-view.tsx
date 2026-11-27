@@ -59,7 +59,6 @@ export function cellSummary(events: CalendarEvent[], shown = SHOWN_PER_DAY): { s
  */
 export function MeetingPanel({
   meeting,
-  hubCalendarUrl,
   hubUrl = null,
   canEdit = false,
   startEditing = false,
@@ -70,7 +69,6 @@ export function MeetingPanel({
   onClose,
 }: {
   meeting: MeetingDetails;
-  hubCalendarUrl: string | null;
   hubUrl?: string | null;
   canEdit?: boolean;
   startEditing?: boolean;
@@ -82,7 +80,6 @@ export function MeetingPanel({
   onClose: () => void;
 }) {
   const [editing, setEditing] = useState(canEdit && startEditing);
-  const unset = meeting.weekday === null || !meeting.startTime;
   return (
     <Card role="region" aria-label={`${meeting.name} details`} className="p-4">
       <div className="flex flex-wrap items-start gap-2">
@@ -98,7 +95,16 @@ export function MeetingPanel({
         <dt className="text-muted-foreground">When</dt>
         <dd className="m-0">{scheduleLabel(meeting)}</dd>
         <dt className="text-muted-foreground">Time</dt>
-        <dd className="m-0">{meeting.startTime ? `${clock(meeting.startTime)} Central` : "Time not set"}</dd>
+        <dd className="m-0 flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span>{meeting.startTime ? `${clock(meeting.startTime)} Central` : "Time not set"}</span>
+          {/* The owner, 27 Nov 2026, on this panel: "need an edit here for the time not have to go inside the actual app pls
+              so its easier and it just updates to alll". Saved to the Leadership Hub, so every app shows the new time. */}
+          {canEdit && !editing ? (
+            <button type="button" className="rounded-md border border-border-strong px-2 py-0.5 text-xs font-semibold" onClick={() => setEditing(true)}>
+              {meeting.weekday === null ? "Add day and time" : "Edit time"}
+            </button>
+          ) : null}
+        </dd>
         <dt className="text-muted-foreground">Length</dt>
         <dd className="m-0">{meeting.minutes ? `${meeting.minutes} min` : "Not set"}</dd>
         <dt className="text-muted-foreground">Leads it</dt>
@@ -120,20 +126,7 @@ export function MeetingPanel({
         <a href={meetingHref(meeting, hubUrl)} className="font-semibold underline">
           {meeting.opensInApp === false ? "Open the L10 in the Leadership Hub" : "Open the L10"}
         </a>
-        {canEdit && !editing ? (
-          <button type="button" className="rounded-md border border-border-strong px-3 py-1" onClick={() => setEditing(true)}>
-            {unset ? "Add day and time" : "Edit time"}
-          </button>
-        ) : null}
-        {!canEdit ? (
-          hubCalendarUrl ? (
-            <a href={hubCalendarUrl} className="underline" rel="noopener noreferrer">
-              Set it in the Leadership Hub
-            </a>
-          ) : (
-            <span className="text-muted-foreground">The day and time are set in the Leadership Hub.</span>
-          )
-        ) : null}
+        {!canEdit ? <span className="text-muted-foreground">Only this meeting&apos;s attendees and admins can change its time.</span> : null}
       </div>
       {canEdit && editing ? (
         <ScheduleForm
@@ -330,7 +323,6 @@ export function CalendarView({
   month,
   today,
   meetings = [],
-  hubCalendarUrl = null,
   hubUrl = null,
   canEditSchedules = false,
   saveSchedule = saveMeetingScheduleAction,
@@ -343,8 +335,6 @@ export function CalendarView({
   today: string;
   /** Each L10 this person may open here, with its schedule and attendees, from the Leadership Hub. */
   meetings?: MeetingDetails[];
-  /** The Leadership Hub's calendar, where a schedule is set. */
-  hubCalendarUrl?: string | null;
   /** The Leadership Hub, for the meetings this app shows but opens there. */
   hubUrl?: string | null;
   /** The person may change a listed meeting's time: its attendees and admins (stored in the Hub, which checks again). */
@@ -549,7 +539,6 @@ export function CalendarView({
           meeting={opened}
           date={openDate}
           saveOccurrence={saveOccurrence}
-          hubCalendarUrl={hubCalendarUrl}
           hubUrl={hubUrl}
           canEdit={canEditSchedules}
           startEditing={editOnOpen}
