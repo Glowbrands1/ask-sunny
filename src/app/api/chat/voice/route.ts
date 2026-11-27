@@ -15,7 +15,7 @@ import { transcribeVoice, type TranscribeOutcome } from "@/lib/voice/transcribe"
 import { correctSpokenNames } from "@/lib/voice/spoken-names";
 import { VoiceUploadError, declaredAudioType, openVoiceUpload, sniffAudio, type VoiceUpload } from "@/lib/voice/voice-upload";
 import { finishedAudioSeconds, voiceTraceRow, type VoiceRefusal, type VoiceSurface } from "@/lib/voice/voice-usage";
-import { MAX_BYTES, MAX_SECONDS, MIN_BYTES, MIN_SECONDS, ROUTE_MAX_SECONDS, clampClipSeconds, manilaDayStart } from "@/lib/voice/voice-limits";
+import { MAX_BYTES, MAX_SECONDS, MIN_BYTES, MIN_SECONDS, ROUTE_MAX_SECONDS, clampClipSeconds, secondsUntilNextVoiceDay } from "@/lib/voice/voice-limits";
 import type { AccessScope, Role } from "@/types";
 
 /**
@@ -94,16 +94,13 @@ function refuse(status: number, code: VoiceErrorCode, error: string, retryAfterS
 /** The same answer as a route that does not exist, so nobody learns voice is here. */
 const notFound = () => refuse(404, "not_found", "Not found.");
 
-function secondsToManilaMidnight(now: Date): number {
-  return Math.max(1, Math.ceil((manilaDayStart(now).getTime() + 86_400_000 - now.getTime()) / 1000));
-}
 
 function refusalFor(refused: VoiceRefusal, retryAfterSeconds: number | undefined, now: Date): Response {
   if (refused === "user_minute") {
     const wait = retryAfterSeconds ?? 60;
     return refuse(429, "user_minute", tryAgainIn(wait), wait);
   }
-  const untilTomorrow = secondsToManilaMidnight(now);
+  const untilTomorrow = secondsUntilNextVoiceDay(now);
   if (refused === "user_day") return refuse(429, "user_day", VOICE_MESSAGES.userDay, untilTomorrow);
   if (refused === "salon_day") return refuse(429, "salon_day", VOICE_MESSAGES.salonDay, untilTomorrow);
   return refuse(429, "company_day", VOICE_MESSAGES.companyDay, untilTomorrow);

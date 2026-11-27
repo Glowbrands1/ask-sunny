@@ -13,7 +13,7 @@ import {
   PER_USER_PER_MINUTE,
   USD_PER_HOUR,
   clampClipSeconds,
-  manilaDayStart,
+  voiceDayStart,
 } from "./voice-limits";
 
 /**
@@ -108,7 +108,7 @@ export function evaluateVoiceCaps(rows: readonly VoiceUsageRow[], input: VoiceRe
     const oldest = Math.min(...minute.map((row) => row.createdAt.getTime()));
     return { ok: false, refused: "user_minute", retryAfterSeconds: Math.max(1, Math.ceil((oldest + 60_000 - now.getTime()) / 1000)) };
   }
-  const dayStart = manilaDayStart(now).getTime();
+  const dayStart = voiceDayStart(now).getTime();
   const today = live.filter((row) => row.createdAt.getTime() >= dayStart);
   const mine = today.filter((row) => row.userId === input.userId);
   const mineSeconds = mine.reduce((sum, row) => sum + counted(row), 0);

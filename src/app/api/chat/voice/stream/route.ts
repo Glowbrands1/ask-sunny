@@ -13,7 +13,7 @@ import { checkVoiceCaller } from "@/lib/voice/voice-caller";
 import { VOICE_MESSAGES, tryAgainIn, type VoiceErrorCode } from "@/lib/voice/voice-messages";
 import { voiceRouteDeps } from "@/lib/voice/voice-route-deps";
 import { voiceTraceRow, type VoiceSurface } from "@/lib/voice/voice-usage";
-import { manilaDayStart } from "@/lib/voice/voice-limits";
+import { secondsUntilNextVoiceDay } from "@/lib/voice/voice-limits";
 
 /**
  * ============================================================================
@@ -77,9 +77,6 @@ function refuse(status: number, code: VoiceErrorCode | "stream_unavailable", err
   return answer(status, { error, code, ...(retryAfterSeconds !== undefined ? { retryAfterSeconds: Math.max(1, Math.ceil(retryAfterSeconds)) } : {}) }, retryAfterSeconds);
 }
 
-function untilManilaMidnight(now: Date): number {
-  return Math.max(1, Math.ceil((manilaDayStart(now).getTime() + 86_400_000 - now.getTime()) / 1000));
-}
 
 function apiKey(): string {
   return (process.env.ASSEMBLYAI_API_KEY ?? "").trim();
@@ -183,7 +180,7 @@ async function handle(request: Request): Promise<Response> {
       return refuse(429, "user_minute", tryAgainIn(wait), wait);
     }
     const message = reservation.refused === "user_day" ? VOICE_MESSAGES.userDay : reservation.refused === "salon_day" ? VOICE_MESSAGES.salonDay : VOICE_MESSAGES.companyDay;
-    return refuse(429, reservation.refused, message, untilManilaMidnight(now));
+    return refuse(429, reservation.refused, message, secondsUntilNextVoiceDay(now));
   }
 
   const minted = await deps.streamingToken({ fetch: deps.fetch, apiKey: apiKey() });

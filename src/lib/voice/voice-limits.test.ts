@@ -16,12 +16,15 @@ import {
   ROUTE_MAX_SECONDS,
   USD_PER_HOUR,
   clampClipSeconds,
-  manilaDayStart,
+  nextVoiceDayStart,
+  secondsUntilNextVoiceDay,
+  voiceDayStart,
 } from "./voice-limits";
 import { finishedAudioSeconds, memoryVoiceUsageStore, type VoiceReserveInput, type VoiceSurface } from "./voice-usage";
 
 /*
- * VOICE_INPUT_ENABLED: the caps, shared by the four chat boxes, with day windows from Manila midnight (UTC+8). The
+ * VOICE_INPUT_ENABLED: the caps, shared by the four chat boxes, with day windows from Central midnight (America/Chicago, daylight
+ * saving included; the owner, 27 Nov 2026: "central"). The
  * memory store applies the same rule the `voice_usage_reserve` RPC applies in SQL, one reservation at a time.
  */
 
@@ -87,7 +90,7 @@ describe("the per-minute cap", () => {
 });
 
 describe("the day caps", () => {
-  it("the 121st request in a Manila day is refused", async () => {
+  it("the 121st request in a Central day is refused", async () => {
     const clock = clockAt("2026-11-27T00:00:00Z");
     const store = memoryVoiceUsageStore({ now: clock.now });
     await fill(store, clock, PER_USER_PER_DAY, ada({ clipSeconds: 1, salonId: null }), 1);
@@ -193,26 +196,61 @@ describe("the day caps", () => {
   });
 });
 
-describe("the Manila day", () => {
-  it("starts at 16:00 UTC", () => {
-    expect(manilaDayStart(new Date("2026-11-27T15:59:59Z")).toISOString()).toBe("2026-11-26T16:00:00.000Z");
-    expect(manilaDayStart(new Date("2026-11-27T16:00:00Z")).toISOString()).toBe("2026-11-27T16:00:00.000Z");
-    expect(manilaDayStart(new Date("2026-11-27T02:00:00Z")).toISOString()).toBe("2026-11-26T16:00:00.000Z");
+describe("the Central day (America/Chicago; the owner, 27 Nov 2026: \"central\")", () => {
+  const start = (iso: string) => voiceDayStart(new Date(iso)).toISOString();
+  const next = (iso: string) => nextVoiceDayStart(new Date(iso)).toISOString();
+
+  it("starts at Central midnight: 06:00 UTC in winter (CST), 05:00 UTC in summer (CDT)", () => {
+    expect(start("2026-11-28T05:59:59Z")).toBe("2026-11-27T06:00:00.000Z"); // 23:59:59 CST on Nov 27
+    expect(start("2026-11-28T06:00:00Z")).toBe("2026-11-28T06:00:00.000Z"); // 00:00:00 CST on Nov 28
+    expect(start("2026-11-27T18:00:00Z")).toBe("2026-11-27T06:00:00.000Z");
+    expect(start("2026-07-16T04:59:59Z")).toBe("2026-07-15T05:00:00.000Z"); // 23:59:59 CDT
+    expect(start("2026-07-16T05:00:00Z")).toBe("2026-07-16T05:00:00.000Z"); // 00:00:00 CDT
   });
 
-  it("a clip at 15:59:59 UTC counts in the old day; one at 16:00:00 UTC in the new day", async () => {
-    const clock = clockAt("2026-11-27T10:00:00Z");
+  it("the spring change day (Sun 8 Mar 2026) is 23 hours", () => {
+    expect(start("2026-03-08T06:00:00Z")).toBe("2026-03-08T06:00:00.000Z"); // 00:00 CST
+    expect(start("2026-03-08T08:00:00Z")).toBe("2026-03-08T06:00:00.000Z"); // 03:00 CDT, just after the jump
+    expect(start("2026-03-09T04:59:59Z")).toBe("2026-03-08T06:00:00.000Z"); // 23:59:59 CDT
+    expect(next("2026-03-08T12:00:00Z")).toBe("2026-03-09T05:00:00.000Z");
+    expect(start("2026-03-09T05:00:00Z")).toBe("2026-03-09T05:00:00.000Z");
+  });
+
+  it("the autumn change day (Sun 1 Nov 2026) is 25 hours", () => {
+    expect(start("2026-11-01T05:00:00Z")).toBe("2026-11-01T05:00:00.000Z"); // 00:00 CDT
+    expect(start("2026-11-01T06:30:00Z")).toBe("2026-11-01T05:00:00.000Z"); // 01:30 CDT
+    expect(start("2026-11-01T07:30:00Z")).toBe("2026-11-01T05:00:00.000Z"); // 01:30 CST, the repeated hour
+    expect(start("2026-11-02T05:59:59Z")).toBe("2026-11-01T05:00:00.000Z"); // 23:59:59 CST
+    expect(next("2026-11-01T12:00:00Z")).toBe("2026-11-02T06:00:00.000Z");
+  });
+
+  it("a day refusal's Retry-After counts down to Central midnight, change days included", () => {
+    expect(secondsUntilNextVoiceDay(new Date("2026-11-28T05:59:59Z"))).toBe(1);
+    expect(secondsUntilNextVoiceDay(new Date("2026-11-28T06:00:00Z"))).toBe(86_400);
+    expect(secondsUntilNextVoiceDay(new Date("2026-03-08T06:00:00Z"))).toBe(23 * 3600);
+    expect(secondsUntilNextVoiceDay(new Date("2026-11-01T05:00:00Z"))).toBe(25 * 3600);
+  });
+
+  it("a clip at 23:59:59 Central counts in the old day; one at 00:00:00 Central in the new day", async () => {
+    const clock = clockAt("2026-11-27T22:00:00Z");
     const store = memoryVoiceUsageStore({ now: clock.now });
-    // Ada uses 29 minutes 50 seconds of the day by 15:59:59 UTC (23:59:59 in Manila).
+    // Ada uses 29 minutes 50 seconds of Nov 27 by 23:59:59 CST (05:59:59 UTC on Nov 28).
     await fill(store, clock, 29, ada({ clipSeconds: 60, salonId: null }), 60);
     const last = await store.reserve(ada({ clipSeconds: 50, salonId: null }));
     if (last.ok) await store.finish(last.id, { status: "succeeded", audioSeconds: 50 });
-    const late = new Date("2026-11-27T15:59:59Z").getTime() - clock.now().getTime();
-    clock.advance(late);
+    clock.advance(new Date("2026-11-28T05:59:59Z").getTime() - clock.now().getTime());
     expect(await store.reserve(ada({ clipSeconds: 20, salonId: null }))).toEqual({ ok: false, refused: "user_day" });
     clock.advance(1_000);
-    expect(clock.now().toISOString()).toBe("2026-11-27T16:00:00.000Z");
+    expect(clock.now().toISOString()).toBe("2026-11-28T06:00:00.000Z");
     expect((await store.reserve(ada({ clipSeconds: 20, salonId: null }))).ok).toBe(true);
+  });
+
+  it("a clip from 16:00 UTC (Manila's midnight, 10:00 CST) still counts the same day", async () => {
+    const clock = clockAt("2026-11-27T15:00:00Z");
+    const store = memoryVoiceUsageStore({ now: clock.now });
+    await fill(store, clock, 30, ada({ clipSeconds: 60, salonId: null }), 60);
+    clock.advance(new Date("2026-11-27T16:30:00Z").getTime() - clock.now().getTime());
+    expect(await store.reserve(ada({ clipSeconds: 10, salonId: null }))).toEqual({ ok: false, refused: "user_day" });
   });
 });
 
