@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
  * replay case: nov15-agent-loop-pr4-reason-codes-cases.ts.)
  */
 const DIR = __dirname;
-const FILES = ["tools.ts", "data-tools.ts", "run.ts"];
+const FILES = ["tools.ts", "data-tools.ts", "run.ts", "follow-up-owner-tool.ts"];
 
 /** Every code a refusal or a roster outcome may carry. */
 const KNOWN = new Set([
@@ -96,6 +96,8 @@ const KNOWN = new Set([
   // Added on purpose (port of Ask Bubbles #1123; Pau's review, 23 Nov 2026): a CA or Coaching card for a person and
   // incident date that already has that form on file is asked about ("open that one, or is this a separate incident?").
   "same_incident_on_file",
+  // Added on purpose (the owner, 27 Nov 2026: hand a form's follow-up to someone else): set_follow_up_owner's refusals.
+  "owner_not_stated", "owner_not_allowed", "owner_ambiguous", "no_follow_up",
 ]);
 
 /** A line that returns a refusal: `error:` followed by a string, a template or a named message (not `error: Boolean(...)`). */

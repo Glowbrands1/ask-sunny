@@ -243,7 +243,16 @@ export interface FollowUpQueueRead {
   readonly dueThisWeek: number;
   readonly open: number;
   readonly excluded: number;
-  readonly forms: readonly { employeeName: string; templateName: string; locationName: string | null; followUpDate: string | null; overdue: boolean }[];
+  readonly forms: readonly {
+    employeeName: string;
+    templateName: string;
+    locationName: string | null;
+    followUpDate: string | null;
+    overdue: boolean;
+    /** The creator handed it to someone else (the owner, 27 Nov 2026): that person's name, and whether it is this reader. */
+    ownedBy?: string;
+    yours?: boolean;
+  }[];
 }
 
 /** One row of `form_instance_deletions`, as read_form_deletions reads it (never the snapshot). */
@@ -294,6 +303,8 @@ export const DEFAULT_DATA_TOOL_DEPS: DataToolDeps = {
     const access = await pageFormsAccess({ subject, email: "", displayName: "", role, scope, verified: true });
     const readsExit = hasPermission(activePermissionMatrix(), role, "create_exit_form");
     const queue = await readFollowUpQueue(access, { readsExit, today });
+    const handed = queue.forms.filter((form) => form.followUpOwner);
+    const owners = handed.length > 0 ? await (await import("@/lib/forms/follow-up-owner")).accountNames(handed.map((form) => form.followUpOwner)) : new Map<string, string>();
     return {
       overdue: queue.attention.overdue,
       dueThisWeek: queue.attention.dueThisWeek,
@@ -305,6 +316,7 @@ export const DEFAULT_DATA_TOOL_DEPS: DataToolDeps = {
         locationName: form.locationName,
         followUpDate: form.followUpDate,
         overdue: followUpState(form, today) === "overdue",
+        ...(form.followUpOwner ? { ownedBy: owners.get(form.followUpOwner) ?? "another manager", ...(form.followUpOwner === subject ? { yours: true } : {}) } : {}),
       })),
     };
   },
@@ -1043,6 +1055,7 @@ export async function readFollowUps(context: DataToolContext, deps: DataToolDeps
       follow_up_date: form.followUpDate,
       state: form.overdue ? "overdue" : "open",
       ...(form.followUpDate ? { when: relativeBusinessDay(form.followUpDate, context.today) } : {}),
+      ...(form.ownedBy ? { follow_up_owner: form.ownedBy, ...(form.yours ? { assigned_to_you: true } : {}) } : {}),
     })),
     ...(read.forms.length > listed.length ? { listed: listed.length, of: read.forms.length } : {}),
     ...(read.excluded > 0 ? { test_records_not_counted: read.excluded } : {}),
@@ -1051,6 +1064,7 @@ export async function readFollowUps(context: DataToolContext, deps: DataToolDeps
       "overdue = the follow-up date has passed and nobody marked it followed up; open = scheduled for today or later; due_this_week = open and due by the end of this business week. " +
       (read.forms.length > listed.length ? `${listed.length} of ${read.forms.length} are listed, soonest first; say how many are not shown. ` : "") +
       (read.excluded > 0 ? `${read.excluded} test record${read.excluded === 1 ? " is" : "s are"} not counted, as on the Overview. ` : "") +
+      "follow_up_owner: the creator handed that follow-up to this person (assigned_to_you: to this manager); without it, the form's creator does it. To change who does a follow-up use set_follow_up_owner. " +
       "This is follow-ups on forms, not HR approval (read_hr_approvals).",
   };
 }
@@ -1108,6 +1122,7 @@ export async function readCalendar(context: DataToolContext, input: Record<strin
       ...(e.location ? { [place]: e.location } : {}),
       ...(e.kind === "reminder" ? { who_can_see: e.visibility ?? "only_me", made_by: e.by ?? "you" } : {}),
       ...(e.nameHidden ? { employee_name_hidden: true } : {}),
+      ...(e.ownedBy ? { follow_up_owner: e.ownedBy, ...(e.yours ? { assigned_to_you: true } : {}) } : {}),
       ...(e.oneOff ? { changed_for_this_date_only: true } : {}),
       ...(e.kind === "meeting" && e.attending === false ? { you_attend: false } : {}),
       app: e.source,
@@ -1115,7 +1130,7 @@ export async function readCalendar(context: DataToolContext, input: Record<strin
     ...(view.events.length > listed.length ? { listed: listed.length, of: view.events.length } : {}),
     ...(view.notes.length ? { not_loaded: view.notes } : {}),
     note:
-      "This is the manager's Calendar page for these dates (Central time). what: meeting = an L10 from the Leadership Hub (time_ct null means the Hub has no start time set yet: say so, never guess one; changed_for_this_date_only means that date's time was changed for that date only, and its weekly time is unchanged; a cancelled date is not listed; you_attend false means the manager does not attend that meeting: say only that it exists and when, never who attends, who leads it or what it covers); form-follow-up and hr-approval use the same overdue rule as the Overview and the forms pages; google-reviews = the weekly check of a " + place + "'s Google Reviews; reminder = a personal or team reminder. holiday = a US holiday (federal; '(observed)' is the weekday a weekend federal holiday is observed; '(observance)' is a common day such as Christmas Eve or Black Friday, not a federal holiday): it says nothing about whether a " + place + " is open or its hours, so never state opening hours or closures from it. employee_name_hidden means only admins, HR and the person who created that form may see who it is for: never guess or look up the name, and say exactly that if asked. " +
+      "This is the manager's Calendar page for these dates (Central time). what: meeting = an L10 from the Leadership Hub (time_ct null means the Hub has no start time set yet: say so, never guess one; changed_for_this_date_only means that date's time was changed for that date only, and its weekly time is unchanged; a cancelled date is not listed; you_attend false means the manager does not attend that meeting: say only that it exists and when, never who attends, who leads it or what it covers); form-follow-up and hr-approval use the same overdue rule as the Overview and the forms pages; google-reviews = the weekly check of a " + place + "'s Google Reviews; reminder = a personal or team reminder. holiday = a US holiday (federal; '(observed)' is the weekday a weekend federal holiday is observed; '(observance)' is a common day such as Christmas Eve or Black Friday, not a federal holiday): it says nothing about whether a " + place + " is open or its hours, so never state opening hours or closures from it. employee_name_hidden means only admins, HR, the person who created that form and the person its follow-up was handed to may see who it is for: never guess or look up the name, and say exactly that if asked. follow_up_owner: the creator handed that follow-up to this person (assigned_to_you: to this manager). " +
       (view.notes.length ? "not_loaded lists sources that did not answer: say which, and never say there is nothing from them. " : "") +
       "Time off is never on the calendar. To ADD a reminder use propose_reminder.",
   };
@@ -1385,7 +1400,7 @@ export function dataToolSpecs(config: AppConfig) {
   {
     name: "read_follow_ups",
     description:
-      "Follow-ups on forms: how many are overdue, due this week and open, and which (employee, form, " + place + ", follow-up date), for the manager's own " + places + ", the same counts the Overview, the sidebar badge and " + config.formsPageName + " show. Use it for \"how many follow-ups are overdue?\", \"what follow-ups do I have this week?\". Not HR approval (read_hr_approvals)." + pagesToolLine(config.readablePages, "read_follow_ups"),
+      "Follow-ups on forms: how many are overdue, due this week and open, and which (employee, form, " + place + ", follow-up date), for the manager's own " + places + ", the same counts the Overview, the sidebar badge and " + config.formsPageName + " show. Use it for \"how many follow-ups are overdue?\", \"what follow-ups do I have this week?\". Each says who does it when the form's creator handed it to someone else (follow_up_owner). Not HR approval (read_hr_approvals)." + pagesToolLine(config.readablePages, "read_follow_ups"),
     input_schema: { type: "object", properties: {}, required: [] },
   },
   {

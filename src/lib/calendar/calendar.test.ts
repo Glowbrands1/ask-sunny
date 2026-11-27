@@ -7,7 +7,7 @@ import { mergeSources } from "./merge";
 import { handlePartnerCalendar, type PartnerCalendarDeps } from "./partner";
 import { monthGrid } from "./range";
 import { followUpEvents, hrEvents, mayView, reminderEvents, reviewsEvents, reviewsSchedule } from "./sources";
-import type { CalendarEvent } from "./types";
+import { CALENDAR_EVENT, type CalendarEvent } from "./types";
 
 /* Invented people and places only (src/lib/security/no-real-people.test.ts). */
 const ORIGIN = "https://sunny.example.test";
@@ -149,5 +149,19 @@ describe('a form entry for someone who may not see the employee\'s name (the own
     expect(e!.title).toBe("Quill Example · Coaching Form");
     expect(e!.href).toContain("employee=Quill%20Example");
     expect(e!.nameHidden).toBeUndefined();
+  });
+});
+
+describe("a follow-up handed to someone else (the owner, 27 Nov 2026: \"assign Addy's follow-up to <DM>\")", () => {
+  it("says who owns it, and marks it yours on the owner's calendar, with the name and the link to it", () => {
+    const [e] = followUpEvents([{ id: "f1", employeeName: "Addy Example", templateName: "Coaching Form", locationName: null, followUpDate: "2026-12-03", overdue: false, ownedBy: "Tobin Marsh", yours: true }], "2026-11-27", "https://app.test");
+    expect(e).toMatchObject({ title: "Addy Example · Coaching Form", ownedBy: "Tobin Marsh", yours: true });
+    expect(e!.href).toContain("employee=Addy%20Example");
+    expect(CALENDAR_EVENT.safeParse(e).success).toBe(true);
+  });
+  it("without an owner nothing changes", () => {
+    const [e] = followUpEvents([{ id: "f1", employeeName: "Addy Example", templateName: "Coaching Form", locationName: null, followUpDate: "2026-12-03", overdue: false }], "2026-11-27", "https://app.test");
+    expect(e!.ownedBy).toBeUndefined();
+    expect(e!.yours).toBeUndefined();
   });
 });

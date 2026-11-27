@@ -37,6 +37,12 @@ export const CALENDAR_EVENT = z.object({
    * the owner, 27 Nov 2026). The entry does not open the form; it says who can see the name.
    */
   nameHidden: z.boolean().optional(),
+  /**
+   * Follow-ups only (the owner, 27 Nov 2026): the creator handed this follow-up to someone else. `ownedBy` is that
+   * person's name; `yours` says the viewer is the one doing it.
+   */
+  ownedBy: z.string().max(120).optional(),
+  yours: z.boolean().optional(),
   /** Meetings only: the Hub's meeting key, so a partner app can link to its own L10 tab instead of the Hub. */
   meetingKey: z.string().regex(/^[a-z][a-z-]{0,40}$/).optional(),
   /** Meetings only: this date's time was changed for this date only, in the Leadership Hub. */

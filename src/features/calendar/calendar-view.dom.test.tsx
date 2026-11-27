@@ -265,6 +265,18 @@ describe("Calendar: a form entry without the employee's name", () => {
   });
 });
 
+describe("Calendar: a follow-up handed to someone else (the owner, 27 Nov 2026: \"assign Addy's follow-up to <DM>\")", () => {
+  it("the owner's day panel says it is assigned to them; the creator's says who owns it", () => {
+    const mine = fu(1, { date: "2026-11-30", title: "Addy Example · Coaching Form", ownedBy: "Tobin Marsh", yours: true });
+    render(<CalendarView month="2026-11" today="2026-11-30" view={view([mine])} save={vi.fn()} remove={vi.fn()} />);
+    expect(screen.getAllByText(/assigned to you/).length).toBeGreaterThan(0);
+    cleanup();
+    const theirs = fu(2, { date: "2026-11-30", title: "Addy Example · Coaching Form", ownedBy: "Tobin Marsh" });
+    render(<CalendarView month="2026-11" today="2026-11-30" view={view([theirs])} save={vi.fn()} remove={vi.fn()} />);
+    expect(screen.getAllByText(/owner: Tobin Marsh/).length).toBeGreaterThan(0);
+  });
+});
+
 /**
  * The owner, 27 Nov 2026, on the SD L10s with no day set: "they should be able to edit and set time when they click on
  * that, either for a specific day or for all recurring". Saved through the Leadership Hub (l10_one_off_any_date_test.sql).

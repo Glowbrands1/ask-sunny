@@ -42,6 +42,7 @@ ${statsLine}- read_form_deletions: administrators only: who deleted a form, when
 - read_hr_approvals: HR approval of forms: for HR, the forms waiting for their approval; for any other manager, only their own forms with HR and HR's answer.
 - read_follow_ups: follow-ups on forms for the manager's ${places}: how many are overdue, due this week and open, and which, the same counts the Overview and ${config.formsPageName} show.
 - read_calendar: the manager's Calendar by day: follow-ups, HR approvals, Google Reviews checks, reminders and L10 meetings (Central time).
+- set_follow_up_owner: hand a form's follow-up to someone with access to its ${place} ("assign <employee>'s follow-up to <name>"), or back to its creator.
 - read_meeting_details: each of the manager's L10s from the Leadership Hub: day, Central start time, length, who leads it and who attends.
 - propose_reminder: a reminder card for the Calendar that the manager confirms; it saves nothing itself.
 - read_whats_new: the What's New page: recent updates and new features in ${config.appName}, newest first.

@@ -246,6 +246,10 @@ import { rulesBookText } from "./rules-book";
  * privacy" gained one line, same_incident_on_file (say this person already has this form on file for this date, ask
  * exactly, open it or propose again with separate_incident_evidence). It reads the same under every config; nothing
  * else changed.
+ *
+ * Re-taken on purpose on 27 Nov 2026 (the owner: hand a form's follow-up to someone else, "assign <employee>'s follow-up
+ * to <DM>"): the tool list gained set_follow_up_owner and the Business data rules one line for it. Each reads the app's
+ * own place word from the config; nothing else changed.
  */
 
 const fixture = (name: string): string => readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), "utf8");

@@ -413,6 +413,8 @@ function describeRow(row: InstanceRow, today: string, viewerId?: string | null):
   ];
   if (row.followUpDate) parts.push(`follow-up date: ${row.followUpDate}`);
   if (state !== "drafted" && state !== "untracked") parts.push(`follow-up: ${FOLLOW_UP_LABEL[state]}`);
+  // FOLLOW-UP OWNER (the owner, 27 Nov 2026): the creator handed the follow-up to someone else.
+  if (row.followUpOwner) parts.push(row.followUpOwner === viewerId ? "follow-up owner: this user" : "follow-up owner: another user (the creator handed it to them)");
   /*
    * HR APPROVAL. A form HR has not approved reaches this list only for its creator, its sender and HR
    * (`hiddenWhileAwaitingHr`), so its state is said here. "Approved by HR" is said only to its creator and sender: everybody else reads an

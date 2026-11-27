@@ -32,6 +32,7 @@ import { finalReplyWithoutMarkers, withoutSourceMarkers, withoutSourceNotes } fr
 import { extractUsedMarkers } from "../prompts";
 import { shownCitations } from "@/lib/knowledge/empty-card-drop";
 import { dataToolHandlers, dataToolSpecs } from "./data-tools";
+import { followUpOwnerToolSpec, setFollowUpOwnerTool } from "./follow-up-owner-tool";
 import { appConfig, SUNNY_CONFIG, type AppConfig } from "./app-config";
 import { withoutPersonPronouns } from "./reply-pronouns";
 import { replyWithShortName } from "@/lib/forms/short-name";
@@ -694,6 +695,8 @@ function buildAgentLoopTools(config: AppConfig, planSteps = false) {
   },
   /* The app data tools (QA, 15 Nov 2026): Google Reviews and the reports, with the scope rules in code (`data-tools.ts`). */
   ...dataToolSpecs(config),
+  /* Who owns a form's follow-up (the owner, 27 Nov 2026): the page's own rules (`follow-up-owner-tool.ts`). */
+  followUpOwnerToolSpec(place),
   {
     name: "coach_team",
     description: "A Coaching Form for the whole team: with no draft open, the team Coaching card (\"All team members\" at one " + place + "); with a Coaching draft open, \"this coaching for everyone on my team\" and its \"create all\" confirmation make one draft each with the same Details. Pass team_evidence when the manager asks for a Coaching Form for a whole team or group.",
@@ -939,6 +942,7 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
     list_staff: (args) => listStaffTool(context, effects, args),
     app_help: (args) => appHelp(args),
     coach_team: (args) => coachTeam(context, effects, args),
+    set_follow_up_owner: (args) => setFollowUpOwnerTool(context, args),
     ...dataToolHandlers({ actor: context.actor, question: context.question, scopeId: context.scopeId, today: context.today }, effects),
   };
 

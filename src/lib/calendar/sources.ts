@@ -24,6 +24,10 @@ export interface FollowUpFact {
   readonly overdue: boolean;
   /** True: this person may not see the employee's name (see load.server.ts, mayNameEmployee). */
   readonly nameHidden?: boolean;
+  /** The creator handed it to someone else (the owner, 27 Nov 2026): that person's name. */
+  readonly ownedBy?: string;
+  /** This viewer is the person it was handed to. */
+  readonly yours?: boolean;
 }
 
 /** All-day "Employee · form" on the follow-up date, opening that employee's follow-ups in Form Monitoring. */
@@ -36,6 +40,8 @@ export function followUpEvents(forms: readonly FollowUpFact[], today: string, or
     date: f.followUpDate,
     status: f.overdue ? ("overdue" as const) : f.followUpDate === today ? ("due" as const) : ("upcoming" as const),
     ...(f.locationName ? { location: f.locationName } : {}),
+    ...(f.ownedBy ? { ownedBy: f.ownedBy.slice(0, 120) } : {}),
+    ...(f.yours ? { yours: true } : {}),
     ...(f.nameHidden
       ? { href: `${origin}/calendar`, nameHidden: true }
       : { href: `${origin}/forms/monitoring?followup=${f.overdue ? "overdue" : "open"}&employee=${encodeURIComponent(f.employeeName)}` }),

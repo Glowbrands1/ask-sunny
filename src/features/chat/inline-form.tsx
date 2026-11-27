@@ -12,6 +12,7 @@ import { Notice } from "@/components/ui/feedback";
 import { Dialog, DialogActions, DialogContent } from "@/components/ui/overlays";
 import { FinalizedChangePanel } from "./finalized-change-panel";
 import { HrApprovalPanel, type HrApprovalPanelView } from "@/features/forms/hr-approval-panel";
+import { FollowUpOwnerPicker } from "@/features/forms/follow-up-owner-picker";
 import { downloadFormPdf, formsFetch, FormsFetchError, printFormPdf } from "@/features/forms/forms-fetch";
 import { onFormUpdate } from "./form-update-events";
 import {
@@ -143,6 +144,9 @@ interface LoadedInstance {
     source: "manual" | "ask_sunny";
     status: "draft" | "finalized" | "revised";
     followUpDate: string | null;
+    /** Who the creator handed the follow-up to (the owner, 27 Nov 2026); null or absent: the creator. */
+    followUpOwner?: string | null;
+    followedUpAt?: string | null;
     /** The finalized form this one revises, when it is a revision. */
     revisesInstanceId?: string | null;
   };
@@ -909,6 +913,20 @@ export function InlineForm({
               <span className="text-xs text-subtle-foreground">No follow-up recorded.</span>
             ) : null}
           </div>
+          {/*
+            WHO DOES THE FOLLOW-UP (the owner, 27 Nov 2026): once the form has a follow-up date, its creator can hand it to
+            someone with access to this salon (e.g. the DM), on a draft or a filed form, until it is marked done.
+          */}
+          {loaded.instance.followUpDate && !loaded.instance.followedUpAt ? (
+            <FollowUpOwnerPicker
+              formId={instanceId}
+              ownerName={null}
+              ownerId={loaded.instance.followUpOwner ?? null}
+              send={call}
+              disabled={action.kind === "busy"}
+              onChanged={() => void reload()}
+            />
+          ) : null}
           {/*
             ONE THING PER CONTROL. The date here is the calendar day the
             follow-up is scheduled, and drives Form Monitoring. Where the form
