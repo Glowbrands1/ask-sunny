@@ -157,6 +157,7 @@ export function MonitoringTable({
   listLimit = null,
   demo,
   mayDeleteFinalized: namedForFinalizedDelete = false,
+  search = null,
 }: {
   forms: MonitoredForm[];
   notice: string | null;
@@ -199,6 +200,11 @@ export function MonitoringTable({
    * verified email (`mayDeleteFinalizedForm`; Pau, 26 Nov 2026: "my account only"). Absent: drafts only.
    */
   mayDeleteFinalized?: boolean;
+  /**
+   * The employee search box (HR and admins only; `employee-form-search.tsx`), shown directly above the forms table
+   * (Pau, 26 Nov 2026: "can you put the search bar here on top of these forms instead"). Absent: nothing.
+   */
+  search?: React.ReactNode;
 }) {
   const [templateName, setTemplateName] = React.useState<string>("all");
   const [downloading, setDownloading] = React.useState<string | null>(null);
@@ -623,6 +629,8 @@ export function MonitoringTable({
           </div>
         </CardContent>
       </Card>
+
+      {search}
 
       {picked.length > 0 ? (
         <div

@@ -1132,6 +1132,8 @@ const NOT_ASKED = "Forms on file are looked at only when the manager asks about 
 /** What the turn's tools produced for the reply: the card and the edit, when there were any. */
 export interface ToolEffects {
   proposal: ChatFormProposal | null;
+  /** propose_reminder's card this turn (the Calendar): shown to the manager, saved only when they press Add to calendar. */
+  reminderProposal?: import("./data-tools").ReminderProposal | null;
   /** Port of Ask Bubbles #1077 (Pau's round 3, U35 run a): propose_form already sent back a call that would drop the card on screen's account. */
   cardAccountAsked?: boolean;
   /** U24 (port of Ask Bubbles #1061): the exit type(s) this turn's exit card ticks, by the form's labels, for the reply's "Filed as" line. */

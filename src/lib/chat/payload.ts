@@ -125,6 +125,8 @@ export const METADATA_KEYS = [
   "formHandoff",
   "error",
   "feedback",
+  /* The attached files' names and types (never their bytes), so a reopened chat shows what was attached. */
+  "attachments",
 ] as const;
 
 export interface MessagePayload {

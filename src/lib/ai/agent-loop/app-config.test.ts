@@ -19,6 +19,10 @@ import { rulesBookText } from "./rules-book";
  * the rules book. That line names no app, place, staff system or form key, so it reads the same under every config;
  * nothing else in either text changed.
  *
+ * Updated on purpose on 26 Nov 2026 (the Calendar): the prompt's tool list names read_calendar and propose_reminder,
+ * and the rules book gains one rule for them (what is on the calendar comes only from read_calendar; adding is
+ * propose_reminder's card, never "added"). Neither names an app, place, staff system or form key.
+ *
  * Updated on purpose on 16 Nov 2026 (fix batch item 4): the two "Did you mean" lines in "Who the form is for" became one
  * consistent instruction (a yes or the full name typed back is a yes; confirmed_by_manager). Both lines name no app,
  * place, staff system or form key; nothing else in either text changed.
@@ -357,9 +361,10 @@ const FAKE_CONTENT: AppConfig["content"] = ({ place }) => ({
 });
 
 describe("app config: another company's content in the rules book (Phase 1 of the loop port)", () => {
+  // ("Spa Engagement figures": the last of the reports list since board f039 part 2, 26 Nov 2026; it was "Comp figures".)
   // Sunny's rulings, metrics, reports, time zone, approver, page name and example phrases (src/config/company/agent-loop.ts).
   const SUNNY_CONTENT_WORDS = [
-    "Under Performance", "Club Close", "PPTA", "LPSVA", "tans", "Daily Stats", "Sales Totals", "Comp figures", "DM/HR",
+    "Under Performance", "Club Close", "PPTA", "LPSVA", "tans", "Daily Stats", "Sales Totals", "Spa Engagement figures", "DM/HR",
     "Central", "CT)", "Form Monitoring", "Must See", "sanitation", "EFT", "animals in the workplace", "key holdr",
     "Dodge", "No tanning", "Employee Discounts", "tanning consultants", "beds between clients", "Attendance Policy",
     "Late Opening", "Time Records", "Animals in the Workplace", "Handling Theft", "doctor's note", "the reviews SOP",
@@ -426,7 +431,8 @@ describe("app config: tool-description examples and the prompt's reports (Phase 
   it("Sunny's own descriptions keep its examples and the read_stats line", () => {
     const described = JSON.stringify(agentLoopTools().map((tool) => tool.input_schema));
     expect(described).toContain("getting rooms ready between guests");
-    expect(agentLoopRules()).toContain("- read_stats: Daily Stats, Sales Totals and Comp figures for the manager's salons");
+    // Board f039 part 2 (26 Nov 2026): read_stats also reads the bed and spa reports. Changed on purpose.
+    expect(agentLoopRules()).toContain("- read_stats: Daily Stats, Sales Totals, Comp, Bed Usage, Spa Wellness and Spa Engagement figures for the manager's salons");
   });
 });
 

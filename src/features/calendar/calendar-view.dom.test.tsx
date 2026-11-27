@@ -1,0 +1,72 @@
+// @vitest-environment jsdom
+import { cleanup, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import type { CalendarEvent } from "@/lib/calendar/types";
+import { CalendarView, cellSummary, dayLabel, monthLabel } from "./calendar-view";
+
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }));
+vi.mock("./actions", () => ({ saveReminderAction: vi.fn(), deleteReminderAction: vi.fn() }));
+
+/* Invented people only. */
+const fu = (n: number, extra: Partial<CalendarEvent> = {}): CalendarEvent => ({ id: `sunny:follow-up:${n}`, source: "ask-sunny", kind: "form-follow-up", title: `Avery Sample · Coaching Form ${n}`, date: "2026-11-30", href: `/forms/monitoring?followup=open&employee=Avery%20Sample`, ...extra });
+const EVENTS: CalendarEvent[] = [
+  { id: "hub:meeting:stc-dm:2026-11-30", source: "leadership-hub", kind: "meeting", title: "STC DM L10", date: "2026-11-30", startTime: "10:00", minutes: 90, href: "/meetings/stc-dm", meetingKey: "stc-dm" },
+  fu(1, { status: "overdue" }),
+  fu(2),
+  fu(3),
+  { id: "sunny:hr-approval:h1", source: "ask-sunny", kind: "hr-approval", title: "With HR: Policy Review · Blake Example", date: "2026-11-30", href: "/forms/hr-approval/h1" },
+  { id: "sunny:reminder:a", source: "ask-sunny", kind: "reminder", title: "Order lamps", date: "2026-11-30", href: "/calendar", visibility: "only_me", mine: true, reminderId: "11111111-1111-1111-1111-111111111111" },
+  { id: "sunny:reminder:b", source: "ask-sunny", kind: "reminder", title: "Prep huddle", date: "2026-11-30", href: "/calendar", visibility: "my_team", mine: false, by: "Casey Example", reminderId: "22222222-2222-2222-2222-222222222222" },
+];
+const view = (events = EVENTS, notes: string[] = []) => ({ from: "2026-11-01", to: "2026-12-12", events, notes });
+
+afterEach(() => cleanup());
+
+describe("Calendar (month view)", () => {
+  it("shows the month, a note per failed source and filter chips with this month's counts", () => {
+    render(<CalendarView month="2026-11" today="2026-11-30" view={view(EVENTS, ["Couldn't load meetings and reminders from the Leadership Hub just now. Showing everything else. Refresh to try again."])} save={vi.fn()} remove={vi.fn()} />);
+    expect(screen.getByRole("heading", { name: "November 2026" })).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toMatch(/Leadership Hub/);
+    expect(screen.getByRole("button", { name: /Form follow-ups/ }).textContent).toMatch(/3$/);
+    expect(screen.getByRole("button", { name: /Reminders/ }).textContent).toMatch(/2$/);
+  });
+
+  it("keeps a busy day readable: two events, then counts per type", () => {
+    render(<CalendarView month="2026-11" today="2026-11-30" view={view()} save={vi.fn()} remove={vi.fn()} />);
+    const cell = screen.getByRole("button", { name: "Monday, Nov 30: 7 events" });
+    expect(within(cell).getByText("+2 follow-ups")).toBeTruthy();
+    expect(within(cell).getByText("+1 approval")).toBeTruthy();
+    expect(within(cell).getByText("+2 reminders")).toBeTruthy();
+  });
+
+  it("today's panel links to the form and the L10 tab, shows overdue, and lets only the owner delete a reminder", async () => {
+    const remove = vi.fn(async () => ({ ok: true }));
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<CalendarView month="2026-11" today="2026-11-30" view={view()} save={vi.fn()} remove={remove} />);
+    const day = within(screen.getByRole("region", { name: "Monday, Nov 30" }));
+    expect(day.getByRole("link", { name: "STC DM L10" }).getAttribute("href")).toBe("/meetings/stc-dm");
+    expect(day.getByText("10:00 AM CT · 90 min")).toBeTruthy();
+    expect(day.getByText("Overdue")).toBeTruthy();
+    expect(day.getByText(/from Casey Example/)).toBeTruthy();
+    expect(day.queryByRole("button", { name: "Delete reminder Prep huddle" })).toBeNull();
+    await userEvent.click(day.getByRole("button", { name: "Delete reminder Order lamps" }));
+    expect(remove).toHaveBeenCalledWith("11111111-1111-1111-1111-111111111111");
+  });
+
+  it("+ New event saves a reminder as the person, Only me by default", async () => {
+    const save = vi.fn(async () => ({ ok: true as const, id: "x", already: false }));
+    render(<CalendarView month="2026-11" today="2026-11-30" view={view([])} save={save} remove={vi.fn()} />);
+    await userEvent.click(screen.getByRole("button", { name: "+ New event" }));
+    await userEvent.type(screen.getByLabelText("Title"), "Order lamps");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({ title: "Order lamps", date: "2026-11-30", time: null, visibility: "only_me" }));
+  });
+
+  it("formats labels", () => {
+    expect(dayLabel("2026-12-01")).toBe("Tuesday, Dec 1");
+    expect(monthLabel("2027-01")).toBe("January 2027");
+    expect(cellSummary(EVENTS.slice(0, 2)).more).toEqual([]);
+  });
+});

@@ -1,5 +1,7 @@
 import {
   BarChart3,
+  BookOpenCheck,
+  CalendarCheck,
   FileStack,
   Gauge,
   GraduationCap,
@@ -86,6 +88,23 @@ export const NAV_SECTIONS: NavSection[] = [
          * A hidden link is not a boundary; the page guard is, and this entry
          * now names the same permission the guard checks.
          */
+        permission: "view_overview",
+      },
+      {
+        /* Pau, 26 Nov 2026: one calendar with the Leadership Hub and Ask Bubbles (follow-ups, HR approvals, reviews, L10s, reminders). */
+        label: "Calendar",
+        href: "/calendar",
+        icon: CalendarCheck,
+        permission: "view_overview",
+      },
+      {
+        /*
+         * WHAT'S NEW (Pau, 26 Nov 2026): recent updates to Sunny, from `src/config/whats-new.ts`. The managers' home, so
+         * the Overview's permission; each entry about a page is shown only to a role that may open that page.
+         */
+        label: "What's New",
+        href: "/whats-new",
+        icon: Sparkles,
         permission: "view_overview",
       },
     ],
@@ -229,6 +248,14 @@ export const NAV_SECTIONS: NavSection[] = [
         href: "/admin/ai-usage",
         icon: Gauge,
         permission: "view_ai_usage",
+      },
+      {
+        /* QA, 24 Nov 2026: the list of every page the AI can read, from the page registry. */
+        label: "AI-readable pages",
+        href: "/admin/ai-readable-pages",
+        icon: BookOpenCheck,
+        permission: "view_ai_usage",
+        adminOnly: true,
       },
       {
         label: "User Management",

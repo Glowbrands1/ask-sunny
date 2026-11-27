@@ -1298,6 +1298,13 @@ describe("new flags default off and wrappers are inert", () => {
           // integrations page only; no chat or form behaviour changes.
           ":(exclude)src/features/admin/woven/directory-table.tsx",
           ":(exclude)src/features/admin/woven/address-button.tsx",
+          // THE CALENDAR (Pau, 26 Nov 2026: one calendar in Ask Sunny, Ask Bubbles and the Leadership Hub, "+ New event"
+          // and the chat's reminder card): a new page and its own components, reached only from the new Calendar entry.
+          // No existing screen changes; the chat bubble mounts the reminder card only when an answer carries one.
+          ":(exclude)src/app/(app)/calendar/page.tsx",
+          ":(exclude)src/features/calendar/calendar-view.tsx",
+          ":(exclude)src/features/calendar/new-event.tsx",
+          ":(exclude)src/features/calendar/reminder-card.tsx",
           // The named account sees every address without clicking (Pau, 26 Nov 2026: "for my access only";
           // WOVEN_ADDRESS_LIST_EMAILS): the Woven page passes the yes/no down to the directory. Admin page only.
           ":(exclude)src/app/(app)/admin/integrations/woven/[view]/page.tsx",
@@ -1381,6 +1388,14 @@ describe("new flags default off and wrappers are inert", () => {
           ":(exclude)src/components/shell/navigation.test.ts",
           ":(exclude)src/app/(app)/ai-training",
           ":(exclude)src/features/ai-training",
+          // WHAT'S NEW and the AI-READABLE PAGES list (Paulyne, 26 Nov 2026, both apps; QA, 24 Nov 2026, could not find
+          // the list of pages the AI can read): two new pages and their screens only, with one rail entry each
+          // (navigation.ts, excluded above). Read-only lists from typed config; no existing page, chat or form behaviour
+          // changes, no flag involved.
+          ":(exclude)src/app/(app)/whats-new",
+          ":(exclude)src/features/whats-new",
+          ":(exclude)src/app/(app)/admin/ai-readable-pages",
+          ":(exclude)src/features/admin/ai-readable-pages-screen.tsx",
           // AI Training submission bell (requested by Paulyne, 20 Nov 2026, Ask Sunny only for now): a new
           // bell component and its mark-read action. It renders only for someone on AI_TRAINING_NOTIFY_EMAILS
           // or with a notification; its mount line is in app-shell.tsx and its read in layout.tsx, both
