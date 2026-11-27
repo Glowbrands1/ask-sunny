@@ -212,12 +212,9 @@ async function calendarOf(who: Who) {
 }
 
 /*
- * KNOWN GAP, REPORTED, NOT FIXED HERE (27 Nov 2026). Once HR sends a form back or rejects it, it waits on the manager,
- * not on HR: it leaves HR's pending count and HR's bell item is cleared. HR's CALENDAR still shows it, as
- * "Approve: …" on the day it was first due, because the calendar loader (src/lib/calendar/load.server.ts) takes every
- * row of HR's tab (`listHrQueue`: pending, sent back, rejected) rather than the rows that need HR's decision
- * (`needsHrDecision`). The calendar code belongs to the Shared Calendar work in flight, so this test pins what it does
- * today; when the loader keeps only `needsHrDecision` rows, change this to expect false.
+ * Once HR sends a form back or rejects it, it waits on the manager, not on HR: it leaves HR's pending count, HR's bell
+ * item is cleared, and it leaves HR's calendar too (the calendar loader keeps only `needsHrDecision` rows; reported by
+ * this test on 27 Nov 2026 and fixed in the calendar work the same day).
  */
 async function stillOnHrCalendar(id: string): Promise<boolean> {
   const entries = await calendarOf("hr");
@@ -274,9 +271,10 @@ describe("HR approval, filed to decided, with production's flags", () => {
     expect(hrCalendar[0]!.title).toMatch(/^Approve: .*Marisol Quenby/);
     const managerCalendar = await calendarOf("manager");
     expect(managerCalendar.map((e) => [e.date, e.title.split(":")[0]])).toEqual([[DUE, "With HR"]]);
-    // Administrators and the manager's District Manager do not see a form waiting for HR (owner, 23 Nov 2026:
-    // "only me and HR can see its waiting"; hr-approval-rules.ts: "not their District or Regional Manager, not an administrator").
-    expect(await calendarOf("admin")).toEqual([]);
+    // An administrator sees it as "With HR" on the same day (owner, 27 Nov 2026: "all admins and [HR] can see this and
+    // the creator"); the manager's District Manager does not.
+    const adminCalendar = await calendarOf("admin");
+    expect(adminCalendar.map((e) => [e.date, e.title.split(":")[0], e.href])).toEqual([[DUE, "With HR", `/forms/hr-approval/${encodeURIComponent(id)}`]]);
     expect(await calendarOf("dm")).toEqual([]);
 
     // 3. OPENING THE ENTRY LEADS TO THE FORM: the page the href names renders the HR screen for this form, and the
@@ -321,7 +319,7 @@ describe("HR approval, filed to decided, with production's flags", () => {
     expect(entries[0]!.title).toMatch(/^Approve: /);
   });
 
-  it("sent back: a note is required; leaves HR's pending count and bell, shows as 'Changes requested' for the manager, and returns to HR when sent again", async () => {
+  it("sent back: a note is required; leaves HR's pending count, bell and calendar, shows as 'Changes requested' for the manager, and returns to HR when sent again", async () => {
     const id = await fileExitForm();
     await fillEveryRequiredLine(id);
     expect((await send("manager", id, "POST", { action: "finalize", acknowledgeUnverifiedPolicy: true })).status).toBe(200);
@@ -335,7 +333,7 @@ describe("HR approval, filed to decided, with production's flags", () => {
     expect((await listNotifications(PEOPLE.hr.email)).items.filter((item) => item.kind === HR_REQUEST_KIND && !item.readAt)).toEqual([]);
     expect((await listNotifications(PEOPLE.manager.email)).items.some((item) => item.kind === HR_DECISION_KIND)).toBe(true);
     expect((await calendarOf("manager")).map((e) => e.title.split(":")[0])).toEqual(["Changes requested"]);
-    expect(await stillOnHrCalendar(id)).toBe(true);
+    expect(await stillOnHrCalendar(id), "a form waiting on the manager is still on HR's calendar").toBe(false);
 
     // The manager sends it again: back in HR's queue and on HR's calendar.
     const again = await send("manager", id, "POST", { action: "finalize", acknowledgeUnverifiedPolicy: true });
@@ -344,7 +342,7 @@ describe("HR approval, filed to decided, with production's flags", () => {
     expect((await calendarOf("hr")).map((e) => e.date)).toEqual([DUE]);
   });
 
-  it("rejected: off HR's pending count and bell and off the manager's calendar; the manager is told", async () => {
+  it("rejected: off HR's pending count, bell and calendar and off the manager's calendar; the manager is told", async () => {
     const id = await fileExitForm();
     await fillEveryRequiredLine(id);
     expect((await send("manager", id, "POST", { action: "finalize", acknowledgeUnverifiedPolicy: true })).status).toBe(200);
@@ -357,6 +355,6 @@ describe("HR approval, filed to decided, with production's flags", () => {
     expect((await listNotifications(PEOPLE.hr.email)).items.filter((item) => item.kind === HR_REQUEST_KIND && !item.readAt)).toEqual([]);
     expect((await listNotifications(PEOPLE.manager.email)).items.some((item) => item.kind === HR_DECISION_KIND)).toBe(true);
     expect(await calendarOf("manager")).toEqual([]);
-    expect(await stillOnHrCalendar(id)).toBe(true);
+    expect(await stillOnHrCalendar(id), "a form waiting on the manager is still on HR's calendar").toBe(false);
   });
 });
