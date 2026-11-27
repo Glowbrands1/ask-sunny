@@ -252,6 +252,24 @@ function ScheduleForm({
   );
 }
 
+/** A form entry without the employee's name: opening it says only who can see the name (the owner, 27 Nov 2026). */
+export const NAME_HIDDEN_NOTE = "Only admins, HR and the person who created this form can see who it is for.";
+function NameHidden({ title }: { title: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button type="button" onClick={() => setOpen((o) => !o)} className="font-semibold underline-offset-2 hover:underline" aria-expanded={open}>
+        {title}
+      </button>
+      {open ? (
+        <span role="note" className="block text-xs text-muted-foreground">
+          {NAME_HIDDEN_NOTE}
+        </span>
+      ) : null}
+    </>
+  );
+}
+
 function EventRow({
   e,
   onDelete,
@@ -271,6 +289,8 @@ function EventRow({
   const title =
     e.kind === "reminder" ? (
       <span className="font-semibold">{e.title}</span>
+    ) : e.nameHidden ? (
+      <NameHidden title={e.title} />
     ) : e.kind === "meeting" && e.meetingKey && onMeeting && hasDetails?.(e.meetingKey) ? (
       <button type="button" onClick={() => onMeeting(e.meetingKey!, e.date)} className="font-semibold underline-offset-2 hover:underline" aria-label={`${e.title}: details`}>
         {e.title}

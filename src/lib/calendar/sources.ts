@@ -22,6 +22,8 @@ export interface FollowUpFact {
   readonly locationName: string | null;
   readonly followUpDate: string;
   readonly overdue: boolean;
+  /** True: this person may not see the employee's name (see load.server.ts, mayNameEmployee). */
+  readonly nameHidden?: boolean;
 }
 
 /** All-day "Employee · form" on the follow-up date, opening that employee's follow-ups in Form Monitoring. */
@@ -30,11 +32,13 @@ export function followUpEvents(forms: readonly FollowUpFact[], today: string, or
     id: `sunny:follow-up:${f.id}`,
     source: SOURCE,
     kind: "form-follow-up" as const,
-    title: `${f.employeeName} · ${f.templateName}`.slice(0, 300),
+    title: (f.nameHidden ? f.templateName : `${f.employeeName} · ${f.templateName}`).slice(0, 300),
     date: f.followUpDate,
     status: f.overdue ? ("overdue" as const) : f.followUpDate === today ? ("due" as const) : ("upcoming" as const),
     ...(f.locationName ? { location: f.locationName } : {}),
-    href: `${origin}/forms/monitoring?followup=${f.overdue ? "overdue" : "open"}&employee=${encodeURIComponent(f.employeeName)}`,
+    ...(f.nameHidden
+      ? { href: `${origin}/calendar`, nameHidden: true }
+      : { href: `${origin}/forms/monitoring?followup=${f.overdue ? "overdue" : "open"}&employee=${encodeURIComponent(f.employeeName)}` }),
   }));
 }
 
@@ -47,6 +51,8 @@ export interface HrFact {
   readonly locationName?: string | null;
   /** "Approve" for HR's queue, "With HR" for a manager's own form. */
   readonly label: string;
+  /** True: `line` already leaves the employee's name out, and the entry does not open the form. */
+  readonly nameHidden?: boolean;
 }
 
 export function hrEvents(rows: readonly HrFact[], today: string, origin: string): CalendarEvent[] {
@@ -58,7 +64,7 @@ export function hrEvents(rows: readonly HrFact[], today: string, origin: string)
     date: r.dueDate,
     status: r.overdue ? ("overdue" as const) : r.dueDate === today ? ("due" as const) : ("upcoming" as const),
     ...(r.locationName ? { location: r.locationName } : {}),
-    href: `${origin}/forms/hr-approval/${encodeURIComponent(r.id)}`,
+    ...(r.nameHidden ? { href: `${origin}/calendar`, nameHidden: true } : { href: `${origin}/forms/hr-approval/${encodeURIComponent(r.id)}` }),
   }));
 }
 
