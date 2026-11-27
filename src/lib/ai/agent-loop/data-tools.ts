@@ -34,6 +34,7 @@ import { rowToCitation } from "@/lib/knowledge/mappers";
 
 import { appConfig, type AppConfig } from "./app-config";
 import { addSource, untrusted as envelope, type ToolActor, type ToolEffects, type ToolResult } from "./tools";
+import { NOT_ATTENDEE_FOR_MODEL, meetingNamed } from "@/features/l10/lib/access";
 
 /*
  * ============================================================================
@@ -1052,8 +1053,11 @@ export async function readMeetingDetails(context: DataToolContext, input: Record
   }
   if (read.state === "off") return { source: MEETINGS_SOURCE, reason_code: "scope", error: "The Leadership Hub is not connected for this account, so its L10 details cannot be read. Say so; never guess a time or who attends." };
   if (read.state === "failed") return { source: MEETINGS_SOURCE, reason_code: "read_failed", error: "The L10 details could not be read from the Leadership Hub just now. Say so; never guess a time or who attends." };
-  if (read.meetings.length === 0) return { source: MEETINGS_SOURCE, reason_code: "no_meetings", error: "This manager has no L10 here that the Leadership Hub lists for them. Say so plainly." };
   const picked = pickMeetings(read.meetings, named);
+  // A real meeting the Hub does not list for this person: they are not an attendee (nor an admin). The owner's words and
+  // nothing about it (the owner, 27 Nov 2026; src/features/l10/lib/access.ts).
+  if (picked.length === 0 && meetingNamed(named)) return { source: MEETINGS_SOURCE, reason_code: "not_attendee", error: NOT_ATTENDEE_FOR_MODEL };
+  if (read.meetings.length === 0) return { source: MEETINGS_SOURCE, reason_code: "no_meetings", error: "This manager has no L10 here that the Leadership Hub lists for them. Say so plainly." };
   if (picked.length === 0) {
     return { source: MEETINGS_SOURCE, reason_code: "no_match", error: `No L10 this manager can open here matches "${named}". Say so, and name the ones they can open.`, meetings_here: read.meetings.map((m) => m.name) };
   }

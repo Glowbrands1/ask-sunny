@@ -15,7 +15,8 @@ const FILES = ["tools.ts", "data-tools.ts", "run.ts"];
 const KNOWN = new Set([
   // The Calendar (Pau, 26 Nov 2026): read_calendar's bad range, and propose_reminder's refusals (no title, not a real date,
   // another person's calendar, time off). On purpose.
-  "range", "no_title", "no_date", "not_for_others", "time_off", "no_meetings", "no_match",
+  // not_attendee: read_meeting_details on a real meeting the Hub does not list for the person (the owner, 27 Nov 2026).
+  "range", "no_title", "no_date", "not_for_others", "time_off", "no_meetings", "no_match", "not_attendee",
   "missing_input", "roster_failed", "not_on_roster", "ambiguous_person", "scope", "privacy_not_asked", "read_failed",
   "form_not_visible", "not_a_heading", "one_card", "wrong_tool", "whole_staff", "right_person", "draft_open", "date_not_stated", "follow_up_date_not_stated", "follow_up_date_passed",
   "salon_unknown", "not_stated", "name_correction_only", "date_after_today", "drafts_only", "unknown_field", "empty_account",
