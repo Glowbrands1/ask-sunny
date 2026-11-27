@@ -6,7 +6,7 @@ import { agentLoopFor, agentLoopSkipReason, loopCarriedOnly } from "@/lib/ai/age
 
 import { withSwitchAfterCreate } from "@/lib/ai/form-type-switch";
 import { withCorrectionNotDropped, withProposalNameCorrection } from "@/lib/forms/proposal-name-correction";
-import { chatTraceDraft, enterChatRequestClock } from "@/lib/ai/chat-trace-store";
+import { chatTraceDraft, enterChatRequestClock, noteVoiceInput } from "@/lib/ai/chat-trace-store";
 import { answerQuestion } from "@/lib/ai/server-ask";
 import { modelSpendGuard } from "@/lib/ai/spend-guard";
 import { isQuestionNotForm } from "@/lib/ai/question-not-form";
@@ -162,6 +162,9 @@ async function postChat(request: Request, progress?: ProgressChannel) {
     assertWithinRateLimit(request, "chat");
 
     const body = await parseJsonBody<AskRequest>(request);
+    /* VOICE_INPUT_ENABLED: a turn typed by voice is noted on its trace row (`slots.voice_input`); nothing else reads it. */
+    const voice = voiceInputFields(body);
+    if (voice.voiceTraceId) noteVoiceInput({ trace_id: voice.voiceTraceId, edited: voice.voiceEdited === true });
 
     const askedAt = Date.now();
 
@@ -1219,6 +1222,14 @@ async function postChat(request: Request, progress?: ProgressChannel) {
   }
 }
 
+/** VOICE_INPUT_ENABLED: the three voice fields, when all three are well-formed; otherwise none. */
+function voiceInputFields(body: Partial<AskRequest>): Pick<AskRequest, "inputMode" | "voiceTraceId" | "voiceEdited"> {
+  if (body.inputMode !== "voice") return {};
+  const traceId = String(body.voiceTraceId ?? "");
+  if (!UUID.test(traceId) || typeof body.voiceEdited !== "boolean") return {};
+  return { inputMode: "voice", voiceTraceId: traceId, voiceEdited: body.voiceEdited };
+}
+
 /** Validates and bounds everything that arrived from the browser. */
 function parseAskRequest(body: Partial<AskRequest>): AskRequest {
   const context = body.context;
@@ -1289,6 +1300,11 @@ function parseAskRequest(body: Partial<AskRequest>): AskRequest {
      * null rather than travelling further as a string.
      */
     surface: isActivitySurface(body.surface) ? body.surface : null,
+    /*
+     * VOICE_INPUT_ENABLED: reporting only (`slots.voice_input`). All three, or none: "voice", a UUID, a yes/no. They
+     * change no decision and are never an `agentLoopSkipReason`.
+     */
+    ...voiceInputFields(body),
     // The composer's attached files, checked (types, count, size, inline data only): `lib/chat/attachments.server.ts`.
     attachments: parseChatAttachments(body.attachments),
     attachedDocumentIds: Array.isArray(body.attachedDocumentIds)

@@ -11,6 +11,8 @@ import { bellFor } from "@/lib/notifications/bell-for";
 import type { BellData } from "@/lib/notifications/types";
 import { hrQueueSummary } from "@/lib/forms/hr-approval";
 import { siblingHrWaiting } from "@/lib/partner/sibling-hr-waiting";
+import { voiceInputEnabledFor } from "@/lib/voice/voice-config";
+import { VoiceAccessProvider, type VoiceAccess } from "@/features/voice/voice-access";
 
 /**
  * COUNTS, NOT HUES — the rail's overdue badge.
@@ -87,18 +89,35 @@ async function waitingForHr(identity: Awaited<ReturnType<typeof pageIdentity>>):
   }
 }
 
+/**
+ * VOICE_INPUT_ENABLED: whether the signed-in person gets the mic in the AI chat boxes, decided here from the
+ * verified session (`voiceInputEnabledFor`). The browser is told yes or no and the person's user id (to remember
+ * their first-use choice); never the pilot list. Off on any error.
+ */
+async function voiceForLayout(): Promise<VoiceAccess> {
+  try {
+    const identity = await pageIdentity();
+    if (!identity?.verified || !voiceInputEnabledFor({ email: identity.email })) return { enabled: false, userKey: null };
+    return { enabled: true, userKey: identity.subject };
+  } catch {
+    return { enabled: false, userKey: null };
+  }
+}
+
 export default async function AppLayout({ children }: { children: ReactNode }) {
-  const [overdueFollowUps, showAppSwitcherBase, showLeadershipHub, meetingTabs, bell] = await Promise.all([
+  const [overdueFollowUps, showAppSwitcherBase, showLeadershipHub, meetingTabs, bell, voice] = await Promise.all([
     overdueCount(),
     pageShowsAppSwitcher(),
     pageShowsLeadershipHub(),
     // The DM L10 tab: only for people the Leadership Hub lists as attendees (see features/l10).
     l10TabsForLayout(),
     bellForLayout(),
+    voiceForLayout(),
   ]);
   // A listed leader needs the menu to reach the tab, so the menu opens for them too.
   const showAppSwitcher = showAppSwitcherBase || showLeadershipHub;
   return (
+    <VoiceAccessProvider enabled={voice.enabled} userKey={voice.userKey}>
     <AppShell
       overdueFollowUps={overdueFollowUps}
       showAppSwitcher={showAppSwitcher}
@@ -108,5 +127,6 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     >
       {children}
     </AppShell>
+    </VoiceAccessProvider>
   );
 }

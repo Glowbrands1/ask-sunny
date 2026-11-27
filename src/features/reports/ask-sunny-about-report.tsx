@@ -7,6 +7,8 @@ import { SunMark } from "@/components/brand-mark";
 import { AnswerSheet } from "@/features/dashboard/answer-sheet";
 import { ConversationRating } from "@/features/chat/conversation-rating";
 import { useInlineAsk } from "@/features/chat/use-inline-ask";
+import { VoiceButton } from "@/features/voice/voice-button";
+import { appendTranscript, useVoiceDraft, type VoiceSendFields } from "@/features/voice/voice-draft";
 import { ACTIVE_BRAND } from "@/lib/brand";
 import {
   chatReportContextToParams,
@@ -155,10 +157,13 @@ export function AskSunnyAboutReport({
    * the control did as a link and what the placeholder promises. Typing
    * replaces it.
    */
-  const submit = (text: string) => {
+  /* VOICE_INPUT_ENABLED: the last transcript the mic put in the box, and where its notices go (under the bar). */
+  const voiceDraft = useVoiceDraft();
+  const [voiceSlot, setVoiceSlot] = useState<HTMLDivElement | null>(null);
+  const submit = (text: string, voice?: VoiceSendFields) => {
     const question = text.trim() || suggested;
     setValue("");
-    void send(question);
+    void send(question, voice ? { voice } : {});
   };
 
   /*
@@ -186,7 +191,7 @@ export function AskSunnyAboutReport({
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) {
               event.preventDefault();
-              submit(value);
+              submit(value, voiceDraft.take(value));
             }
           }}
           placeholder={`Ask ${ACTIVE_BRAND.assistantName} about this report — ${suggested}`}
@@ -202,9 +207,22 @@ export function AskSunnyAboutReport({
             <X className="size-3.5" />
           </button>
         ) : null}
+        {/* VOICE_INPUT_ENABLED: the mic beside the send button, only for a person voice is on for. */}
+        <VoiceButton
+          surface="report"
+          conversationId={conversationId}
+          disabled={busy}
+          messageSlot={voiceSlot}
+          onText={(transcript, { traceId }) => {
+            setValue((current) => appendTranscript(current, transcript));
+            voiceDraft.note(transcript, traceId);
+            inputRef.current?.focus();
+          }}
+          className="size-[34px] rounded-full text-muted-foreground hover:bg-hover-surface hover:text-foreground"
+        />
         <button
           type="button"
-          onClick={() => submit(value)}
+          onClick={() => submit(value, voiceDraft.take(value))}
           disabled={busy}
           aria-label={`Ask ${ACTIVE_BRAND.assistantName} about this report`}
           className="grid size-[34px] shrink-0 place-items-center rounded-full bg-brand-yellow text-brand-yellow-foreground transition-opacity disabled:opacity-40"
@@ -212,6 +230,7 @@ export function AskSunnyAboutReport({
           <ArrowUp className="size-3.5" strokeWidth={2.5} />
         </button>
       </div>
+      <div ref={setVoiceSlot} data-testid="report-voice-slot" />
 
 
       {/*

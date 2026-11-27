@@ -36,6 +36,7 @@ import {
 } from "@/lib/reporting/read/chat-report-context";
 import { toChatTurnError } from "./chat-error";
 import { Composer } from "./composer";
+import { useVoiceDraft, type VoiceSendFields } from "@/features/voice/voice-draft";
 import { writeChatAddress } from "./chat-address";
 import { ContextPanel } from "./context-panel";
 import { fileOnlyQuestion, historyWithAttachmentNotes, namesOf, toChatAttachments } from "./attachments";
@@ -70,6 +71,8 @@ export function ChatScreen() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [draftMessages, setDraftMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
+  /* VOICE_INPUT_ENABLED: the last transcript the mic put in the box, so its send says it came from voice. */
+  const voiceDraft = useVoiceDraft();
   /* Files waiting to be sent with the next question (the composer's attach button); never stored. */
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [fileError, setFileError] = useState("");
@@ -108,7 +111,7 @@ export function ChatScreen() {
    * is ready, the same way the ?q= effect below fires. The composer is left
    * alone while it waits: disabling the field would be a visible change.
    */
-  const queuedSend = useRef<{ text: string; fromPicker?: boolean; files?: File[] } | null>(null);
+  const queuedSend = useRef<{ text: string; fromPicker?: boolean; files?: File[]; voice?: VoiceSendFields } | null>(null);
 
   /**
    * ==========================================================================
@@ -221,7 +224,7 @@ export function ChatScreen() {
        * recorded by the function that also decides whether the turn goes out at
        * all, so a refused send cannot leave one behind.
        */
-      options: { fromPicker?: boolean; files?: readonly File[] } = {},
+      options: { fromPicker?: boolean; files?: readonly File[]; voice?: VoiceSendFields } = {},
     ): Promise<boolean> => {
       const files = options.files ?? [];
       // A question that is only files is sent in words, so the thread and the model both have the manager's turn.
@@ -240,7 +243,7 @@ export function ChatScreen() {
        * skipped and the turn goes out exactly as it does today.
        */
       if (sendAfterHydrateEnabled() && !storeReady) {
-        queuedSend.current = { text, fromPicker: options.fromPicker, files: [...files] };
+        queuedSend.current = { text, fromPicker: options.fromPicker, files: [...files], voice: options.voice };
         setPendingFiles([]);
         return true;
       }
@@ -355,6 +358,8 @@ export function ChatScreen() {
            * row and nothing else. See `AskRequest.surface`.
            */
           surface: "main_chat",
+          /* VOICE_INPUT_ENABLED: the text came from the mic (reporting only; see `AskRequest.inputMode`). */
+          ...(options.voice ?? {}),
           // No corpus. The server derives it from the active brand; sending one
           // could only ever be ignored or trusted, and one of those is a bug.
           /*
@@ -482,7 +487,7 @@ export function ChatScreen() {
     if (!queued) return;
     const timer = window.setTimeout(() => {
       queuedSend.current = null;
-      void send(queued.text, { fromPicker: queued.fromPicker, ...(queued.files ? { files: queued.files } : {}) });
+      void send(queued.text, { fromPicker: queued.fromPicker, ...(queued.files ? { files: queued.files } : {}), voice: queued.voice });
     }, 0);
     return () => window.clearTimeout(timer);
   }, [storeReady, send]);
@@ -1131,7 +1136,9 @@ export function ChatScreen() {
         <Composer
           value={input}
           onChange={setInput}
-          onSubmit={() => void send(input, { files: pendingFiles })}
+          onSubmit={() => void send(input, { files: pendingFiles, voice: voiceDraft.take(input) })}
+          conversationId={activeId}
+          onVoiceText={voiceDraft.note}
           mode={mode}
           onModeChange={setMode}
           busy={busy}

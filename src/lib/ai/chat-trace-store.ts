@@ -81,6 +81,25 @@ export function enterChatRequestClock(at = Date.now()): void {
   requestClock.enterWith(at);
 }
 
+/**
+ * VOICE_INPUT_ENABLED: the turn's text came from the mic (`slots.voice_input` on its trace row). Set once by
+ * POST /api/chat for this request, read only by the trace writer: it changes no decision.
+ */
+export interface VoiceInputNote {
+  readonly trace_id: string;
+  readonly edited: boolean;
+}
+
+const voiceInput = new AsyncLocalStorage<VoiceInputNote>();
+
+export function noteVoiceInput(note: VoiceInputNote): void {
+  voiceInput.enterWith(note);
+}
+
+export function voiceInputNote(): VoiceInputNote | undefined {
+  return voiceInput.getStore();
+}
+
 export function runWithRequestClock<T>(fn: () => Promise<T>, at = Date.now()): Promise<T> {
   return requestClock.run(at, fn);
 }

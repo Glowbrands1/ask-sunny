@@ -30,7 +30,8 @@ import type { TokenUsage } from "./model-prices";
  * that was not before. Off, no meter, no wrapping, no extra row.
  */
 
-export type SpendSource = "chat" | "forms_draft" | "sales_totals" | "form_ingest" | "l10_assistant";
+/** "voice": AssemblyAI transcriptions (VOICE_INPUT_ENABLED), priced per hour of audio and never as a model. */
+export type SpendSource = "chat" | "forms_draft" | "sales_totals" | "form_ingest" | "l10_assistant" | "voice";
 
 export interface SpendMeter {
   readonly source: SpendSource;

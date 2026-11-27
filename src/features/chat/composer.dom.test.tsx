@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/overlays";
 import { ANSWER_MODE_HELPER, MANAGER_NOTE, MANAGER_NOTE_SHORT } from "@/data/demo/chat";
 import { Composer } from "./composer";
+import { VoiceAccessProvider } from "@/features/voice/voice-access";
 import type { AnswerMode } from "@/types";
 
 /**
@@ -171,9 +172,33 @@ describe("nothing dead is rendered", () => {
   it("shows no attachment, image or voice control", () => {
     // F. They were honest and disabled. A manager still reads three controls
     // that do not work as broken product.
+    // VOICE_INPUT_ENABLED changed one thing: a WORKING mic shows for a person voice is on for (the next test). With
+    // voice off (no provider, as here) there is still no voice control at all, and attach and image never return.
     renderComposer();
-    for (const name of [/attach/i, /image/i, /voice/i, /microphone/i]) {
+    for (const name of [/attach/i, /image/i, /voice/i, /microphone/i, /speak/i]) {
       expect(screen.queryByRole("button", { name })).toBeNull();
+    }
+  });
+
+  it("with voice on for this person, the one extra control is a working mic; still no attach or image", () => {
+    // VOICE_INPUT_ENABLED (27 Nov 2026): a gated, working mic is allowed; a dead or always-visible one is not.
+    Object.defineProperty(window, "MediaRecorder", { configurable: true, writable: true, value: class { static isTypeSupported = () => true; } });
+    Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: { getUserMedia: async () => ({}) } });
+    try {
+      render(
+        <VoiceAccessProvider enabled userKey="user-ada">
+          <TooltipProvider>
+            <Composer value="how much PTO?" onChange={vi.fn()} onSubmit={vi.fn()} mode="standard" onModeChange={vi.fn()} busy={false} />
+          </TooltipProvider>
+        </VoiceAccessProvider>,
+      );
+      const mic = screen.getByRole("button", { name: "Speak your message" }) as HTMLButtonElement;
+      expect(mic.disabled).toBe(false);
+      for (const name of [/attach/i, /image/i]) expect(screen.queryByRole("button", { name })).toBeNull();
+      expect(document.body.textContent).not.toMatch(/coming later/i);
+    } finally {
+      Reflect.deleteProperty(window, "MediaRecorder");
+      Reflect.deleteProperty(navigator, "mediaDevices");
     }
   });
 
