@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { DEFAULT_PERMISSION_MATRIX, hasPermission, ROLES } from "@/lib/permissions";
+import { canAccessAdminConsole, DEFAULT_PERMISSION_MATRIX, hasPermission, ROLES } from "@/lib/permissions";
 
 import { AI_READABLE_PAGES } from "./ai-readable-pages";
 import { WHATS_NEW, whatsNewFor } from "./whats-new";
@@ -55,10 +55,13 @@ describe("What's New", () => {
       const page = AI_READABLE_PAGES.find((candidate) => candidate.kind === "page" && candidate.route === href);
       expect(page, `${href} has no entry in ai-readable-pages.ts`).toBeDefined();
       if (!page || !("permission" in page.access)) continue;
+      // An admin console page's entry must say so, or a role holding the permission alone is told about it.
+      expect(entry.adminConsole === true, `${entry.title}: ${href} is ${page.access.adminConsole ? "" : "not "}an admin console page`).toBe(page.access.adminConsole === true);
       // A role that cannot open What's New itself is shown none of it.
       for (const role of ROLES.filter(opensWhatsNew)) {
         if (whatsNewFor(role, can).some((release) => release.entries.includes(entry))) {
           expect(can(role, page.access.permission), `${role} is told about ${href}, which they cannot open`).toBe(true);
+          if (page.access.adminConsole) expect(canAccessAdminConsole(role), `${role} is told about ${href}, an admin console page`).toBe(true);
         }
       }
     }
@@ -70,6 +73,8 @@ describe("What's New", () => {
     expect(director).toContain("What's New");
     expect(director).not.toContain("Employee address in the Employee Directory");
     expect(whatsNewFor("admin", can).flatMap((release) => release.entries.map((entry) => entry.title))).toContain("Employee address in the Employee Directory");
+    // A Regional Manager holds View AI usage but does not open the admin console: not told about the admin's AI-readable pages screen.
+    expect(whatsNewFor("regional_manager", can).flatMap((release) => release.entries.map((entry) => entry.title))).not.toContain("The list of pages Sunny can read");
   });
 
   it("is Ask Sunny's own list: no sibling-app words", () => {

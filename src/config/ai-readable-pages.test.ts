@@ -3,7 +3,7 @@ import { join, relative, sep } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { READER_PERMISSION } from "@/lib/ai/agent-loop/data-tools";
+import { READER_ADMIN_CONSOLE, READER_PERMISSION } from "@/lib/ai/agent-loop/data-tools";
 import { agentLoopTools } from "@/lib/ai/agent-loop/run";
 import { rulesBookText } from "@/lib/ai/agent-loop/rules-book";
 import { SUNNY_CONFIG } from "@/lib/ai/agent-loop/app-config";
@@ -94,6 +94,10 @@ describe("the pages the AI can read (board f039)", () => {
       expect(names, `${entry.route}: ${entry.reader.tool} is not one of the loop's tools`).toContain(entry.reader.tool);
       if (entry.kind === "page" && "permission" in entry.access) {
         expect(READER_PERMISSION[entry.reader.tool], `${entry.route}: ${entry.reader.tool} checks a different permission than the page, so the AI would read more or less than the page shows`).toBe(entry.access.permission);
+        // Pau, 27 Nov 2026 (the Knowledge Base list): an admin console page's reader also checks the admin console, as
+        // the page does, so a role holding the permission alone reads nothing; and a reader of a page that is not one
+        // does not refuse that role.
+        expect(READER_ADMIN_CONSOLE.has(entry.reader.tool), `${entry.route}: the page ${entry.access.adminConsole ? "is" : "is not"} an admin console page; READER_ADMIN_CONSOLE must say the same for ${entry.reader.tool}`).toBe(entry.access.adminConsole === true);
       }
       expect(entry.reader.figures.length, `${entry.route}: name the figures`).toBeGreaterThan(0);
       expect(entry.reader.periods.length, `${entry.route}: name the periods`).toBeGreaterThan(0);
@@ -107,6 +111,7 @@ describe("the pages the AI can read (board f039)", () => {
     expect(dataTools).toContain("READER_PERMISSION.read_stats)");
     expect(dataTools).toContain("READER_PERMISSION.read_hr_approvals)");
     expect(dataTools).toContain("READER_PERMISSION.read_whats_new)");
+    expect(dataTools).toContain("READER_PERMISSION.read_knowledge_documents) || !canAccessAdminConsole(role)");
     const formRecords = readFileSync(join(ROOT, "src", "lib", "forms", "chat-form-records.ts"), "utf8");
     // Pau, 23 Nov 2026: the handlers read the SAVED matrix (activePermissionMatrix()), not the built-in defaults; they still check the shared constant.
     expect(formRecords.match(/hasPermission\(activePermissionMatrix\(\), actor\.role, FORM_RECORDS_PERMISSION\)/g)?.length, "find_past_forms' reads check Form Monitoring's permission").toBe(2);

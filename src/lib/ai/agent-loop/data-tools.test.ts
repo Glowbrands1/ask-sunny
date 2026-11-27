@@ -11,7 +11,7 @@ import type { AccessScope, Role } from "@/types";
 
 import { PRODUCTION_SALONS } from "@/data/salons";
 
-import { FIGURES_MAX, OTHERS_NOT_VISIBLE, OUTSIDE_ACCESS, dataToolHandlers, figuresWithin, readAiAssignments, readFollowUps, readFormDeletions, readAiTraining, readManagerResources, readReviews, readStats, readVideos, readWhatsNew, salonsForTurn, type DataToolDeps, type FollowUpQueueRead, type FormDeletionRow } from "./data-tools";
+import { FIGURES_MAX, OTHERS_NOT_VISIBLE, OUTSIDE_ACCESS, dataToolHandlers, figuresWithin, readAiAssignments, readFollowUps, readFormDeletions, readAiTraining, readKnowledgeDocuments, readManagerResources, readReviews, readStats, readVideos, readWhatsNew, salonsForTurn, type DataToolDeps, type FollowUpQueueRead, type FormDeletionRow } from "./data-tools";
 
 /*
  * The agent loop's app data tools (QA, 15 Nov 2026): read_reviews and read_stats, with Pau's scope rules enforced in
@@ -108,6 +108,7 @@ function deps(overrides: Partial<DataToolDeps> = {}) {
     loadVideos: async () => [],
     loadManagerResources: () => [],
     loadTrainingCatalog: async () => ({ tracks: [], modules: [], lessons: [] }),
+    loadKnowledgeDocuments: async () => [],
     fetchDailyStatsGuide: vi.fn(async () => ({
       ok: true as const,
       grounding: { role: {} as never, documentId: "d", documentTitle: "DAILY STATS INTERPRETATION FRAMEWORK", matchedBy: "tag" as const, rows: [{ chunk_id: "c1", document_id: "d", document_title: "DAILY STATS INTERPRETATION FRAMEWORK", category: "operations", locator: "Section 2", content: "Lead with the one metric furthest from goal.", similarity: 0.9 } as never], presentGroups: [] },
@@ -310,7 +311,8 @@ describe("the scope rules", () => {
     // Pau, 26 Nov 2026 added read_whats_new, the What's New page's list (CLAUDE.md §5). On purpose.
     // Board f039 part 2 (26 Nov 2026) added read_videos, read_manager_resources and read_ai_training (the Videos, Manager
     // Resources and AI Training pages). On purpose.
-    expect(Object.keys(dataToolHandlers(ctx(MANAGER, "")))).toEqual(["read_reviews", "read_stats", "read_form_deletions", "read_ai_assignments", "read_hr_approvals", "read_follow_ups", "read_calendar", "propose_reminder", "read_whats_new", "read_videos", "read_manager_resources", "read_ai_training"]);
+    // Pau, 27 Nov 2026 added read_knowledge_documents, the Knowledge Base's document list, administrators only. On purpose.
+    expect(Object.keys(dataToolHandlers(ctx(MANAGER, "")))).toEqual(["read_reviews", "read_stats", "read_form_deletions", "read_ai_assignments", "read_hr_approvals", "read_follow_ups", "read_calendar", "propose_reminder", "read_whats_new", "read_videos", "read_manager_resources", "read_ai_training", "read_knowledge_documents"]);
   });
 });
 
@@ -567,5 +569,54 @@ describe("read_ai_training (board f039 part 2)", () => {
     const refused = (await readAiTraining(ctx(MANAGER, "lessons?", "nobody" as Role), {}, deps({ loadTrainingCatalog: async () => CATALOG }).deps)) as Out;
     expect(refused.refused).toBeTruthy();
     expect(refused.lessons).toBeUndefined();
+  });
+});
+
+describe("read_knowledge_documents (Pau, 27 Nov 2026: the Knowledge Base's document list)", () => {
+  const doc = (id: string, title: string, status: "ready" | "processing" | "needs_review" | "failed" | "superseded", updatedAt: string, extra: Record<string, unknown> = {}) => ({
+    id, title, description: `${title}, the invented edition.`, category: "policies_compliance", fileName: `${id}.pdf`, fileType: "pdf", sizeBytes: 1000, characterCount: 500,
+    status, source: "woven", version: 2, previousVersions: [], uploadedBy: "Invented Admin", uploadedAt: "2026-10-01T10:00:00Z", updatedAt, indexed: status === "ready", tags: [], ...extra,
+  });
+  const DOCS = [
+    doc("d1", "Invented Policy Manual", "ready", "2026-11-20T10:00:00Z"),
+    doc("d2", "Invented Cleaning Guide", "failed", "2026-11-25T10:00:00Z", { failureReason: "The file had no readable text.", source: "upload" }),
+    doc("d3", "Invented Bed Checklist", "processing", "2026-11-26T10:00:00Z"),
+  ] as never;
+  type Out = { documents?: { title: { untrusted_text: string }; status: string; source: string; last_updated: string; why_it_failed?: { untrusted_text: string } }[]; by_status?: Record<string, number>; total?: number; refused?: string; error?: string };
+  const read = (role: Role, input: Record<string, unknown> = {}, load = async () => DOCS) => {
+    const seen: string[] = [];
+    return readKnowledgeDocuments(ctx(ADMIN, "which documents do we have?", role), input, deps({ loadKnowledgeDocuments: async (scopeId) => (seen.push(scopeId), load()) }).deps).then((out) => ({ out: out as Out, seen }));
+  };
+
+  it("an administrator gets every document, newest change first, with its status, source, date and a failed one's reason, and the counts by status", async () => {
+    const { out, seen } = await read("admin");
+    expect(seen, "read for this deployment's own corpus").toEqual(["scope-1"]);
+    expect(out.documents?.map((entry) => entry.title.untrusted_text)).toEqual(["Invented Bed Checklist", "Invented Cleaning Guide", "Invented Policy Manual"]);
+    expect(out.documents?.[1]).toMatchObject({ status: "Failed", source: "Uploaded", why_it_failed: { untrusted_text: "The file had no readable text." } });
+    expect(out.documents?.[2]).toMatchObject({ status: "Ready", source: "Woven" });
+    expect(out.by_status).toEqual({ Ready: 1, Processing: 1, Failed: 1 });
+    expect(out.total).toBe(3);
+  });
+
+  it("query and status narrow the list; the counts still cover every document", async () => {
+    const manual = (await read("admin", { query: "the policy manual" })).out;
+    expect(manual.documents?.map((entry) => entry.title.untrusted_text)).toEqual(["Invented Policy Manual"]);
+    const failed = (await read("admin", { status: "failed" })).out;
+    expect(failed.documents?.map((entry) => entry.title.untrusted_text)).toEqual(["Invented Cleaning Guide"]);
+    expect(failed.by_status).toEqual({ Ready: 1, Processing: 1, Failed: 1 });
+  });
+
+  it("a role with View knowledge but no admin console (a Salon Director) is refused and reads nothing, as the page refuses it", async () => {
+    const { out, seen } = await read("salon_director");
+    expect(out.refused).toBeTruthy();
+    expect(out.documents).toBeUndefined();
+    expect(seen, "nothing was read").toEqual([]);
+  });
+
+  it("a read that fails names no document and no count", async () => {
+    const { out } = await read("admin", {}, async () => { throw new Error("down"); });
+    expect(out.error).toBeTruthy();
+    expect(out.documents).toBeUndefined();
+    expect(out.by_status).toBeUndefined();
   });
 });
