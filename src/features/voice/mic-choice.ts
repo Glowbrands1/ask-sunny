@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
  * ============================================================================
@@ -12,6 +12,12 @@ import { useCallback, useEffect, useState } from "react";
  * "Microphone" choice lists them (their names appear once the browser has been allowed to use a microphone, so the
  * list is read again after the first recording starts and whenever a device is plugged in or out). The choice is kept
  * in this browser only. A saved microphone that is no longer there is never forced: the default is used instead.
+ *
+ * The owner again, 27 Nov 2026: "i still cant pick a microfphone to use". Until the browser has been allowed a
+ * microphone it lists one nameless device with no id (Chrome, Safari), so there was nothing to choose and the choice was
+ * hidden. Now the choice always shows while voice is on; opening it reads the list again, and when the names are still
+ * hidden it asks for the microphone once (the browser's own prompt), then reads the list with the names. The options
+ * are dark on light, readable in every browser's own dropdown.
  *
  * And "I did not hear anything" is said only when the provider heard nothing. When the microphone itself sent no
  * sound at all (its level stayed at zero, which a quiet USB microphone does not do), the message names the microphone
@@ -45,12 +51,36 @@ export function saveMicrophone(id: string | null): void {
   }
 }
 
+export interface MicrophoneList {
+  readonly microphones: Microphone[];
+  /** The browser hides the microphones' names (and ids) until it has been allowed one. */
+  readonly namesHidden: boolean;
+}
+
 /** The microphones this browser lists (ids it hides before permission are left out). */
-export async function listMicrophones(): Promise<Microphone[]> {
-  const devices = await navigator.mediaDevices?.enumerateDevices?.().catch(() => []);
-  return (devices ?? [])
-    .filter((device) => device.kind === "audioinput" && device.deviceId && device.deviceId !== "default" && device.deviceId !== "communications")
+export async function readMicrophones(): Promise<MicrophoneList> {
+  const devices = (await navigator.mediaDevices?.enumerateDevices?.().catch(() => [])) ?? [];
+  const inputs = devices.filter((device) => device.kind === "audioinput");
+  const microphones = inputs
+    .filter((device) => device.deviceId && device.deviceId !== "default" && device.deviceId !== "communications")
     .map((device, index) => ({ id: device.deviceId, label: device.label || `Microphone ${index + 1}` }));
+  const namesHidden = inputs.length > 0 && inputs.every((device) => !device.label);
+  return { microphones, namesHidden };
+}
+
+export async function listMicrophones(): Promise<Microphone[]> {
+  return (await readMicrophones()).microphones;
+}
+
+/** Asks for the microphone (the browser's prompt) only so it shows the microphones' names; nothing is recorded. */
+async function allowMicrophoneNames(): Promise<boolean> {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    for (const track of stream.getTracks()) track.stop();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function deviceGone(error: unknown): boolean {
@@ -125,11 +155,24 @@ export function measurePeak(stream: MediaStream): () => number | null {
 export function useMicrophones() {
   const [microphones, setMicrophones] = useState<Microphone[]>([]);
   const [saved, setSaved] = useState<string | null>(() => (typeof window === "undefined" ? null : readSavedMicrophone()));
+  const asked = useRef(false);
 
   const refresh = useCallback(async () => {
     if (typeof navigator === "undefined" || !navigator.mediaDevices?.enumerateDevices) return;
     setMicrophones(await listMicrophones());
   }, []);
+
+  /** The choice is opened: read the list again; when the names are hidden, ask for the microphone once, then read it. */
+  const open = useCallback(async () => {
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.enumerateDevices) return;
+    const first = await readMicrophones();
+    setMicrophones(first.microphones);
+    if (!first.namesHidden || asked.current) return;
+    asked.current = true;
+    if (await allowMicrophoneNames()) setMicrophones(await listMicrophones());
+  }, []);
+
+  const supported = typeof navigator !== "undefined" && typeof navigator.mediaDevices?.enumerateDevices === "function";
 
   // The list now, and again whenever a device is plugged in or out (state is set only when the browser answers).
   useEffect(() => {
@@ -156,5 +199,5 @@ export function useMicrophones() {
 
   // A saved microphone that is not plugged in now: the default is used (the choice comes back with the device).
   const chosen = saved && microphones.some((microphone) => microphone.id === saved) ? saved : null;
-  return { microphones, chosen, choose, refresh };
+  return { microphones, chosen, choose, refresh, open, supported };
 }

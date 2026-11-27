@@ -65,7 +65,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-const HINT = "Voice sends your recording to AssemblyAI to make text.";
+const HINT = "Voice turns your recording into text.";
 const screenWith = (enabled: boolean) =>
   render(
     <VoiceAccessProvider enabled={enabled} userKey="user-ada">

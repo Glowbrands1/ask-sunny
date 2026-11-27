@@ -63,7 +63,7 @@ function useFakeStore() {
 }
 vi.mock("@/lib/store/app-store", () => ({ useAppStore: () => useFakeStore(), useOptionalAppStore: () => useFakeStore() }));
 
-const HINT = "Voice sends your recording to AssemblyAI to make text.";
+const HINT = "Voice turns your recording into text.";
 const asks: ClientAskRequest[] = [];
 let hold: Promise<void> | null = null;
 vi.mock("@/lib/ai", () => ({
