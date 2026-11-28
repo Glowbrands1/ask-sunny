@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { adviceNotForm } from "./agent-loop/advice-not-form";
 import { agentLoopRules } from "./agent-loop/prompt";
 import { rulesBookText } from "./agent-loop/rules-book";
-import { asksCoachingHowTo, coachingAnswerShape, coachingCardPrepRule, coachingHowToNote, coachingHowToRule, completeShape, partsOf, SIGNATURE_RULE, withCoachingHowTo } from "./coaching-how-to";
+import { asksCoachingHowTo, asksHistoryFirstAdvice, coachingAnswerShape, coachingCardPrepRule, coachingHowToNote, coachingHowToRule, completeShape, HISTORY_FIRST_LINE, historyFirstNote, partsOf, SIGNATURE_RULE, withCoachingHowTo } from "./coaching-how-to";
 import { buildSystemPrompt } from "./prompts";
 
 /*
@@ -127,5 +127,45 @@ describe("asksCoachingHowTo, with adviceNotForm", () => {
     expect(coachingHowToNote({ ...all, rolePlay: false })).toMatch(/is missing a role-play to run together/);
     expect(coachingHowToNote({ ...all, plan: false })).toMatch(/is missing a measurable action plan with a follow-up date/);
     expect(coachingHowToNote({ outline: false, script: false, rolePlay: false, plan: false })).toMatch(/JBA Policy Manual/);
+  });
+});
+
+/*
+ * The owner, 28 Nov 2026: "yes please both apps, same with CA". Coaching or corrective-action advice that names an
+ * employee starts from that person's forms on file.
+ */
+describe("advice about a named employee starts from their forms on file", () => {
+  it.each([
+    "how do I coach Odile Fenwick who keeps showing up late",
+    "should Odile get a written warning for being late again?",
+    "tips for talking to odile fenwick about being late",
+    "is it time to write up Odile?",
+    "what should my next step be with Odile? she was late again",
+  ])("%s: coaching or corrective-action advice", (said) => {
+    expect(asksHistoryFirstAdvice(said)).toBe(true);
+  });
+
+  it.each([
+    "write up Odile for being late today",
+    "can you make a CA for Odile?",
+    "can you write Odile up for being late?",
+    "what's the PTO policy?",
+    "what time does the salon open on Sunday?",
+  ])("%s: not advice of that kind (a form request, or another topic)", (said) => {
+    expect(asksHistoryFirstAdvice(said)).toBe(false);
+  });
+
+  it("is in the coaching rule, both prompts, and the rules book says such advice asks", () => {
+    expect(coachingHowToRule("salon")).toContain(HISTORY_FIRST_LINE);
+    expect(HISTORY_FIRST_LINE).toMatch(/that advice also asks about that person's forms on file: look at them first/);
+    expect(HISTORY_FIRST_LINE).toMatch(/never decide the level for the manager/);
+    expect(rulesBookText()).toMatch(/Coaching or corrective-action advice that names an employee[^.]*asks about that person's forms on file too/);
+  });
+
+  it("the hand-back note names the person and asks for find_past_forms with the manager's words", () => {
+    const note = historyFirstNote("Odile Fenwick");
+    expect(note).toMatch(/^\[app check\]/);
+    expect(note).toMatch(/Call find_past_forms for Odile Fenwick now \(forms_on_file_evidence: the manager's words that name Odile Fenwick\)/);
+    expect(note).toMatch(/Propose no form/);
   });
 });
