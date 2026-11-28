@@ -7,6 +7,7 @@ import { loadReviewsPage } from "@/features/reviews/load";
 import { demoRuntime } from "@/lib/demo/runtime";
 import { ReviewsScreen } from "@/features/reviews/reviews-screen";
 import { requirePagePermission } from "@/lib/auth/page";
+import { noteAppUsage } from "@/lib/analytics/app-usage";
 import { isDemoMode } from "@/lib/config/runtime";
 
 export const metadata: Metadata = {
@@ -37,7 +38,8 @@ export default async function ReviewsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requirePagePermission("view_google_reviews");
+  const identity = await requirePagePermission("view_google_reviews");
+  noteAppUsage(identity, "google_reviews");
 
   const props = await loadReviewsPage(await searchParams);
 

@@ -35,6 +35,7 @@ import { mayReadHrDecision } from "@/lib/forms/hr-approval-rules";
 import { ACTIVE_BRAND } from "@/lib/brand";
 import { mayUseEmployeeFormSearch, parseEmployeeSearchStatus, searchFormsByEmployee, type EmployeeFormSearch } from "@/lib/forms/employee-form-search";
 import { EmployeeFormSearchBox, EmployeeFormSearchResults } from "@/form-revisions/employee-form-search";
+import { noteAppUsage } from "@/lib/analytics/app-usage";
 
 export const metadata: Metadata = { title: "Form Monitoring" };
 export const dynamic = "force-dynamic";
@@ -62,6 +63,7 @@ export default async function FormMonitoringPage({
   searchParams: Promise<{ view?: string; followup?: string; app?: string; employee?: string; status?: string }>;
 }) {
   const identity = await requirePagePermission("view_form_monitoring");
+  noteAppUsage(identity, "form_monitoring");
 
   const { view: requestedView, followup: requestedFollowUp, app: requestedApp, employee: requestedEmployee, status: requestedStatus } = await searchParams;
   /*

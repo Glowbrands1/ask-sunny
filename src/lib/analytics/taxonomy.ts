@@ -47,6 +47,12 @@ export const ACTIVITY_FEATURES = [
   "knowledge",
   "reports",
   "videos",
+  /* Pau, 28 Nov 2026: the app's other areas, counted from opening them and from what they record. */
+  "l10",
+  "form_monitoring",
+  "ai_training",
+  "google_reviews",
+  "calendar",
 ] as const;
 
 export type ActivityFeature = (typeof ACTIVITY_FEATURES)[number];
@@ -77,6 +83,12 @@ export const ACTIVITY_CATEGORIES = [
   "document_search",
   /* --- Videos ------------------------------------------------------------ */
   "training_video",
+  /* --- The other areas of the app, one category each (Pau, 28 Nov 2026) - */
+  "l10_meeting",
+  "form_monitoring",
+  "ai_training",
+  "google_reviews",
+  "calendar",
   /* --- The residuals, and they are deliberately two ---------------------- */
   "general_guidance",
   "form_request",
@@ -91,6 +103,11 @@ export const FEATURE_LABEL: Record<ActivityFeature, string> = {
   knowledge: "Knowledge Base",
   reports: "Reports",
   videos: "Videos",
+  l10: "L10 Meetings",
+  form_monitoring: "Form Monitoring",
+  ai_training: "AI Training",
+  google_reviews: "Google Reviews",
+  calendar: "Calendar",
 };
 
 export const CATEGORY_LABEL: Record<ActivityCategory, string> = {
@@ -114,6 +131,11 @@ export const CATEGORY_LABEL: Record<ActivityCategory, string> = {
   document_upload: "Document uploads",
   document_search: "Knowledge searches",
   training_video: "Training videos",
+  l10_meeting: "L10 meetings",
+  form_monitoring: "Form Monitoring",
+  ai_training: "AI Training",
+  google_reviews: "Google Reviews",
+  calendar: "Calendar",
   general_guidance: "General guidance",
   form_request: "Form requests (family unknown)",
   unclassified: "Unclassified",
@@ -141,6 +163,11 @@ export const CATEGORY_FEATURE: Record<ActivityCategory, ActivityFeature> = {
   document_upload: "knowledge",
   document_search: "knowledge",
   training_video: "videos",
+  l10_meeting: "l10",
+  form_monitoring: "form_monitoring",
+  ai_training: "ai_training",
+  google_reviews: "google_reviews",
+  calendar: "calendar",
   general_guidance: "chat",
   form_request: "chat",
   unclassified: "chat",
