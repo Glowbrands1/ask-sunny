@@ -40,6 +40,10 @@ afterEach(() => {
 
 /* Changed on purpose (Pau, 23 Nov 2026, port of Ask Bubbles 733e6738): each row now has an × whose name holds the row's
  * title ("Remove notification: <title>"), so a row is found by a name that starts with its title. */
+/* Read rows are under the History tab (Pau, 28 Nov 2026: "for notification can we get history tab"). */
+const history = () => fireEvent.click(screen.getByRole("tab", { name: "History" }));
+const unreadTab = () => fireEvent.click(screen.getByRole("tab", { name: /^Unread/ }));
+
 describe("the notification bell", () => {
   it("shows how many are unread", () => {
     render(<NotificationBell data={data} />);
@@ -130,6 +134,7 @@ describe("removing notifications from the bell", () => {
   it("removing a read one leaves the unread count as it was", async () => {
     render(<NotificationBell data={data} />);
     open();
+    history(); // changed on purpose: a read row is under History now
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Remove notification: Old one" }));
     });
@@ -213,10 +218,12 @@ describe("marking a notification unread so it stays", () => {
   it("a read row can be marked unread: it goes bold, the count goes up, and it is not opened or removed", async () => {
     render(<NotificationBell data={data} />);
     open();
+    history(); // changed on purpose: a read row is under History, and marked unread it goes back to Unread
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Mark as unread: Old one" }));
     });
     expect(markUnread).toHaveBeenCalledWith(["n0"]);
+    unreadTab();
     expect(push).not.toHaveBeenCalled();
     expect(dismiss).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Notifications, 3 unread" })).toBeTruthy();
@@ -229,21 +236,25 @@ describe("marking a notification unread so it stays", () => {
     render(<NotificationBell data={data} />);
     open();
     expect(screen.queryByRole("button", { name: "Mark as unread: Rowan Pike submitted their work" })).toBeNull();
+    history(); // changed on purpose: the read row is under History
     expect(screen.getByRole("button", { name: "Mark as unread: Old one" })).toBeTruthy();
   });
 
   it("opening it reads it again, and it can be marked unread once more", async () => {
     render(<NotificationBell data={data} />);
     open();
+    history(); // changed on purpose: the read row is under History
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Mark as unread: Old one" }));
     });
+    unreadTab();
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /^Old one/ }));
     });
     expect(markRead).toHaveBeenCalledWith(["n0"]);
     expect(screen.getByRole("button", { name: "Notifications, 2 unread" })).toBeTruthy();
     open();
+    history();
     expect(screen.getByRole("button", { name: "Mark as unread: Old one" })).toBeTruthy();
   });
 
@@ -253,6 +264,7 @@ describe("marking a notification unread so it stays", () => {
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Mark all as read" }));
     });
+    history(); // changed on purpose: once read, every row is under History
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Mark as unread: Old one" }));
     });
@@ -348,5 +360,37 @@ describe("ability to click from notification that they have completed it like CO
     render(<NotificationBell data={data} />);
     fireEvent.click(screen.getByRole("button", { name: /Notifications/ }));
     expect(screen.queryByRole("button", { name: "Completed" })).toBeNull();
+  });
+});
+
+/*
+ * Pau, 28 Nov 2026: "for notification can we get history tab unread when we click it pls". The bell opens on Unread;
+ * History holds what was read; a row opened is read, and the next time the bell opens it is under History.
+ */
+describe("for notification can we get history tab unread when we click it pls", () => {
+  const open = () => fireEvent.click(screen.getByRole("button", { name: /Notifications/ }));
+
+  it("opens on Unread, with the read ones under History", () => {
+    render(<NotificationBell data={data} />);
+    open();
+    expect(screen.getByRole("tab", { name: "Unread (2)" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("button", { name: /^Rowan Pike submitted their work/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Old one/ })).toBeNull();
+    history();
+    expect(screen.getByRole("button", { name: /^Old one/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Rowan Pike submitted their work/ })).toBeNull();
+  });
+
+  it("a row clicked is read, and is under History the next time the bell opens", async () => {
+    render(<NotificationBell data={data} />);
+    open();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /^Rowan Pike submitted their work/ }));
+    });
+    expect(markRead).toHaveBeenCalledWith(["n2"]);
+    open();
+    expect(screen.queryByRole("button", { name: /^Rowan Pike submitted their work/ })).toBeNull();
+    history();
+    expect(screen.getByRole("button", { name: /^Rowan Pike submitted their work/ })).toBeTruthy();
   });
 });
