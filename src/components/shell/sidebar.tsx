@@ -165,6 +165,7 @@ export function SidebarNav({
                     aria-current={active ? "page" : undefined}
                     className={cn(
                       "group relative flex items-center gap-2.5 rounded-full text-[13.5px] font-semibold transition-colors",
+                      item.whatsNew && "whats-new-glitter",
                       item.whatsNew && whatsNewUnseen && "whats-new-shake",
                       isCollapsed ? "justify-center px-0 py-2.5" : "px-3.5 py-2.5",
                       /*
@@ -192,6 +193,8 @@ export function SidebarNav({
                       )}
                       aria-hidden
                     />
+                    {/* The third glitter sparkle (`.whats-new-glitter` in globals.css; the owner, 28 Nov 2026). */}
+                    {item.whatsNew ? <span aria-hidden className="whats-new-glitter-third" /> : null}
                     {!isCollapsed ? (
                       <span className="truncate">{item.label}</span>
                     ) : (
