@@ -994,6 +994,8 @@ export async function readWhatsNew(context: DataToolContext, input: { since?: un
         tag: entry.tag,
         title: entry.title,
         ...(entry.audience ? { only_for: entry.audience } : {}),
+        ...(entry.lead ? { lead: entry.lead } : {}),
+        ...(entry.beta ? { beta: "Still being tested (Beta): say so when you mention it." } : {}),
         ...(entry.before ? { before: entry.before } : {}),
         now: entry.now,
         how_to_use: entry.howToUse,
