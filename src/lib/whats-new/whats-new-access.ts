@@ -28,3 +28,18 @@ function whatsNewUsers(): string[] {
     .map((entry) => entry.trim().toLowerCase())
     .filter((entry) => entry.length > 0);
 }
+
+/**
+ * Is this verified sign-in on HR's notice list (WOVEN_HR_NOTIFY_EMAILS: the people who hear of every Woven hire and
+ * termination)? What's New shows them the entries meant for admins and HR (`audience: "admins_and_hr"`). Server-only,
+ * like WHATS_NEW_USERS; the email is always the verified session's.
+ */
+export function wovenHrNotifyFor({ email, verified }: { readonly email?: string | null; readonly verified?: boolean | null }): boolean {
+  if (verified !== true) return false;
+  const signedIn = (email ?? "").trim().toLowerCase();
+  if (!signedIn) return false;
+  return (process.env.WOVEN_HR_NOTIFY_EMAILS ?? "")
+    .split(/[,;\s]+/)
+    .map((entry) => entry.trim().toLowerCase())
+    .includes(signedIn);
+}

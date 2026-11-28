@@ -47,7 +47,7 @@ export function whatsNewEnabled(): boolean {
 export type WhatsNewTag = "New" | "Improved";
 /** The red "HR ONLY" / "ADMIN ONLY" badge (the owner, 28 Nov 2026). A label only: who SEES the entry is still
  * permission / adminConsole / roles. */
-export type WhatsNewAudience = "HR only" | "Admin only";
+export type WhatsNewAudience = "HR only" | "Admin only" | "Admin and HR only";
 
 export interface WhatsNewEntry {
   readonly tag: WhatsNewTag;
@@ -63,6 +63,11 @@ export interface WhatsNewEntry {
   readonly permission?: Permission;
   readonly adminConsole?: true;
   readonly roles?: readonly Role[];
+  /**
+   * visibleTo "admins_and_hr": only the admin console roles and the people on HR's notice list (WOVEN_HR_NOTIFY_EMAILS, read on
+   * the server: `wovenHrNotifyFor`). For a feature HR has by email, not by role (Pau, 28 Nov 2026: "ADMIN and HR Only").
+   */
+  readonly visibleTo?: "admins_and_hr";
   readonly image?: { readonly src: string; readonly alt: string };
 }
 
@@ -73,6 +78,32 @@ export interface WhatsNewRelease {
 }
 
 export const WHATS_NEW: readonly WhatsNewRelease[] = [
+  {
+    // HOLD (28 Nov 2026): merge only once the Woven hire and termination notices are merged (#1393) and switched on in
+    // production (NEW_HIRE_NOTICES_ENABLED); date this release on the day they go live.
+    date: "2026-11-28",
+    summary: "Hires and terminations from Woven in your Notifications, for administrators and HR.",
+    entries: [
+      {
+        tag: "New",
+        title: "New hires from Woven in your Notifications",
+        before: "You found out about a new hire only when someone told you.",
+        now: "When Woven records a new hire, a notice says who they are, their Woven email, their position and salon, and any other salons they work at. Administrators, HR, and the Salon Director and Assistant Salon Director of that salon get it. Tanning Consultants are not announced.",
+        howToUse: "Open the Notifications bar under Overview. Administrators can press the notice to open the Employee Directory.",
+        audience: "Admin and HR only",
+        visibleTo: "admins_and_hr",
+      },
+      {
+        tag: "New",
+        title: "Terminations from Woven, with their sign-in status",
+        before: "A termination in Woven reached Ask Sunny without anyone being told.",
+        now: "When Woven records a termination, HR gets a notice with the termination date, position and salon, and whether the person's Ask Sunny sign-in is already turned off. If it is still on, the notice says so, so an administrator can turn it off in Users.",
+        howToUse: "Open the Notifications bar under Overview and check the sign-in line on each termination.",
+        audience: "Admin and HR only",
+        visibleTo: "admins_and_hr",
+      },
+    ],
+  },
   {
     date: "2026-11-27",
     summary: "One calendar for follow-ups and every L10, talking to Sunny, attaching files, the exit form's address, and a better phone layout.",
@@ -439,9 +470,14 @@ export const WHATS_NEW: readonly WhatsNewRelease[] = [
  * The releases a role may see, newest first, each with only the entries it may open (a release left with none is
  * dropped). A null role, the preview with no sign-in enforced: every entry.
  */
-export function whatsNewFor(role: Role | null, can: (role: Role, permission: Permission) => boolean, releases: readonly WhatsNewRelease[] = WHATS_NEW): WhatsNewRelease[] {
+export function whatsNewFor(
+  role: Role | null,
+  can: (role: Role, permission: Permission) => boolean,
+  releases: readonly WhatsNewRelease[] = WHATS_NEW,
+  viewer: { readonly hr?: boolean } = {},
+): WhatsNewRelease[] {
   return [...releases]
     .sort((a, b) => b.date.localeCompare(a.date))
-    .map((release) => ({ ...release, entries: release.entries.filter((entry) => role === null || ((!entry.permission || can(role, entry.permission)) && (!entry.adminConsole || canAccessAdminConsole(role)) && (!entry.roles || entry.roles.includes(role)))) }))
+    .map((release) => ({ ...release, entries: release.entries.filter((entry) => role === null || ((!entry.permission || can(role, entry.permission)) && (!entry.adminConsole || canAccessAdminConsole(role)) && (!entry.roles || entry.roles.includes(role)) && (entry.visibleTo !== "admins_and_hr" || canAccessAdminConsole(role) || viewer.hr === true))) }))
     .filter((release) => release.entries.length > 0);
 }

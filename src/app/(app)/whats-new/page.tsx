@@ -6,7 +6,7 @@ import { WhatsNewScreen } from "@/features/whats-new/whats-new-screen";
 import { ACTIVE_BRAND } from "@/lib/brand";
 import { requirePagePermission } from "@/lib/auth/page";
 import { activePermissionMatrix, hasPermission } from "@/lib/permissions";
-import { whatsNewVisibleFor } from "@/lib/whats-new/whats-new-access";
+import { whatsNewVisibleFor, wovenHrNotifyFor } from "@/lib/whats-new/whats-new-access";
 
 export const metadata: Metadata = {
   title: "What's New",
@@ -27,6 +27,6 @@ export default async function WhatsNewPage() {
   // my own page only"), checked against the gate's verified identity; a 404 for everyone else.
   if (!whatsNewVisibleFor(identity ?? {})) notFound();
   const matrix = activePermissionMatrix();
-  const releases = whatsNewFor(identity?.role ?? null, (role, permission) => hasPermission(matrix, role, permission), WHATS_NEW);
+  const releases = whatsNewFor(identity?.role ?? null, (role, permission) => hasPermission(matrix, role, permission), WHATS_NEW, { hr: wovenHrNotifyFor(identity ?? {}) });
   return <WhatsNewScreen releases={releases} appName={ACTIVE_BRAND.productName} />;
 }
