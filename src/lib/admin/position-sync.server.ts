@@ -87,6 +87,29 @@ export async function unsettledEmployees(latestRunId: string | null): Promise<Se
   return out;
 }
 
+/**
+ * Woven EmployeeIDs whose position the sync saw change on or after `since` (YYYY-MM-DD): people promoted into the role
+ * their new account was created for, who get the sign-in link as a new hire does.
+ */
+export async function promotedSince(since: string): Promise<Set<string>> {
+  const db = getSupabaseAdmin();
+  const { data, error } = await db
+    .from("employee_directory_changes")
+    .select("employee_id")
+    .eq("change_kind", "position_changed")
+    .gte("detected_at", `${since}T00:00:00Z`)
+    .limit(2000);
+  if (error) throw new Error(`the position changes could not be read (${error.code ?? "error"})`);
+  const rowIds = [...new Set(((data ?? []) as { employee_id: unknown }[]).map((r) => String(r.employee_id)))];
+  const out = new Set<string>();
+  for (let i = 0; i < rowIds.length; i += 200) {
+    const { data: rows, error: readError } = await db.from("employee_access_directory").select("external_employee_id").in("id", rowIds.slice(i, i + 200));
+    if (readError) throw new Error(`the directory could not be read (${readError.code ?? "error"})`);
+    for (const r of (rows ?? []) as { external_employee_id: unknown }[]) out.add(String(r.external_employee_id));
+  }
+  return out;
+}
+
 /* ------------------------------------------------------- the real services -- */
 
 async function readActor(email: string): Promise<DirectoryActor | null> {

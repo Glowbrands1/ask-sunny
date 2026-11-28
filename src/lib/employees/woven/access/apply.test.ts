@@ -638,6 +638,25 @@ describe("NEW_HIRE_INVITES_ENABLED", () => {
     ).toMatchObject({ sent: 0, waiting: 0 });
   });
 
+  /*
+   * Pau, 28 Nov 2026: "where there is a position change it should detect it and give the correct link to the person
+   * with correct position and location" — a Tanning Consultant hired in January and promoted to Assistant Salon
+   * Director now gets the link; one hired before the date and not moved since still does not.
+   */
+  it("a person promoted since the date gets the link as a new hire does, whatever their hire date", async () => {
+    const plan = planWithHires([employee("E1", { hireDate: "2026-01-19" }), employee("E2", { hireDate: "2026-01-20" })], [waiting(1, "E1"), waiting(2, "E2")]);
+    const f = fakes(plan);
+    const promoted = vi.fn(async () => new Set(["E1"]));
+    const outcome = await sendNewHireInvites(
+      { config: newHireConfig(2), access: config(), now: NOW },
+      { loadPlan: async () => plan, send: (id, email) => sendInviteEmail(id, email, REDIRECT, f.deps, "test"), linkIsLive: async () => true, promoted },
+    );
+    expect(outcome).toMatchObject({ sent: 1, waiting: 0 });
+    expect(promoted).toHaveBeenCalledWith(newHireConfig(2).rule!.since);
+    expect(f.auth.inviteUserByEmail).toHaveBeenCalledTimes(1);
+    expect(f.auth.inviteUserByEmail).toHaveBeenCalledWith("e1@gmail.com", { redirectTo: REDIRECT });
+  });
+
   it("does not open the link when nobody is waiting", async () => {
     const plan = planWithHires([employee("E1", { hireDate: "2026-09-30" })], [waiting(1, "E1")]);
     const linkIsLive = vi.fn(async () => true);
