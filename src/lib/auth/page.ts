@@ -2,6 +2,7 @@ import "server-only";
 
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { cache } from "react";
 
 import { isDemoMode } from "@/lib/config/runtime";
 import {
@@ -81,8 +82,18 @@ export function defaultLandingForRole(role: Role): string {
   return "/login";
 }
 
-/** Resolves the caller for a page render, or null. Never throws, never redirects. */
-export async function pageIdentity(): Promise<AuthenticatedIdentity | null> {
+/**
+ * Resolves the caller for a page render, or null. Never throws, never redirects.
+ *
+ * ONCE PER REQUEST (audit, 28 Nov 2026). The root layout, the app layout (five
+ * times: forms access, the rail, What's New, the bell, the shell) and the page's
+ * own guard each asked, and every ask was a Supabase Auth `getUser()` round trip
+ * plus an `app_users` read: seven per page load. On 27 Nov one `/chat` load hit
+ * Supabase's auth rate limit six times over and the manager got an error page.
+ * React's `cache()` shares one answer across a single server render; a route
+ * handler or a new request still asks afresh, so a sign-out is seen at once.
+ */
+export const pageIdentity = cache(async function pageIdentity(): Promise<AuthenticatedIdentity | null> {
   /*
    * `headers()` rather than a Request, because a Server Component has no
    * Request object. `AuthProvider.identify()` is defined against a plain
@@ -91,7 +102,7 @@ export async function pageIdentity(): Promise<AuthenticatedIdentity | null> {
    */
   const store = await headers();
   return getAuthProvider().identify({ headers: new Headers(store) });
-}
+});
 
 /**
  * The signed-in caller, or a redirect to the login screen.
