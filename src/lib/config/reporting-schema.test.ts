@@ -145,7 +145,9 @@ function googleReviewFiles(): { name: string; sql: string }[] {
  * number — the "do not invent a second salon roster" rule obeyed once more. It
  * may read a reporting table and may never create, alter or drop one.
  */
-const EMPLOYEE_DIRECTORY_MIGRATION_FRAGMENTS = ["woven_employee_directory", "woven_employee_role_overrides", "woven_account_lifecycle"] as const;
+// woven_provision_more_roles (28 Nov 2026) replaces the lifecycle's provision function, which reads public.salons to
+// check a salon area: it belongs with the lifecycle migration, not the knowledge domain.
+const EMPLOYEE_DIRECTORY_MIGRATION_FRAGMENTS = ["woven_employee_directory", "woven_employee_role_overrides", "woven_account_lifecycle", "woven_provision_more_roles"] as const;
 
 function employeeDirectoryFiles(): { name: string; sql: string }[] {
   return migrationFiles().filter((file) =>
