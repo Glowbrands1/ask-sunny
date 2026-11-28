@@ -38,7 +38,7 @@ describe("What's New", () => {
   it("every entry is tagged New or Improved and says Before, Now and How to use it, in plain words", () => {
     for (const entry of ENTRIES) {
       expect(["New", "Improved"], entry.title).toContain(entry.tag);
-      for (const part of [entry.before, entry.now, entry.howToUse]) {
+      for (const part of [entry.before, entry.now, entry.howToUse, entry.note].filter((p): p is string => p !== undefined)) {
         expect(part.trim().length, entry.title).toBeGreaterThan(10);
         expect(part, entry.title).not.toMatch(CODE_WORDS);
       }
@@ -89,6 +89,16 @@ describe("What's New", () => {
     // The Employee Directory's "Show address" is the admin console roles' only.
     const directory = ENTRIES.find((candidate) => candidate.title === "Employee address in the Employee Directory")!;
     for (const role of ROLES.filter((r) => whatsNewFor(r, can).some((release) => release.entries.includes(directory)))) expect(canAccessAdminConsole(role), role).toBe(true);
+  });
+
+  it("the owner's red badges and notes (28 Nov 2026) are on their entries", () => {
+    const find = (title: string) => ENTRIES.find((candidate) => candidate.title === title);
+    expect(find("Search every form for one employee")?.audience).toBe("HR only");
+    expect(find("Employee address in the Employee Directory")?.audience).toBe("Admin only");
+    expect(find("Employee address in the Employee Directory")?.note).toMatch(/no address in Woven/);
+    expect(find("The Corrective Action history box fills itself")?.note).toMatch(/as long as the employee has history/);
+    expect(find("Missing fields explained at Finalize")?.before).toBeUndefined();
+    expect(find("Delete several drafts at once"), "taken off What's New").toBeUndefined();
   });
 
   it("a screenshot is a file under public/whats-new/<its release's date>/, small, with alt text", () => {

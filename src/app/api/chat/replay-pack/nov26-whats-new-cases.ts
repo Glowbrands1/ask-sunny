@@ -100,7 +100,7 @@ export const NOV26_WHATS_NEW_CASES: ReplayCase[] = [
       const titles = updates.map((update) => update.title);
       const sinceTheWeek = visibleTo("admin").filter((release) => release.date >= "2026-11-25").flatMap((release) => release.entries.map((entry) => entry.title));
       expect(titles, "the week's updates an administrator's page lists did not reach the model").toEqual(sinceTheWeek.slice(0, LISTED));
-      expect(titles, "the administrators' Knowledge Base update did not reach an administrator").toContain("Ask Sunny about the Knowledge Base's documents");
+      // The administrators' Knowledge Base post was taken off What's New on 28 Nov 2026 (owner's request), so it is no longer asserted here.
       const older = WHATS_NEW.filter((release) => release.date < "2026-11-25").flatMap((release) => release.entries.map((entry) => entry.title));
       expect(titles.filter((title) => older.includes(title)), "an update from before the 25th was given for this week").toEqual([]);
     },

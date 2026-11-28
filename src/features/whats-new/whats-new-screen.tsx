@@ -39,11 +39,16 @@ export function WhatsNewScreen({ releases, appName }: { releases: readonly Whats
                       <CardContent className="flex flex-col gap-2 p-5">
                         <div className="flex flex-wrap items-center gap-2">
                           <Badge tone={entry.tag === "New" ? "primary" : "accent"}>{entry.tag}</Badge>
+                          {entry.audience ? <Badge tone="failed" className="font-semibold uppercase">{entry.audience}</Badge> : null}
                           <h3 className="text-base font-semibold text-foreground">{entry.title}</h3>
                         </div>
                         <dl className="grid gap-1.5 text-sm sm:grid-cols-[8rem_1fr]">
-                          <dt className="font-medium text-foreground">Before:</dt>
-                          <dd className="text-muted-foreground">{entry.before}</dd>
+                          {entry.before ? (
+                            <>
+                              <dt className="font-medium text-foreground">Before:</dt>
+                              <dd className="text-muted-foreground">{entry.before}</dd>
+                            </>
+                          ) : null}
                           <dt className="font-medium text-foreground">Now:</dt>
                           <dd className="text-muted-foreground">
                             {entry.now}
@@ -51,6 +56,12 @@ export function WhatsNewScreen({ releases, appName }: { releases: readonly Whats
                           </dd>
                           <dt className="font-medium text-foreground">How to use it:</dt>
                           <dd className="text-muted-foreground">{entry.howToUse}</dd>
+                          {entry.note ? (
+                            <>
+                              <dt className="font-semibold text-status-failed">Note:</dt>
+                              <dd className="font-medium text-status-failed">{entry.note}</dd>
+                            </>
+                          ) : null}
                         </dl>
                         {entry.showMe && entry.showMe.href !== "/whats-new" ? (
                           <Link href={entry.showMe.href} className="whats-new-sparkle mt-1 inline-flex items-center gap-1 self-start rounded-full text-sm font-medium text-primary hover:underline">
