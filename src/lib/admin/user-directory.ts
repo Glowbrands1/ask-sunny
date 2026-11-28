@@ -179,18 +179,19 @@ export function normalizeDisplayName(value: unknown, fallback: string): string {
 
 /**
  * ============================================================================
- * NOBODY GIVES MORE THAN THEY HAVE (port of Ask Bubbles' rules; audit, 28 Nov 2026)
+ * NOBODY GIVES MORE REACH THAN THEY HAVE (port of Ask Bubbles' assertScopeWithinActor; audit, 28 Nov 2026)
  * ============================================================================
  *
  * Invite and edit took any well-formed scope and any role from anyone holding manage_users. So an administrator whose
  * account covers some salons could PATCH their OWN scope to global (the self-change guard covered role and status
- * only) and every report reader would widen for them, or hand global to anyone; and a plain admin could make someone
- * Owner or Developer.
+ * only) and every report reader would widen for them, or hand global to anyone.
  *
  *   SCOPE: an actor whose own reach is all salons may grant any scope. Anyone else may grant global to nobody, and a
  *   salon, district or region only when every salon it ADDS is inside their own reach. Only what changes is checked,
  *   so removing a salon, or resubmitting the scope unchanged, is never blocked.
- *   ROLE: Owner and Developer are given only by an Owner or Developer; only a change to such a role is checked.
+ *
+ * Roles are left as they were: every admin-console role already holds the full permission set, and with no Owner or
+ * Developer account in production a rule that only they may grant those roles would leave nobody able to.
  */
 export function assertScopeWithinActor(actor: DirectoryActor, next: AccessScope, previous?: AccessScope): void {
   if (!actor.scope) return;
@@ -215,15 +216,6 @@ export function assertScopeWithinActor(actor: DirectoryActor, next: AccessScope,
       "You can only give access to salons your own account covers.",
       403,
     );
-  }
-}
-
-const ABOVE_ADMIN_ROLES: readonly Role[] = ["owner", "developer"];
-
-export function assertMayGrantRole(actor: DirectoryActor, role: Role, previous?: Role): void {
-  if (previous === role) return;
-  if (ABOVE_ADMIN_ROLES.includes(role) && !ABOVE_ADMIN_ROLES.includes(actor.role)) {
-    throw new DirectoryError("forbidden_grant", "Only an owner or developer can give that role.", 403);
   }
 }
 
@@ -412,7 +404,6 @@ export async function inviteUser(
     throw new DirectoryError("invalid_input", "Choose a role for this person.");
   }
   const role = input.role;
-  assertMayGrantRole(actor, role);
 
   const admin = getSupabaseAdmin();
 
@@ -545,7 +536,6 @@ export async function patchUser(
 
   if (input.role !== undefined) {
     if (!isRole(input.role)) throw new DirectoryError("invalid_input", "That is not a role.");
-    assertMayGrantRole(actor, input.role, before.role);
     if (input.role !== before.role) roleChange = { from: before.role, to: input.role };
     patch.role = input.role;
   }

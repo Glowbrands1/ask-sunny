@@ -3,11 +3,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AccessScope } from "@/types";
 
 /**
- * NOBODY GIVES MORE THAN THEY HAVE (port of Ask Bubbles' rules; audit, 28 Nov 2026).
+ * NOBODY GIVES MORE REACH THAN THEY HAVE (port of Ask Bubbles' assertScopeWithinActor; audit, 28 Nov 2026).
  *
- * Invite and edit took any well-formed scope and role from anyone with manage_users: an administrator whose account
- * covers one salon could PATCH their own scope to global and every report reader widened for them; a plain admin
- * could make someone Owner. These call the server functions directly with what the form would never send.
+ * Invite and edit took any well-formed scope from anyone with manage_users: an administrator whose account covers one
+ * salon could PATCH their own scope to global and every report reader widened for them. These call the server
+ * functions directly with what the form would never send.
  */
 
 const updates: string[] = [];
@@ -79,20 +79,5 @@ describe("an administrator cannot give more reach than their own", () => {
     expect(() => assertScopeWithinActor(actor(), salon("loc-0306", ["loc-0394"]), wide)).not.toThrow();
     expect(() => assertScopeWithinActor(actor(GLOBAL), GLOBAL)).not.toThrow();
     expect(() => assertScopeWithinActor(actor(), GLOBAL, GLOBAL)).not.toThrow();
-  });
-});
-
-describe("only an owner or developer gives Owner or Developer", () => {
-  it.each(["owner", "developer"])("an admin cannot promote an account to %s, and nothing is written", async (role) => {
-    const { patchUser } = await load({ ...self, id: "user-1", email: "u@example.test" });
-    await expect(patchUser("user-1", { role }, actor(GLOBAL))).rejects.toMatchObject({ code: "forbidden_grant" });
-    expect(updates).toEqual([]);
-  });
-
-  it("an owner can, and an admin can still edit an existing owner's other details", async () => {
-    const { assertMayGrantRole } = await load(self);
-    expect(() => assertMayGrantRole(actor(GLOBAL, "owner"), "developer")).not.toThrow();
-    expect(() => assertMayGrantRole(actor(GLOBAL), "owner", "owner")).not.toThrow();
-    expect(() => assertMayGrantRole(actor(GLOBAL), "admin")).not.toThrow();
   });
 });
