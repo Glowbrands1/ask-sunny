@@ -50,6 +50,44 @@ export function attachmentProblem(file: { name: string; type: string; size: numb
       : `${file.name}: only images (PNG, JPG, GIF, WebP) and PDFs can be attached.`;
   }
   if (file.size > MAX_FILE_BYTES) return `${file.name} is larger than 10 MB.`;
+  if (accepts === "chat" && !file.type.startsWith("image/") && sentBytes(file) > MAX_MESSAGE_SEND_BYTES) {
+    return `${file.name} is too large to send in the chat (about 2.4 MB at most for a PDF, Word, Excel or text file). Attach a smaller copy, or only the pages you need.`;
+  }
+}
+
+/*
+ * WHAT A MESSAGE CAN CARRY (audit, 28 Nov 2026). Files go to /api/chat inside the request, as base64 (4/3 of the
+ * file), and Vercel refuses a request over about 4.5 MB with a bare 413. Images are re-encoded in the browser to about
+ * 1.5 MB, but a PDF, Word, Excel or text file went as it was: the composer accepted a 4 MB PDF ("under 10 MB") that the
+ * server could never receive. A message's files are now kept under MAX_MESSAGE_SEND_BYTES, leaving room for the words
+ * and the conversation, and the manager is told which file does not fit, before anything is sent.
+ */
+export const MAX_MESSAGE_SEND_BYTES = 3_300_000;
+
+/** What one file adds to the request: an image is re-encoded to about its budget; anything else is base64 of itself. */
+export function sentBytes(file: { type: string; size: number }): number {
+  const base64 = Math.ceil(file.size / 3) * 4;
+  return file.type.startsWith("image/") ? Math.min(base64, IMAGE_BUDGET) : base64;
+}
+
+/** Which of `picked` still fit beside `already`, in order, and a sentence for each that does not. */
+export function filesThatFit(
+  already: readonly { type: string; size: number }[],
+  picked: readonly File[],
+): { fit: File[]; problems: string[] } {
+  let total = already.reduce((sum, file) => sum + sentBytes(file), 0);
+  const fit: File[] = [];
+  const problems: string[] = [];
+  for (const file of picked) {
+    const size = sentBytes(file);
+    if (total + size > MAX_MESSAGE_SEND_BYTES) {
+      problems.push(`${file.name} would make this message too large to send. Send it in a message of its own.`);
+      continue;
+    }
+    total += size;
+    fit.push(file);
+  }
+  return { fit, problems };
 }
 
 export function toDataUrl(file: File): Promise<string> {
