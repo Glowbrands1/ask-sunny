@@ -1,3 +1,4 @@
+import { businessZone } from "@/lib/business-date";
 import { isDemoMode } from "@/lib/config/runtime";
 
 /**
@@ -102,36 +103,87 @@ function parse(value: string | Date): Date {
   return new Date(value.length === 10 ? `${value}T00:00:00.000Z` : value);
 }
 
-/** "12 Aug 2026" -> compact, unambiguous. */
+/*
+ * CENTRAL TIME FOR EVERY MOMENT A PERSON SEES (owner, 28 Nov 2026: "timezone is in CT for all").
+ *
+ * These formatters read the UTC parts, so a timestamp from the evening in Central showed the next day ("done Nov 29"
+ * for a follow-up marked done at 7 PM on Nov 28) and an upload time showed the UTC clock with no zone. A moment is now
+ * shown in the business zone (`business-date.ts`, America/Chicago). A CALENDAR DATE is not a moment and never shifts:
+ * a bare `YYYY-MM-DD` (a form's date, a follow-up date), and a timestamp at exactly midnight UTC, which is how a
+ * day-bucket from `date_trunc` arrives (the analytics trend), keep the day they name.
+ */
+function isCalendarDate(value: string | Date): boolean {
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) return true;
+  const d = parse(value);
+  return d.getUTCHours() === 0 && d.getUTCMinutes() === 0 && d.getUTCSeconds() === 0 && d.getUTCMilliseconds() === 0;
+}
+
+interface ShownParts {
+  readonly year: number;
+  readonly month: number;
+  readonly day: number;
+  readonly hours: number;
+  readonly minutes: number;
+}
+
+function shownParts(d: Date, calendar: boolean): ShownParts {
+  if (calendar) {
+    return { year: d.getUTCFullYear(), month: d.getUTCMonth(), day: d.getUTCDate(), hours: d.getUTCHours(), minutes: d.getUTCMinutes() };
+  }
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: businessZone(),
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "numeric",
+    hourCycle: "h23",
+  }).formatToParts(d);
+  const part = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((entry) => entry.type === type)?.value ?? 0);
+  return { year: part("year"), month: part("month") - 1, day: part("day"), hours: part("hour") % 24, minutes: part("minute") };
+}
+
+/** The business zone's short label: `CT` for Central (CST and CDT alike), else the zone's own short name. */
+function zoneLabel(d: Date): string {
+  const name =
+    new Intl.DateTimeFormat("en-US", { timeZone: businessZone(), timeZoneName: "short" })
+      .formatToParts(d)
+      .find((entry) => entry.type === "timeZoneName")?.value ?? "";
+  return name.replace(/^([A-Z])[SD]T$/, "$1T");
+}
+
+/** "12 Aug 2026" -> compact, unambiguous. A moment shows its Central day; a calendar date shows itself. */
 export function formatDate(value: string | Date | null | undefined): string {
   if (!value) return "—";
   const d = parse(value);
   if (Number.isNaN(d.getTime())) return "—";
-  return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`;
+  const shown = shownParts(d, isCalendarDate(value));
+  return `${MONTHS[shown.month]} ${shown.day}, ${shown.year}`;
 }
 
 export function formatLongDate(value: string | Date): string {
   const d = parse(value);
-  return `${MONTHS_LONG[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`;
+  const shown = shownParts(d, isCalendarDate(value));
+  return `${MONTHS_LONG[shown.month]} ${shown.day}, ${shown.year}`;
 }
 
+/** "Nov 28, 2026 · 6:04 PM CT": a moment, in Central, labelled. */
 export function formatDateTime(value: string | Date): string {
   const d = parse(value);
   if (Number.isNaN(d.getTime())) return "—";
-  const hours = d.getUTCHours();
-  const minutes = d.getUTCMinutes().toString().padStart(2, "0");
-  const suffix = hours >= 12 ? "PM" : "AM";
-  const display = hours % 12 === 0 ? 12 : hours % 12;
-  return `${formatDate(d)} · ${display}:${minutes} ${suffix}`;
+  const shown = shownParts(d, false);
+  return `${MONTHS[shown.month]} ${shown.day}, ${shown.year} · ${clock(shown)} ${zoneLabel(d)}`.trim();
 }
 
+/** "6:04 PM", in Central. */
 export function formatTime(value: string | Date): string {
-  const d = parse(value);
-  const hours = d.getUTCHours();
-  const minutes = d.getUTCMinutes().toString().padStart(2, "0");
-  const suffix = hours >= 12 ? "PM" : "AM";
-  const display = hours % 12 === 0 ? 12 : hours % 12;
-  return `${display}:${minutes} ${suffix}`;
+  return clock(shownParts(parse(value), false));
+}
+
+function clock(shown: ShownParts): string {
+  const suffix = shown.hours >= 12 ? "PM" : "AM";
+  const display = shown.hours % 12 === 0 ? 12 : shown.hours % 12;
+  return `${display}:${shown.minutes.toString().padStart(2, "0")} ${suffix}`;
 }
 
 /** Whole days between the demo anchor and a date. Negative = in the past. */

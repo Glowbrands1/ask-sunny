@@ -103,7 +103,7 @@ export function businessHour(now: Date = new Date()): number {
 }
 
 /** The business zone, read when asked (a test can set it); the same value `BUSINESS_TIMEZONE` holds. */
-function businessZone(): string {
+export function businessZone(): string {
   return process.env.NEXT_PUBLIC_BUSINESS_TIMEZONE?.trim() || "America/Chicago";
 }
 

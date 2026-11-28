@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils/cn";
 import { dismissNotificationsAction, markNotificationsReadAction, markNotificationsUnreadAction } from "./actions";
 import { FollowUpActions } from "./follow-up-actions";
 import { NotificationsPanel } from "./notifications-panel";
+import { businessZone } from "@/lib/business-date";
 
 /**
  * THE BELL: the signed-in person's notifications, newest first, with a count of
@@ -293,5 +294,6 @@ export function timeAgo(iso: string, now: Date = new Date()): string {
   if (hours < 24) return `${hours} h ago`;
   const days = Math.floor(hours / 24);
   if (days < 7) return `${days} d ago`;
-  return then.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  // The day in Central, never the browser's zone (owner, 28 Nov 2026: "timezone is in CT for all").
+  return then.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: businessZone() });
 }

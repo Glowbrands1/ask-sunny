@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   formatCompPeriodLabel,
@@ -41,10 +41,14 @@ describe("formatUpdatedLabel", () => {
     expect(formatUpdatedLabel("2026-09-08T13:04:14.618150+00:00")).toBe("Sep 8, 2026");
   });
 
-  it("reads the instant in UTC, so the label does not depend on the host", () => {
-    // 00:30 UTC is still the 8th. A host in UTC-7 would call it the 7th, and
-    // then two servers would disagree about when the report landed.
-    expect(formatUpdatedLabel("2026-09-08T00:30:00Z")).toBe("Sep 8, 2026");
+  it("reads the instant in Central, so the label does not depend on the host", () => {
+    // Changed on purpose (owner, 28 Nov 2026: "timezone is in CT for all"): the
+    // label used to be the UTC day. 00:30 UTC on the 8th is 7:30 PM CDT on the
+    // 7th, the day the report landed for the people reading it. Still an
+    // explicit zone, so two servers can never disagree.
+    vi.stubEnv("NEXT_PUBLIC_BUSINESS_TIMEZONE", "");
+    expect(formatUpdatedLabel("2026-09-08T00:30:00Z")).toBe("Sep 7, 2026");
+    vi.unstubAllEnvs();
   });
 
   it("returns null for an unparseable instant rather than `Invalid Date`", () => {
