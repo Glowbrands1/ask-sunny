@@ -301,41 +301,61 @@ Nothing is created or sent unless the lifecycle's own switches are also on
 (`WOVEN_ACCESS_MODE=apply`, `CREATE_USER`, `SEND_INVITE`). Leave one invitation
 an hour of headroom for an admin's own sends.
 
-## Stage 5c — admins hear about every new hire (built 28 Nov 2026; OFF)
+## Stage 5c — who hears about hires, terminations and sent links (built 28 Nov 2026; OFF)
 
 Pau, 28 Nov 2026: "create a notification when a new person is onboarded like a
-manager, assistant etc. for admins only for now backfill it when creating the
-notification that a new employee [name], email address in woven has been hired
-as X position in X salon, and list if they have any other additional salon".
+manager, assistant etc. for admins only for now backfill it …", then "admin,
+owner and developer, also can you add if that person is in any salon the
+manager there will get notified too, also add coleen for this notification coz
+she is HR all hires and all terminated", "backfill only 2 weeks pls", and "can
+you also send me a notification in my personal email … when someone join and
+get terminated and if they get the link".
 
 After each successful, stored Woven directory sync (the daily cron and an
-admin's manual sync), every **active** employee whose Woven hire date is in the
-last `NEW_HIRE_NOTICE_BACKFILL_DAYS` days (today included) gets one notice in
-the bell of every active admin (`admin`, `owner`, `developer`). Any position.
-It reads, for example:
+admin's manual sync), `src/lib/admin/new-hire-notices.ts`:
+
+| Event | When | Bell | Webhook (email) |
+|---|---|---|---|
+| Hired | Active, Woven hire date in the window | Every active admin (admin, owner, developer); every active Salon Director / Assistant Salon Director of any salon the person is in, primary or additional; `WOVEN_HR_NOTIFY_EMAILS` | yes |
+| Terminated | The sync recorded a `terminated` change in the window | `WOVEN_HR_NOTIFY_EMAILS` | yes |
+| Sign-in link sent | The hourly new-hire run's invitation was accepted by the mailer | — | yes |
+
+A hire notice reads, for example:
 
 > **New hire: Robin Quillfeather — Salon Director**
 > New employee Robin Quillfeather, robin.quillfeather@example.com in Woven, has
 > been hired as Salon Director at Maple Grove on Nov 24, 2026. Additional
 > salons: Birch Hollow (temporary, until Dec 15, 2026), Cedar Point.
 
-It opens the Woven directory. **Backfill:** the first run after the switch is on
-announces everybody hired in the window. Each employee is announced **once,
-ever** (`woven_new_hire_notices`, migration `20261128001000`): removing the
-notice does not bring it back, the next sync does not repeat it, and two runs
-at once never announce the same person twice. A failed bell write is retried by
-the next sync. It says nothing about what access Ask Sunny gave the person.
+An admin's notice opens the Woven directory; a manager's or HR's has no link
+(they may not open it). The new hire never gets a notice about themselves.
+
+**Backfill:** the window is the last `NEW_HIRE_NOTICE_BACKFILL_DAYS` days (14,
+today included), so the first run announces the last two weeks. Each event is
+announced **once, ever** (`woven_employee_notices`, migration
+`20261128001000`). A webhook call that failed is retried by the next sync while
+the event is in the window.
+
+**Email.** The app sends no email of its own (Supabase's sign-in email is
+limited to two an hour), so every event is POSTed as JSON to
+`WOVEN_EVENTS_WEBHOOK_URL` — Pau's n8n, which emails her — with
+`WOVEN_EVENTS_WEBHOOK_SECRET` in the `x-ask-webhook-secret` header. The body:
+`{ app, event, title, body, employee: { wovenEmployeeId, name, email, position,
+salon, additionalSalons, hireDate, terminationDate } }`. `app` is "Ask Sunny",
+so one workflow can serve both apps.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `NEW_HIRE_NOTICES_ENABLED` | off | The switch. Off: nothing is read. |
-| `NEW_HIRE_NOTICE_BACKFILL_DAYS` | 30 | How far back a hire date counts, 1–365. Anything else is 30. |
+| `NEW_HIRE_NOTICES_ENABLED` | off | The switch. Off: nothing is read or sent. |
+| `NEW_HIRE_NOTICE_BACKFILL_DAYS` | 14 | 1–365. Anything else is 14. |
+| `WOVEN_HR_NOTIFY_EMAILS` | empty | HR: every hire and every termination. Empty: terminations are not read. |
+| `WOVEN_EVENTS_WEBHOOK_URL` | unset | https only. Unset: no webhook. |
+| `WOVEN_EVENTS_WEBHOOK_SECRET` | unset | Sent with every webhook call; n8n checks it. |
 
-To turn it on: apply `20261128001000_woven_new_hire_notices.sql` (Supabase MCP
-`apply_migration`), set `NEW_HIRE_NOTICES_ENABLED=true`, redeploy. Until the
-migration is applied the run fails quietly (`new_hire_notices_failed`) and the
-sync is unaffected. The sync's response carries `newHireNotices` with counts
-only.
+To turn it on: apply `20261128001000_woven_employee_notices.sql` (Supabase MCP
+`apply_migration`), set the variables, redeploy. Until the migration is
+applied the run fails quietly (`new_hire_notices_failed`) and the sync is
+unaffected. The sync's response carries `newHireNotices` with counts only.
 
 ## Migration history in Production
 

@@ -35,6 +35,8 @@ export interface NewHireInviteDeps {
    * the first send. False stops the run with `invite_link_not_live`; nobody's attempts are spent.
    */
   linkIsLive(): Promise<boolean>;
+  /** Told after each invitation the mailer accepted (Pau's email through the webhook). Never awaited for its result. */
+  onSent?(row: PlannedRow): Promise<unknown>;
 }
 
 export type NewHireInviteOutcome =
@@ -100,6 +102,7 @@ export async function sendNewHireInvites(
     if (outcome.ok) {
       sent += 1;
       used += 1;
+      await deps.onSent?.(row).catch(() => undefined);
       continue;
     }
     if (outcome.code === "email_rate_limited" || outcome.code === "redirect_not_configured") {

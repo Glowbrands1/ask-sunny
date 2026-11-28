@@ -585,6 +585,26 @@ describe("NEW_HIRE_INVITES_ENABLED", () => {
     expect(f.fnsCalled()).not.toContain("employee_access_record_invite");
   });
 
+  it("tells Pau's webhook about each link the mailer accepted, and only those (\"if they get the link\")", async () => {
+    const employees = ["E1", "E2"].map((id, i) => employee(id, { hireDate: `2026-10-0${i + 2}` }));
+    const plan = planWithHires(employees, [waiting(1, "E1"), waiting(2, "E2")]);
+    const f = fakes(plan);
+    const onSent = vi.fn(async () => undefined);
+    await sendNewHireInvites(
+      { config: newHireConfig(1), access: config(), now: NOW },
+      { loadPlan: async () => plan, send: (id, email) => sendInviteEmail(id, email, REDIRECT, f.deps, "test"), linkIsLive: async () => true, onSent },
+    );
+    expect(onSent).toHaveBeenCalledTimes(1);
+    expect(onSent).toHaveBeenCalledWith(expect.objectContaining({ externalEmployeeId: "E1" }));
+    const limited = fakes(plan, { auth: { inviteUserByEmail: vi.fn(async () => ({ data: null, error: { code: "over_email_send_rate_limit", status: 429 } })) } as never });
+    const notTold = vi.fn(async () => undefined);
+    await sendNewHireInvites(
+      { config: newHireConfig(1), access: config(), now: NOW },
+      { loadPlan: async () => plan, send: (id, email) => sendInviteEmail(id, email, REDIRECT, limited.deps, "test"), linkIsLive: async () => true, onSent: notTold },
+    );
+    expect(notTold).not.toHaveBeenCalled();
+  });
+
   it("does not open the link when nobody is waiting", async () => {
     const plan = planWithHires([employee("E1", { hireDate: "2026-09-30" })], [waiting(1, "E1")]);
     const linkIsLive = vi.fn(async () => true);
