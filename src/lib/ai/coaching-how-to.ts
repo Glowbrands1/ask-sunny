@@ -1,3 +1,7 @@
+import { adviceNotForm } from "./agent-loop/advice-not-form";
+import { withoutMessageIdTags } from "./agent-loop/evidence";
+import { readQuestion } from "./question-not-form";
+
 /*
  * ============================================================================
  * A COACHING HOW-TO ANSWER IS A PREP PACKAGE THE MANAGER CAN USE (26 Nov 2026)
@@ -25,7 +29,14 @@
  * reply missing the outline, the script, the role-play or the plan, or written without a knowledge-base search, back once
  * (the loop's run module). The company's own coaching guidance comes first (the owner, 26 Nov 2026: "yes use it"): the
  * Performance Management Framework's conversation structure, its "Help me coach this employee" format, role-play and
- * Management Diamond; the model writes its own wording only where no document covers a part. Pure: reads text only.
+ * Management Diamond; the model writes its own wording only where no document covers a part.
+ *
+ * THE EMPLOYEE'S HISTORY FIRST (the owner, 28 Nov 2026: "yes please both apps, same with CA"). Coaching or
+ * corrective-action advice that names an employee ("how do I coach <P>, who keeps showing up late?", "should <P> get
+ * a written warning?") counts as asking about that person's forms on file: the answer starts from them (what is on file,
+ * a second conversation's script, the next step after what is on file). The owner chose this over the 14 Nov rule that
+ * forms are read only when asked about outright, for this kind of turn only (`asksHistoryFirstAdvice`). Pure: reads
+ * text only.
  */
 
 /** The rule, as both prompts give it. `place` is the app's word for a location ("salon", "store"). */
@@ -41,6 +52,7 @@ export function coachingHowToRule(place: string): string {
     "(7) a measurable action plan: what changes, how it is measured, and the follow-up date; " +
     "then a short checklist. " +
     "Build it from the company's own coaching guidance first: search the knowledge base (search_knowledge, where you have it) before you answer. The Performance Management Framework holds the coaching conversation structure with the lines to say, the \"Help me coach this employee\" answer format, role-play and the Management Diamond (what, how, why, when, practice). When a document covers it, the outline and the words to use follow that document's own steps and lines, its [placeholders] filled in from what the manager described, and you name the document with its source marker; write your own wording only for a part no document covers. " +
+    HISTORY_FIRST_LINE + " " +
     "For \"how do I help an employee who is struggling with <X>\": give the coaching guidance first (from the official guides and the JBA Policy Manual where they cover it), then what a coaching form would hold, as Observed / Expectation / Practice / Follow-Up, then the role-play tied to the follow-up date, and close by offering to make the form. " +
     "When the manager has not said what the employee does now or what is expected, still give the package from what they said, and end with at most one or two quick questions that would sharpen it. " +
     "Cite the JBA Policy Manual by its title and the section's heading when a policy applies, and never invent one. Advice asks for no form: never propose a form and never ask who a form is for; a closing line may offer one."
@@ -128,4 +140,39 @@ export const SIGNATURE_RULE = "- Signature lines, corrective-action decisions an
 export function withCoachingHowTo(prompt: string, place: string): string {
   if (!prompt.includes(SIGNATURE_RULE)) return prompt;
   return prompt.split(SIGNATURE_RULE).join(`${SIGNATURE_RULE}\n- ${coachingHowToRule(place)}`);
+}
+
+/**
+ * The owner, 28 Nov 2026: coaching or corrective-action advice about a named employee starts from their forms on file.
+ * Both prompts carry it inside the coaching rule; the rules book's privacy section says such a question asks.
+ */
+export const HISTORY_FIRST_LINE =
+  "When the manager names the employee (\"how do I coach <P>, who keeps showing up late?\", \"should <P> get a written warning?\"), that advice also asks about that person's forms on file: look at them first (find_past_forms for that person, where you have it, with forms_on_file_evidence quoting the words that name them; otherwise the forms on file attached for them). Open with one short line on what is on file for them (each coaching or corrective action, its date and level), or that nothing is on file, and build the package on it: a script for a second or later conversation says so plainly, and the action plan names the next step the JBA Policy Manual's progressive steps give after what is on file, as the manager's decision to make. State only what the forms on file show, and never decide the level for the manager.";
+
+/** Corrective-action words an advice question may carry ("should <P> get a written warning?", "is it time to write him up?"). */
+const CA_TOPIC =
+  /\b(?:write[- ]?(?:\w+\s+)?up|written\s+up|write-?\s?ups?|written(?:\s+warning)?|verbal(?:\s+warning)?|final(?:\s+warning)?|warnings?|progressive|next\s+step|ca|corrective(?:\s+action)?|discipline\w*|suspen\w+|terminat\w+|fire)\b/i;
+
+/** "can you make / write / draft …": the app is asked to make something, never advice. */
+const ASKS_APP_TO_MAKE = /\b(?:can|could|would|will|pls|please)\s+(?:you|u)\s+(?:please\s+)?(?:create|make|draft|write|start|prepare|do|fill|open|put|draw|pull\s+up|show)\b/i;
+
+/**
+ * Whether the manager's words ask for coaching or corrective-action ADVICE (never a form): the loop's `adviceNotForm`
+ * reading with a coaching topic, or a question ("should <P> get a written warning?", "is it time to write her up?")
+ * about coaching or a corrective action that asks the app to make nothing. Whether it names an employee is the caller's
+ * (it reads the roster). Pure: the manager's words only.
+ */
+export function asksHistoryFirstAdvice(question: string, history: readonly { role: string; content: unknown }[] = []): boolean {
+  const said = withoutMessageIdTags(String(question ?? "")).trim();
+  if (!said || ASKS_APP_TO_MAKE.test(said)) return false;
+  const topic = COACHING_TOPIC.test(said) || CA_TOPIC.test(said);
+  if (!topic) return false;
+  if (adviceNotForm(said, history)) return true;
+  const turns = history.map((turn) => ({ role: turn.role, content: typeof turn.content === "string" ? turn.content : "" }));
+  return /\?\s*$/.test(said) && readQuestion(said, turns).question;
+}
+
+/** The loop's hand-back note when such advice was written without looking at the named person's forms on file. */
+export function historyFirstNote(person: string): string {
+  return `[app check] The manager asked for advice about coaching or a corrective action for ${person}, and you answered without looking at ${person}'s forms on file. Call find_past_forms for ${person} now (forms_on_file_evidence: the manager's words that name ${person}). Then write your answer again: open with one short line on what is on file for ${person} (each form, its date and level) or that nothing is on file, and build the advice on it (a later conversation's script says so; the action plan names the next step after what is on file, the manager's to decide). Propose no form and never ask who a form is for; you may offer one in a closing line.`;
 }

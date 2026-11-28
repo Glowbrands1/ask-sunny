@@ -39,7 +39,7 @@ import { replyWithShortName } from "@/lib/forms/short-name";
 import { agentLoopRules, agentLoopSystem } from "./prompt";
 import { generatedId, identifiedTurns, messageIdTag, withoutMessageIdTags } from "./evidence";
 import { agentLoopStepLimit } from "./switch";
-import { asksCoachingHowTo, coachingAnswerShape, coachingHowToNote, completeShape, partsOf } from "@/lib/ai/coaching-how-to";
+import { asksCoachingHowTo, asksHistoryFirstAdvice, coachingAnswerShape, coachingHowToNote, completeShape, historyFirstNote, partsOf } from "@/lib/ai/coaching-how-to";
 
 import { adviceNotForm, onlyAsksWho } from "./advice-not-form";
 import { createFormButtonNoCardNote, isCreateFormButtonTurn } from "./create-form-button";
@@ -60,6 +60,7 @@ import {
   withLookupReplyName,
   findStaff,
   LEVEL_QUESTION,
+  namedEmployee,
   manualFor,
   turnManual,
   type TurnReads,
@@ -536,7 +537,7 @@ function buildAgentLoopTools(config: AppConfig, planSteps = false) {
   },
   {
     name: "find_past_forms",
-    description: "List the forms on file (" + config.formsPageName + ") for one employee, or, with no employee_name, every form of a kind or period (\"who got a CA this month?\": form and date_from/date_to), or every form about a topic (\"any forms about cash handling this month?\", \"who's been written up for dress code?\": about, with form and dates if given). Only when the manager asks about forms on file or history; never otherwise." + pagesToolLine(config.readablePages, "find_past_forms"),
+    description: "List the forms on file (" + config.formsPageName + ") for one employee, or, with no employee_name, every form of a kind or period (\"who got a CA this month?\": form and date_from/date_to), or every form about a topic (\"any forms about cash handling this month?\", \"who's been written up for dress code?\": about, with form and dates if given). Only when the manager asks about forms on file or history (coaching or corrective-action advice about a named employee asks about theirs); never otherwise." + pagesToolLine(config.readablePages, "find_past_forms"),
     input_schema: object({
       employee_name: { type: "string", description: "The employee the manager named. Leave it out for a list of every form of a kind or period." },
       form: { type: "string", description: "The form the manager named (\"coaching\", \"CA\"), if any." },
@@ -1625,6 +1626,19 @@ async function loop(input: AgentTurnInput): Promise<AskResponse> {
         if (stoppedAt === "reply" && !effects.proposal && onlyAsksWho(text) && adviceNotForm(input.question, input.history)) {
           const again = await handBack("[app check] The manager asked for advice, not a form, and your reply only asks who a form is for. Answer the question itself now: practical steps, a short checklist, a sample script or role-play where it helps, citing the manual where a policy applies. Never ask who a form is for; you may offer the form in one closing line.");
           if (again && !onlyAsksWho(again)) text = again;
+        }
+        /*
+         * The owner, 28 Nov 2026 ("yes please both apps, same with CA"): coaching or corrective-action advice that names one
+         * employee starts from that person's forms on file (`coaching-how-to.ts`, HISTORY_FIRST_LINE; the rules book's
+         * privacy section says such advice asks). A reply on such a turn with no card, written without find_past_forms,
+         * goes back once to look; the answer it returns is kept when it is a real answer.
+         */
+        if (stoppedAt === "reply" && !effects.proposal && !effects.formOpened && !effects.formUpdate && !turnSteps.some((step) => step.tool === "find_past_forms") && asksHistoryFirstAdvice(input.question, input.history)) {
+          const person = await namedEmployee(input.actor.scope, input.question).catch(() => null);
+          if (person) {
+            const again = await handBack(historyFirstNote(person));
+            if (again && !onlyAsksWho(again)) text = again;
+          }
         }
         /*
          * Owner, 26 Nov 2026: a coaching / hard-conversation how-to answer is a prep package: a numbered outline, a quoted
