@@ -8,7 +8,7 @@ import { isClientConversationId } from "@/lib/chat/client-ids";
 import { isSameOriginRequest } from "@/lib/reviews/gbp/csrf";
 import { isMeetingKey } from "@/features/l10/lib/config";
 import { correctSpokenNames } from "@/lib/voice/spoken-names";
-import { readSessionHandle, sessionSeconds, signSessionHandle, streamingSocketUrl, SESSION_MAX_SECONDS } from "@/lib/voice/streaming";
+import { billedSessionSeconds, readSessionHandle, signSessionHandle, streamingSocketUrl, SESSION_MAX_SECONDS } from "@/lib/voice/streaming";
 import { checkVoiceCaller } from "@/lib/voice/voice-caller";
 import { VOICE_MESSAGES, tryAgainIn, type VoiceErrorCode } from "@/lib/voice/voice-messages";
 import { voiceRouteDeps } from "@/lib/voice/voice-route-deps";
@@ -107,9 +107,11 @@ async function handle(request: Request): Promise<Response> {
   const deps = voiceRouteDeps;
 
   if (body.action === "finish") {
-    const usageId = readSessionHandle(apiKey(), caller.userId, body.session);
-    if (!usageId) return refuse(404, "not_found", "Not found.");
-    const seconds = sessionSeconds(body.seconds);
+    const handle = readSessionHandle(apiKey(), caller.userId, body.session);
+    if (!handle) return refuse(404, "not_found", "Not found.");
+    const usageId = handle.usageId;
+    // Billed by the server's clock since the row was reserved; body.seconds is the browser's count, never trusted.
+    const seconds = billedSessionSeconds(handle.startedAtMs, Date.now());
     try {
       await deps.store.finish(usageId, { status: "succeeded", audioSeconds: seconds });
     } catch {
@@ -166,6 +168,9 @@ async function handle(request: Request): Promise<Response> {
 
   const salonId = caller.scope.level === "salon" ? caller.scope.primaryAreaId : null;
   const now = new Date();
+  // When the row is reserved (taken just before, so never later than the database's own time): "finish" bills the time
+  // since then, signed into the handle so it cannot be moved.
+  const reservedAt = Date.now();
   let reservation;
   try {
     reservation = await deps.store.reserve({ userId: caller.userId, salonId, surface, clipSeconds: SESSION_MAX_SECONDS });
@@ -196,7 +201,7 @@ async function handle(request: Request): Promise<Response> {
   console.info(`voice-stream: ${surface} started`);
   return answer(200, {
     socketUrl: streamingSocketUrl(minted.token),
-    session: signSessionHandle(apiKey(), caller.userId, reservation.id),
+    session: signSessionHandle(apiKey(), caller.userId, reservation.id, reservedAt),
     maxSeconds: SESSION_MAX_SECONDS,
   });
 }

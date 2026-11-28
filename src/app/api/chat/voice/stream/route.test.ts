@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { SESSION_MAX_SECONDS } from "@/lib/voice/streaming";
+
 /*
  * VOICE_INPUT_ENABLED: POST /api/chat/voice/stream, live dictation (the owner, 27 Nov 2026: "it transcribes as you talk
  * then when done, press check mark and auto send"). Every person and address is invented; AssemblyAI's token endpoint
@@ -87,6 +89,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   Object.assign(voiceRouteDeps, saved);
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
@@ -140,7 +143,12 @@ describe("start", () => {
 
 describe('finish: "press check mark and auto send" (the owner, 27 Nov 2026)', () => {
   it("✓ with the owner's case (invented: i said Cade, it heard Kade): the names are respelled before it is sent", async () => {
+    // Changed on purpose (audit, 28 Nov 2026; port of Leadership Hub 3630a6f): the session is billed by the server's
+    // clock since "start", never the browser's seconds, so the clock moves 4.2 s between the two calls.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-28T15:00:00Z"));
     const { session } = await started();
+    vi.setSystemTime(new Date("2026-11-28T15:00:04.200Z"));
     const { status, body } = await read(
       await POST(request({ action: "finish", surface: "chat", session, outcome: "send", text: "Hey can you create a CA for Kade Holloway please", seconds: 4.2 })),
     );
@@ -152,7 +160,11 @@ describe('finish: "press check mark and auto send" (the owner, 27 Nov 2026)', ()
   });
 
   it("✕: nothing comes back but the trace id; the seconds the socket was open still count", async () => {
+    // Billed by the server's clock (see above): 3 s pass between "start" and "finish".
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-28T15:00:00Z"));
     const { session } = await started();
+    vi.setSystemTime(new Date("2026-11-28T15:00:03Z"));
     const { status, body } = await read(await POST(request({ action: "finish", surface: "chat", session, outcome: "discard", text: "", seconds: 3 })));
     expect(status).toBe(200);
     expect(Object.keys(body)).toEqual(["traceId"]);
@@ -176,8 +188,32 @@ describe('finish: "press check mark and auto send" (the owner, 27 Nov 2026)', ()
   });
 
   it("a session longer than it can be is counted at the most it can be billed", async () => {
+    // Changed on purpose: the cap is the session maximum by the server's clock (was the browser's count + 60 s).
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-28T15:00:00Z"));
     const { session } = await started();
+    vi.setSystemTime(new Date("2026-11-28T17:30:00Z"));
     await POST(request({ action: "finish", surface: "chat", session, outcome: "discard", text: "", seconds: 9_000 }));
-    expect(store.rows[0]!.audioSeconds).toBe(120);
+    expect(store.rows[0]!.audioSeconds).toBe(SESSION_MAX_SECONDS);
+  });
+
+  /*
+   * THE DAILY CAPS HOLD (audit, 28 Nov 2026; port of Leadership Hub 3630a6f): "finish" billed the seconds the browser
+   * reported, so a client that said 0 after a full session used no voice time and the caps never filled.
+   */
+  it("a browser reporting 0 seconds after 45 s of dictation is billed 45 s", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-28T15:00:00Z"));
+    const { session } = await started();
+    vi.setSystemTime(new Date("2026-11-28T15:00:45Z"));
+    await POST(request({ action: "finish", surface: "chat", session, outcome: "discard", text: "", seconds: 0 }));
+    expect(store.rows[0]!.audioSeconds).toBe(45);
+  });
+
+  it("a handle whose start time was edited is refused", async () => {
+    const { session } = await started();
+    const [id, at, sig] = session.split(".");
+    const moved = await POST(request({ action: "finish", surface: "chat", session: `${id}.${Number(at) + 30_000}.${sig}`, outcome: "discard", text: "", seconds: 0 }));
+    expect(moved.status).toBe(404);
   });
 });
