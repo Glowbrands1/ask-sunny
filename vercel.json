@@ -21,7 +21,7 @@
     },
     {
       "path": "/api/employees/woven/cron",
-      "schedule": "17 11 * * *"
+      "schedule": "17 11,23 * * *"
     },
     {
       "path": "/api/employees/woven/invites/cron",

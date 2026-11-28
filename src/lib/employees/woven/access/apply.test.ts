@@ -605,6 +605,39 @@ describe("NEW_HIRE_INVITES_ENABLED", () => {
     expect(notTold).not.toHaveBeenCalled();
   });
 
+  /*
+   * Pau, 28 Nov 2026: "sometimes they make new hire DM as tanning employee but change it within the dayy to DM so we
+   * need to catch that too" — chosen: sync twice a day and hold the link until a second sync confirms the position.
+   */
+  it("holds the link while Woven is unsettled: a person the latest sync saw arrive or change position waits for the next", async () => {
+    const employees = ["E1", "E2"].map((id, i) => employee(id, { hireDate: `2026-10-0${i + 2}` }));
+    const plan = planWithHires(employees, [waiting(1, "E1"), waiting(2, "E2")]);
+    const f = fakes(plan);
+    const outcome = await sendNewHireInvites(
+      { config: newHireConfig(2), access: config(), now: NOW },
+      {
+        loadPlan: async () => plan,
+        send: (id, email) => sendInviteEmail(id, email, REDIRECT, f.deps, "test"),
+        linkIsLive: async () => true,
+        unsettled: async () => new Set(["E1"]),
+      },
+    );
+    expect(outcome).toMatchObject({ sent: 1, waiting: 0 });
+    expect(f.auth.inviteUserByEmail).toHaveBeenCalledWith("e2@gmail.com", { redirectTo: REDIRECT });
+  });
+
+  it("holds the link while the account's role does not yet match Woven's position", async () => {
+    const plan = planWithHires([employee("E1", { hireDate: "2026-10-05" })], [waiting(1, "E1")]);
+    const mismatched = { ...plan, rows: plan.rows.map((r) => ({ ...r, proposedRole: "district_manager" as const })) };
+    const f = fakes(mismatched);
+    expect(
+      await sendNewHireInvites(
+        { config: newHireConfig(), access: config(), now: NOW },
+        { loadPlan: async () => mismatched, send: (id, email) => sendInviteEmail(id, email, REDIRECT, f.deps, "test"), linkIsLive: async () => true },
+      ),
+    ).toMatchObject({ sent: 0, waiting: 0 });
+  });
+
   it("does not open the link when nobody is waiting", async () => {
     const plan = planWithHires([employee("E1", { hireDate: "2026-09-30" })], [waiting(1, "E1")]);
     const linkIsLive = vi.fn(async () => true);

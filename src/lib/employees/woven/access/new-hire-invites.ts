@@ -35,6 +35,12 @@ export interface NewHireInviteDeps {
    * the first send. False stops the run with `invite_link_not_live`; nobody's attempts are spent.
    */
   linkIsLive(): Promise<boolean>;
+  /**
+   * EmployeeIDs whose Woven record the latest sync saw arrive or change position / salon (`unsettledEmployees`). Their
+   * link waits for the next sync to confirm it (Pau, 28 Nov 2026: a new hire made Tanning Consultant and changed to
+   * District Manager the same day gets the link as a District Manager). Omitted: nobody waits.
+   */
+  unsettled?(plan: AccessPlan): Promise<ReadonlySet<string>>;
   /** Told after each invitation the mailer accepted (Pau's email through the webhook). Never awaited for its result. */
   onSent?(row: PlannedRow): Promise<unknown>;
 }
@@ -73,8 +79,12 @@ export async function sendNewHireInvites(
   const rule = config.rule;
   const inBatch = (row: PlannedRow) =>
     access.employeeAllowlist === null || (row.externalEmployeeId !== null && access.employeeAllowlist.includes(row.externalEmployeeId));
+  const unsettled = deps.unsettled ? await deps.unsettled(plan) : new Set<string>();
+  /* The account must already match Woven's position (the position sync runs after each sync), and Woven must have held still for a sync. */
+  const settled = (row: PlannedRow) =>
+    row.externalEmployeeId !== null && !unsettled.has(row.externalEmployeeId) && (row.proposedRole === null || row.proposedRole === row.account?.role);
   const waiting = plan.rows
-    .filter((row) => waitingForInvite(row) && inBatch(row) && isNewHire(row.hireDate, rule))
+    .filter((row) => waitingForInvite(row) && inBatch(row) && isNewHire(row.hireDate, rule) && settled(row))
     .sort((a, b) => (a.hireDate ?? "").localeCompare(b.hireDate ?? "") || a.key.localeCompare(b.key));
 
   /*

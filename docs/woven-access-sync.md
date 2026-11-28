@@ -357,6 +357,50 @@ To turn it on: apply `20261128001000_woven_employee_notices.sql` (Supabase MCP
 applied the run fails quietly (`new_hire_notices_failed`) and the sync is
 unaffected. The sync's response carries `newHireNotices` with counts only.
 
+## Stage 5d — access follows Woven's position and salon (built 28 Nov 2026; OFF)
+
+Pau, 28 Nov 2026: "we need to add District manager also, just not corporate,
+also add a sync where there is a position change it should detect it and give
+the correct link to the person with correct position and location. sometimes
+they make new hire DM as tanning employee but change it within the dayy to DM
+so we need to catch that too, for new positions existing, make sure their
+access refreshes too depends on the access we have in the intergration both
+app". Chosen: **all changes within the manager tiers**, and **sync twice a day
++ hold the link**.
+
+With `WOVEN_POSITION_SYNC_ENABLED` on (`src/lib/admin/position-sync.ts`):
+
+- **District Managers get an account** like Salon Directors (the lifecycle's
+  `CREATE_USER`; migration `20261128002000` lets the database create
+  `employee` and `district_manager` too, every other check unchanged). The
+  account is created at their Woven salon and widened to that salon's district
+  in the same run. Admin, owner, developer and regional are still never created.
+- **After each sync, every Woven-linked account is compared with the position
+  mapping and the Woven primary salon.** Within the tier — Tanning Consultant,
+  ASD, SD, DM — a promotion, a demotion or a move is applied: role and scope as
+  the mapping says (salon roles at their salon, a DM at that salon's district).
+  Extra salons an admin granted are kept. A DM an admin gave every salon is not
+  narrowed. Protected, admin, regional and corporate accounts are never changed.
+- Each change is made by `patchUser` in the name of
+  `WOVEN_POSITION_SYNC_ACTOR` (an active global admin), audited `role_changed` /
+  `scope_changed`, and every admin's bell says "Access updated from Woven".
+- Only while the access guards allow changes; more than 10 changes in one run
+  changes nothing and the run reports `too_many_changes`.
+- **The Woven sync runs twice a day** (11:17 and 23:17 UTC), and **a new hire's
+  link waits** while the latest sync saw them arrive, change position or
+  primary location, or come back — and while their account's role does not yet
+  match Woven. So "Tanning Consultant, then DM the same day" gets the link as a
+  DM, within about 12 hours.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `WOVEN_POSITION_SYNC_ENABLED` | off | The switch. Off: nothing changes, and District Managers are not created. |
+| `WOVEN_POSITION_SYNC_ACTOR` | unset | Email of an active global admin the changes are made by. |
+
+To turn it on: apply `20261128002000_woven_provision_more_roles.sql`, set both
+variables, redeploy. For new District Managers to be created, the lifecycle's
+own switches must also allow `CREATE_USER`.
+
 ## Migration history in Production
 
 `supabase_migrations.schema_migrations` in Production does not mirror the repository:

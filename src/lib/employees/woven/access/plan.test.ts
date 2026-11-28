@@ -739,3 +739,40 @@ describe("new hires (NEW_HIRE_INVITES_ENABLED)", () => {
   });
 });
 
+
+/*
+ * Pau, 28 Nov 2026: "we need to add District manager also, just not corporate". With WOVEN_POSITION_SYNC_ENABLED a
+ * District Manager without an account gets one, created at their Woven salon (the database checks that salon); the
+ * position sync widens it to the district. Off: as before.
+ */
+describe("District Managers (WOVEN_POSITION_SYNC_ENABLED)", () => {
+  const dmPositions = [{ wovenPositionId: "P-DM", status: "mapped" as const, isConfirmed: true, role: "district_manager" as const, scopeLevel: "district" as const }];
+  const dmLocations = [{ wovenLocationId: "L-GI", status: "mapped" as const, salonNumber: "0307", name: "NE Grand Island" }];
+  const dm = {
+    externalEmployeeId: "DM1",
+    name: "Person DM1",
+    emailAddress: "dm1@gmail.com",
+    employmentStatus: "active" as const,
+    missingSyncCount: 0,
+    positionId: "P-DM",
+    positionName: "District Manager",
+    primaryWovenLocationId: "L-GI",
+    primaryLocationName: "NE Grand Island",
+    additionalLocationNames: [],
+    issues: [],
+    terminationDate: null,
+    lastSyncedAt: "2026-10-06T11:17:50Z",
+  };
+  const primaryOf = (createDistrictManagers: boolean) =>
+    planAccess({ employees: [dm], positions: dmPositions, locations: dmLocations, accounts: [], createDistrictManagers }).find((r) => r.externalEmployeeId === "DM1")!;
+
+  it("on: CREATE_USER as district_manager at their salon", () => {
+    const r = primaryOf(true);
+    expect(r.actions[0]).toBe("CREATE_USER");
+    expect(r.after).toMatchObject({ role: "district_manager", scope_level: "salon", scope_primary_area_id: "loc-0307" });
+  });
+
+  it("off: not created, as before", () => {
+    expect(primaryOf(false).actions).not.toContain("CREATE_USER");
+  });
+});
