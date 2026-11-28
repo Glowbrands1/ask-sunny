@@ -1,6 +1,7 @@
 import { AI_MAX_RETRIES, deadlineMarginMs, routeMaxMs } from "@/lib/config/ai-timeouts";
 
 import { aiRequestStartedAt, currentAiRoute } from "./ai-route";
+import { aiErrorFacts } from "./ai-error-facts";
 import { AiError } from "./errors";
 
 /**
@@ -74,15 +75,14 @@ export function logAiFailure(call: string, durationMs: number, error: unknown, r
 export function describeAiError(error: unknown): string {
   if (typeof error === "string") return error;
   if (error instanceof AiError) return `AiError ${error.code} ${error.status}`;
-  const record = (error && typeof error === "object" ? error : {}) as {
-    status?: unknown;
-    name?: unknown;
-    error?: { type?: unknown };
-  };
+  // Both clients' fields (`status` / `statusCode`, the body's type, a RetryError's last error): see ai-error-facts.ts.
+  const facts = aiErrorFacts(error);
   const parts = [
-    typeof record.status === "number" ? `HTTP ${record.status}` : null,
-    typeof record.error?.type === "string" ? record.error.type : null,
-    error instanceof Error ? error.constructor.name : typeof record.name === "string" ? record.name : null,
+    facts.status !== null ? `HTTP ${facts.status}` : null,
+    facts.type,
+    facts.name,
+    facts.retryable === null ? null : `retryable=${facts.retryable}`,
+    facts.afterRetries ? "after_retries" : null,
   ];
   return parts.filter(Boolean).join(" ") || "unknown";
 }

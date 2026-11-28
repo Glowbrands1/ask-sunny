@@ -1,5 +1,6 @@
 import { modelRetryEnabled } from "@/lib/config/chat-quality-flags";
 
+import { isOverloadedError } from "./ai-error-facts";
 import { AiError } from "./errors";
 
 /**
@@ -31,8 +32,7 @@ export function modelUnavailable(error: unknown): AiError {
   );
 }
 
+/** A 529 or "overloaded_error" from either client (the AI SDK says `statusCode`): ai-error-facts.ts. */
 function isOverloaded(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  const record = error as { status?: unknown; error?: { type?: unknown } };
-  return record.status === 529 || record.error?.type === "overloaded_error";
+  return isOverloadedError(error);
 }
