@@ -23,15 +23,27 @@ describe("readNewHireConfig", () => {
     expect(config.problem).toContain("boss");
   });
 
-  it("on: the date, the roles (none by default), today, and one an hour unless 2 is asked for", () => {
+  /*
+   * Changed on purpose (Pau, 28 Nov 2026): "we dont add tanning consultants and employee in both apps". The switch
+   * may add no roles any more: District Managers come with WOVEN_POSITION_SYNC_ENABLED.
+   */
+  it("\"we dont add tanning consultants and employee\": naming any role turns the invitations off and says why", () => {
+    for (const roles of ["employee", " employee ", "district_manager", "salon_director"]) {
+      const config = readNewHireConfig({ NEW_HIRE_INVITES_ENABLED: "true", NEW_HIRE_INVITE_SINCE: "2026-10-28", NEW_HIRE_INVITE_ROLES: roles }, NOW);
+      expect(config.enabled).toBe(false);
+      expect(config.problem).toContain("Tanning Consultants are not given accounts");
+    }
+  });
+
+  it("on: the date, no extra roles, today, and one an hour unless 2 is asked for", () => {
     expect(readNewHireConfig({ NEW_HIRE_INVITES_ENABLED: "true", NEW_HIRE_INVITE_SINCE: "2026-10-28" }, NOW)).toEqual({
       enabled: true,
       rule: { since: "2026-10-28", extraRoles: [], today: "2026-10-30" },
       perHour: 1,
       problem: null,
     });
-    const two = { NEW_HIRE_INVITES_ENABLED: "on", NEW_HIRE_INVITE_SINCE: "2026-10-28", NEW_HIRE_INVITE_ROLES: " employee ", NEW_HIRE_INVITES_PER_HOUR: "2" };
-    expect(readNewHireConfig(two, NOW)).toMatchObject({ rule: { extraRoles: ["employee"] }, perHour: 2 });
+    const two = { NEW_HIRE_INVITES_ENABLED: "on", NEW_HIRE_INVITE_SINCE: "2026-10-28", NEW_HIRE_INVITES_PER_HOUR: "2" };
+    expect(readNewHireConfig(two, NOW)).toMatchObject({ rule: { extraRoles: [] }, perHour: 2 });
     for (const asked of ["3", "50", "0", "x"]) {
       expect(readNewHireConfig({ ...two, NEW_HIRE_INVITES_PER_HOUR: asked }, NOW).perHour).toBe(1);
     }

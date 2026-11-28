@@ -174,7 +174,7 @@ Linking changes nobody's access.
 
 | Woven position | Ask Sunny | Provisioning |
 |---|---|---|
-| Tanning Consultant | employee, salon | automatic, after testing |
+| Tanning Consultant | employee, salon | **never** (Pau, 28 Nov 2026: "we dont add tanning consultants and employee in both apps") |
 | Assistant Salon Director | assistant_salon_director, salon | automatic |
 | Salon Director | salon_director, salon | automatic |
 | District Manager | district_manager | not until an admin-selected district flow exists |
@@ -276,7 +276,7 @@ migration. Four switches, all closed by default (`access/new-hire.ts`):
 |---|---|---|
 | `NEW_HIRE_INVITES_ENABLED` | off | Master switch. Off: nothing below is read, the lifecycle behaves as before. |
 | `NEW_HIRE_INVITE_SINCE` | unset | `YYYY-MM-DD`. Only people whose Woven hire date is on or after it (and not after today) are new hires. Unset with the switch on: off, with a problem. |
-| `NEW_HIRE_INVITE_ROLES` | empty | Roles a new hire may also be given an account for, beyond `AUTO_PROVISION_ROLES` — e.g. `employee` for Tanning Consultants. An unknown role: off. |
+| `NEW_HIRE_INVITE_ROLES` | empty | Must stay empty (28 Nov 2026: Tanning Consultants are not given accounts; District Managers come with `WOVEN_POSITION_SYNC_ENABLED`). Any role named: off. |
 | `NEW_HIRE_INVITES_PER_HOUR` | 1 | `1` or `2`; anything else is 1. |
 
 With the switch on:
@@ -372,15 +372,19 @@ With `WOVEN_POSITION_SYNC_ENABLED` on (`src/lib/admin/position-sync.ts`):
 
 - **District Managers get an account** like Salon Directors (the lifecycle's
   `CREATE_USER`; migration `20261128002000` lets the database create
-  `employee` and `district_manager` too, every other check unchanged). The
+  `district_manager` too, every other check unchanged). **Tanning Consultants
+  are never given accounts** (Pau, 28 Nov 2026: "we dont add tanning
+  consultants and employee in both apps"); `NEW_HIRE_INVITE_ROLES` may name no
+  role any more. The
   account is created at their Woven salon and widened to that salon's district
   in the same run. Admin, owner, developer and regional are still never created.
 - **After each sync, every Woven-linked account is compared with the position
-  mapping and the Woven primary salon.** Within the tier — Tanning Consultant,
-  ASD, SD, DM — a promotion, a demotion or a move is applied: role and scope as
+  mapping and the Woven primary salon.** Within the tier — ASD, SD, DM — a
+  promotion, a demotion or a move is applied: role and scope as
   the mapping says (salon roles at their salon, a DM at that salon's district).
   Extra salons an admin granted are kept. A DM an admin gave every salon is not
-  narrowed. Protected, admin, regional and corporate accounts are never changed.
+  narrowed. Protected, admin, regional and corporate accounts are never changed,
+  and a manager Woven now shows as a Tanning Consultant is left to an admin.
 - Each change is made by `patchUser` in the name of
   `WOVEN_POSITION_SYNC_ACTOR` (an active global admin), audited `role_changed` /
   `scope_changed`, and every admin's bell says "Access updated from Woven".
@@ -389,7 +393,8 @@ With `WOVEN_POSITION_SYNC_ENABLED` on (`src/lib/admin/position-sync.ts`):
 - **The Woven sync runs twice a day** (11:17 and 23:17 UTC), and **a new hire's
   link waits** while the latest sync saw them arrive, change position or
   primary location, or come back — and while their account's role does not yet
-  match Woven. So "Tanning Consultant, then DM the same day" gets the link as a
+  match Woven. So "Tanning Consultant, then DM the same day" (no account as a
+  Tanning Consultant; created once Woven says DM) gets the link as a
   DM, within about 12 hours.
 
 | Variable | Default | Meaning |

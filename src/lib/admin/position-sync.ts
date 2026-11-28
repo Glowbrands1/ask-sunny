@@ -19,9 +19,10 @@ import type { Role, ScopeLevel } from "@/types";
  * LINKED to a Woven employee is compared with Woven's approved position mapping
  * and primary salon:
  *
- *   - Tanning Consultant, Assistant Salon Director, Salon Director and District
- *     Manager (the TIER) move between each other both ways: a promotion, a
- *     demotion, a move to another salon. Role and scope follow the mapping:
+ *   - Assistant Salon Director, Salon Director and District Manager (the TIER)
+ *     move between each other both ways: a promotion, a demotion, a move to
+ *     another salon. Tanning Consultants have no accounts; a manager Woven now
+ *     shows as one is left to an admin. Role and scope follow the mapping:
  *     the salon roles at their Woven primary salon, a District Manager at that
  *     salon's district.
  *   - Admin, owner, developer, a role override, regional and anything outside
@@ -52,8 +53,11 @@ export const WOVEN_POSITION_SYNC_ACTOR_ENV = "WOVEN_POSITION_SYNC_ACTOR";
 export const MAX_CHANGES_PER_RUN = 10;
 
 /** The roles Woven may move people between, and the scope each one has. */
+/*
+ * No Tanning Consultants (Pau, 28 Nov 2026: "we dont add tanning consultants and employee in both apps"): a manager
+ * Woven now shows as a Tanning Consultant is left to an admin, never turned into an employee account.
+ */
 export const TIER: Readonly<Partial<Record<Role, ScopeLevel>>> = {
-  employee: "salon",
   assistant_salon_director: "salon",
   salon_director: "salon",
   district_manager: "district",

@@ -1,17 +1,16 @@
 -- ---------------------------------------------------------------------------
--- THE ACCOUNT LIFECYCLE MAY CREATE TANNING CONSULTANTS AND DISTRICT MANAGERS.
+-- THE ACCOUNT LIFECYCLE MAY CREATE DISTRICT MANAGERS.
 --
 -- Pau, 28 Nov 2026: "we need to add District manager also, just not
--- corporate", and new hires in any salon role get their link.
+-- corporate", and "we dont add tanning consultants and employee in both apps".
 --
--- `employee_access_provision_account` refused every role but Salon Director
--- and Assistant Salon Director, so NEW_HIRE_INVITE_ROLES=employee (Tanning
--- Consultants, built 28 Oct) was refused here too. This replaces the function
--- with ONE change: the roles it accepts are the approved Woven position roles
--- below the corporate line —
+-- `employee_access_provision_account` accepted only Salon Director and
+-- Assistant Salon Director. This replaces the function with ONE change: it
+-- also accepts District Manager —
 --
---   employee, assistant_salon_director, salon_director, district_manager
+--   assistant_salon_director, salon_director, district_manager
 --
+-- Tanning Consultants (`employee`) stay refused: they are not given accounts.
 -- Every other check is unchanged: the position must still be mapped and
 -- confirmed to exactly this role, the primary location mapped to this salon,
 -- the employee Active in the latest read, the email unique and Woven's own.
@@ -20,7 +19,7 @@
 -- (`src/lib/admin/position-sync.ts`, audited `scope_changed`), before any
 -- invitation can go (new hires wait for a second sync).
 --
--- Admin, owner, developer and regional_manager stay refused.
+-- Employee, admin, owner, developer and regional_manager stay refused.
 -- ---------------------------------------------------------------------------
 
 create or replace function public.employee_access_provision_account(
@@ -48,7 +47,7 @@ begin
   if p_app_user_id is null or p_external_employee_id is null or v_email = '' then
     raise exception 'provision_invalid_input' using errcode = 'invalid_parameter_value';
   end if;
-  if p_role not in ('employee', 'assistant_salon_director', 'salon_director', 'district_manager') then
+  if p_role not in ('assistant_salon_director', 'salon_director', 'district_manager') then
     raise exception 'provision_role_not_auto_provisioned' using errcode = 'check_violation';
   end if;
 
