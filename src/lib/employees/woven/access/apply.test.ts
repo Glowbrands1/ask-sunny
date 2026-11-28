@@ -588,3 +588,48 @@ describe("NEW_HIRE_INVITES_ENABLED", () => {
   });
 });
 
+/*
+ * "SIGN-IN TURNED OFF" IN THE BELL (owner, 28 Nov 2026): "can we get notifications too in the app when we disable log
+ * ins please? when someone is terminated". The run hands the administrators' notices the people it disabled, and only
+ * those.
+ */
+describe("the administrators hear about every sign-in turned off", () => {
+  const gone = employee("E7", { employmentStatus: "terminated" });
+  const steady = employee("E6");
+  const planOfDisable = (who: PlannerEmployee, colleague: PlannerEmployee) =>
+    planOfAll(
+      [who, colleague],
+      [
+        account(7, { email: "e7@gmail.com", management: "woven_linked", linkedExternalEmployeeId: who.externalEmployeeId, managedStatus: true }),
+        account(6, { email: "e6@gmail.com", management: "woven_linked", linkedExternalEmployeeId: colleague.externalEmployeeId, managedStatus: true }),
+      ],
+    );
+
+  it("a disable that went through is handed to the notices, once, with the person's name", async () => {
+    const plan = planOfDisable(gone, steady);
+    const f = fakes(plan);
+    const notify = vi.fn(async () => undefined);
+    f.deps.notifyDisabled = notify;
+    await run(f);
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(notify).toHaveBeenCalledWith([{ name: expect.any(String) }]);
+    expect((notify.mock.calls[0] as unknown as [{ name: string }[]])[0][0]!.name.length).toBeGreaterThan(0);
+  });
+
+  it("a disable the database refused rings nobody", async () => {
+    const plan = planOfDisable(gone, steady);
+    const f = fakes(plan, { rpc: { employee_access_disable_terminated: () => ({ data: null, error: { message: "not_terminated_in_latest_read", code: "P0001" } }) } });
+    const notify = vi.fn(async () => undefined);
+    f.deps.notifyDisabled = notify;
+    await run(f);
+    expect(notify).not.toHaveBeenCalled();
+  });
+
+  it("a notice that fails never fails the run", async () => {
+    const f = fakes(planOfDisable(gone, steady));
+    f.deps.notifyDisabled = vi.fn(async () => {
+      throw new Error("bell down");
+    });
+    expect(await run(f)).toMatchObject({ status: "completed" });
+  });
+});
