@@ -51,7 +51,7 @@ export function attachmentProblem(file: { name: string; type: string; size: numb
   }
   if (file.size > MAX_FILE_BYTES) return `${file.name} is larger than 10 MB.`;
   if (accepts === "chat" && !file.type.startsWith("image/") && sentBytes(file) > MAX_MESSAGE_SEND_BYTES) {
-    return `${file.name} is too large to send in the chat (about 2.4 MB at most for a PDF, Word, Excel or text file). Attach a smaller copy, or only the pages you need.`;
+    return `${file.name} is too large to send in the chat (about 3 MB at most for a PDF, Word, Excel or text file). Attach a smaller copy, or only the pages you need.`;
   }
 }
 
@@ -62,7 +62,9 @@ export function attachmentProblem(file: { name: string; type: string; size: numb
  * server could never receive. A message's files are now kept under MAX_MESSAGE_SEND_BYTES, leaving room for the words
  * and the conversation, and the manager is told which file does not fit, before anything is sent.
  */
-export const MAX_MESSAGE_SEND_BYTES = 3_300_000;
+// Just under Vercel's ~4.5 MB request limit, so nothing that could be sent before is refused now; the rest of the
+// request (the words, the conversation, which never re-sends an earlier message's files) fits in what is left.
+export const MAX_MESSAGE_SEND_BYTES = 4_200_000;
 
 /** What one file adds to the request: an image is re-encoded to about its budget; anything else is base64 of itself. */
 export function sentBytes(file: { type: string; size: number }): number {

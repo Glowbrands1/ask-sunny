@@ -15,15 +15,15 @@ describe("the chat composer only takes what the server can receive", () => {
     expect(attachmentProblem(file("policy.pdf", "application/pdf", 4 * MB), "chat")).toMatch(/too large to send in the chat/);
   });
 
-  it("takes a 2 MB PDF, and a large photo (it is shrunk in the browser)", () => {
-    expect(attachmentProblem(file("policy.pdf", "application/pdf", 2 * MB), "chat")).toBeUndefined();
+  it("takes a 3 MB PDF (it could be sent before, and still can), and a large photo (it is shrunk in the browser)", () => {
+    expect(attachmentProblem(file("policy.pdf", "application/pdf", 3 * MB), "chat")).toBeUndefined();
     expect(attachmentProblem(file("photo.jpg", "image/jpeg", 8 * MB), "chat")).toBeUndefined();
     expect(sentBytes(file("photo.jpg", "image/jpeg", 8 * MB))).toBeLessThanOrEqual(1_500_000);
   });
 
   it("stops adding files once the message would be too large, and names the one that does not fit", () => {
-    const already = [file("a.pdf", "application/pdf", 1 * MB)];
-    const { fit, problems } = filesThatFit(already, [file("photo.jpg", "image/jpeg", 6 * MB), file("b.pdf", "application/pdf", 1 * MB)]);
+    const already = [file("a.pdf", "application/pdf", 1.5 * MB)];
+    const { fit, problems } = filesThatFit(already, [file("photo.jpg", "image/jpeg", 6 * MB), file("b.pdf", "application/pdf", 1.5 * MB)]);
     expect(fit.map((f) => f.name)).toEqual(["photo.jpg"]);
     expect(problems).toEqual(["b.pdf would make this message too large to send. Send it in a message of its own."]);
     const total = [...already, ...fit].reduce((sum, f) => sum + sentBytes(f), 0);
