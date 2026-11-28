@@ -331,9 +331,10 @@ export function realNoticeDeps(): NewHireNoticeDeps {
     },
 
     async recentTerminations(since) {
+      // The change log is keyed by the directory row (`employee_id`), not the Woven EmployeeID.
       const { data, error } = await db()
         .from("employee_directory_changes")
-        .select("external_employee_id, effective_date, detected_at")
+        .select("employee_id, detected_at")
         .eq("change_kind", "terminated")
         .gte("detected_at", `${since}T00:00:00Z`)
         .limit(2000);
@@ -341,23 +342,24 @@ export function realNoticeDeps(): NewHireNoticeDeps {
       const changes = (data ?? []) as Record<string, unknown>[];
       if (changes.length === 0) return [];
       // The date counts from when the sync saw it: a termination Woven back-dates is still news the day it shows up.
-      const dateOf = new Map<string, string>();
+      const dateOfRow = new Map<string, string>();
       for (const c of changes) {
-        const id = String(c.external_employee_id);
+        const rowId = String(c.employee_id);
         const seen = String(c.detected_at).slice(0, 10);
-        if (!dateOf.has(id) || seen > dateOf.get(id)!) dateOf.set(id, seen);
+        if (!dateOfRow.has(rowId) || seen > dateOfRow.get(rowId)!) dateOfRow.set(rowId, seen);
       }
-      const ids = [...dateOf.keys()];
+      const rowIds = [...dateOfRow.keys()];
       const people: Record<string, unknown>[] = [];
-      for (let i = 0; i < ids.length; i += IDS_PER_QUERY) {
+      for (let i = 0; i < rowIds.length; i += IDS_PER_QUERY) {
         const { data: rows, error: readError } = await db()
           .from("employee_access_directory")
           .select(EMPLOYEE_COLUMNS)
           .eq("source_system", "woven")
-          .in("external_employee_id", ids.slice(i, i + IDS_PER_QUERY));
+          .in("id", rowIds.slice(i, i + IDS_PER_QUERY));
         if (readError) throw new Error(`the directory could not be read (${readError.code ?? "error"})`);
         people.push(...((rows ?? []) as Record<string, unknown>[]));
       }
+      const dateOf = new Map(people.map((p) => [String(p.external_employee_id), dateOfRow.get(String(p.id))!]));
       const employees = await withLocations(people, false);
       const accounts = await accountStatusByEmployee(employees.map((e) => e.externalEmployeeId));
       return employees.map((employee) => ({

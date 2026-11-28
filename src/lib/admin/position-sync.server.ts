@@ -69,13 +69,22 @@ export async function runPositionSync(input: { env?: Record<string, string | und
  */
 export async function unsettledEmployees(latestRunId: string | null): Promise<Set<string>> {
   if (!latestRunId) return new Set();
-  const { data, error } = await getSupabaseAdmin()
+  const db = getSupabaseAdmin();
+  // The change log is keyed by the directory row (`employee_id`), not the Woven EmployeeID.
+  const { data, error } = await db
     .from("employee_directory_changes")
-    .select("external_employee_id")
+    .select("employee_id")
     .eq("sync_run_id", latestRunId)
     .in("change_kind", ["new_employee", "position_changed", "primary_location_changed", "reactivated"]);
   if (error) throw new Error(`the latest changes could not be read (${error.code ?? "error"})`);
-  return new Set(((data ?? []) as { external_employee_id: unknown }[]).map((r) => String(r.external_employee_id)));
+  const rowIds = [...new Set(((data ?? []) as { employee_id: unknown }[]).map((r) => String(r.employee_id)))];
+  const out = new Set<string>();
+  for (let i = 0; i < rowIds.length; i += 200) {
+    const { data: rows, error: readError } = await db.from("employee_access_directory").select("external_employee_id").in("id", rowIds.slice(i, i + 200));
+    if (readError) throw new Error(`the directory could not be read (${readError.code ?? "error"})`);
+    for (const r of (rows ?? []) as { external_employee_id: unknown }[]) out.add(String(r.external_employee_id));
+  }
+  return out;
 }
 
 /* ------------------------------------------------------- the real services -- */
