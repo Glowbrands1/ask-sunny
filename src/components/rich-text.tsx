@@ -2,6 +2,7 @@ import * as React from "react";
 import Link from "next/link";
 
 import { REPORTS, REPORTS_SECTION_PATH } from "@/features/reports/reports-routes";
+import type { PageLink } from "@/lib/navigation/page-links";
 import { cn } from "@/lib/utils/cn";
 
 /**
@@ -54,22 +55,85 @@ const LINKABLE_PATHS: ReadonlySet<string> = new Set([
 
 const LINK = /\[([^\]\n]+)\]\(([^)\s]+)\)/g;
 
-/** Plain text with any allowlisted report links in it turned into links. */
-function renderLinks(text: string, keyPrefix: string): React.ReactNode[] {
+const LINK_CLASS =
+  "font-semibold text-foreground underline decoration-brand-yellow decoration-2 underline-offset-2 hover:decoration-foreground";
+
+/**
+ * ============================================================================
+ * AND THE PAGES THE ANSWER SENDS THE PERSON TO (Pau, 28 Nov 2026)
+ * ============================================================================
+ *
+ * "make sure if sunny or bubble direct them to a page, make sure its clickable". Given `pageLinks` (the pages this
+ * person's own sidebar shows: `src/lib/navigation/page-links.ts`), a `[label](/path)` to one of them is a link too,
+ * and so is the page's name in plain text: "open Form Monitoring" links Form Monitoring. Only whole names, spelled as
+ * the app spells them, so "an overview" or "your calendar" stay text. Still an allowlist: every href is one of the
+ * app's own paths, never the model's spelling of a URL.
+ */
+interface LinkSet {
+  readonly hrefs: ReadonlySet<string>;
+  readonly names: RegExp | null;
+  readonly hrefOf: ReadonlyMap<string, string>;
+}
+
+const REPORT_LINKS_ONLY: LinkSet = { hrefs: LINKABLE_PATHS, names: null, hrefOf: new Map() };
+
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+function linkSetOf(pages: readonly PageLink[] | undefined): LinkSet {
+  if (!pages || pages.length === 0) return REPORT_LINKS_ONLY;
+  const hrefOf = new Map<string, string>();
+  for (const page of pages) {
+    for (const name of page.names) {
+      // "What's New" is also written with a curly apostrophe.
+      for (const spelling of new Set([name, name.replace(/'/g, "’")])) if (!hrefOf.has(spelling)) hrefOf.set(spelling, page.href);
+    }
+  }
+  // Longest first, so "Reports & Analytics" wins over "Analytics" and "DM L10" over "L10".
+  const alternatives = [...hrefOf.keys()].sort((a, b) => b.length - a.length).map(escapeRegExp);
+  return {
+    hrefs: new Set([...LINKABLE_PATHS, ...pages.map((page) => page.href)]),
+    names: new RegExp(`(?<![\\p{L}\\p{N}_])(?:${alternatives.join("|")})(?![\\p{L}\\p{N}_])`, "gu"),
+    hrefOf,
+  };
+}
+
+/** Page names in plain text turned into links. */
+function linkPageNames(text: string, keyPrefix: string, links: LinkSet): React.ReactNode[] {
+  if (!links.names || text === "") return text === "" ? [] : [text];
+  const nodes: React.ReactNode[] = [];
+  let cursor = 0;
+  for (const match of text.matchAll(links.names)) {
+    const href = links.hrefOf.get(match[0]);
+    if (!href) continue;
+    const start = match.index ?? 0;
+    if (start > cursor) nodes.push(text.slice(cursor, start));
+    nodes.push(
+      <Link key={`${keyPrefix}-n${start}`} href={href} className={LINK_CLASS}>
+        {match[0]}
+      </Link>,
+    );
+    cursor = start + match[0].length;
+  }
+  if (cursor < text.length) nodes.push(text.slice(cursor));
+  return nodes;
+}
+
+/** Plain text with any allowlisted links in it turned into links. */
+function renderLinks(text: string, keyPrefix: string, links: LinkSet = REPORT_LINKS_ONLY): React.ReactNode[] {
   const nodes: React.ReactNode[] = [];
   let cursor = 0;
 
   for (const match of text.matchAll(LINK)) {
     const [whole, label, href] = match;
-    if (!LINKABLE_PATHS.has(href)) continue;
+    if (!links.hrefs.has(href)) continue;
 
     const start = match.index ?? 0;
-    if (start > cursor) nodes.push(text.slice(cursor, start));
+    if (start > cursor) nodes.push(...linkPageNames(text.slice(cursor, start), `${keyPrefix}-${cursor}`, links));
     nodes.push(
       <Link
         key={`${keyPrefix}-a${start}`}
         href={href}
-        className="font-semibold text-foreground underline decoration-brand-yellow decoration-2 underline-offset-2 hover:decoration-foreground"
+        className={LINK_CLASS}
       >
         {label}
       </Link>,
@@ -77,7 +141,7 @@ function renderLinks(text: string, keyPrefix: string): React.ReactNode[] {
     cursor = start + whole.length;
   }
 
-  if (cursor < text.length) nodes.push(text.slice(cursor));
+  if (cursor < text.length) nodes.push(...linkPageNames(text.slice(cursor), `${keyPrefix}-${cursor}`, links));
   return nodes;
 }
 
@@ -86,19 +150,19 @@ function renderLinks(text: string, keyPrefix: string): React.ReactNode[] {
  * how a model emphasises a tab, and splitting on links first would cut the
  * bold markers apart and print them.
  */
-function renderInline(text: string, keyPrefix: string): React.ReactNode[] {
+function renderInline(text: string, keyPrefix: string, links: LinkSet = REPORT_LINKS_ONLY): React.ReactNode[] {
   const parts = text.split(/(\*\*[^*]+\*\*)/g).filter(Boolean);
   return parts.map((part, index) => {
     if (part.startsWith("**") && part.endsWith("**")) {
       return (
         <strong key={`${keyPrefix}-b-${index}`} className="font-semibold text-foreground">
-          {renderLinks(part.slice(2, -2), `${keyPrefix}-b-${index}`)}
+          {renderLinks(part.slice(2, -2), `${keyPrefix}-b-${index}`, links)}
         </strong>
       );
     }
     return (
       <React.Fragment key={`${keyPrefix}-t-${index}`}>
-        {renderLinks(part, `${keyPrefix}-t-${index}`)}
+        {renderLinks(part, `${keyPrefix}-t-${index}`, links)}
       </React.Fragment>
     );
   });
@@ -155,10 +219,15 @@ const ALIGN_CLASS: Record<ColumnAlign, string> = {
 export function RichText({
   content,
   className,
+  pageLinks,
 }: {
   content: string;
   className?: string;
+  /** The pages this person may be sent to (`usePageLinks`): their names and links in the answer become clickable. */
+  pageLinks?: readonly PageLink[];
 }) {
+  const links = linkSetOf(pageLinks);
+  const inline = (text: string, keyPrefix: string) => renderInline(text, keyPrefix, links);
   const lines = content.split("\n");
   const blocks: React.ReactNode[] = [];
 
@@ -216,7 +285,7 @@ export function RichText({
             left exactly as written.
           */}
           <p className="leading-relaxed text-foreground">
-            {renderInline(
+            {inline(
               /^[a-z]/.test(body) ? body[0].toUpperCase() + body.slice(1) : body,
               `${key}-next`,
             )}
@@ -228,7 +297,7 @@ export function RichText({
 
     blocks.push(
       <p key={key} className="leading-relaxed">
-        {renderInline(text, key)}
+        {inline(text, key)}
       </p>,
     );
   };
@@ -245,7 +314,7 @@ export function RichText({
               aria-hidden
               className="mt-[0.55em] size-1 shrink-0 rounded-full bg-primary"
             />
-            <span>{renderInline(item, `${key}-${index}`)}</span>
+            <span>{inline(item, `${key}-${index}`)}</span>
           </li>
         ))}
       </ul>,
@@ -263,7 +332,7 @@ export function RichText({
             <span className="mt-px w-4 shrink-0 text-[13px] font-semibold text-primary tabular-nums">
               {index + 1}.
             </span>
-            <span>{renderInline(item, `${key}-${index}`)}</span>
+            <span>{inline(item, `${key}-${index}`)}</span>
           </li>
         ))}
       </ol>,
@@ -313,7 +382,7 @@ export function RichText({
                     ALIGN_CLASS[alignOf(column)],
                   )}
                 >
-                  {renderInline(cell, `${key}-h-${column}`)}
+                  {inline(cell, `${key}-h-${column}`)}
                 </th>
               ))}
             </tr>
@@ -337,7 +406,7 @@ export function RichText({
                       alignOf(column) === "right" && "tabular-nums",
                     )}
                   >
-                    {renderInline(row[column] ?? "", `${key}-r-${rowIndex}-${column}`)}
+                    {inline(row[column] ?? "", `${key}-r-${rowIndex}-${column}`)}
                   </td>
                 ))}
               </tr>
@@ -389,6 +458,7 @@ export function RichText({
           key={`${key}-h`}
           className="pt-1 text-[13px] font-semibold tracking-wide text-foreground"
         >
+          {/* A heading names a part of the answer, not a page to go to: "### Overview" stays a heading. */}
           {renderInline(heading[1], `${key}-h`)}
         </h4>,
       );

@@ -7,6 +7,7 @@ import { AlertTriangle, FilePlus2, FileText, Loader2, RotateCcw, Settings2, User
 
 import { SunMark } from "@/components/brand-mark";
 import { RichText } from "@/components/rich-text";
+import { usePageLinks } from "@/lib/navigation/page-links-context";
 import { SourceList } from "@/components/source-list";
 import { VideoSuggestionCard } from "@/components/video-card";
 import { Badge } from "@/components/ui/badge";
@@ -76,6 +77,8 @@ export function MessageBubble({
   /** Begins a fresh form request in the same thread. Never reuses an instance. */
   onStartAnother?: () => void;
 }) {
+  // Pau, 28 Nov 2026: a page the answer sends them to is a link (`page-links.ts`), to the pages their sidebar shows.
+  const pageLinks = usePageLinks();
   const { user, isAdmin, managerDisplayName } = useSession();
   /*
    * BEFORE ANY EARLY RETURN. The lookup is a hook, so it has to run on
@@ -191,7 +194,7 @@ export function MessageBubble({
             </span>
           </div>
 
-          <RichText content={message.content} />
+          <RichText content={message.content} pageLinks={pageLinks} />
 
           {/*
             NO FORM WAS NAMED, so the choices are cards rather than a list in

@@ -139,10 +139,16 @@ describe("hidden for everyone until rolled out (Pau, 27 Nov 2026: \"hide this fo
     const { NAV_SECTIONS } = await import("@/components/shell/navigation");
     const entry = NAV_SECTIONS.flatMap((section) => section.items).find((item) => item.href === "/whats-new");
     expect(entry?.whatsNew, "the entry must carry the server's decision, or it shows to everyone").toBe(true);
-    for (const file of ["sidebar.tsx", "global-search.tsx"]) {
+    /*
+     * CHANGED ON PURPOSE (Pau, 28 Nov 2026: answers link the pages the sidebar shows). The rail's rule moved from
+     * sidebar.tsx into navigation.ts's visibleNavSections, which the sidebar and the answers' page links both call.
+     */
+    for (const file of ["navigation.ts", "global-search.tsx"]) {
       const source = readFileSync(join(process.cwd(), "src", "components", "shell", file), "utf8");
       expect(source, `${file} does not hide What's New from whom the server says`).toMatch(/item\.whatsNew && !whatsNewVisible/);
     }
+    const sidebar = readFileSync(join(process.cwd(), "src", "components", "shell", "sidebar.tsx"), "utf8");
+    expect(sidebar, "the sidebar does not use the shared rule").toMatch(/visibleNavSections\(\{[^}]*whatsNewVisible[^}]*\}\)/);
   });
 
   it("turned on, the switch is on", () => {

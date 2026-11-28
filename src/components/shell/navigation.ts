@@ -277,6 +277,40 @@ export const NAV_SECTIONS: NavSection[] = [
 
 export const ICONS = { Sparkles };
 
+/** What decides which sidebar entries a person sees (the session's, and the server's yes/no for What's New). */
+export interface NavVisibility {
+  readonly can: (permission: Permission) => boolean;
+  readonly isAdmin: boolean;
+  readonly demoMode: boolean;
+  readonly whatsNewVisible: boolean;
+}
+
+/**
+ * The sidebar sections and entries this person sees. ONE RULE for the rail and for the pages Sunny's answers link to
+ * (`src/lib/navigation/page-links.ts`), so an answer never links a page the person's own sidebar does not show.
+ */
+export function visibleNavSections({ can, isAdmin, demoMode, whatsNewVisible }: NavVisibility, sections: readonly NavSection[] = NAV_SECTIONS): NavSection[] {
+  return sections
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) => {
+        if (section.admin && !isAdmin) return false;
+        // What's New: only for whom the server says (the owner, 27 Nov 2026: "live but on my own page only").
+        if (item.whatsNew && !whatsNewVisible) return false;
+        /*
+         * Checked ALONGSIDE the section flag and BEFORE the demo bypass, for the
+         * same reason: who administers the platform is a fixed decision rather
+         * than a guess the preview is standing down on.
+         */
+        if (item.adminOnly && !isAdmin) return false;
+        if (!item.permission) return true;
+        if (demoMode) return true;
+        return can(item.permission);
+      }),
+    }))
+    .filter((section) => section.items.length > 0);
+}
+
 /**
  * Whether a sidebar item is the one the current route belongs to.
  *

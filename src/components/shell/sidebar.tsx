@@ -12,7 +12,7 @@ import { NotificationBell } from "@/features/notifications/notification-bell";
 import type { BellData } from "@/lib/notifications/types";
 import { cn } from "@/lib/utils/cn";
 import { AppSwitcher } from "./app-switcher";
-import { NAV_SECTIONS, isActivePath } from "./navigation";
+import { isActivePath, visibleNavSections } from "./navigation";
 import { useWhatsNewVisible } from "@/features/whats-new/whats-new-access";
 import { useWhatsNewUnseen } from "@/features/whats-new/whats-new-seen";
 import { whatsNewFor } from "@/config/whats-new";
@@ -75,23 +75,7 @@ export function SidebarNav({
   // The newest What's New entry this person may see; the entry wiggles with a "New" dot until they open the page.
   const whatsNewLatest = whatsNewVisible ? (whatsNewFor(user.role, (_role, permission) => can(permission))[0]?.date ?? null) : null;
   const whatsNewUnseen = useWhatsNewUnseen(user?.id ?? "", whatsNewLatest, pathname === "/whats-new");
-  const sections = NAV_SECTIONS.map((section) => ({
-    ...section,
-    items: section.items.filter((item) => {
-      if (section.admin && !isAdmin) return false;
-      // What's New: only for whom the server says (the owner, 27 Nov 2026: "live but on my own page only").
-      if (item.whatsNew && !whatsNewVisible) return false;
-      /*
-       * Checked ALONGSIDE the section flag and BEFORE the demo bypass, for the
-       * same reason: who administers the platform is a fixed decision rather
-       * than a guess the preview is standing down on.
-       */
-      if (item.adminOnly && !isAdmin) return false;
-      if (!item.permission) return true;
-      if (demoMode) return true;
-      return can(item.permission);
-    }),
-  })).filter((section) => section.items.length > 0);
+  const sections = visibleNavSections({ can, isAdmin, demoMode, whatsNewVisible });
   if (meetingTabs.length > 0) {
     const meetings = { id: "meetings", label: "Meetings", items: meetingTabs.map((t) => ({ label: t.label, href: t.href, icon: CalendarCheck })) };
     const after = sections.findIndex((s) => s.id === "assistant");
