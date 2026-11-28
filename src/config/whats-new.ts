@@ -25,6 +25,9 @@ import type { Permission, Role } from "@/types";
  *     page or from the AI, so nobody is told about a screen they cannot open. Leave it out for what everyone has.
  *   - adminConsole (optional): true when that page is an admin console page (`requireAdminConsolePage`): only the roles
  *     that open the admin console see the entry, whatever permissions another role holds.
+ *   - before (optional): leave it out when there is nothing useful to say about how it was.
+ *   - audience (optional): "HR only" or "Admin only", a red badge beside the tag.
+ *   - note (optional): a caveat shown in red under How to use it.
  *   Plain manager language: no flag or code names.
  *
  * This is Ask Sunny's list, from Ask Sunny's own changes. The sibling app keeps its own.
@@ -42,11 +45,18 @@ export function whatsNewEnabled(): boolean {
   return typeof raw === "string" && ["1", "true", "yes", "on"].includes(raw.trim().toLowerCase());
 }
 export type WhatsNewTag = "New" | "Improved";
+/** The red "HR ONLY" / "ADMIN ONLY" badge (the owner, 28 Nov 2026). A label only: who SEES the entry is still
+ * permission / adminConsole / roles. */
+export type WhatsNewAudience = "HR only" | "Admin only";
 
 export interface WhatsNewEntry {
   readonly tag: WhatsNewTag;
   readonly title: string;
-  readonly before: string;
+  readonly before?: string;
+  /** Who the feature is for, shown as a red badge beside the tag (the owner, 28 Nov 2026). */
+  readonly audience?: WhatsNewAudience;
+  /** A caveat the reader must not miss, shown in red under How to use it (the owner, 28 Nov 2026). */
+  readonly note?: string;
   readonly now: string;
   readonly howToUse: string;
   readonly showMe?: { readonly href: string; readonly label: string };
@@ -65,7 +75,7 @@ export interface WhatsNewRelease {
 export const WHATS_NEW: readonly WhatsNewRelease[] = [
   {
     date: "2026-11-27",
-    summary: "One calendar for follow-ups and every L10, talking to Sunny, attaching files, the exit form's address, a better phone layout, and the Knowledge Base for administrators.",
+    summary: "One calendar for follow-ups and every L10, talking to Sunny, attaching files, the exit form's address, and a better phone layout.",
     entries: [
       {
         tag: "New",
@@ -141,16 +151,6 @@ export const WHATS_NEW: readonly WhatsNewRelease[] = [
         howToUse: "Ask Sunny to start a Resignation/Exit form for the employee, then check the Permanent Address line before you finalize.",
         roles: [...ADMIN_CONSOLE_ROLES, ...HOME_ADDRESS_MANAGER_ROLES],
       },
-      {
-        tag: "Improved",
-        title: "Ask Sunny about the Knowledge Base's documents",
-        before: "Sunny could quote what a document says, but could not tell you which documents the Knowledge Base holds or whether one had failed.",
-        now: "Administrators can ask which documents there are, when one was last updated, and which failed and why. Everyone else still gets answers from the documents themselves.",
-        howToUse: "Ask Sunny \"which documents do we have?\" or \"did any document fail?\".",
-        showMe: { href: "/knowledge", label: "Knowledge Base" },
-        permission: "view_knowledge",
-        adminConsole: true,
-      },
     ],
   },
   {
@@ -205,6 +205,7 @@ export const WHATS_NEW: readonly WhatsNewRelease[] = [
       {
         tag: "New",
         title: "Search every form for one employee",
+        audience: "HR only",
         before: "HR scrolled Form Monitoring to find one person's forms, and older ones were past the end of the list.",
         now: "HR and administrators type an employee's name and see every form on file for them, drafts included, with the date.",
         howToUse: "On Form Monitoring, type the name in the search bar, then narrow it to Drafts, Finalized or Approved by HR.",
@@ -214,12 +215,14 @@ export const WHATS_NEW: readonly WhatsNewRelease[] = [
       {
         tag: "New",
         title: "Employee address in the Employee Directory",
+        audience: "Admin only",
         before: "An employee's home address was only in Woven.",
         now: "Administrators can see an employee's home address from Woven in the Employee Directory. It is read from Woven each time and never saved in Ask Sunny.",
         howToUse: "Open Integrations, then Woven Employee Sync, then the Employee Directory tab, and press \"Show address\" on the person's row.",
         showMe: { href: "/admin/integrations/woven", label: "Woven Employee Sync" },
         permission: "manage_integrations",
         roles: ADMIN_CONSOLE_ROLES,
+        note: "If an employee has no address in Woven, none shows on the Resignation/Exit form either.",
       },
       {
         tag: "Improved",
@@ -244,6 +247,7 @@ export const WHATS_NEW: readonly WhatsNewRelease[] = [
         title: "The Corrective Action history box fills itself",
         before: "You wrote the history box yourself, and only recent forms counted as history.",
         now: "N/A is filled in when there is no history, every earlier coaching and Corrective Action on file counts (including ones waiting for HR or sent back), and each line says whether it is a draft or finalized.",
+        note: "Sunny fills it in as long as the employee has history in Form Monitoring.",
         howToUse: "Open a Corrective Action and check its history box before you finalize.",
         showMe: { href: "/forms/monitoring", label: "Form Monitoring" },
         permission: "view_form_monitoring",
@@ -257,7 +261,6 @@ export const WHATS_NEW: readonly WhatsNewRelease[] = [
       {
         tag: "Improved",
         title: "Missing fields explained at Finalize",
-        before: "Finalize refused a form with blank fields and did not say which.",
         now: "A pop-up lists the blank fields, and each one is outlined in red on the form until it is filled.",
         howToUse: "Press \"Show me the blank fields\" in the pop-up to jump to the first one.",
         showMe: { href: "/chat", label: "Ask Sunny" },
@@ -302,15 +305,6 @@ export const WHATS_NEW: readonly WhatsNewRelease[] = [
         now: "The DM L10 bell, in the meeting's top bar, now works like the Notifications bar: press × to remove one or Clear all. It covers only the meetings you attend, and tells you when someone mentions you, gives you a To-Do, adds or solves an Issue, adds or changes a Rock, or changes the meeting's time.",
         howToUse: "In the DM L10, press the bell at the top to see what changed.",
         image: { src: "/whats-new/2026-11-24/meeting-bell.webp", alt: "The DM L10 bell opened: a mention, a To-Do given to you, a new Issue and a changed meeting time." },
-      },
-      {
-        tag: "Improved",
-        title: "Delete several drafts at once",
-        before: "Drafts were deleted one at a time.",
-        now: "You can tick several drafts and delete them together.",
-        howToUse: "On Form Monitoring, tick the drafts' checkboxes and press \"Delete selected\".",
-        showMe: { href: "/forms/monitoring", label: "Form Monitoring" },
-        permission: "manage_form_records",
       },
       {
         tag: "Improved",

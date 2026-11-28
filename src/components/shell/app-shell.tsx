@@ -13,6 +13,7 @@ import { LoginScreen } from "@/features/auth/login-screen";
 import { useSession } from "@/lib/session/session-context";
 import { cn } from "@/lib/utils/cn";
 import { usePreference, writePreference } from "@/lib/utils/client-store";
+import { MeetingTabsProvider } from "@/lib/navigation/page-links-context";
 import { JumpToRow } from "./jump-to-row";
 import { SidebarNav } from "./sidebar";
 import { UpdateNotice } from "./update-notice";
@@ -238,7 +239,8 @@ export function AppShell({
         ) : null}
 
         <main id="main" className="min-w-0 flex-1">
-          {children}
+          {/* The answers' links to the L10 go to the person's own meeting tab (`page-links.ts`). */}
+          <MeetingTabsProvider tabs={meetingTabs}>{children}</MeetingTabsProvider>
         </main>
       </div>
       </div>

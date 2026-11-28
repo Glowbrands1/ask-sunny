@@ -1350,6 +1350,19 @@ describe("new flags default off and wrappers are inert", () => {
           // apps): a dialog on desktop and a banner on phones, dismissed per user per business day.
           // Shell only; no chat or form behaviour changes. Its mount line is in app-shell.tsx, above.
           ":(exclude)src/components/shell/update-notice.tsx",
+          // WHAT'S NEW BADGES AND RED NOTES (Pau, 28 Nov 2026, both apps: "add a bubble HR ONLY in red", "make a note and
+          // highlight in red"): the page draws an entry's optional audience badge and note, and hides Before when an entry
+          // has none. What's New page only; no chat or form behaviour changes.
+          // A PAGE THE ANSWER NAMES IS A LINK (Pau, 28 Nov 2026, both apps: "make sure if sunny or bubble direct them to a
+          // page, make sure its clickable"): RichText links a page's name, or a [label](/path) to it, only when the page is
+          // one this person's own sidebar shows (`src/lib/navigation/page-links.ts`; the rail's rule moved to
+          // navigation.ts's visibleNavSections so both read it). The answer views pass the person's pages; without them
+          // RichText renders exactly as before. Display only: what Sunny answers does not change.
+          ":(exclude)src/components/rich-text.tsx",
+          ":(exclude)src/components/shell/navigation.ts",
+          ":(exclude)src/features/dashboard/answer-sheet.tsx",
+          ":(exclude)src/features/reports/sales-totals/ask-sunny-panel.tsx",
+          ":(exclude)src/features/whats-new/whats-new-screen.tsx",
           `:(exclude)${SIGN_IN_FORM}`,
           // THE CLAY RESTYLE (requested by Paulyne, 9 Nov 2026, from the approved
           // "Ask Sunny Clay Web" mockup; QA to confirm before merge). Unlike the

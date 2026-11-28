@@ -38,7 +38,7 @@ describe("What's New", () => {
   it("every entry is tagged New or Improved and says Before, Now and How to use it, in plain words", () => {
     for (const entry of ENTRIES) {
       expect(["New", "Improved"], entry.title).toContain(entry.tag);
-      for (const part of [entry.before, entry.now, entry.howToUse]) {
+      for (const part of [entry.before, entry.now, entry.howToUse, entry.note].filter((p): p is string => p !== undefined)) {
         expect(part.trim().length, entry.title).toBeGreaterThan(10);
         expect(part, entry.title).not.toMatch(CODE_WORDS);
       }
@@ -91,6 +91,16 @@ describe("What's New", () => {
     for (const role of ROLES.filter((r) => whatsNewFor(r, can).some((release) => release.entries.includes(directory)))) expect(canAccessAdminConsole(role), role).toBe(true);
   });
 
+  it("the owner's red badges and notes (28 Nov 2026) are on their entries", () => {
+    const find = (title: string) => ENTRIES.find((candidate) => candidate.title === title);
+    expect(find("Search every form for one employee")?.audience).toBe("HR only");
+    expect(find("Employee address in the Employee Directory")?.audience).toBe("Admin only");
+    expect(find("Employee address in the Employee Directory")?.note).toMatch(/no address in Woven/);
+    expect(find("The Corrective Action history box fills itself")?.note).toMatch(/as long as the employee has history/);
+    expect(find("Missing fields explained at Finalize")?.before).toBeUndefined();
+    expect(find("Delete several drafts at once"), "taken off What's New").toBeUndefined();
+  });
+
   it("a screenshot is a file under public/whats-new/<its release's date>/, small, with alt text", () => {
     for (const release of WHATS_NEW) {
       for (const entry of release.entries) {
@@ -129,10 +139,16 @@ describe("hidden for everyone until rolled out (Pau, 27 Nov 2026: \"hide this fo
     const { NAV_SECTIONS } = await import("@/components/shell/navigation");
     const entry = NAV_SECTIONS.flatMap((section) => section.items).find((item) => item.href === "/whats-new");
     expect(entry?.whatsNew, "the entry must carry the server's decision, or it shows to everyone").toBe(true);
-    for (const file of ["sidebar.tsx", "global-search.tsx"]) {
+    /*
+     * CHANGED ON PURPOSE (Pau, 28 Nov 2026: answers link the pages the sidebar shows). The rail's rule moved from
+     * sidebar.tsx into navigation.ts's visibleNavSections, which the sidebar and the answers' page links both call.
+     */
+    for (const file of ["navigation.ts", "global-search.tsx"]) {
       const source = readFileSync(join(process.cwd(), "src", "components", "shell", file), "utf8");
       expect(source, `${file} does not hide What's New from whom the server says`).toMatch(/item\.whatsNew && !whatsNewVisible/);
     }
+    const sidebar = readFileSync(join(process.cwd(), "src", "components", "shell", "sidebar.tsx"), "utf8");
+    expect(sidebar, "the sidebar does not use the shared rule").toMatch(/visibleNavSections\(\{[^}]*whatsNewVisible[^}]*\}\)/);
   });
 
   it("turned on, the switch is on", () => {

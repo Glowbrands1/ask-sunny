@@ -993,9 +993,12 @@ export async function readWhatsNew(context: DataToolContext, input: { since?: un
       updates: entries.map((entry) => ({
         tag: entry.tag,
         title: entry.title,
-        before: entry.before,
+        ...(entry.audience ? { only_for: entry.audience } : {}),
+        ...(entry.before ? { before: entry.before } : {}),
         now: entry.now,
         how_to_use: entry.howToUse,
+        // The red note on the page (the owner, 28 Nov 2026): a caveat the answer passes on.
+        ...(entry.note ? { important_note: entry.note } : {}),
         ...(entry.showMe ? { show_me: { page: entry.showMe.label, link: entry.showMe.href } } : {}),
         // A screenshot on the page (the owner, 27 Nov 2026): the model may say "the What's New page has a picture of it".
         ...(entry.image ? { screenshot: `On the What's New page: ${entry.image.alt}` } : {}),

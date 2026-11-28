@@ -5,6 +5,7 @@ import { Loader2, MessageCircleQuestion, RefreshCw, Sparkles } from "lucide-reac
 
 import { Button } from "@/components/ui/button";
 import { RichText } from "@/components/rich-text";
+import { usePageLinks } from "@/lib/navigation/page-links-context";
 import { Dialog, DialogTrigger, SheetContent } from "@/components/ui/overlays";
 import { ACTIVE_BRAND } from "@/lib/brand";
 import {
@@ -583,11 +584,13 @@ function Thinking() {
  * drift into two different ideas of what an answer looks like.
  */
 function AnswerBubble({ answer }: { answer: SalesTotalsAnalysisResponse }) {
+  const pageLinks = usePageLinks();
   return (
     <div className="space-y-3" aria-live="polite">
       <div className="rounded-[var(--radius-md)] border border-border bg-surface-muted px-3.5 py-3">
         <RichText
           content={answer.content}
+          pageLinks={pageLinks}
           className="space-y-3.5 text-[13px] leading-relaxed"
         />
       </div>
