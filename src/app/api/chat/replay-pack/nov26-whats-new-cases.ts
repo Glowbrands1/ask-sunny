@@ -62,11 +62,13 @@ export const NOV26_WHATS_NEW_CASES: ReplayCase[] = [
       if (!t.loopOn?.() || process.env.AGENT_LOOP_LIVE === "1") return;
       t.directory(STAFF);
       t.as("salon_director", KEARNEY);
-      // As production is today: hidden for everyone.
+      // CHANGED ON PURPOSE (the owner, 28 Nov 2026: "roll out whats new to all users both app"): production has the
+      // switch on now, so the hidden half turns it off itself, as the off switch would.
+      delete process.env[ROLLOUT];
       const hidden = await ask(t, ASK);
       expect(hidden.updates, "What's New reached the model while it is hidden").toEqual([]);
       expect(hidden.output?.refused).toContain("do not mention a What's New page");
-      process.env[ROLLOUT] = "true"; // the harness restores it after the case
+      process.env[ROLLOUT] = "true"; // as production is (on since 28 Nov 2026); the harness restores it after the case
       const { model, output, updates } = await ask(t, ASK);
       expect(model.views[0]?.system, "the readable-pages line is not in what the model is given").toContain(readablePagesLine(AI_READABLE_PAGES)!);
       expect(model.views[0]?.system).toContain("What's New (read_whats_new)");
@@ -95,7 +97,7 @@ export const NOV26_WHATS_NEW_CASES: ReplayCase[] = [
       if (!t.loopOn?.() || process.env.AGENT_LOOP_LIVE === "1") return;
       t.directory(STAFF);
       t.as("admin", { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] });
-      process.env[ROLLOUT] = "true"; // rolled out (off in production; see the first case); the harness restores it
+      process.env[ROLLOUT] = "true"; // as production is (on since 28 Nov 2026); the harness restores it
       const { updates } = await ask(t, "any new features this week?", { since: "2026-11-25" });
       const titles = updates.map((update) => update.title);
       const sinceTheWeek = visibleTo("admin").filter((release) => release.date >= "2026-11-25").flatMap((release) => release.entries.map((entry) => entry.title));

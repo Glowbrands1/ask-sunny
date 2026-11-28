@@ -21,7 +21,7 @@ const ASK = "what's new?";
 async function askWith(t: ReplayContext, users: string) {
   const before = { users: process.env.WHATS_NEW_USERS, rollout: process.env.NEXT_PUBLIC_WHATS_NEW_ENABLED };
   process.env.WHATS_NEW_USERS = users;
-  delete process.env.NEXT_PUBLIC_WHATS_NEW_ENABLED; // as production is: off
+  delete process.env.NEXT_PUBLIC_WHATS_NEW_ENABLED; // the switch off (production before the rollout of 28 Nov 2026), so the list decides
   try {
     vi.setSystemTime(new Date("2026-11-27T16:00:00Z"));
     t.directory(STAFF);
