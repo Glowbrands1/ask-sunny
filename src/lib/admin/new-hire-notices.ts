@@ -152,6 +152,15 @@ export interface HiredEmployee {
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+/**
+ * Pau, 28 Nov 2026: "no need to mention tanning consultants and team members". Tanning Consultants are never announced — not
+ * hired, not terminated, not by bell or email. Matched on Woven's position name.
+ */
+export const NOT_ANNOUNCED_POSITIONS = /\btanning consultant\b/i;
+export function isAnnounced(employee: Pick<HiredEmployee, "positionName">): boolean {
+  return !NOT_ANNOUNCED_POSITIONS.test(employee.positionName ?? "");
+}
+
 /** Active, hired within [since, today]. A missing or unreadable hire date is never a new hire. */
 export function isRecentHire(employee: Pick<HiredEmployee, "employmentStatus" | "hireDate">, since: string, today: string): boolean {
   const day = (employee.hireDate ?? "").slice(0, 10);

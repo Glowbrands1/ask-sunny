@@ -277,6 +277,17 @@ describe("announceNewHires — after a successful Woven sync", () => {
     errors.mockRestore();
   });
 
+  // Pau, 28 Nov 2026: "no need to mention tanning consultants and team members".
+  it("never announces front-line hires or terminations; Maintenance and managers still are", async () => {
+    const deps = fakeDeps({
+      hires: [hire("FL1", { positionName: "Tanning Consultant" }), hire("MX1", { positionName: "Maintenance" })],
+      terminations: [{ employee: hire("FL2", { positionName: "Tanning Consultant", employmentStatus: "terminated" }), eventDate: "2026-11-21" }],
+    });
+    expect(await announceNewHires({ env: WITH_HOOK, now: NOW }, deps)).toMatchObject({ hired: 1, terminated: 0 });
+    expect(deps.rung.every((r) => !r.body.includes("Tanning Consultant") && !r.body.includes("Tanning Consultant"))).toBe(true);
+    expect(deps.posted.map((p) => p.event)).toEqual(["hired"]);
+  });
+
   it("someone outside the window or no longer active is never announced as a hire", async () => {
     const deps = fakeDeps({ hires: [hire("OLD", { hireDate: "2025-03-01" }), hire("GONE", { employmentStatus: "terminated" })] });
     expect(await announceNewHires({ env: ON, now: NOW }, deps)).toMatchObject({ hired: 0 });

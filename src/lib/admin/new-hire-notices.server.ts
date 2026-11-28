@@ -15,6 +15,7 @@ import {
   eventPayload,
   hireRecipients,
   inviteSentText,
+  isAnnounced,
   isRecentHire,
   newHireNoticeText,
   readNewHireNoticeConfig,
@@ -98,7 +99,7 @@ export async function announceNewHires(
   try {
     const candidates: Candidate[] = [];
 
-    const hires = (await deps.recentHires(since, today)).filter((e) => isRecentHire(e, since, today));
+    const hires = (await deps.recentHires(since, today)).filter((e) => isRecentHire(e, since, today) && isAnnounced(e));
     if (hires.length > 0) {
       const [admins, managers] = await Promise.all([deps.adminEmails(), deps.salonManagers()]);
       for (const employee of hires) {
@@ -126,7 +127,7 @@ export async function announceNewHires(
     if (config.hrEmails.length > 0 || config.webhookUrl) {
       const hr = hireRecipients({ admins: [], managers: [], hr: config.hrEmails, employeeEmail: null });
       for (const { employee, eventDate } of await deps.recentTerminations(since)) {
-        if (eventDate < since || eventDate > today) continue;
+        if (eventDate < since || eventDate > today || !isAnnounced(employee)) continue;
         const text = terminationNoticeText(employee);
         candidates.push({
           claim: { event: "terminated", externalEmployeeId: employee.externalEmployeeId, eventDate, recipients: hr.length },
