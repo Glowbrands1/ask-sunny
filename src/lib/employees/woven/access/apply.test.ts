@@ -495,7 +495,7 @@ describe("NEW_HIRE_INVITES_ENABLED", () => {
   const trickle = (plan: AccessPlan, f: ReturnType<typeof fakes>, perHour: 1 | 2 = 1, access = config()) =>
     sendNewHireInvites(
       { config: newHireConfig(perHour), access, now: NOW },
-      { loadPlan: async () => plan, send: (id, email) => sendInviteEmail(id, email, REDIRECT, f.deps, "test") },
+      { loadPlan: async () => plan, send: (id, email) => sendInviteEmail(id, email, REDIRECT, f.deps, "test"), linkIsLive: async () => true },
     );
 
   it("the daily run, held: creates the new hire's account and emails nobody, waiting ones included", async () => {
@@ -562,10 +562,34 @@ describe("NEW_HIRE_INVITES_ENABLED", () => {
     const f = fakes(plan);
     const noRedirect = await sendNewHireInvites(
       { config: newHireConfig(2), access: config(), now: NOW },
-      { loadPlan: async () => plan, send: (id, email) => sendInviteEmail(id, email, null, f.deps, "test") },
+      { loadPlan: async () => plan, send: (id, email) => sendInviteEmail(id, email, null, f.deps, "test"), linkIsLive: async () => true },
     );
     expect(noRedirect).toMatchObject({ failed: 1, stoppedBy: "redirect_not_configured" });
     expect(f.fnsCalled().filter((fn) => fn === "employee_access_record_invite")).toHaveLength(1);
+  });
+
+  /*
+   * Pau, 28 Nov 2026: "auto give them link from their woven email … but can u check first if the link is live?"
+   */
+  it("checks the link is live first: a dead accept page emails nobody and spends no attempt", async () => {
+    const plan = planWithHires([employee("E1", { hireDate: "2026-10-05" })], [waiting(1, "E1")]);
+    const f = fakes(plan);
+    const linkIsLive = vi.fn(async () => false);
+    const outcome = await sendNewHireInvites(
+      { config: newHireConfig(2), access: config(), now: NOW },
+      { loadPlan: async () => plan, send: (id, email) => sendInviteEmail(id, email, REDIRECT, f.deps, "test"), linkIsLive },
+    );
+    expect(outcome).toEqual({ status: "completed", sent: 0, failed: 0, skipped: 0, waiting: 1, stoppedBy: "invite_link_not_live" });
+    expect(linkIsLive).toHaveBeenCalledTimes(1);
+    expect(f.auth.inviteUserByEmail).not.toHaveBeenCalled();
+    expect(f.fnsCalled()).not.toContain("employee_access_record_invite");
+  });
+
+  it("does not open the link when nobody is waiting", async () => {
+    const plan = planWithHires([employee("E1", { hireDate: "2026-09-30" })], [waiting(1, "E1")]);
+    const linkIsLive = vi.fn(async () => true);
+    await sendNewHireInvites({ config: newHireConfig(), access: config(), now: NOW }, { loadPlan: async () => plan, send: async () => ({ ok: true, code: "sent" }), linkIsLive });
+    expect(linkIsLive).not.toHaveBeenCalled();
   });
 
   it("only new hires: somebody hired before the date, or never hired in Woven's record, is left to an admin", async () => {
@@ -582,7 +606,7 @@ describe("NEW_HIRE_INVITES_ENABLED", () => {
     expect(await trickle(blocked, f)).toEqual({ status: "blocked", code: "guards" });
     expect(await trickle(plan, f, 1, config({ applyActions: ["CREATE_USER"] }))).toEqual({ status: "off", code: "lifecycle_invites_off" });
     expect(
-      await sendNewHireInvites({ config: { enabled: false, rule: null, perHour: 1, problem: null }, access: config(), now: NOW }, { loadPlan: async () => plan, send: async () => ({ ok: true, code: "sent" }) }),
+      await sendNewHireInvites({ config: { enabled: false, rule: null, perHour: 1, problem: null }, access: config(), now: NOW }, { loadPlan: async () => plan, send: async () => ({ ok: true, code: "sent" }), linkIsLive: async () => true }),
     ).toEqual({ status: "off", code: "new_hire_invites_off" });
     expect(f.auth.inviteUserByEmail).not.toHaveBeenCalled();
   });

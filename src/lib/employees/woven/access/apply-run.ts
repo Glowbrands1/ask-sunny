@@ -5,6 +5,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/server";
 
 import { applyAccessLifecycle, sendInviteEmail, type ApplyDeps, type ApplyOutcome } from "./apply";
 import { readWovenAccessConfig } from "./config";
+import { inviteLinkIsLive } from "./invite-link-check";
 import { loadAccessPlan } from "./load";
 import { readNewHireConfig } from "./new-hire";
 import { sendNewHireInvites, type NewHireInviteOutcome } from "./new-hire-invites";
@@ -53,7 +54,11 @@ export async function runNewHireInvites(requestedBy: string, redirectTo: string 
   try {
     return await sendNewHireInvites(
       { config, access: readWovenAccessConfig(), now },
-      { loadPlan: deps.loadPlan, send: (appUserId, email) => sendInviteEmail(appUserId, email, redirectTo, deps, setBy) },
+      {
+        loadPlan: deps.loadPlan,
+        send: (appUserId, email) => sendInviteEmail(appUserId, email, redirectTo, deps, setBy),
+        linkIsLive: () => inviteLinkIsLive(redirectTo),
+      },
     );
   } catch {
     return { status: "off", code: "new_hire_invites_failed" };

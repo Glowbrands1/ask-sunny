@@ -1,6 +1,7 @@
 import { MAX_AUTOMATIC_INVITE_ATTEMPTS } from "./lifecycle";
 import type { AccessPlan } from "./build";
 import type { WovenAccessConfig } from "./config";
+import { INVITE_LINK_NOT_LIVE } from "./invite-link-check";
 import { isNewHire, type NewHireConfig } from "./new-hire";
 import type { PlannedRow } from "./types";
 
@@ -29,6 +30,11 @@ export interface NewHireInviteDeps {
   loadPlan(now: Date): Promise<AccessPlan>;
   /** The lifecycle's invitation for one account. */
   send(appUserId: string, email: string): Promise<{ ok: boolean; code: string }>;
+  /**
+   * Is the invitation's landing page live (`invite-link-check.ts`)? Asked once, only when somebody is waiting, before
+   * the first send. False stops the run with `invite_link_not_live`; nobody's attempts are spent.
+   */
+  linkIsLive(): Promise<boolean>;
 }
 
 export type NewHireInviteOutcome =
@@ -84,6 +90,10 @@ export async function sendNewHireInvites(
   let skipped = 0;
   let used = 0;
   let stoppedBy: string | null = null;
+  // Pau, 28 Nov 2026: "can u check first if the link is live?" — before the mailer is asked for anything.
+  if (waiting.length > 0 && !(await deps.linkIsLive())) {
+    return { status: "completed", sent: 0, failed: 0, skipped: 0, waiting: waiting.length, stoppedBy: INVITE_LINK_NOT_LIVE };
+  }
   for (const row of waiting.slice(0, MAX_TRIED)) {
     if (used >= config.perHour) break;
     const outcome = await deps.send(row.account!.appUserId, row.account!.email);
