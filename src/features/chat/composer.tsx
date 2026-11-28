@@ -19,7 +19,7 @@ import { LONG_MESSAGE_LIMIT, messageLengthStatus } from "@/lib/chat/message-limi
 import { chatLongMessageClientEnabled } from "@/lib/config/chat-quality-flags";
 import { VoiceButton } from "@/features/voice/voice-button";
 import { appendTranscript } from "@/features/voice/voice-draft";
-import { CHAT_ATTACH_ACCEPT, MAX_FILES_PER_MESSAGE, attachmentProblem } from "@/lib/attachments/file-parts";
+import { CHAT_ATTACH_ACCEPT, MAX_FILES_PER_MESSAGE, attachmentProblem, filesThatFit } from "@/lib/attachments/file-parts";
 import type { AnswerMode } from "@/types";
 
 const MODES: AnswerMode[] = ["quick", "standard", "detailed"];
@@ -164,7 +164,10 @@ export function Composer({
     }
     const room = Math.max(0, MAX_FILES_PER_MESSAGE - files.length);
     if (ok.length > room) problems.push(`Limit of ${MAX_FILES_PER_MESSAGE} files reached.`);
-    if (room > 0 && ok.length > 0) onFilesChange([...files, ...ok.slice(0, room)]);
+    // What the server can receive in one message, not only 10 MB a file (`filesThatFit`).
+    const { fit, problems: tooLarge } = filesThatFit(files, ok.slice(0, room));
+    problems.push(...tooLarge);
+    if (fit.length > 0) onFilesChange([...files, ...fit]);
     setFileNote(problems.join(" "));
   };
 

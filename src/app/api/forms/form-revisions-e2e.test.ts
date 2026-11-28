@@ -297,6 +297,40 @@ describe('"Document would not let us edit the document once it was finalized." (
     expect((await history(second)).body.label).toBe(`Revision 2 of ${ref(original)}`);
   });
 
+  /*
+   * THE FOLLOW-UP DONE ON THE ORIGINAL STAYS DONE (audit, 28 Nov 2026). While a revision is a draft the original
+   * carries the follow-up, and that is where it is marked done or handed on; the revision went live with it undone, so
+   * it came back Overdue and the daily job rang a fresh bell.
+   */
+  it("a follow-up marked done on the original while its revision was a draft is done on the revision too", async () => {
+    const original = await fromChat("create ca for Marisol Quenby at lincoln o street", "dpoa");
+    await finalize(original);
+    const revision = (await act(original, { action: "revise", reason: "Wrong offense date was entered." })).id;
+    // Done on the original while the revision is still a draft.
+    const row = store.form_instances.find((entry) => entry.id === original)!;
+    row.follow_up_date = "2026-10-25";
+    row.followed_up_at = "2026-10-20T20:00:00.000Z";
+    row.followed_up_by = "manager-1";
+    expect(store.form_instances.find((entry) => entry.id === revision)!.followed_up_at ?? null).toBeNull();
+
+    // The card finalizes with the follow-up date it shows: the same follow-up, its date copied when the revision opened.
+    await act(revision, { action: "finalize", acknowledgeUnverifiedPolicy: true, followUpDate: "2026-10-25" });
+    expect(statusOf(original)).toBe("revised");
+    expect(store.form_instances.find((entry) => entry.id === revision)!.followed_up_at).toBe("2026-10-20T20:00:00.000Z");
+  });
+
+  it("a revision that sets a new follow-up date keeps that follow-up open", async () => {
+    const original = await fromChat("create ca for Marisol Quenby at lincoln o street", "dpoa");
+    await finalize(original);
+    const revision = (await act(original, { action: "revise", reason: "Wrong offense date was entered." })).id;
+    const row = store.form_instances.find((entry) => entry.id === original)!;
+    row.follow_up_date = "2026-10-25";
+    row.followed_up_at = "2026-10-20T20:00:00.000Z";
+    // The manager sets a new follow-up date on the revision before finalizing it.
+    await act(revision, { action: "finalize", acknowledgeUnverifiedPolicy: true, followUpDate: "2026-11-15" });
+    expect(store.form_instances.find((entry) => entry.id === revision)!.followed_up_at ?? null).toBeNull();
+  });
+
   it("refuses an edit with no reason, and opens nothing", async () => {
     const original = await fromChat("create ca for Marisol Quenby at lincoln o street", "dpoa");
     await finalize(original);

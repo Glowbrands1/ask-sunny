@@ -853,6 +853,22 @@ export async function applyStatedFacts(
   return keys;
 }
 
+/**
+ * What the person changed on the card: the submitted values that differ from the values the card loaded. A value they
+ * left as loaded is not theirs to write, so whatever is stored now (HR's edit, a chat edit) stands.
+ */
+export function touchedSinceLoad(submitted: Partial<DraftValues>, base: Partial<DraftValues>): Partial<DraftValues> {
+  const baseValues = base.values ?? {};
+  const baseChecked = base.checked ?? {};
+  const values = Object.fromEntries(
+    Object.entries(submitted.values ?? {}).filter(([key, value]) => (baseValues[key] ?? "") !== value),
+  );
+  const checked = Object.fromEntries(
+    Object.entries(submitted.checked ?? {}).filter(([key, ticks]) => !sameOptions(baseChecked[key] ?? [], ticks)),
+  );
+  return { values, checked };
+}
+
 /** A person's edit. Hand-filled lines and signatures are refused. */
 export async function saveInstanceValues(
   instanceId: string,
@@ -876,6 +892,13 @@ export async function saveInstanceValues(
      * it after checking the actor is an approver and neither the creator nor a sender.
      */
     readonly hrHistoryOnly?: boolean;
+    /**
+     * The values as the card LOADED them (audit, 28 Nov 2026). The card's Save sends every value on the form; without
+     * this, a field someone else changed after the card opened (HR's edit, a chat edit, a second tab) read as "changed"
+     * and was written back to the old value as the manager's. With it, only what the person changed from what they
+     * loaded is written; everything else stays as it is stored now. Absent: every submitted value counts, as before.
+     */
+    readonly base?: Partial<DraftValues>;
   } = {},
 ): Promise<{
   rejected: { key: string; reason: string }[];
@@ -896,7 +919,7 @@ export async function saveInstanceValues(
   }
 
   const document = parseFormDocument(loaded.version.document);
-  const result = enforcePersonEdit(document, loaded.instance.variantKey, submitted);
+  const result = enforcePersonEdit(document, loaded.instance.variantKey, options.base ? touchedSinceLoad(submitted, options.base) : submitted);
   /*
    * A NOTICE DATE TYPED WHILE "SUBMITTED & FULFILLED NOTICE" IS UNTICKED IS REFUSED, and said so (Pau, 25 Nov 2026).
    * The box as it will stand after this save: what was sent, else what is stored.
@@ -1656,10 +1679,47 @@ async function supersedeRevised(revision: LoadedInstance, actor: string): Promis
     .update({ status: "revised" })
     .eq("id", originalId)
     .eq("status", "finalized")
-    .select("id");
+    .select("id, follow_up_date, followed_up_at, followed_up_by, follow_up_owner");
   if (error) throw new Error(`Could not mark the original form as revised: ${error.message}`);
   if ((data ?? []).length === 0) return;
   await recordEvent(originalId, kind, actor, { revisionId: revision.instance.id });
+  await carryFollowUpToRevision(revision.instance.id, (data ?? [])[0] as Record<string, unknown>);
+}
+
+/**
+ * THE FOLLOW-UP TRACKED ON THE ORIGINAL GOES WITH IT (audit, 28 Nov 2026).
+ *
+ * A revision copies the follow-up once, when it is opened. While it is a draft (days, when it waits for HR) the
+ * ORIGINAL carries the tracking, and that is where a manager marks the follow-up done or hands it to someone else.
+ * Nothing carried that over, so when the revision went live the follow-up came back Overdue and the daily job rang a
+ * fresh "Follow-up overdue" bell. Now: done on the original is done on the revision WHEN IT IS THE SAME FOLLOW-UP
+ * (the revision kept the original's date; a revision that sets a new date is a new follow-up and stays open), and an
+ * owner named on the original is kept when the revision names none. The revision's own choices are never overwritten.
+ * Best effort: the revision is already final, so a failed carry is logged (ids only), never a failed finalize.
+ */
+async function carryFollowUpToRevision(revisionId: string, original: Record<string, unknown> | undefined): Promise<void> {
+  if (!original) return;
+  const supabase = getSupabaseAdmin();
+  const done = typeof original.followed_up_at === "string" ? original.followed_up_at : null;
+  const date = typeof original.follow_up_date === "string" ? original.follow_up_date : null;
+  const owner = typeof original.follow_up_owner === "string" && original.follow_up_owner ? original.follow_up_owner : null;
+  if (done && date) {
+    const { error } = await supabase
+      .from("form_instances")
+      .update({ followed_up_at: done, followed_up_by: original.followed_up_by ?? null })
+      .eq("id", revisionId)
+      .eq("follow_up_date", date)
+      .is("followed_up_at", null);
+    if (error) console.warn(`instances: the follow-up done on the original could not be carried to revision ${revisionId}.`);
+  }
+  if (owner) {
+    const { error } = await supabase
+      .from("form_instances")
+      .update({ follow_up_owner: owner })
+      .eq("id", revisionId)
+      .is("follow_up_owner", null);
+    if (error) console.warn(`instances: the follow-up owner could not be carried to revision ${revisionId}.`);
+  }
 }
 
 /** Variants a form may be printed as, from its own version. */

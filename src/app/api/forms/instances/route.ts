@@ -466,7 +466,7 @@ export async function POST(request: Request) {
           exitStated.checked[EXIT_TYPE_GROUP] = [EXIT_OPTION.immediateInvoluntary];
           if (account) {
             /* f077 and QA2's R3 (21 Nov 2026): only the reason; a rehire answer in the account is the rehire question's. */
-            const { reason, rehire } = exitReasonOnly(account, new Date().toISOString().slice(0, 10));
+            const { reason, rehire } = exitReasonOnly(account, businessToday() /* Central, never the UTC date (audit, 28 Nov 2026) */);
             exitStated.values[EXIT_DETAIL_FIELDS.resignationReason] = reason;
             if (rehire) exitStated.checked[EXIT_REHIRE_KEY] = [rehire];
             /*
@@ -498,7 +498,7 @@ export async function POST(request: Request) {
         const readerTicks = card.templateKey === EXIT_TEMPLATE_KEY
           ? (await (async () => {
               const { readExitFacts, exitFactValues } = await import("@/lib/forms/exit-facts");
-              const checked = exitFactValues(readExitFacts(userTurns, new Date().toISOString().slice(0, 10))).checked;
+              const checked = exitFactValues(readExitFacts(userTurns, businessToday())).checked;
               return [EXIT_TYPE_GROUP, EXIT_NOTICE_GROUP].some((group) => (checked[group] ?? []).length > 0);
             })())
           : false;

@@ -459,6 +459,10 @@ describe("38-41. editing and saving", () => {
     expect((patch.body.values as Record<string, string>).coaching_details).toBe(
       "Late twice, not three times.",
     );
+    // And what the card loaded (audit, 28 Nov 2026), so the server writes only what the manager changed from it.
+    const base = patch.body.base as { values: Record<string, string>; checked: Record<string, string[]> };
+    expect(base.values.coaching_details).toBe("Arrived late on three shifts this week.");
+    expect(base.checked).toBeTypeOf("object");
   });
 
   it("does not say Saved before the server confirms", async () => {
@@ -2108,5 +2112,26 @@ describe('"add a pop up that there are missing fields and highlight it"', () => 
     fireEvent.click(within(outlined!).getByText("Under Performance"));
     await waitFor(() => expect(container.querySelector('[data-missing-field="coaching_type"]')).toBeNull());
     expect(screen.queryByTestId("missing-fields-reminder")).toBeNull();
+  });
+
+  /*
+   * CI, 28 Nov 2026 (ask-sunny#1391, unit-tests 3/4): "ReferenceError: document is not defined" at inline-form.tsx's
+   * showMissing timer, from this file. "Show me the blank fields" scrolls to the first outlined field 50 ms later; a
+   * card closed within those 50 ms (the test's own cleanup, or a chat that moves on) still ran it, after the page
+   * was gone. The card now cancels it when it closes.
+   */
+  it("never runs the scroll to the blank field after the card has closed", async () => {
+    refusingServer();
+    const { unmount } = mounted();
+    await screen.findByDisplayValue("Arrived late on three shifts this week.");
+    fireEvent.click(screen.getByRole("button", { name: /finalize/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /yes, finalize/i }));
+    await screen.findByTestId("missing-fields-dialog");
+    fireEvent.click(screen.getByRole("button", { name: /show me the blank fields/i }));
+    unmount();
+    const lookups = vi.spyOn(document, "querySelector");
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    expect(lookups.mock.calls.filter(([selector]) => selector === "[data-missing-field]")).toEqual([]);
+    lookups.mockRestore();
   });
 });

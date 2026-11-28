@@ -42,6 +42,8 @@ interface HistoryRow {
   readonly status: string;
   /** HR approval: a draft "pending" or "changes_requested" (sent back) still counts as history (`withHr`). */
   readonly hrApprovalState?: string | null;
+  /** A revision's original ("Edit as new draft"), when this row is one. */
+  readonly revisesInstanceId?: string | null;
   readonly formDate: string;
   readonly locationId?: string | null;
   readonly locationName?: string | null;
@@ -84,11 +86,21 @@ export function priorFormsFromRows(input: {
   const who = nameKey(input.employeeName);
   if (who === "") return [];
   const before = input.before && /^\d{4}-\d{2}-\d{2}$/.test(input.before) ? input.before : null;
+  /*
+   * ONE ENTRY PER ACTION (audit, 28 Nov 2026). Since forms with HR count as history (26 Nov), a revision draft of a
+   * finalized Corrective Action, sent to HR, was listed beside its own original: the same warning twice, "signed" and
+   * "waiting for HR approval", which also counted toward the next level. The signed original is the one on file; its
+   * revision still waiting is not a second action.
+   */
+  const finalizedIds = new Set(input.rows.filter((row) => row.status === "finalized").map((row) => row.id));
+  const isPendingRevisionOfFinalized = (row: HistoryRow) =>
+    row.status !== "finalized" && typeof row.revisesInstanceId === "string" && finalizedIds.has(row.revisesInstanceId);
 
   return input.rows
     .filter(
       (row) =>
         row.id !== input.excludeInstanceId &&
+        !isPendingRevisionOfFinalized(row) &&
         (row.status === "finalized" || withHr(row) !== null) &&
         HISTORY_TEMPLATES.has(row.templateKey) &&
         nameKey(row.employeeName) === who &&

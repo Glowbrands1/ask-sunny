@@ -77,32 +77,56 @@ export function streamingSocketUrl(token: string): string {
  * THE SESSION HANDLE
  * ============================================================================
  *
- * The usage row is reserved when the token is minted. The browser gets the row's id signed for this person, and
- * `finish` accepts only a handle it signed for the same person: nobody can finish, or read the corrected text through,
- * someone else's row.
+ * The usage row is reserved when the token is minted. The browser gets the row's id and the time the server reserved
+ * it, signed together for this person, and `finish` accepts only a handle it signed for the same person: nobody can
+ * finish, or read the corrected text through, someone else's row, or move the start time.
+ *
+ * Port of the Leadership Hub (3630a6f), audit 28 Nov 2026: the session is billed by the server's own clock
+ * (`billedSessionSeconds`), the time since the row was reserved, capped at the session maximum. The seconds the
+ * browser reports are never trusted to lower it, so a client that says "0" cannot slip under the daily caps.
  */
 
-function signature(secret: string, userId: string, usageId: string): string {
-  return createHmac("sha256", secret).update(`voice-stream:${userId}:${usageId}`).digest("base64url");
+function signature(secret: string, message: string): string {
+  return createHmac("sha256", secret).update(message).digest("base64url");
 }
 
-export function signSessionHandle(secret: string, userId: string, usageId: string): string {
-  return `${usageId}.${signature(secret, userId, usageId)}`;
+const message = (userId: string, usageId: string, startedAtMs: number | null) =>
+  startedAtMs === null ? `voice-stream:${userId}:${usageId}` : `voice-stream:${userId}:${usageId}:${startedAtMs}`;
+
+/** `<usage id>.<reserved at, ms since epoch>.<signature>`. */
+export function signSessionHandle(secret: string, userId: string, usageId: string, startedAtMs: number): string {
+  const at = Math.trunc(startedAtMs);
+  return `${usageId}.${at}.${signature(secret, message(userId, usageId, at))}`;
 }
 
-/** The usage id in a handle signed for this person, or null. */
-export function readSessionHandle(secret: string, userId: string, handle: string): string | null {
+export interface SessionHandle {
+  readonly usageId: string;
+  /** When the server reserved the row; null for a handle signed before start times were recorded. */
+  readonly startedAtMs: number | null;
+}
+
+/** The usage id (and reservation time) in a handle signed for this person, or null. */
+export function readSessionHandle(secret: string, userId: string, handle: string): SessionHandle | null {
   const dot = handle.lastIndexOf(".");
   if (dot <= 0 || !secret) return null;
-  const usageId = handle.slice(0, dot);
+  const head = handle.slice(0, dot);
   const given = Buffer.from(handle.slice(dot + 1));
-  const expected = Buffer.from(signature(secret, userId, usageId));
+  const at = head.lastIndexOf(".");
+  const stamped = at > 0 && /^\d{1,15}$/.test(head.slice(at + 1));
+  const usageId = stamped ? head.slice(0, at) : head;
+  const startedAtMs = stamped ? Number(head.slice(at + 1)) : null;
+  const expected = Buffer.from(signature(secret, message(userId, usageId, startedAtMs)));
   if (given.length !== expected.length || !timingSafeEqual(given, expected)) return null;
-  return usageId;
+  return { usageId, startedAtMs };
 }
 
-/** The seconds the browser reports for a session, bounded to what a session can last. */
-export function sessionSeconds(reported: number): number {
-  if (!Number.isFinite(reported) || reported < 0) return SESSION_MAX_SECONDS;
-  return Math.min(reported, SESSION_MAX_SECONDS + 60);
+/**
+ * What a session is billed: the server-measured time since the row was reserved, capped at the session maximum (the
+ * token caps the socket there). Without a recorded start (a handle from before this was recorded) the server cannot
+ * measure it, so the session counts as the full maximum it reserved: never less than the browser could claim.
+ */
+export function billedSessionSeconds(startedAtMs: number | null, nowMs: number): number {
+  if (startedAtMs === null || !Number.isFinite(startedAtMs)) return SESSION_MAX_SECONDS;
+  const measured = Math.max(0, (nowMs - startedAtMs) / 1000);
+  return Math.round(Math.min(measured, SESSION_MAX_SECONDS) * 100) / 100;
 }

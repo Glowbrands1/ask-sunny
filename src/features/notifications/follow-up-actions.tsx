@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { businessToday } from "@/lib/business-date";
 
 /**
  * COMPLETED / EXTEND ON A FOLLOW-UP NOTIFICATION (Pau, 26 Nov 2026: "ability to click from notification that they have
@@ -96,9 +97,9 @@ export function FollowUpActions({
   );
 }
 
+/** Today in Central (the business zone), never the browser's own zone: a manager away from Central picks the same day. */
 function localToday(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  return businessToday();
 }
 
 function addDays(date: string, days: number): string {

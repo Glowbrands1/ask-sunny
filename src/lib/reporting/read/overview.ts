@@ -18,6 +18,7 @@ import type { ReportCadence } from "./freshness-line";
 import { REPORT_FAMILIES_BY_ID } from "./report-families";
 import { scopeNoticeSentence, type ReportingScope } from "../scope/authorized-salons";
 import { resolveReportingScope } from "../scope/server";
+import { businessZone } from "@/lib/business-date";
 
 /**
  * ============================================================================
@@ -204,11 +205,12 @@ function formatOverviewValue(value: number, unit: ReportMetricUnit): string {
 export function formatUpdatedLabel(iso: string): string | null {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return null;
+  // A moment: the day it was in Central (owner, 28 Nov 2026: "timezone is in CT for all"), not the UTC day.
   return date.toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
-    timeZone: "UTC",
+    timeZone: businessZone(),
   });
 }
 

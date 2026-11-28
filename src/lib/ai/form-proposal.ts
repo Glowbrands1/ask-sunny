@@ -100,7 +100,7 @@ import {
   type EmploymentChangeFacts,
   type EmploymentChangeKind,
 } from "@/lib/forms/employment-change";
-import { businessToday } from "@/lib/business-date";
+import { businessToday, businessZone } from "@/lib/business-date";
 import { PRODUCTION_SALONS, salonById } from "@/data/salons";
 import { correctedDates, correctedFormDate, extractFormDate, priorSteps } from "@/lib/forms/form-date-answer";
 import { answersDateQuestion, dateAnswerTurns, decideFormDate, incidentDates } from "@/lib/forms/incident-dates";
@@ -2391,10 +2391,12 @@ function proposalContent(
  * shown the same day written two ways.
  */
 function todayInWords(): string {
+  // Today in Central, never the server's clock (UTC, already tomorrow from about 6 PM Central). Audit, 28 Nov 2026.
   return new Date().toLocaleDateString("en-US", {
     month: "long",
     day: "numeric",
     year: "numeric",
+    timeZone: businessZone(),
   });
 }
 

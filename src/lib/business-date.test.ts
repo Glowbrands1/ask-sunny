@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+/* Pau 15 Nov: both apps are Central. The app's default zone is now America/Chicago; this suite's fixtures are written
+ * against Eastern edges and test the MECHANISM, so it pins the zone to Eastern on purpose (the env var is how a
+ * deployment picks its zone). */
+vi.hoisted(() => {
+  process.env.NEXT_PUBLIC_BUSINESS_TIMEZONE = "America/New_York";
+});
+
 import {
   BUSINESS_TIMEZONE,
   businessHour,
@@ -180,5 +187,16 @@ describe("a moment as people read it (formatBusinessTime, formatBusinessDay)", (
       expect(formatBusinessTime(bad)).toBeNull();
       expect(formatBusinessDay(bad)).toBeNull();
     }
+  });
+});
+
+describe("the app's default zone", () => {
+  it("is Central when the env var is unset (Pau 15 Nov: both apps are Central)", async () => {
+    vi.resetModules();
+    vi.stubEnv("NEXT_PUBLIC_BUSINESS_TIMEZONE", "");
+    const { BUSINESS_TIMEZONE: zone, formatBusinessTime } = await import("./business-date");
+    expect(zone).toBe("America/Chicago");
+    expect(formatBusinessTime("2026-11-14T12:01:00Z")).toBe("Nov 14, 6:01 AM CT");
+    vi.unstubAllEnvs();
   });
 });

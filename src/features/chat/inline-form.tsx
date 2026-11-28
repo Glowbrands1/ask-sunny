@@ -289,6 +289,14 @@ export function InlineForm({
    */
   const [refusedBlank, setRefusedBlank] = React.useState<readonly { key: string; label: string }[]>([]);
   const [missingOpen, setMissingOpen] = React.useState(false);
+  /* "Show me the blank fields" scrolls a moment later; a card that closes first cancels it (CI, 28 Nov 2026). */
+  const missingScroll = React.useRef<number | null>(null);
+  React.useEffect(
+    () => () => {
+      if (missingScroll.current !== null) window.clearTimeout(missingScroll.current);
+    },
+    [],
+  );
   /*
    * STILL BLANK, read live from what is on screen with the server's own rule (`required-fields.ts`), so a field's
    * outline goes the moment it is filled in. Only fields the server named are outlined.
@@ -448,7 +456,9 @@ export function InlineForm({
   /** Closes the pop-up and brings the first outlined field into view. */
   function showMissing() {
     setMissingOpen(false);
-    window.setTimeout(() => {
+    if (missingScroll.current !== null) window.clearTimeout(missingScroll.current);
+    missingScroll.current = window.setTimeout(() => {
+      missingScroll.current = null;
       const first = document.querySelector<HTMLElement>("[data-missing-field]");
       first?.scrollIntoView?.({ behavior: "smooth", block: "center" });
       first?.querySelector<HTMLElement>("input:not([disabled]), textarea:not([disabled]), button:not([disabled])")?.focus({ preventScroll: true });
@@ -691,7 +701,11 @@ export function InlineForm({
         {
           method: "PATCH",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ values: edits.values, checked: edits.checked }),
+          /*
+           * AND WHAT THE CARD LOADED (audit, 28 Nov 2026): the server writes only what the manager changed from it, so
+           * a field HR or a chat edit changed after this card opened is not put back to the old value.
+           */
+          body: JSON.stringify({ values: edits.values, checked: edits.checked, base: splitValues(loaded.values) }),
         },
       );
       /*
