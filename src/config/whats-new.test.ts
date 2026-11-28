@@ -96,6 +96,8 @@ describe("What's New", () => {
     expect(find("Search every form for one employee")?.audience).toBe("HR only");
     expect(find("Employee address in the Employee Directory")?.audience).toBe("Admin only");
     expect(find("Employee address in the Employee Directory")?.note).toMatch(/no address in Woven/);
+    // The same caveat on the exit form's own entry, where the address fills in (the owner, 28 Nov 2026: "add this note here too").
+    expect(find("The exit form fills in the Permanent Address")?.note).toBe("If an employee has no address in Woven, none shows on the Resignation/Exit form either.");
     expect(find("The Corrective Action history box fills itself")?.note).toMatch(/as long as the employee has history/);
     expect(find("Missing fields explained at Finalize")?.before).toBeUndefined();
     expect(find("Delete several drafts at once"), "taken off What's New").toBeUndefined();
