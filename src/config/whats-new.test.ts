@@ -95,6 +95,7 @@ describe("What's New", () => {
     const find = (title: string) => ENTRIES.find((candidate) => candidate.title === title);
     expect(find("Search every form for one employee")?.audience).toBe("HR only");
     expect(find("Employee address in the Employee Directory")?.audience).toBe("Admin only");
+    expect(find("A record of every deleted form")?.audience).toBe("Admin only");
     expect(find("Employee address in the Employee Directory")?.note).toMatch(/no address in Woven/);
     // The same caveat on the exit form's own entry, where the address fills in (the owner, 28 Nov 2026: "add this note here too").
     expect(find("The exit form fills in the Permanent Address")?.note).toBe("If an employee has no address in Woven, none shows on the Resignation/Exit form either.");

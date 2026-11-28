@@ -343,6 +343,7 @@ export const WHATS_NEW: readonly WhatsNewRelease[] = [
       {
         tag: "New",
         title: "A record of every deleted form",
+        audience: "Admin only",
         before: "Once a form was deleted, nothing showed who deleted it or when.",
         now: "Every deleted form leaves a permanent record of who deleted it, when and how. Administrators can ask Sunny.",
         howToUse: "Ask Sunny \"who deleted this employee's form?\".",
