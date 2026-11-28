@@ -12,7 +12,7 @@ import { priorFormsFromRows, withHr } from "./prior-forms-lines";
  * Invented employee.
  */
 
-function row(id: string, templateKey: string, formDate: string, extra: Partial<{ status: string; hrApprovalState: string | null }> = {}) {
+function row(id: string, templateKey: string, formDate: string, extra: Partial<{ status: string; hrApprovalState: string | null; revisesInstanceId: string | null }> = {}) {
   return { id, templateKey, formDate, employeeName: "Juniper Brandvold", status: "finalized", ...extra };
 }
 
@@ -102,5 +102,36 @@ describe('"just remove the 90 day wording"', () => {
   it("a label or help an administrator wrote is kept", () => {
     const document = storedRevision9("Prior steps", "List every step.");
     expect(currentHistoryWording(document)).toBe(document);
+  });
+});
+
+/*
+ * ONE ENTRY PER ACTION (audit, 28 Nov 2026): an "Edit as new draft" revision of a finalized Corrective Action, sent to
+ * HR, was listed beside its own original, the same warning twice, and counted toward the next level.
+ */
+describe("a revision waiting for HR is not a second action", () => {
+  it("lists the signed original once, and not its revision waiting for HR", () => {
+    const forms = priorFormsFromRows({
+      employeeName: "Juniper Brandvold",
+      rows: [
+        row("verbal", "dpoa", "2026-10-02"),
+        row("verbal-edit", "dpoa", "2026-10-02", { status: "draft", hrApprovalState: "pending", revisesInstanceId: "verbal" }),
+      ],
+      warningLevels: new Map([["verbal", ["verbal"]], ["verbal-edit", ["verbal"]]]),
+    });
+    expect(forms.map((form) => form.instanceId)).toEqual(["verbal"]);
+    expect(forms[0]!.line).toBe("Verbal corrective action — signed 10/02/2026");
+  });
+
+  it("a new form waiting for HR still counts (it revises nothing on file)", () => {
+    const forms = priorFormsFromRows({
+      employeeName: "Juniper Brandvold",
+      rows: [
+        row("verbal", "dpoa", "2026-10-02"),
+        row("written", "dpoa", "2026-10-20", { status: "draft", hrApprovalState: "pending" }),
+      ],
+      warningLevels: new Map([["verbal", ["verbal"]], ["written", ["written"]]]),
+    });
+    expect(forms.map((form) => form.instanceId)).toEqual(["verbal", "written"]);
   });
 });
