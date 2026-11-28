@@ -612,7 +612,17 @@ describe("the administrators hear about every sign-in turned off", () => {
     f.deps.notifyDisabled = notify;
     await run(f);
     expect(notify).toHaveBeenCalledTimes(1);
-    expect(notify).toHaveBeenCalledWith([{ name: expect.any(String) }]);
+    // CHANGED ON PURPOSE (Pau, 28 Nov 2026: "add the reason like terminated X date, position X location X"): the notice
+    // also gets the person's Woven EmployeeID (for the dates), position and locations, not the name alone.
+    expect(notify).toHaveBeenCalledWith([
+      {
+        name: expect.any(String),
+        externalEmployeeId: expect.any(String),
+        position: expect.toSatisfy((v: unknown) => v === null || typeof v === "string"),
+        primaryLocation: expect.toSatisfy((v: unknown) => v === null || typeof v === "string"),
+        additionalLocations: expect.any(Array),
+      },
+    ]);
     expect((notify.mock.calls[0] as unknown as [{ name: string }[]])[0][0]!.name.length).toBeGreaterThan(0);
   });
 

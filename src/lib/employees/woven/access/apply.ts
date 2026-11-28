@@ -49,6 +49,25 @@ export interface RpcResult {
   error: { message?: string; code?: string } | null;
 }
 
+/** What the administrators' notice says about a sign-in turned off (Pau, 28 Nov 2026: the reason, position and location). */
+export interface DisabledSignIn {
+  name: string;
+  externalEmployeeId: string | null;
+  position: string | null;
+  primaryLocation: string | null;
+  additionalLocations: string[];
+}
+
+function disabledSignIn(row: PlannedRow): DisabledSignIn {
+  return {
+    name: row.employeeName,
+    externalEmployeeId: row.externalEmployeeId,
+    position: row.wovenPosition,
+    primaryLocation: row.wovenPrimaryLocation,
+    additionalLocations: [...row.wovenAdditionalLocations],
+  };
+}
+
 export interface ApplyDeps {
   loadPlan(now: Date): Promise<AccessPlan>;
   rpc(fn: string, args: Record<string, unknown>): PromiseLike<RpcResult>;
@@ -69,7 +88,7 @@ export interface ApplyDeps {
   };
   revokeAuthAccess(userId: string): Promise<{ ok: boolean; failed: string[] }>;
   /** The administrators' bell items for the sign-ins turned off in this run (`src/lib/admin/disable-notices.ts`). Absent: none. */
-  notifyDisabled?(people: { name: string }[]): Promise<void>;
+  notifyDisabled?(people: DisabledSignIn[]): Promise<void>;
 }
 
 export interface ApplyRequest {
@@ -180,7 +199,7 @@ export async function applyAccessLifecycle(request: ApplyRequest, deps: ApplyDep
     const plan = await deps.loadPlan(now);
     const enabled = new Set<string>(config.applyActions);
     /* Owner, 28 Nov 2026: the administrators hear about every sign-in turned off (`src/lib/admin/disable-notices.ts`). */
-    const disabledPeople: { name: string }[] = [];
+    const disabledPeople: DisabledSignIn[] = [];
     const inBatch = (row: PlannedRow) => config.employeeAllowlist === null || (row.externalEmployeeId !== null && config.employeeAllowlist.includes(row.externalEmployeeId));
     const rows = [...plan.rows].sort((a, b) => a.key.localeCompare(b.key));
 
@@ -231,7 +250,7 @@ export async function applyAccessLifecycle(request: ApplyRequest, deps: ApplyDep
             ? await linkExisting(row, deps, setBy)
             : await disableTerminated(row, deps, setBy);
       bump(outcome.result === "applied" ? "applied" : "failed", primary);
-      if (primary === "DISABLE_TERMINATED" && outcome.result === "applied") disabledPeople.push({ name: row.employeeName });
+      if (primary === "DISABLE_TERMINATED" && outcome.result === "applied") disabledPeople.push(disabledSignIn(row));
       recorded.push(...recordRow(row, { result: outcome.result, code: outcome.code }, outcome.appUserId ?? row.appUserId));
       /* Recorded at once, so a run that dies later still shows what it did. */
       await flush();
