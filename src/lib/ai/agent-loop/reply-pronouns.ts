@@ -36,6 +36,14 @@ const THEIR_PERSON = /\btheir(?=\s+(?:\w+\s+)?(?:last\s+day|shift|shifts|manager
 /** After "her", a word that is not the thing she owns: "for her and", "tell her that", "her." (object, not possessive). */
 const NOT_OWNED = /^\s+(?:to|and|or|that|a|an|the|about|if|so|now|yet|on|in|at|for|with|again|know|too|as|is|was|when|before|after|by|from|this|these|those|it)\b/i;
 
+/**
+ * "have her practice the call-in process" (the owner's live check, 28 Nov 2026: it read "have <P>'s practice"): "her" after
+ * have / let / make / help, whose next word is followed by an object, is the person doing it, not what they own. "have
+ * her shift covered" and "help her team during …" still own something.
+ */
+const CAUSATIVE_BEFORE = /\b(?:have|has|had|having|let|lets|letting|make|makes|made|making|help|helps|helped|helping)[ \t]+$/i;
+const OBJECT_AFTER_NEXT = /^[ \t]+[a-z]+[ \t]+(?:the|a|an|this|that|these|those|it|them|him|me|you|us|what|how|his|their|your|my|each|every|some|any)\b/i;
+
 /** The card's account line (the Observation, coaching details): pronouns there are replaced too (QA, 16 Nov 2026). */
 export const ACCOUNT_LINE = /^[ \t*_>-]*(?:Observation(?: of Offense)?|Coaching Details|What happened)[*_]*\s*:.*$/gim;
 
@@ -339,7 +347,8 @@ export function withoutPersonPronouns(
     if (inQuote(at)) continue;
     const word = match[0].toLowerCase();
     const end = at + match[0].length;
-    const owns = word === "his" || word === "hers" || (word === "her" && /^\s+[A-Za-z0-9$]/.test(reply.slice(end)) && !NOT_OWNED.test(reply.slice(end)));
+    const doerAfterCausative = word === "her" && CAUSATIVE_BEFORE.test(reply.slice(Math.max(0, at - 12), at)) && OBJECT_AFTER_NEXT.test(reply.slice(end));
+    const owns = word === "his" || word === "hers" || (word === "her" && !doerAfterCausative && /^\s+[A-Za-z0-9$]/.test(reply.slice(end)) && !NOT_OWNED.test(reply.slice(end)));
     const again = mentionedBefore(at);
     // Only after a place or time preposition ("into her scheduled shift"): "Remy said her car broke down" keeps the owner.
     const afterPreposition = /\b(?:into|for|to|on|at|during|from|before|after|in)[ \t]+$/i.test(reply.slice(Math.max(0, at - 10), at));

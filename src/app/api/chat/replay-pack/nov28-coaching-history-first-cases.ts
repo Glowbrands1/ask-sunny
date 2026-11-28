@@ -127,6 +127,27 @@ export const NOV28_COACHING_HISTORY_FIRST_CASES: ReplayCase[] = [
     expect(handedBackFor(standIn.views), "advice about her, typed in lower case, was kept without her forms on file").toBe(true);
     expect(readsOf(standIn.views).join("\n"), "her Verbal CA did not reach the model").toContain("ca-odile-oct");
   }),
+  loopCase("nov28-coaching-history-first-live-wording", "The owner's live check: the role-play line \"have her practice the call-in process\" names her (not \"Odile's practice\"), and \"(the coaching guide, [S1])\" leaves no comma behind", async (t) => {
+    start(t);
+    const live = [
+      "On file for Odile: a Verbal Corrective Action for tardiness on 10/03/2026.",
+      "",
+      "Words to use (Salon Coaching Guide, [S1]): \"We talked about getting in on time on October 3rd, and it has happened again, so I want to be clear about what comes next.\"",
+      "",
+      "Role-play: You play Odile and give a common excuse (overslept, car trouble); have her practice the call-in process and proposing a concrete fix.",
+    ].join("\n");
+    const standIn = loopStandIn((view: LoopView): LoopDecision => {
+      if (!lastResult(view, "search_knowledge")) return { tool: "search_knowledge", input: { query: "coaching conversation lateness" } };
+      if (!lastResult(view, "find_past_forms")) return { tool: "find_past_forms", input: { employee_name: "Odile Fenwick", forms_on_file_evidence: evidenceFrom(view, "Odile Fenwick") } };
+      return { text: live };
+    });
+    t.loopModel!(standIn);
+    const reply = await t.thread().say(COACH);
+    expect(reply.content, reply.content).toContain("have Odile practice the call-in process");
+    expect(reply.content, reply.content).not.toMatch(/Odile's practice/);
+    expect(reply.content, reply.content).toContain("Words to use (Salon Coaching Guide):");
+    expect(reply.content, reply.content).not.toMatch(/,\)/);
+  }),
   loopCase("nov28-coaching-history-first-looked-already", "Control: advice that looked at her forms on file first is kept as written (no hand-back)", async (t) => {
     start(t);
     const standIn = loopStandIn((view: LoopView): LoopDecision => {
