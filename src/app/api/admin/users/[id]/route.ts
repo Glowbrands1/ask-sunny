@@ -60,6 +60,8 @@ export async function PATCH(
         id: context.identity.subject,
         email: context.identity.email,
         role: context.identity.role,
+        // The actor's own reach: a grant is compared with it (`assertScopeWithinActor`).
+        scope: context.identity.scope,
       },
     );
 

@@ -9,6 +9,7 @@ import { AuthError } from "@/lib/auth/types";
 import { APP_USER_COLUMNS, toAppUserProfile } from "@/lib/auth/app-user";
 import { revokeAuthAccess, restoreAuthAccess } from "@/lib/auth/revocation";
 import { ADMIN_CONSOLE_ROLES, ROLES } from "@/lib/permissions";
+import { authorizedSalonNumbers } from "@/lib/reporting/scope/authorized-salons";
 import { escapeLike } from "@/lib/supabase/like";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import type { AccessScope, Role, ScopeLevel } from "@/types";
@@ -64,6 +65,11 @@ export interface DirectoryActor {
   id: string;
   email: string;
   role: Role;
+  /**
+   * The actor's own access scope, where a grant is compared with the actor's reach (`assertScopeWithinActor`). The
+   * Users routes always pass it; a caller without it (tests, internal jobs) is not compared.
+   */
+  scope?: AccessScope;
 }
 
 export class DirectoryError extends Error {
@@ -77,7 +83,8 @@ export class DirectoryError extends Error {
       | "email_rate_limited"
       | "protected_account"
       | "auth_revocation_incomplete"
-      | "provider_failed",
+      | "provider_failed"
+      | "forbidden_grant",
     message: string,
     readonly status = 400,
   ) {
@@ -168,6 +175,56 @@ export function normalizeEmail(value: unknown): string {
 export function normalizeDisplayName(value: unknown, fallback: string): string {
   if (typeof value !== "string" || !value.trim()) return fallback;
   return value.trim().slice(0, 120);
+}
+
+/**
+ * ============================================================================
+ * NOBODY GIVES MORE THAN THEY HAVE (port of Ask Bubbles' rules; audit, 28 Nov 2026)
+ * ============================================================================
+ *
+ * Invite and edit took any well-formed scope and any role from anyone holding manage_users. So an administrator whose
+ * account covers some salons could PATCH their OWN scope to global (the self-change guard covered role and status
+ * only) and every report reader would widen for them, or hand global to anyone; and a plain admin could make someone
+ * Owner or Developer.
+ *
+ *   SCOPE: an actor whose own reach is all salons may grant any scope. Anyone else may grant global to nobody, and a
+ *   salon, district or region only when every salon it ADDS is inside their own reach. Only what changes is checked,
+ *   so removing a salon, or resubmitting the scope unchanged, is never blocked.
+ *   ROLE: Owner and Developer are given only by an Owner or Developer; only a change to such a role is checked.
+ */
+export function assertScopeWithinActor(actor: DirectoryActor, next: AccessScope, previous?: AccessScope): void {
+  if (!actor.scope) return;
+  const own = authorizedSalonNumbers(actor.scope);
+  if (own === null) return;
+
+  if (next.level === "global") {
+    if (previous?.level === "global") return;
+    throw new DirectoryError(
+      "forbidden_grant",
+      "Only someone with access to all salons can give access to all salons.",
+      403,
+    );
+  }
+
+  const already = new Set(previous && previous.level !== "global" ? (authorizedSalonNumbers(previous) ?? []) : []);
+  const ownSet = new Set(own);
+  const added = (authorizedSalonNumbers(next) ?? []).filter((salon) => !already.has(salon));
+  if (added.some((salon) => !ownSet.has(salon))) {
+    throw new DirectoryError(
+      "forbidden_grant",
+      "You can only give access to salons your own account covers.",
+      403,
+    );
+  }
+}
+
+const ABOVE_ADMIN_ROLES: readonly Role[] = ["owner", "developer"];
+
+export function assertMayGrantRole(actor: DirectoryActor, role: Role, previous?: Role): void {
+  if (previous === role) return;
+  if (ABOVE_ADMIN_ROLES.includes(role) && !ABOVE_ADMIN_ROLES.includes(actor.role)) {
+    throw new DirectoryError("forbidden_grant", "Only an owner or developer can give that role.", 403);
+  }
 }
 
 /**
@@ -349,11 +406,13 @@ export async function inviteUser(
   const email = normalizeEmail(input.email);
   const displayName = normalizeDisplayName(input.displayName, email);
   const scope = normalizeScope(input.scope);
+  assertScopeWithinActor(actor, scope);
 
   if (!isRole(input.role)) {
     throw new DirectoryError("invalid_input", "Choose a role for this person.");
   }
   const role = input.role;
+  assertMayGrantRole(actor, role);
 
   const admin = getSupabaseAdmin();
 
@@ -486,6 +545,7 @@ export async function patchUser(
 
   if (input.role !== undefined) {
     if (!isRole(input.role)) throw new DirectoryError("invalid_input", "That is not a role.");
+    assertMayGrantRole(actor, input.role, before.role);
     if (input.role !== before.role) roleChange = { from: before.role, to: input.role };
     patch.role = input.role;
   }
@@ -514,6 +574,7 @@ export async function patchUser(
 
   if (input.scope !== undefined) {
     const scope = normalizeScope(input.scope);
+    assertScopeWithinActor(actor, scope, before.scope);
     patch.scope_level = scope.level;
     patch.scope_primary_area_id = scope.primaryAreaId;
     patch.scope_also_covers_area_ids = scope.alsoCoversAreaIds;
