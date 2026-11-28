@@ -16,7 +16,7 @@ import { AdoptionGapPanel } from "./adoption-gap";
 import { AnalyticsFilterBar } from "./filter-bar";
 import { AnalyticsKpiRow } from "./kpi-row";
 import { UsageByRoleChart, UsageTrendChart } from "./charts";
-import { LeadersTable, LocationsTable } from "./tables";
+import { LeadersTable, LocationsTable, PeopleUsageTable } from "./tables";
 import { FeatureUsagePanel, UsageTypesPanel } from "./usage-types";
 import { ConversationFeedbackSummary } from "./feedback-summary";
 import { FeedbackQueue } from "./feedback-queue";
@@ -243,6 +243,31 @@ export function AnalyticsScreen({
             </section>
           </div>
 
+          {/*
+            EVERY PERSON, BY NAME, BY AREA (Pau, 28 Nov 2026: "list all users per name ... not just by title"). The
+            role chart says which titles use the app; this says which people, and in which areas: chat, forms, Form
+            Monitoring, L10 meetings, AI Training, Google Reviews and Calendar.
+          */}
+          <section className="space-y-0">
+            <SectionHeader
+              title="Usage by person"
+              description={`Everybody on the roster, by name, and what they did in each area of Ask Sunny in ${window.label.toLowerCase()}. L10, Form Monitoring, AI Training, Google Reviews and Calendar count each day the person opened them plus what those pages record.`}
+            />
+            <PeopleUsageTable
+              rows={snapshot.leaders}
+              filters={filters}
+              base={`${ANALYTICS_BASE}/leaders`}
+            />
+          </section>
+
+          <section className="space-y-0">
+            <SectionHeader
+              title="Which parts of Ask Sunny are used"
+              description="Every area of the app, by recorded activity."
+            />
+            <FeatureUsagePanel rows={snapshot.byFeature} total={totals.events} />
+          </section>
+
           <div className="grid gap-4 xl:grid-cols-[1.35fr_1fr]">
             <section className="space-y-3">
               <SectionRule label="What leaders ask about" />
@@ -390,6 +415,18 @@ export function AnalyticsScreen({
               base={`${ANALYTICS_BASE}/leaders`}
             />
           </section>
+
+          <section className="space-y-0">
+            <SectionHeader
+              title="Usage by person"
+              description={`What each person did in each area of Ask Sunny in ${window.label.toLowerCase()}.`}
+            />
+            <PeopleUsageTable
+              rows={filters.inactiveOnly ? inactiveLeaders : snapshot.leaders}
+              filters={filters}
+              base={`${ANALYTICS_BASE}/leaders`}
+            />
+          </section>
         </>
       ) : null}
 
@@ -398,7 +435,7 @@ export function AnalyticsScreen({
           <section className="space-y-0">
             <SectionHeader
               title="Which parts of Ask Sunny are used"
-              description="The five areas of the product, by recorded activity."
+              description="Every area of the app, by recorded activity."
             />
             <FeatureUsagePanel rows={snapshot.byFeature} total={totals.events} />
           </section>

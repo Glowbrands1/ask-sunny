@@ -10,6 +10,7 @@ import { businessDate } from "@/features/l10/lib/dueStatus";
 import { MeetingView } from "@/features/l10/meeting/MeetingView";
 import { Card } from "@/features/l10/ui/ui";
 import { requireAuthenticatedPage } from "@/lib/auth/page";
+import { noteAppUsage } from "@/lib/analytics/app-usage";
 import { NotAttendee } from "@/features/l10/NotAttendee";
 
 /** The page title: the tab's name ("DM L10"), or "SD L10" for the three district meetings (the Hub names each). */
@@ -32,7 +33,7 @@ const dateLabel = (d: Date) => new Intl.DateTimeFormat("en-US", { weekday: "shor
  * Anyone else gets "not found", exactly as for a meeting that does not exist, so the page reveals nothing.
  */
 export default async function MeetingPage({ params, searchParams }: { params: Promise<{ key: string }>; searchParams: Promise<{ view?: string | string[] }> }) {
-  await requireAuthenticatedPage();
+  const identity = await requireAuthenticatedPage();
   const { key } = await params;
   if (!isMeetingKey(key)) notFound();
   const asked = (await searchParams).view;
@@ -55,6 +56,8 @@ export default async function MeetingPage({ params, searchParams }: { params: Pr
     );
   }
   const m = opened.meeting;
+  // A day of use of this L10 meeting, for Analytics (Pau, 28 Nov 2026): only once the Hub let this attendee in.
+  noteAppUsage(identity, "l10", key);
   // A Bloom-style meeting shows "Last meeting's summary". A side load that fails leaves its part empty, and the page says
   // so ("Couldn't load ... refresh to try again") instead of looking like there is nothing (24 Nov 2026).
   const [recaps, owners] = await Promise.all([bloomStyle(key) ? listRecaps(key) : Promise.resolve(null), loadLeadershipOwnerNames()]);

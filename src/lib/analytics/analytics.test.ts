@@ -59,12 +59,13 @@ describe("the taxonomy matches the database", () => {
   function enumValues(typeName: string): string[] {
     const created = migrations.split(`create type public.${typeName} as enum`)[1];
     const body = created?.split(");")[0] ?? "";
-    const initial = [...body.matchAll(/'([a-z_]+)'/g)].map((match) => match[1]);
+    /* Digits allowed since 28 Nov 2026: 'l10' and 'l10_meeting' are values, and `[a-z_]+` could not read them. */
+    const initial = [...body.matchAll(/'([a-z0-9_]+)'/g)].map((match) => match[1]);
 
     const added = [
       ...migrations.matchAll(
         new RegExp(
-          `alter type public\\.${typeName} add value(?: if not exists)? '([a-z_]+)'`,
+          `alter type public\\.${typeName} add value(?: if not exists)? '([a-z0-9_]+)'`,
           "g",
         ),
       ),

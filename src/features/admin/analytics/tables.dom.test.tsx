@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { EMPTY_FILTERS } from "@/lib/analytics/filters";
 import type { LeaderRow, LocationRow } from "@/lib/analytics/queries";
-import { LeadersTable, LocationsTable } from "./tables";
+import { LeadersTable, LocationsTable, PeopleUsageTable } from "./tables";
 
 /**
  * THE OVERVIEW CARDS, AFTER THE SPACING PASS.
@@ -56,6 +56,7 @@ const LEADER: LeaderRow = {
   forms: 2,
   documents: 0,
   chatEvents: 7,
+  byFeature: { chat: 7, forms: 2 },
   topCategory: "daily_stats",
   lastActive: "2026-09-15T10:00:00.000Z",
 };
@@ -261,5 +262,30 @@ describe("the cards still behave on a narrow screen", () => {
     const scroller = container.querySelector(".overflow-x-auto");
     expect(scroller).not.toBeNull();
     expect(scroller!.querySelector("table")).not.toBeNull();
+  });
+});
+
+/* ------------------------------------------------------- usage by person --- */
+
+describe("usage by person (Pau, 28 Nov 2026: \"list all users per name ... not just by title\")", () => {
+  it("lists every person by name, silent ones included, with a column per area", () => {
+    const active: LeaderRow = {
+      ...LEADER,
+      events: 14,
+      byFeature: { chat: 7, forms: 2, l10: 3, form_monitoring: 1, knowledge: 1 },
+    };
+    const { container } = render(
+      <PeopleUsageTable rows={[active, INVITED_LEADER]} filters={EMPTY_FILTERS} base="/admin/analytics/leaders" />,
+    );
+
+    expect(screen.getByRole("link", { name: "Pau" })).toBeDefined();
+    expect(screen.getByRole("link", { name: "Owen Tremaine" })).toBeDefined();
+    for (const heading of ["L10 Meetings", "Form Monitoring", "AI Training", "Google Reviews", "Calendar", "Other"]) {
+      expect(screen.getByRole("columnheader", { name: heading })).toBeDefined();
+    }
+
+    const cells = [...container.querySelectorAll("tbody tr")[0].querySelectorAll("td")].map((cell) => cell.textContent);
+    // Role, Total, Ask Sunny, Forms, Form Monitoring, L10, AI Training, Google Reviews, Calendar, Other, Last active.
+    expect(cells.slice(1, 10)).toEqual(["14", "7", "2", "1", "3", "—", "—", "—", "1"]);
   });
 });

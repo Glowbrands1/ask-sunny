@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { ScrollTable } from "@/components/ui/layout";
 import { ROLE_LABEL } from "@/lib/permissions";
-import { categoryLabel } from "@/lib/analytics/taxonomy";
+import { categoryLabel, featureLabel } from "@/lib/analytics/taxonomy";
 import { serializeFilters, type AnalyticsFilters } from "@/lib/analytics/filters";
 import { formatDate } from "@/lib/utils/date";
 import { formatNumber } from "@/lib/utils/format";
@@ -278,6 +278,118 @@ export function LeadersTable({
                   </td>
                 </>
               )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </ScrollTable>
+  );
+}
+
+/**
+ * The areas "Usage by person" gives a column each, in the order of the sidebar. Knowledge, reports and videos share
+ * "Other": they are rarer, and seven figures per person is already the most a row can carry.
+ */
+const PERSON_AREAS = [
+  "chat",
+  "forms",
+  "form_monitoring",
+  "l10",
+  "ai_training",
+  "google_reviews",
+  "calendar",
+] as const;
+
+function otherAreas(byFeature: Record<string, number>): number {
+  return Object.entries(byFeature)
+    .filter(([key]) => !(PERSON_AREAS as readonly string[]).includes(key))
+    .reduce((sum, [, count]) => sum + count, 0);
+}
+
+function countCell(value: number) {
+  return value > 0 ? formatNumber(value) : <span className="text-muted-foreground">—</span>;
+}
+
+/**
+ * USAGE BY PERSON, BY AREA (Pau, 28 Nov 2026: "list all users per name and backfill it please not just by title").
+ *
+ * Every account on the roster, by name, with what they did in each area of the app over the period, including the
+ * people who did nothing (they are the rows an adoption push needs). The role chart above says which titles use Ask
+ * Sunny; this says which people.
+ */
+export function PeopleUsageTable({
+  rows,
+  filters,
+  base,
+}: {
+  rows: LeaderRow[];
+  filters: AnalyticsFilters;
+  base: string;
+}) {
+  if (rows.length === 0) {
+    return (
+      <p className="py-6 text-center text-sm text-muted-foreground">
+        No people match these filters.
+      </p>
+    );
+  }
+
+  return (
+    <ScrollTable>
+      <table className="data-table min-w-[1040px]">
+        <caption className="sr-only">
+          Ask Sunny usage by person and by area of the app, including people with no activity.
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col" className="pr-3">Person</th>
+            <th scope="col" data-width="fit" className="pr-3">Role</th>
+            <th scope="col" data-align="right" data-width="compact" className="pr-3">Total</th>
+            {PERSON_AREAS.map((area) => (
+              <th key={area} scope="col" data-align="right" data-width="compact" className="pr-3">
+                {featureLabel(area)}
+              </th>
+            ))}
+            <th scope="col" data-align="right" data-width="compact" className="pr-3">Other</th>
+            <th scope="col" data-width="compact" className="pr-3">Last active</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.userId}>
+              <th scope="row" className="pr-3 text-left font-normal">
+                <span className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                  <Link
+                    href={`${base}?${serializeFilters({ ...filters, actorId: row.userId })}`}
+                    className="font-medium underline-offset-2 hover:underline"
+                  >
+                    {row.displayName}
+                  </Link>
+                  {inactiveBadge(row.events)}
+                  {row.status === "invited" ? (
+                    <Badge tone="processing" size="sm">
+                      Invited
+                    </Badge>
+                  ) : null}
+                </span>
+              </th>
+              <td data-width="fit" className="pr-3 text-muted-foreground">
+                {ROLE_LABEL[row.role as Role] ?? row.role}
+              </td>
+              <td data-align="right" data-width="compact" className="pr-3 font-semibold tabular-nums">
+                {formatNumber(row.events)}
+              </td>
+              {PERSON_AREAS.map((area) => (
+                <td key={area} data-align="right" data-width="compact" className="pr-3 tabular-nums">
+                  {countCell(row.byFeature[area] ?? 0)}
+                </td>
+              ))}
+              <td data-align="right" data-width="compact" className="pr-3 tabular-nums">
+                {countCell(otherAreas(row.byFeature))}
+              </td>
+              <td data-width="compact" className="pr-3 text-muted-foreground">
+                {lastActiveCell(row.lastActive)}
+              </td>
             </tr>
           ))}
         </tbody>

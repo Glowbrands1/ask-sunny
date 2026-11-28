@@ -254,7 +254,10 @@ export function SidebarNav({
                         link
                       )}
                     </li>
-                    {bell && bellUnderOverview && item.href === "/" ? <li>{bellItem}</li> : null}
+                    {bell && bellUnderOverview && item.href === "/" ? (
+                      /* A small gap between Overview and the Notifications bar (Pau, 28 Nov 2026: "add a small space between these buttons"). */
+                      <li className="pt-1.5">{bellItem}</li>
+                    ) : null}
                   </Fragment>
                 );
               })}

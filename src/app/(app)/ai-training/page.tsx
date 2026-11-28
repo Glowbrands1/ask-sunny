@@ -7,6 +7,7 @@ import { loadAssignmentTracker } from "@/lib/ai-training/assignments-repository"
 import { requirePagePermission } from "@/lib/auth/page";
 import { businessToday } from "@/lib/business-date";
 import { getPage, listMySubmissions, loadCatalog } from "@/lib/ai-training/repository";
+import { noteAppUsage } from "@/lib/analytics/app-usage";
 
 export const metadata: Metadata = {
   title: "AI Training",
@@ -16,6 +17,7 @@ export const dynamic = "force-dynamic";
 
 export default async function AiTrainingPage() {
   const identity = await requirePagePermission("view_ai_training");
+  noteAppUsage(identity, "ai_training");
   const isAdmin = viewerIsAdmin(identity);
 
   const loaded = await readOrExplain(async () => {

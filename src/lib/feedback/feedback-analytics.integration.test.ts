@@ -59,12 +59,25 @@ const APPLIED = ALL_MIGRATIONS.slice(0, ALL_MIGRATIONS.indexOf(LAST_FEEDBACK_MIG
  *   20261123002000  `activity_unified` leaves out a form still with HR (owner, 23 Nov 2026: "make sure ... people
  *                   dont see what a certain person created"). Reads `form_instances.hr_approval_state`, added by
  *                   20261123001000_forms_hr_approval (text, checked against the four states there).
+ *   20261128001000  five more activity features and categories (L10, Form Monitoring, AI Training, Google Reviews,
+ *                   Calendar; Pau, 28 Nov 2026). Reads nothing skipped.
+ *   20261128001100  `app_usage_days`, and `activity_unified` counting it plus Form Monitoring actions, AI Training
+ *                   submissions and Calendar reminders. Reads `ai_training_submissions` (20261118001000_ai_training)
+ *                   and `calendar_reminders` (20261127001000_calendar), stood in with the columns the view reads.
  */
 const LATER_ANALYTICS_MIGRATIONS: readonly { name: string; standIn: string }[] = [
   {
     name: "20261123002000_activity_unified_hr_hidden",
     standIn: `alter table public.form_instances add column hr_approval_state text
       check (hr_approval_state in ('pending', 'changes_requested', 'rejected', 'approved'));`,
+  },
+  { name: "20261128001000_activity_app_areas", standIn: "" },
+  {
+    name: "20261128001100_app_usage_days",
+    standIn: `create table public.ai_training_submissions (
+        id uuid primary key default gen_random_uuid(), user_subject text not null, created_at timestamptz not null default now());
+      create table public.calendar_reminders (
+        id uuid primary key default gen_random_uuid(), owner_subject text not null, created_at timestamptz not null default now());`,
   },
 ];
 

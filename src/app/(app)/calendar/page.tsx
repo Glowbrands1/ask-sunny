@@ -8,6 +8,7 @@ import { meetingDetailsFromHub } from "@/lib/calendar/hub";
 import { loadCalendarFor } from "@/lib/calendar/load.server";
 import { leadershipHubUrl } from "@/lib/config/app-switcher";
 import { centralToday, isMonth, monthGrid, monthOf } from "@/lib/calendar/range";
+import { noteAppUsage } from "@/lib/analytics/app-usage";
 
 export const metadata: Metadata = { title: "Calendar" };
 export const dynamic = "force-dynamic";
@@ -20,6 +21,7 @@ export const dynamic = "force-dynamic";
  */
 export default async function CalendarPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const identity = await requirePagePermission("view_overview");
+  noteAppUsage(identity, "calendar");
   const sp = await searchParams;
   const today = centralToday();
   const month = isMonth(sp.month) ? sp.month : monthOf(today);

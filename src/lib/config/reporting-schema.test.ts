@@ -101,6 +101,10 @@ const ANALYTICS_MIGRATION_FRAGMENTS = [
   // activity_unified restated so a form still with HR is not counted (owner, 23 Nov 2026); it reads `salons`, as the
   // activity_analytics view it restates does.
   "activity_unified_hr_hidden",
+  // activity_unified restated again with the app's other areas (Pau, 28 Nov 2026); it reads `salons` and
+  // `report_ingestions` exactly as the view it restates.
+  "activity_app_areas",
+  "app_usage_days",
 ] as const;
 
 function analyticsFiles(): { name: string; sql: string }[] {
