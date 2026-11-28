@@ -423,7 +423,7 @@ export const WHATS_NEW: readonly WhatsNewRelease[] = [
     summary: "Sunny's new assistant for every manager.",
     entries: [
       {
-        tag: "New",
+        tag: "Improved",
         title: "Sunny looks things up for you",
         before: "Sunny answered from the policy manual but could not look up your forms or figures.",
         now: "Sunny looks up your forms on file, reports and Google reviews for your salons, and drafts a form as a card you check before you create it.",
