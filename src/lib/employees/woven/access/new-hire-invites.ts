@@ -1,6 +1,7 @@
 import { MAX_AUTOMATIC_INVITE_ATTEMPTS } from "./lifecycle";
 import type { AccessPlan } from "./build";
 import type { WovenAccessConfig } from "./config";
+import { INVITE_LINK_NOT_LIVE } from "./invite-link-check";
 import { isNewHire, type NewHireConfig } from "./new-hire";
 import type { PlannedRow } from "./types";
 
@@ -20,7 +21,8 @@ import type { PlannedRow } from "./types";
  * NEW_HIRE_INVITE_SINCE), WOVEN_ACCESS_MODE=apply, and SEND_INVITE in
  * WOVEN_ACCESS_APPLY_ACTIONS; only while the access guards allow changes;
  * only for people active in Woven, in the approved batch
- * (WOVEN_ACCESS_APPLY_EMPLOYEE_IDS, when set), hired on or after the set date.
+ * (WOVEN_ACCESS_APPLY_EMPLOYEE_IDS, when set), hired — or moved by Woven into
+ * the position the account was created for — on or after the set date.
  * Each send is the lifecycle's own (`sendInviteEmail`): Supabase emails the
  * link to the person, it is recorded, and it is never returned or logged.
  */
@@ -29,6 +31,26 @@ export interface NewHireInviteDeps {
   loadPlan(now: Date): Promise<AccessPlan>;
   /** The lifecycle's invitation for one account. */
   send(appUserId: string, email: string): Promise<{ ok: boolean; code: string }>;
+  /**
+   * Is the invitation's landing page live (`invite-link-check.ts`)? Asked once, only when somebody is waiting, before
+   * the first send. False stops the run with `invite_link_not_live`; nobody's attempts are spent.
+   */
+  linkIsLive(): Promise<boolean>;
+  /**
+   * EmployeeIDs whose Woven record the latest sync saw arrive or change position / salon (`unsettledEmployees`). Their
+   * link waits for the next sync to confirm it (Pau, 28 Nov 2026: a new hire made Tanning Consultant and changed to
+   * District Manager the same day gets the link as a District Manager). Omitted: nobody waits.
+   */
+  unsettled?(plan: AccessPlan): Promise<ReadonlySet<string>>;
+  /**
+   * EmployeeIDs whose position Woven changed on or after the set date (`promotedSince`). Someone hired long ago and
+   * promoted into a manager role now (a Tanning Consultant made Assistant Salon Director) gets the link as a new hire
+   * does: Pau, 28 Nov 2026, "where there is a position change it should detect it and give the correct link to the
+   * person with correct position and location". Omitted: only hire dates count.
+   */
+  promoted?(since: string): Promise<ReadonlySet<string>>;
+  /** Told after each invitation the mailer accepted (Pau's email through the webhook). Never awaited for its result. */
+  onSent?(row: PlannedRow): Promise<unknown>;
 }
 
 export type NewHireInviteOutcome =
@@ -65,8 +87,14 @@ export async function sendNewHireInvites(
   const rule = config.rule;
   const inBatch = (row: PlannedRow) =>
     access.employeeAllowlist === null || (row.externalEmployeeId !== null && access.employeeAllowlist.includes(row.externalEmployeeId));
+  const unsettled = deps.unsettled ? await deps.unsettled(plan) : new Set<string>();
+  const promoted = deps.promoted ? await deps.promoted(rule.since) : new Set<string>();
+  const newToTheRole = (row: PlannedRow) => isNewHire(row.hireDate, rule) || (row.externalEmployeeId !== null && promoted.has(row.externalEmployeeId));
+  /* The account must already match Woven's position (the position sync runs after each sync), and Woven must have held still for a sync. */
+  const settled = (row: PlannedRow) =>
+    row.externalEmployeeId !== null && !unsettled.has(row.externalEmployeeId) && (row.proposedRole === null || row.proposedRole === row.account?.role);
   const waiting = plan.rows
-    .filter((row) => waitingForInvite(row) && inBatch(row) && isNewHire(row.hireDate, rule))
+    .filter((row) => waitingForInvite(row) && inBatch(row) && newToTheRole(row) && settled(row))
     .sort((a, b) => (a.hireDate ?? "").localeCompare(b.hireDate ?? "") || a.key.localeCompare(b.key));
 
   /*
@@ -84,12 +112,17 @@ export async function sendNewHireInvites(
   let skipped = 0;
   let used = 0;
   let stoppedBy: string | null = null;
+  // Pau, 28 Nov 2026: "can u check first if the link is live?" — before the mailer is asked for anything.
+  if (waiting.length > 0 && !(await deps.linkIsLive())) {
+    return { status: "completed", sent: 0, failed: 0, skipped: 0, waiting: waiting.length, stoppedBy: INVITE_LINK_NOT_LIVE };
+  }
   for (const row of waiting.slice(0, MAX_TRIED)) {
     if (used >= config.perHour) break;
     const outcome = await deps.send(row.account!.appUserId, row.account!.email);
     if (outcome.ok) {
       sent += 1;
       used += 1;
+      await deps.onSent?.(row).catch(() => undefined);
       continue;
     }
     if (outcome.code === "email_rate_limited" || outcome.code === "redirect_not_configured") {

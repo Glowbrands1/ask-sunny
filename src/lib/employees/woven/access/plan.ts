@@ -145,7 +145,7 @@ export function planAccess(input: PlannerInput): PlannedRow[] {
   const rows: PlannedRow[] = [];
 
   for (const employee of [...input.employees].sort((a, b) => a.externalEmployeeId.localeCompare(b.externalEmployeeId))) {
-    const row = planEmployee(employee, { positions, locations, byLinkedEmployee, byEmail, emailHolders, authOnly, newHire: input.newHire ?? null });
+    const row = planEmployee(employee, { positions, locations, byLinkedEmployee, byEmail, emailHolders, authOnly, newHire: input.newHire ?? null, createDistrictManagers: input.createDistrictManagers === true });
     if (row.account) covered.add(row.account.appUserId);
     rows.push(row);
   }
@@ -197,6 +197,8 @@ interface Context {
   authOnly: Map<string, string | null> | undefined;
   /** NEW_HIRE_INVITES_ENABLED: a new hire may be given an account for these roles too. */
   newHire: NewHireRule | null;
+  /** WOVEN_POSITION_SYNC_ENABLED: District Managers are created too (at their salon; the position sync widens them). */
+  createDistrictManagers: boolean;
 }
 
 function planEmployee(employee: PlannerEmployee, ctx: Context): PlannedRow {
@@ -457,7 +459,8 @@ function planWithoutAccount(
     return row();
   }
   const newHireRole = Boolean(ctx.newHire?.extraRoles.includes(role) && isNewHire(employee.hireDate, ctx.newHire));
-  if (!AUTO_PROVISION_ROLES.includes(role) && !newHireRole) {
+  const districtManager = role === "district_manager" && ctx.createDistrictManagers;
+  if (!AUTO_PROVISION_ROLES.includes(role) && !newHireRole && !districtManager) {
     reasons.push("position_not_auto_provisioned");
     return row();
   }

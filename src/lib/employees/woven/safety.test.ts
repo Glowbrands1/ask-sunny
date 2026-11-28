@@ -197,11 +197,17 @@ describe("the schedule", () => {
     ]);
   });
 
-  it("schedules the employee sync once a day, on its own route", () => {
-    expect(employee).toEqual([{ path: "/api/employees/woven/cron", schedule: "17 11 * * *" }]);
-    /* Minute, hour, then every day: once daily, not hourly. */
+  /*
+   * Changed on purpose (Pau, 28 Nov 2026, "Sync twice a day + hold"): the sync runs twice a day, so a new hire's
+   * position is confirmed by a second read within about 12 hours before their sign-in link goes. Still a fixed
+   * minute and named hours — never hourly.
+   */
+  it("schedules the employee sync twice a day, on its own route", () => {
+    expect(employee).toEqual([{ path: "/api/employees/woven/cron", schedule: "17 11,23 * * *" }]);
     const [minute, hour, dom, month, dow] = employee[0]!.schedule.split(" ");
-    expect([minute, hour].every((f) => /^\d+$/.test(f!))).toBe(true);
+    expect(/^\d+$/.test(minute!)).toBe(true);
+    expect(hour!.split(",")).toHaveLength(2);
+    expect(hour!.split(",").every((h) => /^\d+$/.test(h))).toBe(true);
     expect([dom, month, dow]).toEqual(["*", "*", "*"]);
     /* No cron path is shared between the employee sync and anything else. */
     expect((vercel.crons ?? []).filter((c) => c.path === "/api/employees/woven/cron")).toHaveLength(1);

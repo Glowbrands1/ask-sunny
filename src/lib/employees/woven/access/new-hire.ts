@@ -17,10 +17,10 @@ import type { Role } from "@/types";
  *   NEW_HIRE_INVITE_SINCE      a date (YYYY-MM-DD). Only people whose Woven
  *                              hire date is on or after it, and not after
  *                              today, are new hires. Unset: nobody is.
- *   NEW_HIRE_INVITE_ROLES      the roles a new hire may be given an account
- *                              for, beyond the lifecycle's own
- *                              (`AUTO_PROVISION_ROLES`) — e.g. `employee` for
- *                              Tanning Consultants. Empty (default): no others.
+ *   NEW_HIRE_INVITE_ROLES      must be empty (28 Nov 2026: Tanning Consultants
+ *                              are not given accounts; District Managers come
+ *                              with WOVEN_POSITION_SYNC_ENABLED). Any role
+ *                              named turns the invitations off.
  *   NEW_HIRE_INVITES_PER_HOUR  invitations sent per hourly run: 1 (default)
  *                              or 2. Anything else is 1.
  *
@@ -70,6 +70,16 @@ export function readNewHireConfig(env: Record<string, string | undefined> = proc
   const unknown = named.filter((role) => !(ROLES as readonly string[]).includes(role));
   if (unknown.length > 0) {
     return off(`${NEW_HIRE_INVITE_ROLES_ENV} names ${unknown.join(", ")}, which is not a role. New-hire invitations were treated as off.`);
+  }
+  /*
+   * Pau, 28 Nov 2026: "we dont add tanning consultants and employee in both apps". The lifecycle's own roles (Salon
+   * Director, Assistant) are always included, and District Managers come with WOVEN_POSITION_SYNC_ENABLED (widened to
+   * their district), so this switch may add nothing more: any role named here turns the invitations off.
+   */
+  if (named.length > 0) {
+    return off(
+      `${NEW_HIRE_INVITE_ROLES_ENV} adds no roles: Tanning Consultants are not given accounts, and District Managers come with WOVEN_POSITION_SYNC_ENABLED. New-hire invitations were treated as off.`,
+    );
   }
   const perHour = (env[NEW_HIRE_INVITES_PER_HOUR_ENV] ?? "").trim() === "2" ? 2 : 1;
   return {

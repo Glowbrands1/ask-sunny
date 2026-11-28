@@ -174,7 +174,7 @@ Linking changes nobody's access.
 
 | Woven position | Ask Sunny | Provisioning |
 |---|---|---|
-| Tanning Consultant | employee, salon | automatic, after testing |
+| Tanning Consultant | employee, salon | **never** (Pau, 28 Nov 2026: "we dont add tanning consultants and employee in both apps") |
 | Assistant Salon Director | assistant_salon_director, salon | automatic |
 | Salon Director | salon_director, salon | automatic |
 | District Manager | district_manager | not until an admin-selected district flow exists |
@@ -276,7 +276,7 @@ migration. Four switches, all closed by default (`access/new-hire.ts`):
 |---|---|---|
 | `NEW_HIRE_INVITES_ENABLED` | off | Master switch. Off: nothing below is read, the lifecycle behaves as before. |
 | `NEW_HIRE_INVITE_SINCE` | unset | `YYYY-MM-DD`. Only people whose Woven hire date is on or after it (and not after today) are new hires. Unset with the switch on: off, with a problem. |
-| `NEW_HIRE_INVITE_ROLES` | empty | Roles a new hire may also be given an account for, beyond `AUTO_PROVISION_ROLES` — e.g. `employee` for Tanning Consultants. An unknown role: off. |
+| `NEW_HIRE_INVITE_ROLES` | empty | Must stay empty (28 Nov 2026: Tanning Consultants are not given accounts; District Managers come with `WOVEN_POSITION_SYNC_ENABLED`). Any role named: off. |
 | `NEW_HIRE_INVITES_PER_HOUR` | 1 | `1` or `2`; anything else is 1. |
 
 With the switch on:
@@ -289,10 +289,122 @@ With the switch on:
   in the approved batch — and stops at the first `email_rate_limited`;
 - everybody already on the team (hired before the date) is left to an admin
   ("Send sign-in link" / "Generate reset link").
+- **the link is checked first** (Pau, 28 Nov 2026: "can u check first if the
+  link is live?"): before the mailer is asked for anything, the run opens the
+  invitation's landing page (`/auth/accept`) once. It must answer 2xx and still
+  be that page after any redirect, within 8 seconds
+  (`access/invite-link-check.ts`). Otherwise the run stops with
+  `stoppedBy: "invite_link_not_live"`, emails nobody and spends no attempt.
+  Checked 28 Nov 2026: `https://ask-sunny.vercel.app/auth/accept` answers 200.
 
 Nothing is created or sent unless the lifecycle's own switches are also on
 (`WOVEN_ACCESS_MODE=apply`, `CREATE_USER`, `SEND_INVITE`). Leave one invitation
 an hour of headroom for an admin's own sends.
+
+## Stage 5c — who hears about hires, terminations and sent links (built 28 Nov 2026; OFF)
+
+Pau, 28 Nov 2026: "create a notification when a new person is onboarded like a
+manager, assistant etc. for admins only for now backfill it …", then "admin,
+owner and developer, also can you add if that person is in any salon the
+manager there will get notified too, also add coleen for this notification coz
+she is HR all hires and all terminated", "backfill only 2 weeks pls", and "can
+you also send me a notification in my personal email … when someone join and
+get terminated and if they get the link".
+
+After each successful, stored Woven directory sync (the daily cron and an
+admin's manual sync), `src/lib/admin/new-hire-notices.ts`:
+
+| Event | When | Bell | Webhook (email) |
+|---|---|---|---|
+| Hired | Active, Woven hire date in the window | Every active admin (admin, owner, developer); every active Salon Director / Assistant Salon Director of any salon the person is in, primary or additional; `WOVEN_HR_NOTIFY_EMAILS` | yes |
+| Terminated | The sync recorded a `terminated` change in the window | `WOVEN_HR_NOTIFY_EMAILS` | yes |
+| Sign-in link sent | The hourly new-hire run's invitation was accepted by the mailer | — | yes |
+
+A hire notice reads, for example:
+
+> **New hire: Robin Quillfeather — Salon Director**
+> New employee Robin Quillfeather, robin.quillfeather@example.com in Woven, has
+> been hired as Salon Director at Maple Grove on Nov 24, 2026. Additional
+> salons: Birch Hollow (temporary, until Dec 15, 2026), Cedar Point.
+
+An admin's notice opens the Woven directory; a manager's or HR's has no link
+(they may not open it). The new hire never gets a notice about themselves.
+
+**Backfill:** the window is the last `NEW_HIRE_NOTICE_BACKFILL_DAYS` days (14,
+today included), so the first run announces the last two weeks. Each event is
+announced **once, ever** (`woven_employee_notices`, migration
+`20261128001000`). A webhook call that failed is retried by the next sync while
+the event is in the window.
+
+**Email.** The app sends no email of its own (Supabase's sign-in email is
+limited to two an hour), so every event is POSTed as JSON to
+`WOVEN_EVENTS_WEBHOOK_URL` — Pau's n8n, which emails her — with
+`WOVEN_EVENTS_WEBHOOK_SECRET` in the `x-ask-webhook-secret` header. The body:
+`{ app, event, title, body, employee: { wovenEmployeeId, name, email, position,
+location, additionalLocations, hireDate, terminationDate } }`. `app` is "Ask Sunny",
+so one workflow can serve both apps.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `NEW_HIRE_NOTICES_ENABLED` | off | The switch. Off: nothing is read or sent. |
+| `NEW_HIRE_NOTICE_BACKFILL_DAYS` | 14 | 1–365. Anything else is 14. |
+| `WOVEN_HR_NOTIFY_EMAILS` | empty | HR: every hire and every termination. Empty: terminations are not read. |
+| `WOVEN_EVENTS_WEBHOOK_URL` | unset | https only. Unset: no webhook. |
+| `WOVEN_EVENTS_WEBHOOK_SECRET` | unset | Sent with every webhook call; n8n checks it. |
+
+To turn it on: apply `20261128001000_woven_employee_notices.sql` (Supabase MCP
+`apply_migration`), set the variables, redeploy. Until the migration is
+applied the run fails quietly (`new_hire_notices_failed`) and the sync is
+unaffected. The sync's response carries `newHireNotices` with counts only.
+
+## Stage 5d — access follows Woven's position and salon (built 28 Nov 2026; OFF)
+
+Pau, 28 Nov 2026: "we need to add District manager also, just not corporate,
+also add a sync where there is a position change it should detect it and give
+the correct link to the person with correct position and location. sometimes
+they make new hire DM as tanning employee but change it within the dayy to DM
+so we need to catch that too, for new positions existing, make sure their
+access refreshes too depends on the access we have in the intergration both
+app". Chosen: **all changes within the manager tiers**, and **sync twice a day
++ hold the link**.
+
+With `WOVEN_POSITION_SYNC_ENABLED` on (`src/lib/admin/position-sync.ts`):
+
+- **District Managers get an account** like Salon Directors (the lifecycle's
+  `CREATE_USER`; migration `20261128002000` lets the database create
+  `district_manager` too, every other check unchanged). **Tanning Consultants
+  are never given accounts** (Pau, 28 Nov 2026: "we dont add tanning
+  consultants and employee in both apps"); `NEW_HIRE_INVITE_ROLES` may name no
+  role any more. The
+  account is created at their Woven salon and widened to that salon's district
+  in the same run. Admin, owner, developer and regional are still never created.
+- **After each sync, every Woven-linked account is compared with the position
+  mapping and the Woven primary salon.** Within the tier — ASD, SD, DM — a
+  promotion, a demotion or a move is applied: role and scope as
+  the mapping says (salon roles at their salon, a DM at that salon's district).
+  Extra salons an admin granted are kept. A DM an admin gave every salon is not
+  narrowed. Protected, admin, regional and corporate accounts are never changed,
+  and a manager Woven now shows as a Tanning Consultant is left to an admin.
+- Each change is made by `patchUser` in the name of
+  `WOVEN_POSITION_SYNC_ACTOR` (an active global admin), audited `role_changed` /
+  `scope_changed`, and every admin's bell says "Access updated from Woven".
+- Only while the access guards allow changes; more than 10 changes in one run
+  changes nothing and the run reports `too_many_changes`.
+- **The Woven sync runs twice a day** (11:17 and 23:17 UTC), and **a new hire's
+  link waits** while the latest sync saw them arrive, change position or
+  primary location, or come back — and while their account's role does not yet
+  match Woven. So "Tanning Consultant, then DM the same day" (no account as a
+  Tanning Consultant; created once Woven says DM) gets the link as a
+  DM, within about 12 hours.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `WOVEN_POSITION_SYNC_ENABLED` | off | The switch. Off: nothing changes, and District Managers are not created. |
+| `WOVEN_POSITION_SYNC_ACTOR` | unset | Email of an active global admin the changes are made by. |
+
+To turn it on: apply `20261128002000_woven_provision_more_roles.sql`, set both
+variables, redeploy. For new District Managers to be created, the lifecycle's
+own switches must also allow `CREATE_USER`.
 
 ## Migration history in Production
 

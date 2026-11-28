@@ -495,7 +495,7 @@ describe("NEW_HIRE_INVITES_ENABLED", () => {
   const trickle = (plan: AccessPlan, f: ReturnType<typeof fakes>, perHour: 1 | 2 = 1, access = config()) =>
     sendNewHireInvites(
       { config: newHireConfig(perHour), access, now: NOW },
-      { loadPlan: async () => plan, send: (id, email) => sendInviteEmail(id, email, REDIRECT, f.deps, "test") },
+      { loadPlan: async () => plan, send: (id, email) => sendInviteEmail(id, email, REDIRECT, f.deps, "test"), linkIsLive: async () => true },
     );
 
   it("the daily run, held: creates the new hire's account and emails nobody, waiting ones included", async () => {
@@ -562,10 +562,106 @@ describe("NEW_HIRE_INVITES_ENABLED", () => {
     const f = fakes(plan);
     const noRedirect = await sendNewHireInvites(
       { config: newHireConfig(2), access: config(), now: NOW },
-      { loadPlan: async () => plan, send: (id, email) => sendInviteEmail(id, email, null, f.deps, "test") },
+      { loadPlan: async () => plan, send: (id, email) => sendInviteEmail(id, email, null, f.deps, "test"), linkIsLive: async () => true },
     );
     expect(noRedirect).toMatchObject({ failed: 1, stoppedBy: "redirect_not_configured" });
     expect(f.fnsCalled().filter((fn) => fn === "employee_access_record_invite")).toHaveLength(1);
+  });
+
+  /*
+   * Pau, 28 Nov 2026: "auto give them link from their woven email … but can u check first if the link is live?"
+   */
+  it("checks the link is live first: a dead accept page emails nobody and spends no attempt", async () => {
+    const plan = planWithHires([employee("E1", { hireDate: "2026-10-05" })], [waiting(1, "E1")]);
+    const f = fakes(plan);
+    const linkIsLive = vi.fn(async () => false);
+    const outcome = await sendNewHireInvites(
+      { config: newHireConfig(2), access: config(), now: NOW },
+      { loadPlan: async () => plan, send: (id, email) => sendInviteEmail(id, email, REDIRECT, f.deps, "test"), linkIsLive },
+    );
+    expect(outcome).toEqual({ status: "completed", sent: 0, failed: 0, skipped: 0, waiting: 1, stoppedBy: "invite_link_not_live" });
+    expect(linkIsLive).toHaveBeenCalledTimes(1);
+    expect(f.auth.inviteUserByEmail).not.toHaveBeenCalled();
+    expect(f.fnsCalled()).not.toContain("employee_access_record_invite");
+  });
+
+  it("tells Pau's webhook about each link the mailer accepted, and only those (\"if they get the link\")", async () => {
+    const employees = ["E1", "E2"].map((id, i) => employee(id, { hireDate: `2026-10-0${i + 2}` }));
+    const plan = planWithHires(employees, [waiting(1, "E1"), waiting(2, "E2")]);
+    const f = fakes(plan);
+    const onSent = vi.fn(async () => undefined);
+    await sendNewHireInvites(
+      { config: newHireConfig(1), access: config(), now: NOW },
+      { loadPlan: async () => plan, send: (id, email) => sendInviteEmail(id, email, REDIRECT, f.deps, "test"), linkIsLive: async () => true, onSent },
+    );
+    expect(onSent).toHaveBeenCalledTimes(1);
+    expect(onSent).toHaveBeenCalledWith(expect.objectContaining({ externalEmployeeId: "E1" }));
+    const limited = fakes(plan, { auth: { inviteUserByEmail: vi.fn(async () => ({ data: null, error: { code: "over_email_send_rate_limit", status: 429 } })) } as never });
+    const notTold = vi.fn(async () => undefined);
+    await sendNewHireInvites(
+      { config: newHireConfig(1), access: config(), now: NOW },
+      { loadPlan: async () => plan, send: (id, email) => sendInviteEmail(id, email, REDIRECT, limited.deps, "test"), linkIsLive: async () => true, onSent: notTold },
+    );
+    expect(notTold).not.toHaveBeenCalled();
+  });
+
+  /*
+   * Pau, 28 Nov 2026: "sometimes they make new hire DM as tanning employee but change it within the dayy to DM so we
+   * need to catch that too" — chosen: sync twice a day and hold the link until a second sync confirms the position.
+   */
+  it("holds the link while Woven is unsettled: a person the latest sync saw arrive or change position waits for the next", async () => {
+    const employees = ["E1", "E2"].map((id, i) => employee(id, { hireDate: `2026-10-0${i + 2}` }));
+    const plan = planWithHires(employees, [waiting(1, "E1"), waiting(2, "E2")]);
+    const f = fakes(plan);
+    const outcome = await sendNewHireInvites(
+      { config: newHireConfig(2), access: config(), now: NOW },
+      {
+        loadPlan: async () => plan,
+        send: (id, email) => sendInviteEmail(id, email, REDIRECT, f.deps, "test"),
+        linkIsLive: async () => true,
+        unsettled: async () => new Set(["E1"]),
+      },
+    );
+    expect(outcome).toMatchObject({ sent: 1, waiting: 0 });
+    expect(f.auth.inviteUserByEmail).toHaveBeenCalledWith("e2@gmail.com", { redirectTo: REDIRECT });
+  });
+
+  it("holds the link while the account's role does not yet match Woven's position", async () => {
+    const plan = planWithHires([employee("E1", { hireDate: "2026-10-05" })], [waiting(1, "E1")]);
+    const mismatched = { ...plan, rows: plan.rows.map((r) => ({ ...r, proposedRole: "district_manager" as const })) };
+    const f = fakes(mismatched);
+    expect(
+      await sendNewHireInvites(
+        { config: newHireConfig(), access: config(), now: NOW },
+        { loadPlan: async () => mismatched, send: (id, email) => sendInviteEmail(id, email, REDIRECT, f.deps, "test"), linkIsLive: async () => true },
+      ),
+    ).toMatchObject({ sent: 0, waiting: 0 });
+  });
+
+  /*
+   * Pau, 28 Nov 2026: "where there is a position change it should detect it and give the correct link to the person
+   * with correct position and location" — a Tanning Consultant hired in January and promoted to Assistant Salon
+   * Director now gets the link; one hired before the date and not moved since still does not.
+   */
+  it("a person promoted since the date gets the link as a new hire does, whatever their hire date", async () => {
+    const plan = planWithHires([employee("E1", { hireDate: "2026-01-19" }), employee("E2", { hireDate: "2026-01-20" })], [waiting(1, "E1"), waiting(2, "E2")]);
+    const f = fakes(plan);
+    const promoted = vi.fn(async () => new Set(["E1"]));
+    const outcome = await sendNewHireInvites(
+      { config: newHireConfig(2), access: config(), now: NOW },
+      { loadPlan: async () => plan, send: (id, email) => sendInviteEmail(id, email, REDIRECT, f.deps, "test"), linkIsLive: async () => true, promoted },
+    );
+    expect(outcome).toMatchObject({ sent: 1, waiting: 0 });
+    expect(promoted).toHaveBeenCalledWith(newHireConfig(2).rule!.since);
+    expect(f.auth.inviteUserByEmail).toHaveBeenCalledTimes(1);
+    expect(f.auth.inviteUserByEmail).toHaveBeenCalledWith("e1@gmail.com", { redirectTo: REDIRECT });
+  });
+
+  it("does not open the link when nobody is waiting", async () => {
+    const plan = planWithHires([employee("E1", { hireDate: "2026-09-30" })], [waiting(1, "E1")]);
+    const linkIsLive = vi.fn(async () => true);
+    await sendNewHireInvites({ config: newHireConfig(), access: config(), now: NOW }, { loadPlan: async () => plan, send: async () => ({ ok: true, code: "sent" }), linkIsLive });
+    expect(linkIsLive).not.toHaveBeenCalled();
   });
 
   it("only new hires: somebody hired before the date, or never hired in Woven's record, is left to an admin", async () => {
@@ -582,7 +678,7 @@ describe("NEW_HIRE_INVITES_ENABLED", () => {
     expect(await trickle(blocked, f)).toEqual({ status: "blocked", code: "guards" });
     expect(await trickle(plan, f, 1, config({ applyActions: ["CREATE_USER"] }))).toEqual({ status: "off", code: "lifecycle_invites_off" });
     expect(
-      await sendNewHireInvites({ config: { enabled: false, rule: null, perHour: 1, problem: null }, access: config(), now: NOW }, { loadPlan: async () => plan, send: async () => ({ ok: true, code: "sent" }) }),
+      await sendNewHireInvites({ config: { enabled: false, rule: null, perHour: 1, problem: null }, access: config(), now: NOW }, { loadPlan: async () => plan, send: async () => ({ ok: true, code: "sent" }), linkIsLive: async () => true }),
     ).toEqual({ status: "off", code: "new_hire_invites_off" });
     expect(f.auth.inviteUserByEmail).not.toHaveBeenCalled();
   });

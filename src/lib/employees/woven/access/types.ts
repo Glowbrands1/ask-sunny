@@ -162,6 +162,11 @@ export interface PlannerInput {
   authOnly?: readonly AuthOnlyUser[] | null;
   /** NEW_HIRE_INVITES_ENABLED: who counts as a new hire, and the roles they may also be given (`new-hire.ts`). */
   newHire?: NewHireRule | null;
+  /**
+   * WOVEN_POSITION_SYNC_ENABLED: District Managers get an account too (Pau, 28 Nov 2026: "we need to add District
+   * manager also, just not corporate"). Created at their Woven salon; the position sync widens it to their district.
+   */
+  createDistrictManagers?: boolean;
 }
 
 type Json = string | number | boolean | null | Json[] | { [key: string]: Json };

@@ -10,6 +10,7 @@ import { plannerAccount, plannerEmployee, plannerLocation, plannerPosition } fro
 import { buildAccessPlan, type AccessPlan } from "./build";
 import type { DirectoryRunFacts, MappingCounts } from "./guards";
 import { readNewHireConfig } from "./new-hire";
+import { readPositionSyncConfig } from "@/lib/admin/position-sync";
 import type { AuthOnlyUser } from "./types";
 
 export { buildAccessPlan, type AccessPlan } from "./build";
@@ -101,6 +102,8 @@ export async function loadAccessPlan(now: Date = new Date()): Promise<AccessPlan
       authOnly,
       // NEW_HIRE_INVITES_ENABLED: who counts as a new hire. Off: null, and the plan is as before.
       newHire: readNewHireConfig(process.env, now).rule,
+      // WOVEN_POSITION_SYNC_ENABLED: District Managers get an account too. Off: as before.
+      createDistrictManagers: readPositionSyncConfig(process.env).enabled,
     },
     { runs: runFacts.runs, mappingBaseline, directoryRunId: runFacts.latestSuccessId, now },
   );

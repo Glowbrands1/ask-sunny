@@ -1,10 +1,13 @@
 import "server-only";
 
 import { revokeAuthAccess } from "@/lib/auth/revocation";
+import { announceInviteSent } from "@/lib/admin/new-hire-notices.server";
+import { promotedSince, unsettledEmployees } from "@/lib/admin/position-sync.server";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
 import { applyAccessLifecycle, sendInviteEmail, type ApplyDeps, type ApplyOutcome } from "./apply";
 import { readWovenAccessConfig } from "./config";
+import { inviteLinkIsLive } from "./invite-link-check";
 import { loadAccessPlan } from "./load";
 import { readNewHireConfig } from "./new-hire";
 import { sendNewHireInvites, type NewHireInviteOutcome } from "./new-hire-invites";
@@ -55,7 +58,16 @@ export async function runNewHireInvites(requestedBy: string, redirectTo: string 
   try {
     return await sendNewHireInvites(
       { config, access: readWovenAccessConfig(), now },
-      { loadPlan: deps.loadPlan, send: (appUserId, email) => sendInviteEmail(appUserId, email, redirectTo, deps, setBy) },
+      {
+        loadPlan: deps.loadPlan,
+        send: (appUserId, email) => sendInviteEmail(appUserId, email, redirectTo, deps, setBy),
+        linkIsLive: () => inviteLinkIsLive(redirectTo),
+        unsettled: (plan) => unsettledEmployees(plan.directoryRunId),
+        promoted: (since) => promotedSince(since),
+        // "if they get the link" (Pau, 28 Nov 2026): the webhook emails her. Off unless NEW_HIRE_NOTICES_ENABLED + URL.
+        onSent: (row) =>
+          row.externalEmployeeId && row.account ? announceInviteSent({ externalEmployeeId: row.externalEmployeeId, sentTo: row.account.email }) : Promise.resolve(),
+      },
     );
   } catch {
     return { status: "off", code: "new_hire_invites_failed" };
