@@ -110,6 +110,8 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       checked?: Record<string, string[]>;
       /** "card-change": the finalized form's Change something panel (`finalized-change-panel.tsx`). */
       source?: unknown;
+      /** The values as the card loaded them: only what the person changed from these is written (`touchedSinceLoad`). */
+      base?: { values?: Record<string, string>; checked?: Record<string, string[]> };
     } | null;
 
     /*
@@ -127,7 +129,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       id,
       { values: body?.values ?? {}, checked: body?.checked ?? {} },
       actor.id,
-      { pastHrHold, hrHistoryOnly },
+      { pastHrHold, hrHistoryOnly, ...(sentBase(body?.base) ? { base: sentBase(body?.base)! } : {}) },
     );
     if (pastHrHold || hrHistoryOnly) await recordHrEdit(id, actor);
     /*
@@ -326,4 +328,15 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
     }
     return errorResponse(error, "forms/instance/delete");
   }
+}
+
+/** The card's `base`, when it is the shape the card sends: string values and string-array ticks. Anything else is ignored. */
+function sentBase(base: unknown): { values: Record<string, string>; checked: Record<string, string[]> } | null {
+  if (!base || typeof base !== "object") return null;
+  const { values, checked } = base as { values?: unknown; checked?: unknown };
+  const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === "object" && !Array.isArray(value);
+  if (!isRecord(values) || !isRecord(checked)) return null;
+  if (!Object.values(values).every((value) => typeof value === "string")) return null;
+  if (!Object.values(checked).every((ticks) => Array.isArray(ticks) && ticks.every((tick) => typeof tick === "string"))) return null;
+  return { values: values as Record<string, string>, checked: checked as Record<string, string[]> };
 }

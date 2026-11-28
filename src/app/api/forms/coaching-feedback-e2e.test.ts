@@ -673,4 +673,50 @@ describe("across the roles that can create coaching", () => {
     expect(response!.formProposal).toBeUndefined();
     expect(response!.content).toMatch(/cannot create/);
   });
+
+  /*
+   * A STALE CARD NEVER PUTS BACK SOMEONE ELSE'S EDIT (audit, 28 Nov 2026). The card's Save sends every value on the
+   * form. HR may now edit a form while it waits for them (23-24 Nov), and a chat edit can change a field while the card
+   * is open; a save from the card as it was loaded put the old value back, filed as the manager's. The card now sends
+   * what it loaded (`base`), and only what the manager changed from it is written.
+   */
+  it("a save from a card opened before someone else's edit keeps that edit", async () => {
+    state.draft = {
+      values: {
+        coaching_details: "Observed:\nLeft two beds unsanitized after clients today.\n\nExpectation:\nEvery bed is sanitized after each client.",
+        other_topic: "Bed sanitizing",
+      },
+      checked: { coaching_type: ["retraining"], coaching_topics: ["cleaning_tasks", "other"] },
+    };
+    const { id } = await createFrom([said("Coaching form for Kaitlyn Marsh — she left two beds unsanitized after clients today.")]);
+
+    // The manager's card opens: what it shows is what it will send back.
+    const opened = await review(id);
+    const cardValues = Object.fromEntries(opened.values.filter((row) => row.value !== null).map((row) => [row.fieldKey, row.value as string]));
+    const cardChecked = Object.fromEntries(opened.values.filter((row) => row.checked.length > 0).map((row) => [row.fieldKey, row.checked]));
+
+    // Someone else changes Details while the card is open (HR's edit, a chat edit).
+    const { saveInstanceValues } = await import("@/lib/forms/instances");
+    await saveInstanceValues(id, { values: { coaching_details: "Observed:\nHR's corrected wording.\n\nExpectation:\nEvery bed is sanitized after each client." } }, "hr-1");
+
+    // The manager changes only the topic on the card they opened earlier, and saves.
+    const response = await instanceRoute.PATCH(
+      new Request(`https://app.test/api/forms/instances/${id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          values: { ...cardValues, other_topic: "Bed sanitation" },
+          checked: cardChecked,
+          base: { values: cardValues, checked: cardChecked },
+        }),
+      }),
+      { params: Promise.resolve({ id }) },
+    );
+    expect(response.status).toBe(200);
+
+    const after = await review(id);
+    expect(valueOf(after, "other_topic")?.value).toBe("Bed sanitation");
+    expect(valueOf(after, "coaching_details")?.value).toContain("HR's corrected wording.");
+    expect(valueOf(after, "coaching_topics")?.checked).toEqual(["cleaning_tasks", "other"]);
+  });
 });

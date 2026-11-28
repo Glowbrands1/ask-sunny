@@ -459,6 +459,10 @@ describe("38-41. editing and saving", () => {
     expect((patch.body.values as Record<string, string>).coaching_details).toBe(
       "Late twice, not three times.",
     );
+    // And what the card loaded (audit, 28 Nov 2026), so the server writes only what the manager changed from it.
+    const base = patch.body.base as { values: Record<string, string>; checked: Record<string, string[]> };
+    expect(base.values.coaching_details).toBe("Arrived late on three shifts this week.");
+    expect(base.checked).toBeTypeOf("object");
   });
 
   it("does not say Saved before the server confirms", async () => {

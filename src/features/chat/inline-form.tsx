@@ -691,7 +691,11 @@ export function InlineForm({
         {
           method: "PATCH",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ values: edits.values, checked: edits.checked }),
+          /*
+           * AND WHAT THE CARD LOADED (audit, 28 Nov 2026): the server writes only what the manager changed from it, so
+           * a field HR or a chat edit changed after this card opened is not put back to the old value.
+           */
+          body: JSON.stringify({ values: edits.values, checked: edits.checked, base: splitValues(loaded.values) }),
         },
       );
       /*
