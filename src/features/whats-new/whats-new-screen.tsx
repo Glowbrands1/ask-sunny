@@ -40,8 +40,10 @@ export function WhatsNewScreen({ releases, appName }: { releases: readonly Whats
                         <div className="flex flex-wrap items-center gap-2">
                           <Badge tone={entry.tag === "New" ? "primary" : "accent"}>{entry.tag}</Badge>
                           {entry.audience ? <Badge tone="failed" className="font-semibold uppercase">{entry.audience}</Badge> : null}
+                          {entry.beta ? <Badge tone="attention" className="font-semibold uppercase">Beta - testing</Badge> : null}
                           <h3 className="text-base font-semibold text-foreground">{entry.title}</h3>
                         </div>
+                        {entry.lead ? <p className="text-sm font-medium text-foreground">{entry.lead}</p> : null}
                         <dl className="grid gap-1.5 text-sm sm:grid-cols-[8rem_1fr]">
                           {entry.before ? (
                             <>

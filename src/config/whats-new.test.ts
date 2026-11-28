@@ -115,6 +115,18 @@ describe("What's New", () => {
     }
   });
 
+  it("a lead line replaces Before, plain words; Beta marks a feature still being tested (Pau, 28 Nov 2026)", () => {
+    for (const entry of ENTRIES) {
+      if (entry.lead === undefined) continue;
+      expect(entry.before, `${entry.title}: a lead line takes Before's place`).toBeUndefined();
+      expect(entry.lead.trim().length, entry.title).toBeGreaterThan(10);
+      expect(entry.lead, entry.title).not.toMatch(CODE_WORDS);
+    }
+    const handOff = ENTRIES.find((entry) => entry.title === "Hand a follow-up to someone else")!;
+    expect(handOff.lead).toMatch(/^Can't do the follow-up yourself\?/);
+    expect(handOff.beta).toBe(true);
+  });
+
   it("is Ask Sunny's own list: no sibling-app words", () => {
     const source = readFileSync(join(process.cwd(), "src", "config", "whats-new.ts"), "utf8");
     expect(source).not.toMatch(/Bubbles|Buff City|\bstores?\b|Forms Register/);
