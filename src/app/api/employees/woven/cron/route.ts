@@ -12,6 +12,7 @@ import { implicitRedirectTarget } from "@/lib/admin/redirect-target";
 import { readWovenAccessConfig } from "@/lib/employees/woven/access/config";
 import { runAccessLifecycle } from "@/lib/employees/woven/access/apply-run";
 import { recordAccessShadowRun } from "@/lib/employees/woven/access/shadow";
+import { announceNewHires } from "@/lib/admin/new-hire-notices.server";
 
 /**
  * GET /api/employees/woven/cron — the scheduled Woven employee sync.
@@ -123,10 +124,13 @@ export async function GET(request: Request) {
   /* Codes and counts only: the lifecycle outcome carries no name and no email. */
   const lifecycle =
     succeeded && mode === "apply" ? await runAccessLifecycle(CRON_REQUESTER, implicitRedirectTarget(request)) : ({ status: "off" } as const);
+  /* NEW_HIRE_NOTICES_ENABLED: the admins' "new employee hired" bell (src/lib/admin/new-hire-notices.ts). Counts only. */
+  const newHireNotices = succeeded ? await announceNewHires({}) : ({ status: "off" } as const);
   const body = {
     ...outcome,
     ...(shadow.status === "off" ? {} : { accessShadow: shadow }),
     ...(lifecycle.status === "off" ? {} : { accessLifecycle: lifecycle }),
+    ...(newHireNotices.status === "off" ? {} : { newHireNotices }),
   };
   return NextResponse.json(body, { status: outcomeHttpStatus(outcome) });
 }

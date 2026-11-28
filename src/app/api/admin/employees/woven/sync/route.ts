@@ -11,6 +11,7 @@ import { authorizeRequest } from "@/lib/auth/server";
 import { readWovenSyncStatus, WovenStatusError } from "@/lib/employees/woven/status";
 import { EmployeeStoreError } from "@/lib/employees/woven/store";
 import { outcomeHttpStatus, runWovenEmployeeSync } from "@/lib/employees/woven/sync";
+import { announceNewHires } from "@/lib/admin/new-hire-notices.server";
 import { parseSyncRequest, SAVE_CONFIRMATION_FIELD } from "@/lib/employees/woven/sync-request";
 
 /**
@@ -66,6 +67,13 @@ export async function POST(request: Request) {
       requestedBy: `admin:${context.identity.email || context.identity.subject}`.slice(0, 120),
       dryRun: asked.kind === "dry_run",
     });
+    /* NEW_HIRE_NOTICES_ENABLED: after a stored sync, the admins' "new employee hired" bell (counts only). */
+    if (outcome.status === "succeeded" && asked.kind !== "dry_run") {
+      const newHireNotices = await announceNewHires({});
+      if (newHireNotices.status !== "off") {
+        return NextResponse.json({ ...outcome, newHireNotices }, { status: outcomeHttpStatus(outcome), headers: NO_STORE });
+      }
+    }
     return NextResponse.json(outcome, { status: outcomeHttpStatus(outcome), headers: NO_STORE });
   } catch (error) {
     if (error instanceof EmployeeStoreError) {
