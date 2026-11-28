@@ -1679,10 +1679,44 @@ async function supersedeRevised(revision: LoadedInstance, actor: string): Promis
     .update({ status: "revised" })
     .eq("id", originalId)
     .eq("status", "finalized")
-    .select("id");
+    .select("id, followed_up_at, followed_up_by, follow_up_owner");
   if (error) throw new Error(`Could not mark the original form as revised: ${error.message}`);
   if ((data ?? []).length === 0) return;
   await recordEvent(originalId, kind, actor, { revisionId: revision.instance.id });
+  await carryFollowUpToRevision(revision.instance.id, (data ?? [])[0] as Record<string, unknown>);
+}
+
+/**
+ * THE FOLLOW-UP TRACKED ON THE ORIGINAL GOES WITH IT (audit, 28 Nov 2026).
+ *
+ * A revision copies the follow-up once, when it is opened. While it is a draft (days, when it waits for HR) the
+ * ORIGINAL carries the tracking, and that is where a manager marks the follow-up done or hands it to someone else.
+ * Nothing carried that over, so when the revision went live the follow-up came back Overdue and the daily job rang a
+ * fresh "Follow-up overdue" bell. Now: done on the original is done on the revision, and an owner named on the
+ * original is kept when the revision names none. The revision's own date and its own choices are never overwritten.
+ * Best effort: the revision is already final, so a failed carry is logged (ids only), never a failed finalize.
+ */
+async function carryFollowUpToRevision(revisionId: string, original: Record<string, unknown> | undefined): Promise<void> {
+  if (!original) return;
+  const supabase = getSupabaseAdmin();
+  const done = typeof original.followed_up_at === "string" ? original.followed_up_at : null;
+  const owner = typeof original.follow_up_owner === "string" && original.follow_up_owner ? original.follow_up_owner : null;
+  if (done) {
+    const { error } = await supabase
+      .from("form_instances")
+      .update({ followed_up_at: done, followed_up_by: original.followed_up_by ?? null })
+      .eq("id", revisionId)
+      .is("followed_up_at", null);
+    if (error) console.warn(`instances: the follow-up done on the original could not be carried to revision ${revisionId}.`);
+  }
+  if (owner) {
+    const { error } = await supabase
+      .from("form_instances")
+      .update({ follow_up_owner: owner })
+      .eq("id", revisionId)
+      .is("follow_up_owner", null);
+    if (error) console.warn(`instances: the follow-up owner could not be carried to revision ${revisionId}.`);
+  }
 }
 
 /** Variants a form may be printed as, from its own version. */
