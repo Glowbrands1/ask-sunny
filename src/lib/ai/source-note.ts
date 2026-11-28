@@ -59,10 +59,25 @@ const BARE_MARKERS = /[^\S\n]*\[\s*S\d{1,3}(?:\s*(?:,|;|&|and)\s*S\d{1,3})*\s*\]
 const BARE_MARKER = String.raw`\[\s*S\d{1,3}(?:\s*(?:,|;|&|and)\s*S\d{1,3})*\s*\]`;
 const BARE_MARKER_RUNS = new RegExp(String.raw`[^\S\n]*${BARE_MARKER}(?:[^\S\n]*${BARE_MARKER})*(?=[\s.,;:!?)\-–—]|$)`, "gi");
 
+/**
+ * The owner's live check of the history-first coaching answer (28 Nov 2026): "Words to use (<the coaching guide>, [S3]):"
+ * read "Words to use (<the coaching guide>,):" once the marker went. A comma or semicolon left right before a closing
+ * bracket goes with the marker, and brackets left empty go too. Only on text a marker was removed from.
+ */
+function withoutMarkerLeftovers(text: string): string {
+  return text.replace(/[^\S\n]*[,;][^\S\n]*(?=\))/g, "").replace(/[^\S\n]*\([^\S\n]*\)/g, "");
+}
+
+/** The loop's reply: every [S<n>] goes (the cards under the answer carry the sources), with what it leaves behind. */
+export function withoutLoopMarkers(text: string): string {
+  const out = text.replace(/\s?\[S\d{1,2}\]/g, "");
+  return out === text ? text : withoutMarkerLeftovers(out);
+}
+
 export function withoutSourceMarkers(text: string): string {
   if (!sourceNoteGuardEnabled() || !/\[\s*S\d/i.test(text)) return text;
   const out = text.replace(finalReplyMarkerGuardEnabled() ? BARE_MARKER_RUNS : BARE_MARKERS, "");
-  return out === text ? text : out.replace(/[^\S\n]+([.,;:!?])/g, "$1");
+  return out === text ? text : withoutMarkerLeftovers(out.replace(/[^\S\n]+([.,;:!?])/g, "$1"));
 }
 
 /**
@@ -73,6 +88,6 @@ export function withoutSourceMarkers(text: string): string {
  */
 export function finalReplyWithoutMarkers<T extends { readonly content: string }>(answer: T): T {
   if (!finalReplyMarkerGuardEnabled() || typeof answer?.content !== "string" || !/\[\s*S\d/i.test(answer.content)) return answer;
-  const out = answer.content.replace(BARE_MARKER_RUNS, "").replace(/[^\S\n]+([.,;:!?])/g, "$1");
+  const out = withoutMarkerLeftovers(answer.content.replace(BARE_MARKER_RUNS, "").replace(/[^\S\n]+([.,;:!?])/g, "$1"));
   return out === answer.content ? answer : { ...answer, content: out };
 }
