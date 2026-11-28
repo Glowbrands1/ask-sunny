@@ -285,6 +285,29 @@ async function withLocations(people: Record<string, unknown>[], activeOnly: bool
   });
 }
 
+/** Woven EmployeeID → the status of the account linked to it here ("then sign in in X app disabled"). */
+async function accountStatusByEmployee(ids: readonly string[]): Promise<Map<string, "active" | "invited" | "disabled">> {
+  const out = new Map<string, "active" | "invited" | "disabled">();
+  const db = getSupabaseAdmin();
+  for (let i = 0; i < ids.length; i += IDS_PER_QUERY) {
+    const { data: links, error } = await db
+      .from("employee_account_links")
+      .select("app_user_id, external_employee_id")
+      .eq("management", "woven_linked")
+      .in("external_employee_id", ids.slice(i, i + IDS_PER_QUERY));
+    if (error) throw new Error(`the account links could not be read (${error.code ?? "error"})`);
+    const byUser = new Map(((links ?? []) as Record<string, unknown>[]).map((l) => [String(l.app_user_id), String(l.external_employee_id)]));
+    if (byUser.size === 0) continue;
+    const { data: users, error: userError } = await db.from("app_users").select("id, status").in("id", [...byUser.keys()]);
+    if (userError) throw new Error(`the accounts could not be read (${userError.code ?? "error"})`);
+    for (const u of (users ?? []) as Record<string, unknown>[]) {
+      const status = String(u.status);
+      if (status === "active" || status === "invited" || status === "disabled") out.set(byUser.get(String(u.id))!, status);
+    }
+  }
+  return out;
+}
+
 const splitKey = (key: string) => {
   const [event, ...rest] = key.split(":");
   const eventDate = rest.pop()!;
@@ -336,7 +359,11 @@ export function realNoticeDeps(): NewHireNoticeDeps {
         people.push(...((rows ?? []) as Record<string, unknown>[]));
       }
       const employees = await withLocations(people, false);
-      return employees.map((employee) => ({ employee, eventDate: dateOf.get(employee.externalEmployeeId)! }));
+      const accounts = await accountStatusByEmployee(employees.map((e) => e.externalEmployeeId));
+      return employees.map((employee) => ({
+        employee: { ...employee, appAccountStatus: accounts.get(employee.externalEmployeeId) ?? null },
+        eventDate: dateOf.get(employee.externalEmployeeId)!,
+      }));
     },
 
     async employee(externalEmployeeId) {

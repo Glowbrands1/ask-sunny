@@ -88,13 +88,22 @@ describe("the words", () => {
     expect(newHireNoticeText(hire("E4", { preferredFirstName: "Robbie" })).title).toBe("New hire: Robin Quillfeather (goes by Robbie) — Salon Director");
   });
 
-  it("a termination: who, where, the dates Woven gives", () => {
-    const gone = hire("T1", { employmentStatus: "terminated", terminationDate: "2026-11-20", terminationLastDayWorked: "2026-11-18" });
+  /*
+   * Pau, 28 Nov 2026 (of a "Sign-in turned off" email that said only the name): "Can we add the reason like
+   * terminated X date, position X location X , then sign in in X app disabled".
+   */
+  it("a termination: terminated on X date, position X, salon X, then the sign-in in this app", () => {
+    const gone = hire("T1", { employmentStatus: "terminated", terminationDate: "2026-11-20", terminationLastDayWorked: "2026-11-18", appAccountStatus: "disabled" });
     expect(terminationNoticeText(gone)).toEqual({
       title: "Terminated: Robin Quillfeather — Salon Director",
-      body: "Employee Robin Quillfeather, robin.quillfeather@example.com in Woven, Salon Director at Maple Grove, has been terminated in Woven. Termination date: Nov 20, 2026. Last day worked: Nov 18, 2026. No additional salons.",
+      body: "Employee Robin Quillfeather, robin.quillfeather@example.com in Woven, has been terminated in Woven on Nov 20, 2026 (last day worked Nov 18, 2026). Position: Salon Director. Salon: Maple Grove. Ask Sunny sign-in: disabled.",
     });
-    expect(terminationNoticeText(hire("T2", { emailAddress: null })).body).toContain("Robin Quillfeather (no email in Woven), Salon Director at Maple Grove, has been terminated in Woven. Woven gives no termination date.");
+    expect(terminationNoticeText({ ...twoSalons("T2"), appAccountStatus: null }).body).toBe(
+      "Employee Robin Quillfeather, robin.quillfeather@example.com in Woven, has been terminated in Woven. Position: Assistant Salon Director. Salon: Maple Grove. Additional salons: Birch Hollow (temporary, until Dec 15, 2026), Cedar Point. No Ask Sunny account.",
+    );
+    expect(terminationNoticeText(hire("T3", { emailAddress: null, appAccountStatus: "active" })).body).toBe(
+      "Employee Robin Quillfeather (no email in Woven), has been terminated in Woven. Position: Salon Director. Salon: Maple Grove. Ask Sunny sign-in: still on — an admin should turn it off in Users.",
+    );
   });
 
   it("a sign-in link sent: which app, to which address", () => {

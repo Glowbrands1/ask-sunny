@@ -63,6 +63,8 @@ export const APP_NAME = "Ask Sunny";
 /** The roles that manage a salon, who hear of a hire at any salon they cover. */
 export const SALON_MANAGER_ROLES = ["salon_director", "assistant_salon_director"] as const;
 export const SALON_SCOPE_LEVEL = "salon";
+/** What this app calls a location, in notice text. */
+export const LOCATION_WORD = "Salon";
 
 export const NEW_HIRE_NOTICE_KIND = "woven_new_hire";
 export const TERMINATION_NOTICE_KIND = "woven_termination";
@@ -136,6 +138,11 @@ export interface HiredEmployee {
   hireDate: string | null;
   terminationDate?: string | null;
   terminationLastDayWorked?: string | null;
+  /**
+   * Their account in this app, for a termination: its status now, or null when they have none. Undefined: not read.
+   * Pau, 28 Nov 2026: "add the reason like terminated X date, position X location X, then sign in in X app disabled".
+   */
+  appAccountStatus?: "active" | "invited" | "disabled" | null;
   positionName: string | null;
   primaryLocationId: string | null;
   primaryLocationName: string | null;
@@ -229,16 +236,28 @@ export function newHireNoticeText(employee: HiredEmployee): NoticeText {
 /** "Employee Jane Doe, jane@example.com in Woven, Salon Director at Downtown, has been terminated in Woven. Termination date: …" */
 export function terminationNoticeText(employee: HiredEmployee): NoticeText {
   const p = parts(employee);
-  const dates = [
-    employee.terminationDate ? `Termination date: ${longDate(employee.terminationDate)}.` : "Woven gives no termination date.",
-    employee.terminationLastDayWorked ? `Last day worked: ${longDate(employee.terminationLastDayWorked)}.` : "",
-  ].filter(Boolean);
   const email = clean(employee.emailAddress);
   const who = email ? `${p.name}, ${email} in Woven,` : `${p.name} (no email in Woven),`;
-  return {
-    title: `Terminated: ${p.name} — ${p.position}`,
-    body: `Employee ${who} ${p.position}${p.where}, has been terminated in Woven. ${dates.join(" ")} ${p.extra}`,
-  };
+  const when = employee.terminationDate ? ` on ${longDate(employee.terminationDate)}` : "";
+  const lastDay = employee.terminationLastDayWorked ? ` (last day worked ${longDate(employee.terminationLastDayWorked)})` : "";
+  const location = primarySalon(employee);
+  const others = additionalSalons(employee);
+  const signIn =
+    employee.appAccountStatus === undefined
+      ? null
+      : employee.appAccountStatus === null
+        ? `No ${APP_NAME} account.`
+        : employee.appAccountStatus === "disabled"
+          ? `${APP_NAME} sign-in: disabled.`
+          : `${APP_NAME} sign-in: still on — an admin should turn it off in Users.`;
+  const lines = [
+    `Employee ${who} has been terminated in Woven${when}${lastDay}.`,
+    `Position: ${p.position}.`,
+    location ? `${LOCATION_WORD}: ${location}.` : `No primary ${LOCATION_WORD.toLowerCase()} in Woven.`,
+    others.length ? `Additional ${LOCATION_WORD.toLowerCase()}s: ${others.join(", ")}.` : null,
+    signIn,
+  ].filter(Boolean);
+  return { title: `Terminated: ${p.name} — ${p.position}`, body: lines.join(" ") };
 }
 
 /** "Jane Doe was emailed their Ask Sunny sign-in link at jane@example.com (Salon Director at Downtown)." */
