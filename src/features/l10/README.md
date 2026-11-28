@@ -32,6 +32,10 @@ browser ──► Ask Sunny page / Server Function / /api/l10/assistant
 - **Assistant.** `assistant/` + `/api/l10/assistant`: the Hub's system prompt, model settings and its `getMeeting` /
   `getMeetingRecaps` tools (run by the Hub, as this person), on Ask Sunny's own `ANTHROPIC_API_KEY`. Per-person rate
   limit as in the Hub (20 messages / 10 minutes).
+- **Sunny's chat.** `read_meeting` (agent loop, `src/lib/ai/agent-loop/data-tools.ts`) reads what the meeting pages show:
+  the document, recaps and saved versions (`ai-read.server.ts`, the same partner calls, signed for the asker's verified
+  email; `lib/for-model.ts` turns them into lines). The Hub decides as for the pages: attendees and Hub admins (who get
+  every meeting); anyone else gets "You are not an attendee of this meeting" and nothing of it (Pau, 28 Nov 2026).
 - **Look.** The DM L10 section at the end of `src/app/globals.css` adds the Hub's colour tokens and glass utilities; everything that would clash with Ask Sunny's
   tokens is set inside `.hub-l10` only. Fonts (Public Sans, JetBrains Mono) load on these pages only.
 

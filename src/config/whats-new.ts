@@ -61,6 +61,19 @@ export interface WhatsNewRelease {
 
 export const WHATS_NEW: readonly WhatsNewRelease[] = [
   {
+    date: "2026-11-28",
+    summary: "Sunny can tell you what is on your L10.",
+    entries: [
+      {
+        tag: "Improved",
+        title: "Ask Sunny about your L10",
+        before: "Sunny knew when your L10 meets and who attends, but not what is on it.",
+        now: "Sunny reads your L10's to-dos, issues, headlines, rocks, scorecard, notes and past meetings, live from the Leadership Hub. You only get the meetings you attend; admins get every meeting.",
+        howToUse: "Ask Sunny \"what are my to-dos from the DM L10?\", \"what issues are still open?\" or \"what did we solve last meeting?\".",
+      },
+    ],
+  },
+  {
     date: "2026-11-27",
     summary: "Administrators can ask Sunny which documents the Knowledge Base holds.",
     entries: [

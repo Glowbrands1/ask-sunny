@@ -65,6 +65,8 @@ export function progressStatus(tool: string, args: unknown): string {
       return "Handing over the follow-up…";
     case "read_meeting_details":
       return "Checking your L10s…";
+    case "read_meeting":
+      return "Reading the L10…";
     case "read_whats_new":
       return "Checking what's new…";
     case "read_videos":

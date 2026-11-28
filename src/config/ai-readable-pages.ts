@@ -27,7 +27,7 @@ import type { Permission } from "@/types";
  */
 
 /** The loop tools that read a page's figures. */
-export type PageReaderTool = "read_reviews" | "read_stats" | "find_past_forms" | "read_hr_approvals" | "read_follow_ups" | "read_calendar" | "read_whats_new" | "read_videos" | "read_manager_resources" | "read_ai_training" | "read_knowledge_documents";
+export type PageReaderTool = "read_reviews" | "read_stats" | "find_past_forms" | "read_hr_approvals" | "read_follow_ups" | "read_calendar" | "read_whats_new" | "read_videos" | "read_manager_resources" | "read_ai_training" | "read_knowledge_documents" | "read_meeting";
 
 export interface PageReader {
   readonly tool: PageReaderTool;
@@ -69,7 +69,33 @@ const REVIEWS_READER: PageReader = {
 
 const NO_LOOP_READER = "no tool of the chat or the agent loop reads it.";
 const ADMIN = "An admin console page: ";
-const MEETINGS = "Meeting docs: Sunny's chat and agent loop have no reader (the meeting page's own assistant, /api/l10/assistant, reads them there).";
+/*
+ * Pau, 28 Nov 2026: "why it cant read this?" then "ok but depends on the access of the user ok? admin gets all". read_meeting
+ * reads the meeting pages from the Leadership Hub as the person asking: the pages' own sign-in, then the Hub's answer
+ * (the meeting's attendees, and the Hub's admins, who get every meeting). Anyone else is told they are not an attendee.
+ */
+const MEETING_CASE = "nov28-meeting-content-reaches-the-model";
+const MEETING_NOW: PageReader = {
+  tool: "read_meeting",
+  args: {},
+  figures: ["each to-do's owner, due date and whether it is overdue", "the open issues (short-term and long-term) and the ones solved most recently", "headlines and rocks", "each scorecard metric's latest weeks against its goal", "the meeting notes and cascading message"],
+  periods: ["now", "the latest past meetings"],
+  replayCase: MEETING_CASE,
+};
+const MEETING_PAST: PageReader = {
+  tool: "read_meeting",
+  args: { part: "past" },
+  figures: ["each past meeting's date, length and rating", "who came and how they rated it", "the issues solved and the to-dos left open", "its notes and cascading message"],
+  periods: ["each past meeting, newest first"],
+  replayCase: MEETING_CASE,
+};
+const MEETING_HISTORY: PageReader = {
+  tool: "read_meeting",
+  args: { part: "history" },
+  figures: ["who saved each version of the meeting, and when"],
+  periods: ["the latest saved versions"],
+  replayCase: MEETING_CASE,
+};
 const TRAINING_EDITOR = "The AI Training editors' console (drafts, the archive, editing), for the editor list only: an admin console; " + NO_LOOP_READER;
 
 export const AI_READABLE_PAGES: readonly AiReadablePage[] = [
@@ -123,13 +149,13 @@ export const AI_READABLE_PAGES: readonly AiReadablePage[] = [
   { kind: "page", route: "/knowledge/document/[id]", title: "Knowledge document", access: { permission: "view_knowledge" },
     notReadable: "The document page (its details and status): " + NO_LOOP_READER + " search_knowledge searches the document's text, under the chat's permission, not this page's." },
 
-  { kind: "page", route: "/meetings", title: "Meetings", access: { signedIn: true, note: "redirects to the first meeting" }, notReadable: MEETINGS },
-  { kind: "page", route: "/meetings/[key]", title: "Meeting", access: { signedIn: true, note: "then the meeting's own open check" }, notReadable: MEETINGS },
-  { kind: "page", route: "/meetings/[key]/history", title: "Meeting history", access: { signedIn: true, note: "then the meeting's own open check" }, notReadable: MEETINGS },
-  { kind: "page", route: "/meetings/[key]/history/[version]", title: "Meeting version", access: { signedIn: true, note: "then the meeting's own open check" }, notReadable: MEETINGS },
-  { kind: "page", route: "/meetings/[key]/past", title: "Past meetings", access: { signedIn: true, note: "then the meeting's own open check" }, notReadable: MEETINGS },
-  { kind: "page", route: "/meetings/[key]/recaps", title: "Meeting recaps", access: { signedIn: true, note: "then the meeting's own open check" }, notReadable: MEETINGS },
-  { kind: "page", route: "/meetings/[key]/report", title: "Meeting report", access: { signedIn: true, note: "then the meeting's own open check" }, notReadable: MEETINGS },
+  { kind: "page", route: "/meetings", title: "Meetings", access: { signedIn: true, note: "redirects to the first meeting" }, reader: MEETING_NOW },
+  { kind: "page", route: "/meetings/[key]", title: "Meeting", access: { signedIn: true, note: "then the meeting's own open check" }, reader: MEETING_NOW },
+  { kind: "page", route: "/meetings/[key]/history", title: "Meeting history", access: { signedIn: true, note: "then the meeting's own open check" }, reader: MEETING_HISTORY },
+  { kind: "page", route: "/meetings/[key]/history/[version]", title: "Meeting version", access: { signedIn: true, note: "then the meeting's own open check" }, reader: { ...MEETING_HISTORY, args: { part: "history", version: "<the version>" }, figures: ["what that saved version held: its to-dos, issues, headlines, rocks and scorecard"], periods: ["that version"] } },
+  { kind: "page", route: "/meetings/[key]/past", title: "Past meetings", access: { signedIn: true, note: "then the meeting's own open check" }, reader: MEETING_PAST },
+  { kind: "page", route: "/meetings/[key]/recaps", title: "Meeting recaps", access: { signedIn: true, note: "then the meeting's own open check" }, reader: MEETING_PAST },
+  { kind: "page", route: "/meetings/[key]/report", title: "Meeting report", access: { signedIn: true, note: "then the meeting's own open check" }, reader: { ...MEETING_NOW, figures: ["the report's rocks, issues, scorecard and recaps, as the meeting holds them"] } },
 
   /* Board f039 part 2 (26 Nov 2026): the video library and the manager resources links. */
   { kind: "page", route: "/videos", title: "Videos", access: { permission: "view_videos" },
