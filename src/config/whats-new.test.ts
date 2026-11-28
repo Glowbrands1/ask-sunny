@@ -1,9 +1,11 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { canAccessAdminConsole, DEFAULT_PERMISSION_MATRIX, hasPermission, ROLES } from "@/lib/permissions";
+
+import { mayReadHomeAddress } from "@/lib/employees/woven/home-address-access";
 
 import { AI_READABLE_PAGES } from "./ai-readable-pages";
 import { WHATS_NEW, whatsNewEnabled, whatsNewFor } from "./whats-new";
@@ -36,7 +38,7 @@ describe("What's New", () => {
   it("every entry is tagged New or Improved and says Before, Now and How to use it, in plain words", () => {
     for (const entry of ENTRIES) {
       expect(["New", "Improved"], entry.title).toContain(entry.tag);
-      for (const part of [entry.before, entry.now, entry.howToUse]) {
+      for (const part of [entry.before, entry.now, entry.howToUse, entry.note].filter((p): p is string => p !== undefined)) {
         expect(part.trim().length, entry.title).toBeGreaterThan(10);
         expect(part, entry.title).not.toMatch(CODE_WORDS);
       }
@@ -77,6 +79,42 @@ describe("What's New", () => {
     expect(whatsNewFor("regional_manager", can).flatMap((release) => release.entries.map((entry) => entry.title))).not.toContain("The list of pages Sunny can read");
   });
 
+  it("the exit form's address entry is seen by exactly the roles that get the address (mayReadHomeAddress)", () => {
+    const entry = ENTRIES.find((candidate) => candidate.title === "The exit form fills in the Permanent Address");
+    expect(entry, "the exit form's address entry is missing").toBeDefined();
+    for (const role of ROLES) {
+      const told = whatsNewFor(role, can).some((release) => release.entries.includes(entry!));
+      expect(told, `${role}: told about the exit form's address ${told ? "but does not get it" : "but gets it"}`).toBe(mayReadHomeAddress(role));
+    }
+    // The Employee Directory's "Show address" is the admin console roles' only.
+    const directory = ENTRIES.find((candidate) => candidate.title === "Employee address in the Employee Directory")!;
+    for (const role of ROLES.filter((r) => whatsNewFor(r, can).some((release) => release.entries.includes(directory)))) expect(canAccessAdminConsole(role), role).toBe(true);
+  });
+
+  it("the owner's red badges and notes (28 Nov 2026) are on their entries", () => {
+    const find = (title: string) => ENTRIES.find((candidate) => candidate.title === title);
+    expect(find("Search every form for one employee")?.audience).toBe("HR only");
+    expect(find("Employee address in the Employee Directory")?.audience).toBe("Admin only");
+    expect(find("Employee address in the Employee Directory")?.note).toMatch(/no address in Woven/);
+    expect(find("The Corrective Action history box fills itself")?.note).toMatch(/as long as the employee has history/);
+    expect(find("Missing fields explained at Finalize")?.before).toBeUndefined();
+    expect(find("Delete several drafts at once"), "taken off What's New").toBeUndefined();
+  });
+
+  it("a screenshot is a file under public/whats-new/<its release's date>/, small, with alt text", () => {
+    for (const release of WHATS_NEW) {
+      for (const entry of release.entries) {
+        if (!entry.image) continue;
+        expect(entry.image.src, entry.title).toMatch(new RegExp(`^/whats-new/${release.date}/[a-z0-9-]+\\.(webp|png)$`));
+        const file = join(process.cwd(), "public", ...entry.image.src.split("/").filter(Boolean));
+        expect(existsSync(file), `${entry.title}: ${file} is missing`).toBe(true);
+        expect(statSync(file).size, `${entry.title}: keep a screenshot under 200 KB`).toBeLessThan(200 * 1024);
+        expect(entry.image.alt.trim().length, `${entry.title}: say what the screenshot shows`).toBeGreaterThan(15);
+        expect(entry.image.alt, entry.title).not.toMatch(CODE_WORDS);
+      }
+    }
+  });
+
   it("is Ask Sunny's own list: no sibling-app words", () => {
     const source = readFileSync(join(process.cwd(), "src", "config", "whats-new.ts"), "utf8");
     expect(source).not.toMatch(/Bubbles|Buff City|\bstores?\b|Forms Register/);
@@ -101,10 +139,16 @@ describe("hidden for everyone until rolled out (Pau, 27 Nov 2026: \"hide this fo
     const { NAV_SECTIONS } = await import("@/components/shell/navigation");
     const entry = NAV_SECTIONS.flatMap((section) => section.items).find((item) => item.href === "/whats-new");
     expect(entry?.whatsNew, "the entry must carry the server's decision, or it shows to everyone").toBe(true);
-    for (const file of ["sidebar.tsx", "global-search.tsx"]) {
+    /*
+     * CHANGED ON PURPOSE (Pau, 28 Nov 2026: answers link the pages the sidebar shows). The rail's rule moved from
+     * sidebar.tsx into navigation.ts's visibleNavSections, which the sidebar and the answers' page links both call.
+     */
+    for (const file of ["navigation.ts", "global-search.tsx"]) {
       const source = readFileSync(join(process.cwd(), "src", "components", "shell", file), "utf8");
       expect(source, `${file} does not hide What's New from whom the server says`).toMatch(/item\.whatsNew && !whatsNewVisible/);
     }
+    const sidebar = readFileSync(join(process.cwd(), "src", "components", "shell", "sidebar.tsx"), "utf8");
+    expect(sidebar, "the sidebar does not use the shared rule").toMatch(/visibleNavSections\(\{[^}]*whatsNewVisible[^}]*\}\)/);
   });
 
   it("turned on, the switch is on", () => {

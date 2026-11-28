@@ -1220,6 +1220,35 @@ export function untrusted(text: string): { untrusted_text: string } {
 
 /* ------------------------------------------------------------- roster --- */
 
+/**
+ * The one employee the manager's words name, for the coaching / corrective-action advice check (the owner, 28 Nov 2026:
+ * that advice starts from the person's forms on file). From this manager's roster: a full name (legal or preferred) in
+ * any case, or a first or preferred name no one else on the roster has, typed with a capital and not as the first word
+ * (an everyday word such as "will" or "grace" names nobody). A last name alone never names anyone here ("how long").
+ * With no roster to read (a district or region login), a capitalised name as typed. Null for nobody or several people.
+ */
+export async function namedEmployee(scope: AccessScope, text: string): Promise<string | null> {
+  const read = await rosterFor(scope);
+  if (read.kind !== "read") {
+    const typed = extractEmployeeNames(text);
+    return typed.length === 1 ? typed[0]! : null;
+  }
+  const said = withRosterPossessives(text, read.roster);
+  const rosterNames = [...new Set(read.roster.flatMap((row) => [displayName(row), ...fullNamesOf(row)]))];
+  const capitalised = new Set(
+    said
+      .split(/[^\p{L}'’-]+/u)
+      .slice(1)
+      .map((part) => part.replace(/['’]s$/i, ""))
+      .filter((part) => /^\p{Lu}/u.test(part)),
+  );
+  const firsts = (row: RosterEmployee) => [row.firstName, row.preferredFirstName ?? ""].map((name) => name.trim()).filter(Boolean);
+  const byFirst = (row: RosterEmployee) =>
+    firsts(row).some((name) => capitalised.has(name) && !read.roster.some((other) => other.id !== row.id && firsts(other).some((theirs) => theirs.toLowerCase() === name.toLowerCase())));
+  const named = read.roster.filter((row) => fullNamesOf(row).some((full) => mentionsPerson(said, full, rosterNames)) || byFirst(row));
+  return named.length === 1 ? displayName(named[0]!) : null;
+}
+
 type RosterRead = { readonly kind: "read"; readonly roster: readonly RosterEmployee[] } | { readonly kind: "unchecked" } | { readonly kind: "failed" };
 
 async function rosterFor(scope: AccessScope): Promise<RosterRead> {

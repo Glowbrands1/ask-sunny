@@ -12,8 +12,10 @@ import { NotificationBell } from "@/features/notifications/notification-bell";
 import type { BellData } from "@/lib/notifications/types";
 import { cn } from "@/lib/utils/cn";
 import { AppSwitcher } from "./app-switcher";
-import { NAV_SECTIONS, isActivePath } from "./navigation";
+import { isActivePath, visibleNavSections } from "./navigation";
 import { useWhatsNewVisible } from "@/features/whats-new/whats-new-access";
+import { useWhatsNewUnseen } from "@/features/whats-new/whats-new-seen";
+import { whatsNewFor } from "@/config/whats-new";
 import { UserMenu } from "./user-menu";
 
 export function SidebarNav({
@@ -50,7 +52,7 @@ export function SidebarNav({
   bell?: BellData | null;
 }) {
   const pathname = usePathname();
-  const { can, isAdmin, demoMode } = useSession();
+  const { can, isAdmin, demoMode, user } = useSession();
 
   /*
    * WHAT THE RAIL HIDES, AND WHAT IT MUST NOT.
@@ -70,23 +72,10 @@ export function SidebarNav({
    * server refuses independently either way.
    */
   const whatsNewVisible = useWhatsNewVisible();
-  const sections = NAV_SECTIONS.map((section) => ({
-    ...section,
-    items: section.items.filter((item) => {
-      if (section.admin && !isAdmin) return false;
-      // What's New: only for whom the server says (the owner, 27 Nov 2026: "live but on my own page only").
-      if (item.whatsNew && !whatsNewVisible) return false;
-      /*
-       * Checked ALONGSIDE the section flag and BEFORE the demo bypass, for the
-       * same reason: who administers the platform is a fixed decision rather
-       * than a guess the preview is standing down on.
-       */
-      if (item.adminOnly && !isAdmin) return false;
-      if (!item.permission) return true;
-      if (demoMode) return true;
-      return can(item.permission);
-    }),
-  })).filter((section) => section.items.length > 0);
+  // The newest What's New entry this person may see; the entry wiggles with a "New" dot until they open the page.
+  const whatsNewLatest = whatsNewVisible ? (whatsNewFor(user.role, (_role, permission) => can(permission))[0]?.date ?? null) : null;
+  const whatsNewUnseen = useWhatsNewUnseen(user?.id ?? "", whatsNewLatest, pathname === "/whats-new");
+  const sections = visibleNavSections({ can, isAdmin, demoMode, whatsNewVisible });
   if (meetingTabs.length > 0) {
     const meetings = { id: "meetings", label: "Meetings", items: meetingTabs.map((t) => ({ label: t.label, href: t.href, icon: CalendarCheck })) };
     const after = sections.findIndex((s) => s.id === "assistant");
@@ -176,6 +165,7 @@ export function SidebarNav({
                     aria-current={active ? "page" : undefined}
                     className={cn(
                       "group relative flex items-center gap-2.5 rounded-full text-[13.5px] font-semibold transition-colors",
+                      item.whatsNew && whatsNewUnseen && "whats-new-shake",
                       isCollapsed ? "justify-center px-0 py-2.5" : "px-3.5 py-2.5",
                       /*
                        * SELECTED AND HOVERED BOTH LAND ON THE CANVAS, which is
@@ -230,6 +220,16 @@ export function SidebarNav({
                       >
                         {overdueFollowUps}
                         <span className="sr-only"> overdue follow-ups</span>
+                      </span>
+                    ) : null}
+                    {item.whatsNew && whatsNewUnseen ? (
+                      <span
+                        className={cn(
+                          "whats-new-dot shrink-0 rounded-full bg-followup-attention text-[9px] font-black tracking-wide text-followup-attention-foreground uppercase",
+                          isCollapsed ? "absolute top-1.5 right-1.5 size-2" : "ml-auto px-1.5 py-0.5 leading-none",
+                        )}
+                      >
+                        {isCollapsed ? <span className="sr-only">New updates</span> : <>New<span className="sr-only"> updates</span></>}
                       </span>
                     ) : null}
                     {!isCollapsed && section.admin ? (

@@ -1,7 +1,8 @@
 import { expect, vi } from "vitest";
 
 import { AI_READABLE_PAGES, readablePagesLine } from "@/config/ai-readable-pages";
-import { WHATS_NEW } from "@/config/whats-new";
+import { WHATS_NEW, whatsNewFor } from "@/config/whats-new";
+import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 
 import { KEARNEY, STAFF, type ReplayCase, type ReplayContext } from "./cases";
 import { lastResult, loopStandIn, type LoopView } from "./loop-stand-in";
@@ -29,6 +30,15 @@ const ADMIN_ONLY = "Employee address in the Employee Directory";
 
 type Update = { tag: string; title: string; before: string; now: string; how_to_use: string; show_me?: { page: string; link: string } };
 type Release = { date: string; summary: string; updates: Update[] };
+
+/**
+ * CHANGED ON PURPOSE (the owner, 27 Nov 2026: "add in whats new what we accomplished last week and this week"). The
+ * list now holds more updates than read_whats_new gives the model at once (its newest 15), so the case asks for what a
+ * role's page lists first, worked out from the list, not for fixed titles that drop past the cap as entries are added.
+ */
+const LISTED = 15;
+const visibleTo = (role: Parameters<typeof whatsNewFor>[0]) => whatsNewFor(role, (r, permission) => hasPermission(DEFAULT_PERMISSION_MATRIX, r, permission));
+const day = (date: string) => new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }).format(new Date(`${date}T12:00:00Z`));
 
 async function ask(t: ReplayContext, words: string, input: Record<string, unknown> = {}) {
   vi.setSystemTime(new Date("2026-11-26T16:00:00Z"));
@@ -62,18 +72,17 @@ export const NOV26_WHATS_NEW_CASES: ReplayCase[] = [
       expect(model.views[0]?.system).toContain("What's New (read_whats_new)");
       expect(output?.refused, JSON.stringify(output)).toBeUndefined();
       const titles = updates.map((update) => update.title);
-      for (const title of ["What's New", "Missing fields explained at Finalize", "Google Reviews leaderboard by period", "Notifications bar"]) {
-        expect(titles, `${title} did not reach the model`).toContain(title);
-      }
+      const expected = visibleTo("salon_director").flatMap((release) => release.entries.map((entry) => entry.title)).slice(0, LISTED);
+      expect(titles, "the newest updates a Salon Director's page lists did not reach the model").toEqual(expected);
       expect(titles, "an administrators-only update reached a Salon Director").not.toContain(ADMIN_ONLY);
-      // Newest first. A newer release than 26 Nov holds only an administrators' entry (27 Nov: the Knowledge Base list),
-      // so a Salon Director's newest is still 26 Nov; the summary is that release's, found by its date, not by position.
-      expect(output?.releases?.[0]?.date, "newest first").toBe("Nov 26, 2026");
-      expect(output?.releases?.[0]?.summary, "the release's summary").toBe(WHATS_NEW.find((release) => release.date === "2026-11-26")!.summary);
+      // Newest first: the first release is the newest one with an update a Salon Director may open.
+      const newest = visibleTo("salon_director")[0]!;
+      expect(output?.releases?.[0]?.date, "newest first").toBe(day(newest.date));
+      expect(output?.releases?.[0]?.summary, "the release's summary").toBe(WHATS_NEW.find((release) => release.date === newest.date)!.summary);
       // The owner's format: tag, Before / Now / How to use it, and the Show me page, so the answer can say how to use it.
-      const missing = updates.find((update) => update.title === "Missing fields explained at Finalize")!;
-      const entry = WHATS_NEW.flatMap((release) => release.entries).find((candidate) => candidate.title === missing.title)!;
-      expect(missing).toMatchObject({ tag: entry.tag, before: entry.before, now: entry.now, how_to_use: entry.howToUse, show_me: { page: entry.showMe!.label, link: entry.showMe!.href } });
+      const shown = updates.find((update) => update.show_me)!;
+      const entry = WHATS_NEW.flatMap((release) => release.entries).find((candidate) => candidate.title === shown.title)!;
+      expect(shown).toMatchObject({ tag: entry.tag, before: entry.before, now: entry.now, how_to_use: entry.howToUse, show_me: { page: entry.showMe!.label, link: entry.showMe!.href } });
     },
   },
   {
@@ -89,9 +98,11 @@ export const NOV26_WHATS_NEW_CASES: ReplayCase[] = [
       process.env[ROLLOUT] = "true"; // rolled out (off in production; see the first case); the harness restores it
       const { updates } = await ask(t, "any new features this week?", { since: "2026-11-25" });
       const titles = updates.map((update) => update.title);
-      expect(titles).toContain(ADMIN_ONLY);
-      expect(titles).toContain("Create a form from this conversation");
-      expect(titles, "an update from before the 25th was given for this week").not.toContain("Google Reviews leaderboard by period");
+      const sinceTheWeek = visibleTo("admin").filter((release) => release.date >= "2026-11-25").flatMap((release) => release.entries.map((entry) => entry.title));
+      expect(titles, "the week's updates an administrator's page lists did not reach the model").toEqual(sinceTheWeek.slice(0, LISTED));
+      // The administrators' Knowledge Base post was taken off What's New on 28 Nov 2026 (owner's request), so it is no longer asserted here.
+      const older = WHATS_NEW.filter((release) => release.date < "2026-11-25").flatMap((release) => release.entries.map((entry) => entry.title));
+      expect(titles.filter((title) => older.includes(title)), "an update from before the 25th was given for this week").toEqual([]);
     },
   },
 ];

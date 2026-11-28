@@ -83,6 +83,8 @@ import { detectTemplateIntent } from "@/lib/forms/template-intent";
 import { buildFormInventory, publishedEntries } from "@/lib/forms/inventory";
 import { listTemplateSummaries, type TemplateSummary } from "@/lib/forms/repository";
 import { isFormListQuestion, isFormRangeQuestion, isFormRecordsQuestion, loadFormRecords } from "@/lib/forms/chat-form-records";
+import { extractEmployeeNames } from "@/lib/forms/proposal";
+import { asksHistoryFirstAdvice } from "@/lib/ai/coaching-how-to";
 import { namesAPerson } from "@/lib/forms/names-a-person";
 import { withRosterOnlyNames } from "@/lib/forms/roster-only-names";
 import { priorFormsReadingForChat } from "@/lib/forms/prior-forms";
@@ -1455,6 +1457,11 @@ async function answerQuestionUntraced(
   const readsFormRecords =
     listsForms ||
     pastFormsFirst ||
+    /*
+     * The owner, 28 Nov 2026: coaching or corrective-action advice that names an employee starts from their forms on
+     * file (`coaching-how-to.ts`, HISTORY_FIRST_LINE), so it reads them as a question about them does.
+     */
+    (asksHistoryFirstAdvice(request.question, request.history) && extractEmployeeNames(request.question).length > 0) ||
     ((isFormRecordsQuestion(request.question) ||
       (formsOnFileDateRangeEnabled() && isFormRangeQuestion(request.question, request.context.todayIso))) &&
       (!crossChatGuard || asksAboutRecords(request.question) || refersBack(request.question, request.history)));

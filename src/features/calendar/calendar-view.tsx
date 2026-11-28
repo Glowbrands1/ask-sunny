@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -22,7 +23,8 @@ import { NOT_ATTENDEE } from "@/features/l10/lib/access";
  *
  * A month at a time, Sunday first, Central time. Filter chips per type with this month's count. A busy day writes out
  * two events and counts the rest per type ("+8 follow-ups"), never "+12 more". Picking a day lists everything on it.
- * Phones get the month as a list. Refreshes itself every two minutes, so a change in any of the three apps shows here.
+ * Hovering or clicking a day opens a small pop-up with everything on it (DayPopover). Phones get the month as a list.
+ * Refreshes itself every two minutes, so a change in any of the three apps shows here.
  */
 export const REFRESH_MS = 120_000;
 export const SHOWN_PER_DAY = 2;
@@ -50,6 +52,75 @@ export function monthLabel(month: string): string {
 export function cellSummary(events: CalendarEvent[], shown = SHOWN_PER_DAY): { shown: CalendarEvent[]; more: { kind: CalendarKind; count: number }[] } {
   const rest = events.slice(shown);
   return { shown: events.slice(0, shown), more: KINDS.map((kind) => ({ kind, count: rest.filter((e) => e.kind === kind).length })).filter((m) => m.count > 0) };
+}
+
+/**
+ * A day's events in a small pop-up beside its cell (the owner, 27 Nov 2026, on a busy day that read "+1 meeting · +1
+ * follow-up · +1 approval": "when i click can i have a small pop up or if i hover pls all apps"). Hovering a day shows it;
+ * clicking keeps it open until ✕, Escape or a click elsewhere. It holds the same rows as the day below, so a meeting,
+ * follow-up or reminder opens from it too. The Leadership Hub and Ask Bubbles have the same pop-up.
+ */
+export const PEEK_DELAY_MS = 250;
+const PEEK_CLOSE_MS = 150;
+export type DayAnchor = { top: number; bottom: number; left: number; right: number };
+type Peek = { day: string; at: DayAnchor; pinned: boolean };
+
+/** Where the pop-up goes: under the day, or above it when it would run off the bottom, and always inside the window. */
+export function placePopover(at: DayAnchor, size: { width: number; height: number }, win: { width: number; height: number }, gap = 4, margin = 8): { top: number; left: number } {
+  const left = at.left + size.width <= win.width - margin ? at.left : Math.max(margin, Math.min(at.right, win.width - margin) - size.width);
+  const below = at.bottom + gap;
+  const above = at.top - gap - size.height;
+  const top = below + size.height <= win.height - margin ? below : above >= margin ? above : Math.max(margin, win.height - margin - size.height);
+  return { top, left };
+}
+
+function DayPopover({ peek, onClose, onHover, children }: { peek: Peek; onClose: () => void; onHover: (inside: boolean) => void; children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const { top, left } = placePopover(peek.at, { width: el.offsetWidth, height: el.offsetHeight }, { width: window.innerWidth, height: window.innerHeight });
+    el.style.top = `${top}px`;
+    el.style.left = `${left}px`;
+    el.style.visibility = "visible";
+  }, [peek]);
+  useEffect(() => {
+    const inside = (t: EventTarget | null) => t instanceof Node && Boolean(ref.current?.contains(t));
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    // A click on a day belongs to that day (it moves or closes the pop-up); anywhere else closes it.
+    const onDown = (e: MouseEvent) => !inside(e.target) && !(e.target instanceof Element && e.target.closest("[data-calendar-day]")) && onClose();
+    const onScroll = (e: Event) => !inside(e.target) && onClose();
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("mousedown", onDown);
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", onClose);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("mousedown", onDown);
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", onClose);
+    };
+  }, [onClose]);
+  return createPortal(
+    <div
+      ref={ref}
+      role="dialog"
+      aria-label={`${dayLabel(peek.day)}: everything on this day`}
+      onMouseEnter={() => onHover(true)}
+      onMouseLeave={() => onHover(false)}
+      style={{ position: "fixed", top: 0, left: 0, visibility: "hidden" }}
+      className="z-[60] max-h-[60vh] w-[26rem] max-w-[calc(100vw-1rem)] overflow-auto rounded-lg border border-border-strong bg-surface p-3 text-left shadow-xl"
+    >
+      <div className="flex items-start gap-2">
+        <h3 className="m-0 flex-1 text-sm font-semibold">{dayLabel(peek.day)}</h3>
+        <button type="button" onClick={onClose} className="rounded px-2 py-0.5 text-sm" aria-label="Close day pop-up">
+          ✕
+        </button>
+      </div>
+      {children}
+    </div>,
+    document.body,
+  );
 }
 
 /**
@@ -465,6 +536,62 @@ export function CalendarView({
     reload();
   };
   const pickedEvents = picked ? (byDay.get(picked) ?? []) : [];
+
+  // The day pop-up: hovering a day opens it after a moment; clicking keeps it open (DayPopover).
+  const [peek, setPeek] = useState<Peek | null>(null);
+  const peekTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stopPeekTimer = () => {
+    if (peekTimer.current) clearTimeout(peekTimer.current);
+    peekTimer.current = null;
+  };
+  const closePeek = useCallback(() => {
+    if (peekTimer.current) clearTimeout(peekTimer.current);
+    peekTimer.current = null;
+    setPeek(null);
+  }, []);
+  useEffect(() => () => void (peekTimer.current && clearTimeout(peekTimer.current)), []);
+  const anchorOf = (el: HTMLElement): DayAnchor => {
+    const r = el.getBoundingClientRect();
+    return { top: r.top, bottom: r.bottom, left: r.left, right: r.right };
+  };
+  const laterClosePeek = () => {
+    stopPeekTimer();
+    peekTimer.current = setTimeout(() => setPeek(null), PEEK_CLOSE_MS);
+  };
+  const hoverDay = (el: HTMLElement, d: string) => {
+    if (peek?.pinned) return;
+    if (!byDay.get(d)?.length) return laterClosePeek();
+    stopPeekTimer();
+    // Already showing a day: follow the pointer straight away.
+    peekTimer.current = setTimeout(() => el.isConnected && setPeek({ day: d, at: anchorOf(el), pinned: false }), peek ? 0 : PEEK_DELAY_MS);
+  };
+  const leaveDay = () => {
+    if (!peek?.pinned) laterClosePeek();
+  };
+  const clickDay = (el: HTMLElement, d: string) => {
+    setPicked(d);
+    stopPeekTimer();
+    if (!byDay.get(d)?.length || (peek?.pinned && peek.day === d)) return setPeek(null);
+    setPeek({ day: d, at: anchorOf(el), pinned: true });
+  };
+  const hoverPopover = (inside: boolean) => {
+    if (peek?.pinned) return;
+    if (inside) stopPeekTimer();
+    else laterClosePeek();
+  };
+  const peekEvents = peek ? (byDay.get(peek.day) ?? []) : [];
+  // The meeting panel opens under the month: bring it into view when it was opened from the pop-up.
+  const panelRef = useRef<HTMLDivElement>(null);
+  const scrollToPanel = useRef(false);
+  useEffect(() => {
+    if (!scrollToPanel.current) return;
+    scrollToPanel.current = false;
+    panelRef.current?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+  }, [opens]);
+  const fromPeek = () => {
+    closePeek();
+    scrollToPanel.current = true;
+  };
   const monthDays = [...byDay.keys()].filter((d) => monthOf(d) === month).sort();
 
   return (
@@ -546,7 +673,10 @@ export function CalendarView({
               <button
                 key={d}
                 type="button"
-                onClick={() => setPicked(d)}
+                data-calendar-day={d}
+                onClick={(ev) => clickDay(ev.currentTarget, d)}
+                onMouseEnter={(ev) => hoverDay(ev.currentTarget, d)}
+                onMouseLeave={leaveDay}
                 aria-label={`${dayLabel(d)}: ${events.length} ${events.length === 1 ? "event" : "events"}`}
                 aria-pressed={picked === d}
                 className={cn(
@@ -578,6 +708,41 @@ export function CalendarView({
           })}
         </div>
       </div>
+
+      {peek && days.includes(peek.day) ? (
+        <DayPopover peek={peek} onClose={closePeek} onHover={hoverPopover}>
+          {peekEvents.length ? (
+            <ul className="m-0 list-none divide-y divide-border p-0">
+              {peekEvents.map((e) => (
+                <EventRow
+                  key={e.id}
+                  e={e}
+                  onDelete={onDelete}
+                  onMeeting={(key, date) => {
+                    fromPeek();
+                    onMeeting(key, date);
+                  }}
+                  hasDetails={hasDetails}
+                  onEditTime={
+                    canEditSchedules
+                      ? (key, date) => {
+                          fromPeek();
+                          onEditTime(key, date);
+                        }
+                      : undefined
+                  }
+                  onNotAttendee={() => {
+                    closePeek();
+                    setNotAttendee(true);
+                  }}
+                />
+              ))}
+            </ul>
+          ) : (
+            <p className="m-0 mt-2 text-sm text-muted-foreground">Nothing on this day.</p>
+          )}
+        </DayPopover>
+      ) : null}
 
       {picked ? (
         <Card role="region" aria-label={dayLabel(picked)} className="hidden p-4 md:block">
@@ -622,18 +787,20 @@ export function CalendarView({
       ) : null}
 
       {opened ? (
-        <MeetingPanel
-          key={opens}
-          meeting={opened}
-          date={openDate}
-          saveOccurrence={saveOccurrence}
-          hubUrl={hubUrl}
-          canEdit={canEditSchedules}
-          startEditing={editOnOpen}
-          saveSchedule={saveSchedule}
-          onSaved={reload}
-          onClose={() => setOpenMeeting(null)}
-        />
+        <div ref={panelRef}>
+          <MeetingPanel
+            key={opens}
+            meeting={opened}
+            date={openDate}
+            saveOccurrence={saveOccurrence}
+            hubUrl={hubUrl}
+            canEdit={canEditSchedules}
+            startEditing={editOnOpen}
+            saveSchedule={saveSchedule}
+            onSaved={reload}
+            onClose={() => setOpenMeeting(null)}
+          />
+        </div>
       ) : null}
 
       {unscheduled.length ? (
@@ -667,7 +834,7 @@ export function CalendarView({
         </Card>
       ) : null}
 
-      <p className="m-0 text-xs text-muted-foreground">Times are Central. Pick a day to see everything on it. Time-off requests are not shown here.</p>
+      <p className="m-0 text-xs text-muted-foreground">Times are Central. Hover over or click a day to see everything on it. Time-off requests are not shown here.</p>
     </div>
   );
 }
