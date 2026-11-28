@@ -1679,7 +1679,7 @@ async function supersedeRevised(revision: LoadedInstance, actor: string): Promis
     .update({ status: "revised" })
     .eq("id", originalId)
     .eq("status", "finalized")
-    .select("id, followed_up_at, followed_up_by, follow_up_owner");
+    .select("id, follow_up_date, followed_up_at, followed_up_by, follow_up_owner");
   if (error) throw new Error(`Could not mark the original form as revised: ${error.message}`);
   if ((data ?? []).length === 0) return;
   await recordEvent(originalId, kind, actor, { revisionId: revision.instance.id });
@@ -1692,20 +1692,23 @@ async function supersedeRevised(revision: LoadedInstance, actor: string): Promis
  * A revision copies the follow-up once, when it is opened. While it is a draft (days, when it waits for HR) the
  * ORIGINAL carries the tracking, and that is where a manager marks the follow-up done or hands it to someone else.
  * Nothing carried that over, so when the revision went live the follow-up came back Overdue and the daily job rang a
- * fresh "Follow-up overdue" bell. Now: done on the original is done on the revision, and an owner named on the
- * original is kept when the revision names none. The revision's own date and its own choices are never overwritten.
+ * fresh "Follow-up overdue" bell. Now: done on the original is done on the revision WHEN IT IS THE SAME FOLLOW-UP
+ * (the revision kept the original's date; a revision that sets a new date is a new follow-up and stays open), and an
+ * owner named on the original is kept when the revision names none. The revision's own choices are never overwritten.
  * Best effort: the revision is already final, so a failed carry is logged (ids only), never a failed finalize.
  */
 async function carryFollowUpToRevision(revisionId: string, original: Record<string, unknown> | undefined): Promise<void> {
   if (!original) return;
   const supabase = getSupabaseAdmin();
   const done = typeof original.followed_up_at === "string" ? original.followed_up_at : null;
+  const date = typeof original.follow_up_date === "string" ? original.follow_up_date : null;
   const owner = typeof original.follow_up_owner === "string" && original.follow_up_owner ? original.follow_up_owner : null;
-  if (done) {
+  if (done && date) {
     const { error } = await supabase
       .from("form_instances")
       .update({ followed_up_at: done, followed_up_by: original.followed_up_by ?? null })
       .eq("id", revisionId)
+      .eq("follow_up_date", date)
       .is("followed_up_at", null);
     if (error) console.warn(`instances: the follow-up done on the original could not be carried to revision ${revisionId}.`);
   }
