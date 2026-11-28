@@ -8,7 +8,7 @@ import { readWovenAccessConfig } from "./config";
 import { loadAccessPlan } from "./load";
 import { readNewHireConfig } from "./new-hire";
 import { sendNewHireInvites, type NewHireInviteOutcome } from "./new-hire-invites";
-import { notifyAdminsOfDisabled } from "./disable-notices";
+import { notifyAdminsOfDisabled } from "@/lib/admin/disable-notices";
 
 /**
  * The account lifecycle with the real services: the plan from the database,
