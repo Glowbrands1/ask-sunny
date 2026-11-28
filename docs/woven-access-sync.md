@@ -341,7 +341,7 @@ limited to two an hour), so every event is POSTed as JSON to
 `WOVEN_EVENTS_WEBHOOK_URL` — Pau's n8n, which emails her — with
 `WOVEN_EVENTS_WEBHOOK_SECRET` in the `x-ask-webhook-secret` header. The body:
 `{ app, event, title, body, employee: { wovenEmployeeId, name, email, position,
-salon, additionalSalons, hireDate, terminationDate } }`. `app` is "Ask Sunny",
+location, additionalLocations, hireDate, terminationDate } }`. `app` is "Ask Sunny",
 so one workflow can serve both apps.
 
 | Variable | Default | Meaning |

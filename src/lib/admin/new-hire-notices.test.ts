@@ -108,7 +108,7 @@ describe("the words", () => {
     expect(payload).toMatchObject({
       app: "Ask Sunny",
       event: "hired",
-      employee: { wovenEmployeeId: "E2", name: "Robin Quillfeather", email: "robin.quillfeather@example.com", salon: "Maple Grove", additionalSalons: ["Birch Hollow (temporary, until Dec 15, 2026)", "Cedar Point"] },
+      employee: { wovenEmployeeId: "E2", name: "Robin Quillfeather", email: "robin.quillfeather@example.com", location: "Maple Grove", additionalLocations: ["Birch Hollow (temporary, until Dec 15, 2026)", "Cedar Point"] },
     });
   });
 });

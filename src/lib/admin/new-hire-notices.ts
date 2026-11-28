@@ -296,8 +296,9 @@ export interface EmployeeEventPayload {
     name: string;
     email: string | null;
     position: string | null;
-    salon: string | null;
-    additionalSalons: string[];
+    /** The primary salon or store, as Woven names it. */
+    location: string | null;
+    additionalLocations: string[];
     hireDate: string | null;
     terminationDate: string | null;
   };
@@ -314,8 +315,8 @@ export function eventPayload(event: EmployeeEvent, employee: HiredEmployee, text
       name: displayName(employee),
       email: clean(employee.emailAddress) || null,
       position: clean(employee.positionName) || null,
-      salon: primarySalon(employee),
-      additionalSalons: additionalSalons(employee),
+      location: primarySalon(employee),
+      additionalLocations: additionalSalons(employee),
       hireDate: employee.hireDate,
       terminationDate: employee.terminationDate ?? null,
     },
